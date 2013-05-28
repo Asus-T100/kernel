@@ -51,8 +51,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgx_fwif_shared.h"
 #include "rgx_fwif_resetframework.h"
 #include "rgxfwutils.h"
-#include "sync_server.h"
-#include "connection_server.h"
 
 #if defined (__cplusplus)
 extern "C" {
@@ -72,8 +70,6 @@ typedef struct {
 #define RC_CLEANUP_TA_COMPLETE		(1 << 0)
 #define RC_CLEANUP_3D_COMPLETE		(1 << 1)
 	PVRSRV_CLIENT_SYNC_PRIM	*psCleanupSync;
-	IMG_BOOL				bDumpedTACCBCtlAlready;
-	IMG_BOOL				bDumped3DCCBCtlAlready;
 } RGX_RC_CLEANUP_DATA;
 
 typedef struct {
@@ -81,12 +77,11 @@ typedef struct {
 	DEVMEM_MEMDESC			*psFWHWRTDataMemDesc;
 	DEVMEM_MEMDESC			*psRTACtlMemDesc;
 	DEVMEM_MEMDESC			*psRTArrayMemDesc;
-	RGX_FREELIST 			*apsFreeLists[RGXFW_MAX_FREELISTS];
 	PVRSRV_CLIENT_SYNC_PRIM	*psCleanupSync;
 } RGX_RTDATA_CLEANUP_DATA;
 
 struct _RGX_FREELIST_ {
-	PVRSRV_RGXDEV_INFO 		*psDevInfo;
+	PVRSRV_DEVICE_NODE		*psDeviceNode;
 
 	/* Free list PMR */
 	PMR						*psFreeListPMR;
@@ -98,9 +93,6 @@ struct _RGX_FREELIST_ {
 	IMG_UINT32				ui32CurrentFLPages;
 	IMG_UINT32				ui32GrowFLPages;
 	IMG_UINT32				ui32FreelistID;
-	IMG_UINT64				ui64FreelistChecksum;	/* checksum over freelist content */
-	IMG_BOOL				bCheckFreelist;			/* freelist check enabled */
-	IMG_UINT32				ui32RefCount;			/* freelist reference counting */
 
 	IMG_UINT32				ui32NumGrowReqByApp;	/* Total number of grow requests by Application*/
 	IMG_UINT32				ui32NumGrowReqByFW;		/* Total Number of grow requests by Firmware */
@@ -133,7 +125,7 @@ typedef struct {
 } RGX_RT_CLEANUP_DATA;
 
 typedef struct {
-	PVRSRV_RGXDEV_INFO		*psDevInfo;
+	PVRSRV_DEVICE_NODE		*psDeviceNode;
 	DEVMEM_MEMDESC			*psZSBufferMemDesc;
 	RGXFWIF_DEV_VIRTADDR	sZSBufferFWDevVAddr;
 
@@ -141,7 +133,7 @@ typedef struct {
 	PMR 					*psPMR;
 	DEVMEMINT_MAPPING 		*psMapping;
 	PVRSRV_MEMALLOCFLAGS_T 	uiMapFlags;
-	IMG_UINT32 				ui32ZSBufferID;
+	IMG_UINT32 				ui32DeferredAllocID;
 	IMG_UINT32 				ui32RefCount;
 	IMG_BOOL				bOnDemand;
 
@@ -157,17 +149,13 @@ typedef struct {
 	RGX_ZSBUFFER_DATA		*psZSBuffer;
 } RGX_POPULATION;
 
-/* Dump the physical pages of a freelist */
-IMG_BOOL RGXDumpFreeListPageList(RGX_FREELIST *psFreeList);
-
-
 /* Create HWRTDataSet */
 IMG_EXPORT
 PVRSRV_ERROR RGXCreateHWRTData(PVRSRV_DEVICE_NODE	*psDeviceNode, 
 							   IMG_UINT32			psRenderTarget,
 							   IMG_DEV_VIRTADDR		psPMMListDevVAddr,
 							   IMG_DEV_VIRTADDR		psVFPPageTableAddr,
-							   RGX_FREELIST			*apsFreeLists[RGXFW_MAX_FREELISTS],
+							   IMG_UINT32			apsFreeLists[RGXFW_MAX_FREELISTS],
 							   RGX_RTDATA_CLEANUP_DATA	**ppsCleanupData,
 							   DEVMEM_MEMDESC			**ppsRTACtlMemDesc,
 							   IMG_UINT16			ui16MaxRTs,
@@ -242,20 +230,6 @@ IMG_EXPORT
 PVRSRV_ERROR RGXUnpopulateZSBufferKM(RGX_POPULATION *psPopulation);
 
 /*
-	RGXProcessRequestZSBufferBacking
-*/
-IMG_EXPORT
-IMG_VOID RGXProcessRequestZSBufferBacking(PVRSRV_RGXDEV_INFO *psDevInfo,
-										IMG_UINT32 ui32ZSBufferID);
-
-/*
-	RGXProcessRequestZSBufferUnbacking
-*/
-IMG_EXPORT
-IMG_VOID RGXProcessRequestZSBufferUnbacking(PVRSRV_RGXDEV_INFO *psDevInfo,
-										IMG_UINT32 ui32ZSBufferID);
-
-/*
 	RGXGrowFreeList
 */
 IMG_INTERNAL
@@ -269,22 +243,16 @@ PVRSRV_ERROR RGXCreateFreeList(PVRSRV_DEVICE_NODE	*psDeviceNode,
 							   IMG_UINT32			ui32MaxFLPages,
 							   IMG_UINT32			ui32InitFLPages,
 							   IMG_UINT32			ui32GrowFLPages,
-							   IMG_BOOL				bCheckFreelist,
 							   IMG_DEV_VIRTADDR		sFreeListDevVAddr,
 							   PMR					*psFreeListPMR,
 							   IMG_DEVMEM_OFFSET_T	uiFreeListPMROffset,
+							   IMG_UINT32			*sFreeListFWDevVAddr,
 							   RGX_FREELIST			**ppsFreeList);
 
 /* Destroy free list */
 IMG_EXPORT
 PVRSRV_ERROR RGXDestroyFreeList(RGX_FREELIST *psFreeList);
 
-/*
-	RGXProcessRequestGrow
-*/
-IMG_EXPORT
-IMG_VOID RGXProcessRequestGrow(PVRSRV_RGXDEV_INFO *psDevInfo,
-								IMG_UINT32 ui32FreelistID);
 
 
 /* Grow free list */
@@ -297,11 +265,7 @@ IMG_EXPORT
 PVRSRV_ERROR RGXRemoveBlockFromFreeListKM(RGX_FREELIST *psFreeList);
 
 
-/* Reconstruct free list after Hardware Recovery */
-IMG_VOID RGXProcessRequestFreelistsReconstruction(PVRSRV_RGXDEV_INFO *psDevInfo,
-								RGXFWIF_DM eDM,
-								IMG_UINT32 ui32FreelistsCount,
-								IMG_UINT32 *paui32Freelists);
+
 
 /*!
 *******************************************************************************
@@ -374,35 +338,13 @@ PVRSRV_ERROR PVRSRVRGXDestroyRenderContextKM(RGX_RC_CLEANUP_DATA *psCleanupData)
 
 ******************************************************************************/
 IMG_EXPORT
-PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
-								 PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR PVRSRVRGXKickTA3DKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 								 DEVMEM_MEMDESC 	*psFWRenderContextMemDesc,
 								 IMG_BOOL			bLastTAInScene,
 								 IMG_BOOL			bKickTA,
 								 IMG_BOOL			bKick3D,
-								 IMG_UINT32			*pui32TAcCCBWoffUpdate,
-								 IMG_UINT32			*pui323DcCCBWoffUpdate,
-								 DEVMEM_MEMDESC 	*psTAcCCBMemDesc,
-								 DEVMEM_MEMDESC 	*psTACCBCtlMemDesc,
-								 DEVMEM_MEMDESC 	*ps3DcCCBMemDesc,
-								 DEVMEM_MEMDESC 	*ps3DCCBCtlMemDesc,
-								 IMG_UINT32			ui32TAServerSyncPrims,
-								 PVRSRV_CLIENT_SYNC_PRIM_OP**	pasTASyncOp,
-								 SERVER_SYNC_PRIMITIVE **pasTAServerSyncs,
-								 IMG_UINT32			ui323DServerSyncPrims,
-								 PVRSRV_CLIENT_SYNC_PRIM_OP**	pas3DSyncOp,
-								 SERVER_SYNC_PRIMITIVE **pas3DServerSyncs,
-								 IMG_UINT32			ui32TACmdSize,
-								 IMG_PBYTE			pui8TACmd,
-								 IMG_UINT32			ui32TAFenceEnd,
-								 IMG_UINT32			ui32TAUpdateEnd,
-								 IMG_UINT32			ui323DCmdSize,
-								 IMG_PBYTE			pui83DCmd,
-								 IMG_UINT32			ui323DFenceEnd,
-								 IMG_UINT32			ui323DUpdateEnd,
-								 IMG_UINT32         ui32NumFenceFds,
-								 IMG_INT32          *ai32FenceFds,
-								 IMG_BOOL			bPDumpContinuous,
-								 RGX_RC_CLEANUP_DATA *psCleanupData);
+								 IMG_UINT32			ui32TAcCCBWoffUpdate,
+								 IMG_UINT32			ui323DcCCBWoffUpdate,
+								 IMG_BOOL			bbPDumpContinuous);
 
 #endif /* __RGXTA3D_H__ */

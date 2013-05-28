@@ -55,8 +55,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if defined(RGX_FIRMWARE)
 /* Compiling the actual firmware - use a fully typed pointer */
 typedef struct _RGXFWIF_HOST_CTL_			*PRGXFWIF_HOST_CTL;
-typedef struct _RGXFWIF_CCB_CTL_			*PRGXFWIF_CCB_CTL;
-typedef IMG_UINT8							*PRGXFWIF_CCB;
+typedef struct _RGXFWIF_KCCB_CTL_			*PRGXFWIF_KCCB_CTL;
+typedef IMG_UINT8							*PRGXFWIF_KCCB;
 typedef struct _RGXFWIF_FWMEMCONTEXT_		*PRGXFWIF_FWMEMCONTEXT;
 typedef struct _RGXFWIF_FWRENDERCONTEXT_	*PRGXFWIF_FWRENDERCONTEXT;
 typedef struct _RGXFWIF_FWTQ2DCONTEXT_		*PRGXFWIF_FWTQ2DCONTEXT;
@@ -68,7 +68,6 @@ typedef IMG_UINT32							*PRGXFWIF_SIGBUFFER;
 typedef struct _RGXFWIF_INIT_				*PRGXFWIF_INIT;
 typedef struct _RGXFW_UNITTESTS_			*PRGXFW_UNITTESTS;
 typedef struct _RGXFWIF_TRACEBUF_			*PRGXFWIF_TRACEBUF;
-typedef struct _RGXFWIF_HWRINFOBUF_			*PRGXFWIF_HWRINFOBUF;
 typedef IMG_UINT8							*PRGXFWIF_COMMONCTX_STATE;
 typedef struct _RGXFWIF_TACTX_STATE_		*PRGXFWIF_TACTX_STATE;
 typedef struct _RGXFWIF_3DCTX_STATE_		*PRGXFWIF_3DCTX_STATE;
@@ -78,8 +77,8 @@ typedef struct _RGX_HWPERF_CONFIG_CNTBLK_	*PRGX_HWPERF_CONFIG_CNTBLK;
 #else
 /* Compiling the host driver - use a firmware device virtual pointer */
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_HOST_CTL;
-typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_CCB_CTL;
-typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_CCB;
+typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_KCCB_CTL;
+typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_KCCB;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_FWMEMCONTEXT;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_FWRENDERCONTEXT;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_FWTQ2DCONTEXT;
@@ -91,7 +90,6 @@ typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_SIGBUFFER;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_INIT;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFW_UNITTESTS;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_TRACEBUF;
-typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_HWRINFOBUF;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_COMMONCTX_STATE;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_RF_CMD;
 typedef RGXFWIF_DEV_VIRTADDR				PRGXFWIF_COMPCHECKS;
@@ -113,17 +111,16 @@ typedef struct _RGXFWIF_FWMEMCONTEXT_
 /*!
  * 	FW context state flags
  */
-#define	RGXFWIF_CONTEXT_TAFLAGS_NEED_RESUME			(0x00000001)
-#define	RGXFWIF_CONTEXT_RENDERFLAGS_NEED_RESUME		(0x00000002)
-#define RGXFWIF_CONTEXT_CDMFLAGS_NEED_RESUME		(0x00000004)
-#define RGXFWIF_CONTEXT_ALLFLAGS_NEED_RESUME		(0x00000007)
+#define	RGXFWIF_CONTEXT_TAFLAGS_NEED_RESUME			0x00000001
+#define	RGXFWIF_CONTEXT_RENDERFLAGS_NEED_RESUME		0x00000002
+#define RGXFWIF_CONTEXT_CDMFLAGS_NEED_RESUME		0x00000004
 
 typedef struct _RGXFWIF_TACTX_STATE_
 {
 	/* FW-accessible TA state which must be written out to memory on context store */
-	IMG_UINT64	RGXFW_ALIGN uTAReg_VDM_CALL_STACK_POINTER;		 /* To store in mid-TA */
-	IMG_UINT64	RGXFW_ALIGN uTAReg_VDM_CALL_STACK_POINTER_Init;	 /* Initial value (in case is 'lost' due to a lock-up */
+	IMG_UINT64	RGXFW_ALIGN uTAReg_VDM_CALL_STACK_POINTER;
 	IMG_UINT64	RGXFW_ALIGN uTAReg_VDM_BATCH;
+	IMG_UINT64	RGXFW_ALIGN uTAReg_TE_PSG_RTC;
 	
 #if defined(DEBUG)
 	/* Number of stores on this context */
@@ -236,13 +233,13 @@ static INLINE RGXFWIF_BIFREQ rgxfwif_BIFREQ_from_DM(RGXFWIF_DM eDM)
  ******************************************************************************
  * Kernel CCB control for RGX
  *****************************************************************************/
-typedef struct _RGXFWIF_CCB_CTL_
+typedef struct _RGXFWIF_KCCB_CTL_
 {
-	volatile IMG_UINT32		ui32WriteOffset;		/*!< write offset into array of commands (MUST be aligned to 16 bytes!) */
-	volatile IMG_UINT32		ui32ReadOffset;			/*!< read offset into array of commands */
+	IMG_UINT32				ui32WriteOffset;		/*!< write offset into array of commands (MUST be aligned to 16 bytes!) */
+	IMG_UINT32				ui32ReadOffset;			/*!< read offset into array of commands */
 	IMG_UINT32				ui32WrapMask;			/*!< Offset wrapping mask (Total capacity of the CCB - 1) */
 	IMG_UINT32				ui32CmdSize;			/*!< size of each command in bytes */
-} RGXFWIF_CCB_CTL;
+} RGXFWIF_KCCB_CTL;
 
 /*!
  ******************************************************************************
@@ -345,6 +342,22 @@ typedef struct _RGXFWIF_SLCFLUSHINVALDATA_
     IMG_UINT32	eDM;			/*!< DM to flush entries for */
 } RGXFWIF_SLCFLUSHINVALDATA;
 
+typedef struct _RGXFWIF_ZSBUFFERSYNCPRIMDATA_
+{
+    IMG_UINT32	psZSBufferPopulateSyncPrimAddr;		/*!< FW ZS Buffer populate Sync Prim address */
+    IMG_UINT32	psZSBufferUnPopulateSyncPrimAddr;	/*!< FW ZS buffer unpopulate Sync Prim address */
+    IMG_UINT32	psGrowSyncPrimAddr;		/*!< FW Grow Sync Prim address */
+    IMG_UINT32	psShrinkSyncPrimAddr;	/*!< FW Shrink Sync Prim address */
+	IMG_UINT32 uiSyncObjDevVAddr;		/*!< sync primitive */
+	IMG_UINT32 uiUpdateVal;				/*!< update value */
+} RGXFWIF_ZSBUFFERSYNCPRIMDATA;
+
+typedef struct _RGXFWIF_FREELIST_SIZE_DATA_
+{
+	IMG_UINT32 ui32FwFreeListAddr;		/*!< address of the fw freelist */
+	IMG_UINT32 ui32NewNumPages;			/*!< Number of available pages */
+} RGXFWIF_FREELIST_SIZE_DATA;
+
 typedef struct _RGXFWIF_HWPERF_CTRL_
 {
 	IMG_BOOL	 bEnable; 		/*!< Enable/disable the generation of all HWPerf events */
@@ -364,26 +377,6 @@ typedef struct _RGXFWIF_HWPERF_CTRL_BLKS_
 	IMG_UINT8				aeBlockIDs[RGX_HWPERF_MAX_BLKS];	/*!< Array of RGX_HWPERF_CNTBLK_ID values */
 } RGXFWIF_HWPERF_CTRL_BLKS;
 
-typedef struct _RGXFWIF_ZSBUFFER_BACKING_DATA_
-{
-	IMG_UINT32				psZSBufferFWDevVAddr; 				/*!< ZS-Buffer FW address */
-	IMG_UINT32				bDone;								/*!< action backing/unbacking succeeded */
-} RGXFWIF_ZSBUFFER_BACKING_DATA;
-
-typedef struct _RGXFWIF_FREELIST_GS_DATA_
-{
-	IMG_UINT32				psFreeListFWDevVAddr; 				/*!< Freelist FW address */
-	IMG_UINT32				ui32DeltaSize;						/*!< Amount of the Freelist change */
-	IMG_UINT32				ui32NewSize;							/*!< New amount of pages on the freelist */
-} RGXFWIF_FREELIST_GS_DATA;
-
-#define RGXFWIF_FREELISTS_RECONSTRUCTION_FAILED_FLAG 0x80000000
-
-typedef struct _RGXFWIF_FREELISTS_RECONSTRUCTION_DATA_
-{
-	IMG_UINT32			ui32FreelistsCount;
-	IMG_UINT32			aui32FreelistIDs[MAX_HW_TA3DCONTEXTS * RGXFW_MAX_FREELISTS];
-} RGXFWIF_FREELISTS_RECONSTRUCTION_DATA;
 
 /*
 	If you add/remove entries here then please
@@ -399,88 +392,36 @@ typedef enum _RGXFWIF_KCCB_CMD_TYPE_
 	RGXFWIF_KCCB_CMD_SLCFLUSHINVAL				= 108, /*!< slc flush and invalidation request */
 	RGXFWIF_KCCB_CMD_CLEANUP					= 109, /*!< Requests cleanup of a FW resource (type specified in the command data) */
 	RGXFWIF_KCCB_CMD_POW						= 110, /*!< Power request */
-	RGXFWIF_KCCB_CMD_HWPERF_CTRL_EVENTS			= 111, /*!< Control the HWPerf event generation behaviour */
-	RGXFWIF_KCCB_CMD_HWPERF_CONFIG_ENABLE_BLKS	= 112, /*!< Configure, clear and enable multiple HWPerf blocks */
-	RGXFWIF_KCCB_CMD_HWPERF_CTRL_BLKS			= 113, /*!< Enable or disable multiple HWPerf blocks (reusing existing configuration) */
-	RGXFWIF_KCCB_CMD_ZSBUFFER_BACKING_UPDATE	= 114, /*!< Backing for on-demand ZS-Buffer done */
-	RGXFWIF_KCCB_CMD_ZSBUFFER_UNBACKING_UPDATE	= 115, /*!< Unbacking for on-demand ZS-Buffer done */
-	RGXFWIF_KCCB_CMD_FREELIST_GROW_UPDATE		= 116, /*!< Freelist Grow done */
-	RGXFWIF_KCCB_CMD_FREELIST_SHRINK_UPDATE		= 118, /*!< Freelist Shrink done */
-	RGXFWIF_KCCB_CMD_FREELISTS_RECONSTRUCTION_UPDATE	= 119, /*!< Freelists Reconstruction done */
-	RGXFWIF_KCCB_CMD_HEALTH_CHECK               = 120, /*!< Health check request */
+	RGXFWIF_KCCB_CMD_ZSBUFFER_SYNCPRIM_UDPATE	= 111, /*!< Update ZLS SyncPrim FW address */
+	RGXFWIF_KCCB_CMD_FREELIST_SIZE_UPDATE		= 112, /*!< Requests an update of available pages on the Freelist */
+	RGXFWIF_KCCB_CMD_HWPERF_CTRL_EVENTS			= 113, /*!< Control the HWPerf event generation behaviour */
+	RGXFWIF_KCCB_CMD_HWPERF_CONFIG_ENABLE_BLKS	= 114, /*!< Configure, clear and enable multiple HWPerf blocks */
+	RGXFWIF_KCCB_CMD_HWPERF_CTRL_BLKS			= 115 /*!< Enable or disable multiple HWPerf blocks (reusing existing configuration) */
 } RGXFWIF_KCCB_CMD_TYPE;
 
-/* Kernel CCB command packet */
 typedef struct _RGXFWIF_KCCB_CMD_
 {
 	RGXFWIF_KCCB_CMD_TYPE					eCmdType;			/*!< Command type */
 	union
 	{
-		RGXFWIF_KCCB_CMD_KICK_DATA				sCmdKickData;			/*!< Data for Kick command */
-		RGXFWIF_MMUCACHEDATA					sMMUCacheData;			/*!< Data for MMUCACHE command */
-		RGXFWIF_BPDATA							sBPData;				/*!< Data for Breakpoint Commands */
-		RGXFWIF_SLCBPCTLDATA       				sSLCBPCtlData;  		/*!< Data for SLC Bypass Control */
-		RGXFWIF_KCCB_CMD_SYNC_DATA 				sSyncData;          	/*!< Data for host sync commands */
-		RGXFWIF_SLCFLUSHINVALDATA				sSLCFlushInvalData;		/*!< Data for SLC Flush/Inval commands */
-		RGXFWIF_CLEANUP_REQUEST					sCleanupData; 			/*!< Data for cleanup commands */
-		RGXFWIF_POWER_REQUEST					sPowData;				/*!< Data for power request commands */
-		RGXFWIF_HWPERF_CTRL						sHWPerfCtrl;			/*!< Data for HWPerf control command */
-		RGXFWIF_HWPERF_CONFIG_ENABLE_BLKS		sHWPerfCfgEnableBlks;	/*!< Data for HWPerf configure, clear and enable performance counter block command */
-		RGXFWIF_HWPERF_CTRL_BLKS				sHWPerfCtrlBlks;		/*!< Data for HWPerf enable or disable performance counter block commands */
-		RGXFWIF_ZSBUFFER_BACKING_DATA			sZSBufferBackingData;	/*!< Feedback for Z/S Buffer backing/unbacking */
-		RGXFWIF_FREELIST_GS_DATA				sFreeListGSData;		/*!< Feedback for Freelist grow/shrink */
-		RGXFWIF_FREELISTS_RECONSTRUCTION_DATA	sFreeListsReconstructionData;	/*!< Feedback for Freelists reconstruction */
-		IMG_UINT32								ui32Padding[9];			/*!< Force structure to be 10 words */
+		RGXFWIF_KCCB_CMD_KICK_DATA			sCmdKickData;			/*!< Data for Kick command */
+		RGXFWIF_MMUCACHEDATA				sMMUCacheData;			/*!< Data for MMUCACHE command */
+		RGXFWIF_BPDATA						sBPData;				/*!< Data for Breakpoint Commands */
+		RGXFWIF_SLCBPCTLDATA       			sSLCBPCtlData;  		/*!< Data for SLC Bypass Control */
+		RGXFWIF_KCCB_CMD_SYNC_DATA 			sSyncData;          	/*!< Data for host sync commands */
+		RGXFWIF_SLCFLUSHINVALDATA			sSLCFlushInvalData;		/*!< Data for SLC Flush/Inval commands */
+		RGXFWIF_CLEANUP_REQUEST				sCleanupData; 			/*!< Data for cleanup commands */
+		RGXFWIF_POWER_REQUEST				sPowData;				/*!< Data for power request commands */
+		RGXFWIF_ZSBUFFERSYNCPRIMDATA		sZSBufferSyncPrimUpdateData;	/*!< Data for ZS Buffer Sync Prim address update command > */
+		RGXFWIF_FREELIST_SIZE_DATA			sFreelistSizeData;		/*!< Data to update freelist size > */
+		RGXFWIF_HWPERF_CTRL					sHWPerfCtrl;			/*!< Data for HWPerf control command */
+		RGXFWIF_HWPERF_CONFIG_ENABLE_BLKS	sHWPerfCfgEnableBlks;	/*!< Data for HWPerf configure, clear and enable performance counter block command */
+		RGXFWIF_HWPERF_CTRL_BLKS			sHWPerfCtrlBlks;		/*!< Data for HWPerf enable or disable performance counter block commands */
+		IMG_UINT32							ui32Padding[9];			/*!< Force structure to be 10 words */
 	} uCmdData;
 } RGXFWIF_KCCB_CMD;
 
 BLD_ASSERT(sizeof(RGXFWIF_KCCB_CMD)==40, rgx_fwif_km_h);
-
-/*!
- ******************************************************************************
- * Firmware CCB command structure for RGX
- *****************************************************************************/
-
-typedef struct _RGXFWIF_FWCCB_CMD_ZSBUFFER_BACKING_DATA_
-{
-	IMG_UINT32				ui32ZSBufferID;
-	IMG_BOOL				bPopulate;
-} RGXFWIF_FWCCB_CMD_ZSBUFFER_BACKING_DATA;
-
-typedef struct _RGXFWIF_FWCCB_CMD_FREELIST_GS_DATA_
-{
-	IMG_UINT32				ui32FreelistID;
-} RGXFWIF_FWCCB_CMD_FREELIST_GS_DATA;
-
-typedef struct _RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION_DATA_
-{
-	IMG_UINT32			ui32FreelistsCount;
-	IMG_UINT32			aui32FreelistIDs[MAX_HW_TA3DCONTEXTS * RGXFW_MAX_FREELISTS];
-} RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION_DATA;
-
-
-typedef enum _RGXFWIF_FWCCB_CMD_TYPE_
-{
-	RGXFWIF_FWCCB_CMD_ZSBUFFER_BACKING			= 101, /*!< Requests ZSBuffer to be backed with physical pages */
-	RGXFWIF_FWCCB_CMD_ZSBUFFER_UNBACKING		= 102, /*!< Requests ZSBuffer to be unbacked */
-	RGXFWIF_FWCCB_CMD_FREELIST_GROW				= 103, /*!< Requests an on-demand freelist grow/shrink */
-	RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION	= 104, /*!< Requests freelists reconstruction */
-} RGXFWIF_FWCCB_CMD_TYPE;
-
-/* Firmware CCB command packet */
-typedef struct _RGXFWIF_FWCCB_CMD_
-{
-	RGXFWIF_FWCCB_CMD_TYPE					eCmdType;	/*!< Command type */
-	union
-	{
-		RGXFWIF_FWCCB_CMD_ZSBUFFER_BACKING_DATA				sCmdZSBufferBacking;		/*!< Data for Z/S-Buffer on-demand (un)backing*/
-		RGXFWIF_FWCCB_CMD_FREELIST_GS_DATA					sCmdFreeListGS;				/*!< Data for on-demand freelist grow/shrink */
-		RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION_DATA		sCmdFreeListsReconstruction;	/*!< Data for freelists reconstruction */
-		IMG_UINT32											ui32Padding[7];				/*!< Force structure to be 5 words */
-	} uCmdData;
-} RGXFWIF_FWCCB_CMD;
-
-BLD_ASSERT(sizeof(RGXFWIF_FWCCB_CMD)==32, rgx_fwif_km_h);
 
 /*!
  ******************************************************************************
@@ -497,6 +438,9 @@ typedef struct _RGXFWIF_SIGBUF_CTL_
  * Control data for RGX
  *****************************************************************************/
 
+#define MAX_HW_TA3DCONTEXTS	2
+
+
 typedef struct _RGXFWIF_INIT_
 {
 	IMG_DEV_PHYADDR 		RGXFW_ALIGN sBifFaultPhysAddr;
@@ -510,13 +454,8 @@ typedef struct _RGXFWIF_INIT_
 	IMG_UINT32				uiPowerSync;
 
 	/* Kernel CCBs */
-	PRGXFWIF_CCB_CTL		psKernelCCBCtl[RGXFWIF_DM_MAX];
-	PRGXFWIF_CCB			psKernelCCB[RGXFWIF_DM_MAX];
-
-	/* Firmware CCBs */
-	PRGXFWIF_CCB_CTL		psFirmwareCCBCtl[RGXFWIF_DM_MAX];
-	PRGXFWIF_CCB			psFirmwareCCB[RGXFWIF_DM_MAX];
-
+	PRGXFWIF_KCCB_CTL		psKernelCCBCtl[RGXFWIF_DM_MAX];
+	PRGXFWIF_KCCB			psKernelCCB[RGXFWIF_DM_MAX];
 	RGXFWIF_DM				eDM[RGXFWIF_DM_MAX];
 
 	RGXFWIF_SIGBUF_CTL		asSigBufCtl[RGXFWIF_DM_MAX];
@@ -527,8 +466,6 @@ typedef struct _RGXFWIF_INIT_
 	IMG_UINT32				ui32BreakpointShareds;
 
 	PRGXFWIF_TRACEBUF		psTraceBufCtl;
-
-	PRGXFWIF_HWRINFOBUF		psRGXFWIfHWRInfoBufCtl;
 
 #if defined(RGXFW_ALIGNCHECKS)
 #if defined(RGX_FIRMWARE)

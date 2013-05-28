@@ -76,7 +76,6 @@ static ssize_t pvr_proc_write(struct file *file, const char __user *buffer, size
 
 static struct file_operations pvr_proc_operations =
 {
-	.owner      = THIS_MODULE,
 	.open		= pvr_proc_open,
 	.read		= seq_read,
 	.write		= pvr_proc_write,
@@ -94,7 +93,6 @@ static struct seq_operations pvr_proc_seq_operations =
 
 static struct proc_dir_entry* g_pProcVersion;
 static struct proc_dir_entry* g_pProcSysNodes;
-static struct proc_dir_entry* g_pProcStatus;
 
 #ifdef DEBUG
 static struct proc_dir_entry* g_pProcDebugLevel;
@@ -106,9 +104,6 @@ static struct proc_dir_entry* g_pProcPowerLevel;
 
 
 static void ProcSeqShowVersion(struct seq_file *sfile,void* el);
-
-static void ProcSeqShowStatus(struct seq_file *sfile,void* el);
-static void* ProcSeqOff2ElementStatus(struct seq_file *sfile, loff_t off);
 
 static void ProcSeqShowSysNodes(struct seq_file *sfile,void* el);
 static void* ProcSeqOff2ElementSysNodes(struct seq_file * sfile, loff_t off);
@@ -289,7 +284,7 @@ static ssize_t pvr_proc_write(struct file *file, const char __user *buffer,
  @Description
  Seq_file start function. Detailed description of seq_file workflow can
  be found here: http://tldp.org/LDP/lkmpg/2.6/html/x861.html.
- This function uses off2element handler.
+ This function ises off2element handler.
 
  @Input  proc_seq_file : sequence file entry
 
@@ -845,9 +840,8 @@ IMG_INT CreateProcEntries(IMG_VOID)
 
 	g_pProcVersion = CreateProcReadEntrySeq("version", NULL, NULL, ProcSeqShowVersion, ProcSeq1ElementHeaderOff2Element, NULL);
 	g_pProcSysNodes = CreateProcReadEntrySeq("nodes", NULL, NULL, ProcSeqShowSysNodes, ProcSeqOff2ElementSysNodes, NULL);
-	g_pProcStatus = CreateProcReadEntrySeq("status", NULL, NULL, ProcSeqShowStatus, ProcSeqOff2ElementStatus, NULL);
 
-	if(!g_pProcVersion || !g_pProcSysNodes || !g_pProcStatus)
+	if(!g_pProcVersion || !g_pProcSysNodes)
     {
         PVR_DPF((PVR_DBG_ERROR, "CreateProcEntries: couldn't make /proc/%s files", PVRProcDirRoot));
 
@@ -935,7 +929,6 @@ IMG_VOID RemoveProcEntries(IMG_VOID)
 
     RemoveProcEntrySeq(g_pProcVersion);
 	RemoveProcEntrySeq(g_pProcSysNodes);
-	RemoveProcEntrySeq(g_pProcStatus);
 
 	while (dir->subdir)
 	{
@@ -975,141 +968,6 @@ static void ProcSeqShowVersion(struct seq_file *sfile,void* el)
 
 	seq_printf( sfile, "System Version String: %s\n", pszSystemVersionString);
 }
-
-
-/*!
-******************************************************************************
-
- @Function : ProcSeqOff2ElementStatus
-
- @Description
-
- Heleper Offset -> Element function for /proc files with only one entry
- with header.
-
- @Input  sfile : seq_file object related to /proc/ file
-
- @Input  off : the offset into the buffer (id of object)
-
- @Return : Pointer to element to be shown.
-
-*****************************************************************************/
-static void* ProcSeqOff2ElementStatus(struct seq_file *sfile, loff_t off)
-{
-	PVRSRV_DATA*  psPVRSRVData = PVRSRVGetPVRSRVData();
-	
-	if (psPVRSRVData != IMG_NULL)
-	{
-		if (off == 0)
-		{
-			return &psPVRSRVData->eServicesState;
-		}
-		else if (off > 0  &&  off <= psPVRSRVData->ui32RegisteredDevices)
-		{
-			return psPVRSRVData->apsRegisteredDevNodes[off-1];
-		}
-	}
-
-	return NULL;
-} /* ProcSeqOff2ElementStatus */
-
-
-/*****************************************************************************
- FUNCTION	:	ProcSeqShowStatus
-
- PURPOSE	:	Print the driver status to /proc file
-
- PARAMETERS	:	sfile - /proc seq_file
-				el - Element to print
-*****************************************************************************/
-static void ProcSeqShowStatus(struct seq_file *sfile, void* el)
-{
-	PVRSRV_DATA*  psPVRSRVData = PVRSRVGetPVRSRVData();
-
-	if (psPVRSRVData != IMG_NULL  &&  el == &psPVRSRVData->eServicesState)
-	{
-		/* Write the driver status to the sequence file... */
-		switch (psPVRSRVData->eServicesState)
-		{
-			case PVRSRV_SERVICES_STATE_OK:
-			{
-				seq_printf(sfile, "Driver Status:   OK\n");
-				break;
-			}
-			
-			case PVRSRV_SERVICES_STATE_BAD:
-			{
-				seq_printf(sfile, "Driver Status:   BAD\n");
-				break;
-			}
-			
-			default:
-			{
-				seq_printf(sfile, "Driver Status:   %d\n", psPVRSRVData->eServicesState);
-				break;
-			}
-		}
-	}
-	else
-	{
-		PVRSRV_DEVICE_NODE*  psDeviceNode = (PVRSRV_DEVICE_NODE*) el;
-		
-		/* Update the health status now if possible... */
-		if (psDeviceNode->pfnUpdateHealthStatus)
-		{
-			psDeviceNode->pfnUpdateHealthStatus(psDeviceNode, IMG_FALSE);
-		}
-
-		/* Write the devce status to the sequence file... */
-		if (psDeviceNode->sDevId.eDeviceType == PVRSRV_DEVICE_TYPE_RGX)
-		{
-			switch (psDeviceNode->eHealthStatus)
-			{
-				case PVRSRV_DEVICE_HEALTH_STATUS_OK:
-				{
-					seq_printf(sfile, "Firmware Status: OK\n");
-					break;
-				}
-				
-				case PVRSRV_DEVICE_HEALTH_STATUS_DEAD:
-				{
-					seq_printf(sfile, "Firmware Status: DEAD\n");
-					break;
-				}
-				
-				default:
-				{
-					seq_printf(sfile, "Firmware Status: UNKNOWN (%d)\n", psDeviceNode->eHealthStatus);
-					break;
-				}
-			}
-		}
-		else
-		{
-			switch (psDeviceNode->eHealthStatus)
-			{
-				case PVRSRV_DEVICE_HEALTH_STATUS_OK:
-				{
-					seq_printf(sfile, "Device %d Status: OK\n", psDeviceNode->sDevId.ui32DeviceIndex);
-					break;
-				}
-				
-				case PVRSRV_DEVICE_HEALTH_STATUS_DEAD:
-				{
-					seq_printf(sfile, "Device %d Status: DEAD\n", psDeviceNode->sDevId.ui32DeviceIndex);
-					break;
-				}
-				
-				default:
-				{
-					seq_printf(sfile, "Device %d Status: %d\n", psDeviceNode->sDevId.ui32DeviceIndex, psDeviceNode->eHealthStatus);
-					break;
-				}
-			}
-		}
-	}
-} /* ProcSeqShowStatus */
-
 
 /*!
 ******************************************************************************

@@ -57,12 +57,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_TC_CORE_CLOCK_SPEED		(90000000)
 #define RGX_TC_MEM_CLOCK_SPEED		(65000000)
 
-/* Memory reserved for use by the PDP DC. */
 #define RGX_TC_RESERVE_DC_MEM_SIZE	(32 * 1024 * 1024)
-#if defined(SUPPORT_ION)
-/* Memory reserved for use by ion. */
-#define RGX_TC_RESERVE_ION_MEM_SIZE (128 * 1024 * 1024)
-#endif
 
 #define PCI_BASEREG_OFFSET_DWORDS	(3)
 
@@ -173,25 +168,7 @@ static PHYS_HEAP_CONFIG	gsPhysHeapConfig[] =
 		.pszPDumpMemspaceName	= "LMA",
 		.psMemFuncs		= &gsLocalPhysHeapFuncs,
 		.hPrivData		= IMG_NULL,
-	},
-#if defined(SUPPORT_ION)
-	{
-		/* ui32PhysHeapID */
-		2,
-		/* eType */
-		PHYS_HEAP_TYPE_LMA,
-		/* sStartAddr */
-		{ 0 },
-		/* uiSize */
-		0,
-		/* pszPDumpMemspaceName */
-		"LMA",
-		/* psMemFuncs */
-		&gsLocalPhysHeapFuncs,
-		/* hPrivData */
-		IMG_NULL,
-	},
-#endif
+	}
 };
 #elif (TC_MEMORY_CONFIG == TC_MEMORY_HOST)
 static PHYS_HEAP_FUNCTIONS gsSystemPhysHeapFuncs =

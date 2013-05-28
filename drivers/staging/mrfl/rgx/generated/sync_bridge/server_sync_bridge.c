@@ -129,7 +129,7 @@ PVRSRVBridgeAllocSyncPrimitiveBlock(IMG_UINT32 ui32BridgeID,
 	}
 
 	psAllocSyncPrimitiveBlockOUT->eError =
-		PVRSRVAllocSyncPrimitiveBlockKM(psConnection,
+		PVRSRVAllocSyncPrimitiveBlockKM(
 					hDevNodeInt,
 					&psSyncHandleInt,
 					&psAllocSyncPrimitiveBlockOUT->ui32SyncPrimVAddr,
@@ -438,7 +438,6 @@ PVRSRVBridgeServerSyncQueueHWOp(IMG_UINT32 ui32BridgeID,
 	psServerSyncQueueHWOpOUT->eError =
 		PVRSRVServerSyncQueueHWOpKM(
 					psSyncHandleInt,
-					psServerSyncQueueHWOpIN->bbUpdate,
 					&psServerSyncQueueHWOpOUT->ui32FenceValue,
 					&psServerSyncQueueHWOpOUT->ui32UpdateValue);
 

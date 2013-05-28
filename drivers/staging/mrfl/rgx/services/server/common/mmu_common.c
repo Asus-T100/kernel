@@ -492,29 +492,6 @@ static PVRSRV_ERROR _MMU_PhysMemAlloc(MMU_PHYSMEM_CONTEXT *psCtx,
 	psMemDesc->pvCpuVAddr = IMG_NULL;
 	psMemDesc->sDevPAddr.uiAddr = (IMG_UINTPTR_T) uiPhysAddr;
 
-#if !defined(SUPPORT_MMU_PxE_MAP_ON_DEMAND)
-	{
-		PVRSRV_ERROR eError;
-
-		eError = psCtx->psDevNode->pfnMMUPxMap(psCtx->psDevNode,
-										&psMemDesc->psMapping->sMemHandle,
-										psMemDesc->psMapping->uiSize,
-										&psMemDesc->psMapping->sDevPAddr,
-										&psMemDesc->psMapping->pvCpuVAddr);
-		if (eError != PVRSRV_OK)
-		{
-			RA_Free(psCtx->psPhysMemRA, psMemDesc->sDevPAddr.uiAddr);
-			return eError;
-		}
-	
-		PVR_ASSERT(psMemDesc->psMapping->pvCpuVAddr != IMG_NULL);
-	
-		/* Workout the address for this mem desc */
-		psMemDesc->pvCpuVAddr = ((IMG_UINT8 *) psMemDesc->psMapping->pvCpuVAddr) + 
-									(psMemDesc->psMapping->sDevPAddr.uiAddr -
-									psMemDesc->psMapping->sDevPAddr.uiAddr);
-	}
-#endif
 	return PVRSRV_OK;
 }
 
@@ -537,13 +514,6 @@ static IMG_VOID _MMU_PhysMemFree(MMU_PHYSMEM_CONTEXT *psCtx,
 
 	PVR_ASSERT(psMemDesc->bValid);
 
-#if !defined(SUPPORT_MMU_PxE_MAP_ON_DEMAND)
-	psCtx->psDevNode->pfnMMUPxUnmap(psCtx->psDevNode, &psMemDesc->psMapping->sMemHandle,
-							psMemDesc->pvCpuVAddr);
-
-	psMemDesc->pvCpuVAddr = IMG_NULL;
-#endif
-
 	uiPhysAddr = psMemDesc->sDevPAddr.uiAddr; /* FIXME:  translate addr if necessary */
 	RA_Free(psCtx->psPhysMemRA, uiPhysAddr);
 
@@ -563,7 +533,6 @@ static IMG_VOID _MMU_PhysMemFree(MMU_PHYSMEM_CONTEXT *psCtx,
 /*****************************************************************************/
 static PVRSRV_ERROR _MMU_MapCPUVAddr(MMU_MEMORY_DESC *psMMUMemDesc)
 {
-#if defined(SUPPORT_MMU_PxE_MAP_ON_DEMAND)
 	MMU_MEMORY_MAPPING *psMapping = psMMUMemDesc->psMapping;
 	MMU_PHYSMEM_CONTEXT *psCtx = psMapping->psContext;
 	PVRSRV_DEVICE_NODE *psDevNode = psCtx->psDevNode;
@@ -592,10 +561,8 @@ static PVRSRV_ERROR _MMU_MapCPUVAddr(MMU_MEMORY_DESC *psMMUMemDesc)
 								(psMMUMemDesc->psMapping->sDevPAddr.uiAddr -
 								psMapping->sDevPAddr.uiAddr);
 
+
 	return eError;
-#else
-	return PVRSRV_OK;
-#endif
 }
 
 /*************************************************************************/ /*!
@@ -611,7 +578,6 @@ static PVRSRV_ERROR _MMU_MapCPUVAddr(MMU_MEMORY_DESC *psMMUMemDesc)
 /*****************************************************************************/
 static PVRSRV_ERROR _MMU_UnmapCPUVAddr(MMU_MEMORY_DESC *psMMUMemDesc)
 {
-#if defined(SUPPORT_MMU_PxE_MAP_ON_DEMAND)
 	MMU_MEMORY_MAPPING *psMapping = psMMUMemDesc->psMapping;
 	MMU_PHYSMEM_CONTEXT *psCtx = psMapping->psContext;
 	PVRSRV_DEVICE_NODE *psDevNode = psCtx->psDevNode;
@@ -625,7 +591,7 @@ static PVRSRV_ERROR _MMU_UnmapCPUVAddr(MMU_MEMORY_DESC *psMMUMemDesc)
 	/* FIXME: Unlock */
 
 	psMMUMemDesc->pvCpuVAddr = IMG_NULL;
-#endif
+
 	return PVRSRV_OK;
 }
 

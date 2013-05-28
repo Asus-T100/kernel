@@ -53,19 +53,8 @@ struct ion_device *IonDevAcquire(IMG_VOID);
 
 IMG_VOID IonDevRelease(struct ion_device *psIonDev);
 
-IMG_UINT32 IonPhysHeapID(IMG_VOID);
+IMG_UINT IonSupportedHeaps(IMG_VOID);
 
-#if defined(LMA)
-IMG_DEV_PHYADDR IonCPUPhysToDevPhys(IMG_CPU_PHYADDR sCPUPhysAddr,
-									IMG_UINT32 ui32Offset);
-#else
-/* This is a no-op for UMA systems. */
-static inline
-IMG_DEV_PHYADDR IonCPUPhysToDevPhys(IMG_CPU_PHYADDR sCPUPhysAddr,
-									IMG_UINT32 ui32Offset)
-{
-	return (IMG_DEV_PHYADDR){ .uiAddr = sCPUPhysAddr.uiAddr + ui32Offset };
-}
-#endif
+IMG_UINT32 IonPhysHeapID(IMG_VOID);
 
 IMG_VOID IonDeinit(IMG_VOID);

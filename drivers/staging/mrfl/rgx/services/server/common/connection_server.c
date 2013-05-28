@@ -49,7 +49,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "osconnection_server.h"
 #include "allocmem.h"
 #include "pvr_debug.h"
-#include "sync_server.h"
 
 /*!
 ******************************************************************************
@@ -123,14 +122,6 @@ PVRSRV_ERROR PVRSRVConnectionConnect(IMG_PVOID *ppvPrivData, IMG_PVOID pvOSData)
 		goto failure;
 	}
 
-	/* Register this connection with the sync core */
-	eError = SyncRegisterConnection(&psConnection->psSyncConnectionData);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "PVRSRVConnectionConnect: Couldn't register the sync data"));
-		goto failure;
-	}	
-
 	/* Allocate handle base for this process */
 	eError = PVRSRVAllocHandleBase(&psConnection->psHandleBase);
 	if (eError != PVRSRV_OK)
@@ -164,17 +155,7 @@ IMG_VOID PVRSRVConnectionDisconnect(IMG_PVOID pvDataPtr)
 
 	/* Close the Resource Manager connection */
 	PVRSRVResManDisconnect(psConnection->hResManContext);
-
-	/*
-		Unregister with the sync core. Logically this is after resman to
-		ensure that any sync block that haven't been freed by the app will
-		be freed by resman 1st.
-		However, due to the fact the resman can defer the free the Sync core
-		needs to handle the case where the connection data is destroyed while
-		Sync blocks are still in it.
-	*/
-	SyncUnregisterConnection(psConnection->psSyncConnectionData);
-
+	
 	/* Free the connection data */
 	eError = FreeConnectionData(psConnection);
 	if (eError != PVRSRV_OK)

@@ -295,14 +295,7 @@ TLStreamReserve(IMG_HANDLE hStream,
 
 			/* minus one ui32 to account for array arithmetic. 
 			 * This flag should not be inserted two consecutive times. */
-			if ( 0 == ((psTmp->ui32Start + psTmp->ui32Count ) % psTmp->ui32Size) )
-			{
-				end = psTmp->ui32Size - sizeof(IMG_UINT32);
-			}
-			else
-			{
-				end = ((psTmp->ui32Start + psTmp->ui32Count ) - sizeof(IMG_UINT32)) % psTmp->ui32Size ;
-			}
+			end = ((psTmp->ui32Start + psTmp->ui32Count ) - sizeof(IMG_UINT32)) % psTmp->ui32Size ;
 			if ( PVRSRVTL_PACKETTYPE_MOST_RECENT_DATA_LOST 
 				 != 
 				 GET_PACKET_TYPE( (PVRSRVTL_PACKETHDR*)&(psTmp->ui32Buffer[elementize(end)]) ) )

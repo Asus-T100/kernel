@@ -85,27 +85,7 @@ IMG_VOID RGXPanic(PVRSRV_RGXDEV_INFO	*psDevInfo);
 IMG_VOID RGXDumpDebugInfo(PVRSRV_RGXDEV_INFO	*psDevInfo,
 						  IMG_BOOL				bDumpRGXRegs);
 
-/*!
-*******************************************************************************
 
- @Function	RGXDebugRequestProcess
-
- @Description
-
- This function will print out the debug for the specificed level of
- verbosity
-
- @Input psDevInfo	 - RGX device info
- @Input bDumpRGXRegs - Whether to dump RGX debug registers. Must not be done
- 						when RGX is not powered.
- @Input ui32VerbLevel - Verbosity level
-
- @Return   IMG_VOID
-
-******************************************************************************/
-IMG_VOID RGXDebugRequestProcess(PVRSRV_RGXDEV_INFO	*psDevInfo,
-							    IMG_BOOL			bDumpRGXRegs,
-							    IMG_UINT32			ui32VerbLevel);
 
 /*!
 *******************************************************************************

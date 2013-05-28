@@ -131,39 +131,6 @@ RGXDebugMiscSetFWLog_exit:
 	return 0;
 }
 
-static IMG_INT
-PVRSRVBridgeRGXDebugMiscDumpFreelistPageList(IMG_UINT32 ui32BridgeID,
-					 PVRSRV_BRIDGE_IN_RGXDEBUGMISCDUMPFREELISTPAGELIST *psRGXDebugMiscDumpFreelistPageListIN,
-					 PVRSRV_BRIDGE_OUT_RGXDEBUGMISCDUMPFREELISTPAGELIST *psRGXDebugMiscDumpFreelistPageListOUT,
-					 CONNECTION_DATA *psConnection)
-{
-	IMG_HANDLE hDevNodeInt;
-
-	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCDUMPFREELISTPAGELIST);
-
-
-	/* Look up the address from the handle */
-	psRGXDebugMiscDumpFreelistPageListOUT->eError =
-		PVRSRVLookupHandle(psConnection->psHandleBase,
-						   (IMG_HANDLE *) &hDevNodeInt,
-						   psRGXDebugMiscDumpFreelistPageListIN->hDevNode,
-						   PVRSRV_HANDLE_TYPE_DEV_NODE);
-	if(psRGXDebugMiscDumpFreelistPageListOUT->eError != PVRSRV_OK)
-	{
-		goto RGXDebugMiscDumpFreelistPageList_exit;
-	}
-
-	psRGXDebugMiscDumpFreelistPageListOUT->eError =
-		PVRSRVRGXDebugMiscDumpFreelistPageListKM(
-					hDevNodeInt);
-
-
-
-RGXDebugMiscDumpFreelistPageList_exit:
-
-	return 0;
-}
-
 
 PVRSRV_ERROR RegisterDEBUGMISCFunctions(IMG_VOID);
 IMG_VOID UnregisterDEBUGMISCFunctions(IMG_VOID);
@@ -175,7 +142,6 @@ PVRSRV_ERROR RegisterDEBUGMISCFunctions(IMG_VOID)
 {
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC_DEBUGMISCSLCSETBYPASSSTATE, PVRSRVBridgeDebugMiscSLCSetBypassState);
 	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCSETFWLOG, PVRSRVBridgeRGXDebugMiscSetFWLog);
-	SetDispatchTableEntry(PVRSRV_BRIDGE_DEBUGMISC_RGXDEBUGMISCDUMPFREELISTPAGELIST, PVRSRVBridgeRGXDebugMiscDumpFreelistPageList);
 
 	return PVRSRV_OK;
 }

@@ -93,16 +93,16 @@ static
 PVRSRV_ERROR IonPhysAddrAcquire(PMR_ION_DATA *psPrivData,
 							   int fd)
 {
-	struct sg_table *table;
-	struct scatterlist *sg;
-	IMG_CPU_PHYADDR sCpuPhysAddr;
+	struct scatterlist *psScatterList;
+	struct scatterlist *psTemp;
+	IMG_CPU_PHYADDR psCpuPhysAddr;
 	IMG_DEV_PHYADDR *pasDevPhysAddr = NULL;
 	PVRSRV_ERROR eError;
 	IMG_UINT32 ui32PageCount = 0;
 	IMG_UINT32 i;
 
-	table = ion_sg_table(psPrivData->psIonClient, psPrivData->psIonHandle);
-	if (!table)
+	psScatterList = ion_map_dma(psPrivData->psIonClient, psPrivData->psIonHandle);
+	if (psScatterList == NULL)
 	{
 		eError = PVRSRV_ERROR_INVALID_PARAMS;
 		goto exitFailMap;
@@ -112,40 +112,53 @@ PVRSRV_ERROR IonPhysAddrAcquire(PMR_ION_DATA *psPrivData,
 		We do a two pass process, 1st workout how many pages there
 		are, 2nd fill in the data.
 	*/
-	for_each_sg(table->sgl, sg, table->nents, i)
+	for (i=0;i<2;i++)
 	{
-		ui32PageCount += PAGE_ALIGN(sg_dma_len(sg)) / PAGE_SIZE;
-	}
-
-	if (WARN_ON(!ui32PageCount))
-	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to import ion buffer with no pages",
-				 __func__));
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto exitFailMap;
-	}
-
-	pasDevPhysAddr = kmalloc(sizeof(IMG_DEV_PHYADDR)*ui32PageCount, GFP_KERNEL);
-	if (!pasDevPhysAddr)
-	{
-		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto exitFailAlloc;
-	}
-
-	ui32PageCount = 0;
-
-	for_each_sg(table->sgl, sg, table->nents, i)
-	{
-		IMG_UINT32 j;
-
-		for (j = 0; j < sg_dma_len(sg); j += PAGE_SIZE)
+		psTemp = psScatterList;
+		if (i == 1)
 		{
-			/* Pass 2: Get the page data */
-			sCpuPhysAddr.uiAddr = sg_phys(sg);
+			pasDevPhysAddr = kmalloc(sizeof(IMG_DEV_PHYADDR) * ui32PageCount, GFP_KERNEL);
+			if (pasDevPhysAddr == NULL)
+			{
+				eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+				goto exitFailAlloc;
+			}
+			ui32PageCount = 0;	/* Reset the page count a we use if for the index */
+		}
 
-			pasDevPhysAddr[ui32PageCount] =
-				IonCPUPhysToDevPhys(sCpuPhysAddr, j);
-			ui32PageCount++;
+		while(psTemp)
+		{
+			IMG_UINT32 j;
+
+			for (j=0;j<psTemp->length;j+=PAGE_SIZE)
+			{
+				if (i == 1)
+				{
+					/* Pass 2: Get the page data */
+					psCpuPhysAddr.uiAddr = sg_phys(psTemp);
+
+					/*
+						Note:
+
+						We have made an assumption that the physical address
+						returned by the Ion buffer is the right address for
+						the device to use.
+						
+						For UMA this is true.
+						
+						For LMA this can also be true if the ion buffer returned
+						device physical address. However, this would stop us being
+						able to map LMA buffers into Ion devices that aren't using
+						the device address. For now there is no way to know if
+						this buffer is LMA or not so we don't know if a translation
+						needs to be done.
+					*/
+						
+					pasDevPhysAddr[ui32PageCount].uiAddr = psCpuPhysAddr.uiAddr;
+				}
+				ui32PageCount++;
+			}
+			psTemp = sg_next(psTemp);
 		}
 	}
 
@@ -156,7 +169,9 @@ PVRSRV_ERROR IonPhysAddrAcquire(PMR_ION_DATA *psPrivData,
 	return PVRSRV_OK;
 
 exitFailAlloc:
+	ion_unmap_dma(psPrivData->psIonClient, psPrivData->psIonHandle);
 exitFailMap:
+
 	PVR_ASSERT(eError!= PVRSRV_OK);
 	return eError;
 }
@@ -164,6 +179,8 @@ exitFailMap:
 static
 IMG_VOID IonPhysAddrRelease(PMR_ION_DATA *psPrivData)
 {
+	/* Release our dma mapping */
+	ion_unmap_dma(psPrivData->psIonClient, psPrivData->psIonHandle);
 	kfree(psPrivData->pasDevPhysAddr);
 }
 
@@ -473,7 +490,6 @@ PhysmemImportIon(CONNECTION_DATA *psConnection,
 	eError = PhysHeapAcquire(IonPhysHeapID(), &psPrivData->psPhysHeap);
 	if (eError != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Failed PhysHeapAcquire", __func__));
 		goto fail_physheap;
 	}
 
@@ -482,11 +498,10 @@ PhysmemImportIon(CONNECTION_DATA *psConnection,
 	psPrivData->psIonClient = EnvDataIonClientGet(psEnvConnectionData);
 
 	/* Get the buffer handle */
-	psPrivData->psIonHandle = ion_import_dma_buf(psPrivData->psIonClient, fd);
+	psPrivData->psIonHandle = ion_import_fd(psPrivData->psIonClient, fd);
 	if (psPrivData->psIonHandle == IMG_NULL)
 	{
 		/* FIXME: add ion specific error? */
-		PVR_DPF((PVR_DBG_ERROR, "%s: ion_import_dma_buf failed", __func__));
 		eError = PVRSRV_ERROR_BAD_MAPPING;
 		goto fail_ionimport;
 	}
@@ -503,7 +518,6 @@ PhysmemImportIon(CONNECTION_DATA *psConnection,
 							   fd);
 	if (eError != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: IonPhysAddrAcquire failed", __func__));
 		goto fail_acquire;
 	}
 
@@ -515,7 +529,6 @@ PhysmemImportIon(CONNECTION_DATA *psConnection,
 
 		if (IS_ERR(pvKernAddr))
 		{
-			PVR_DPF((PVR_DBG_ERROR, "%s: ion_map_kernel failed", __func__));
 			eError = PVRSRV_ERROR_PMR_NO_KERNEL_MAPPING;
 			goto fail_kernelmap;
 		}
@@ -556,7 +569,6 @@ PhysmemImportIon(CONNECTION_DATA *psConnection,
 						  &psPMR);
 	if (eError != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to create PMR", __func__));
 		goto fail_pmrcreate;
 	}
 

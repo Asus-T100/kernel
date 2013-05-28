@@ -42,6 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
 #include <stddef.h>
+#include <linux/kernel.h>
+#include <linux/types.h>
 
 #include "rgxpower.h"
 #include "rgx_fwif_km.h"
@@ -89,27 +91,6 @@ static IMG_VOID RGXInitSLC(PVRSRV_RGXDEV_INFO	*psDevInfo)
 {
 	IMG_UINT32	ui32Reg;
 	IMG_UINT32	ui32RegVal;
-#if defined(FIX_HW_BRN_36492)
-	/* Because the WA for this BRN forbids using SLC reset, need to inval it instead */
-	PDUMPCOMMENTWITHFLAGS(PDUMP_FLAGS_POWERTRANS, "Invalidate the SLC");
-	OSWriteHWReg32(psDevInfo->pvRegsBaseKM, 
-			RGX_CR_SLC_CTRL_FLUSH_INVAL, RGX_CR_SLC_CTRL_FLUSH_INVAL_ALL_EN);
-	PDUMPREG32(RGX_PDUMPREG_NAME, 
-			RGX_CR_SLC_CTRL_FLUSH_INVAL, RGX_CR_SLC_CTRL_FLUSH_INVAL_ALL_EN, 
-			PDUMP_FLAGS_CONTINUOUS | PDUMP_FLAGS_POWERTRANS);
-
-	/* poll for completion */
-	PVRSRVPollForValueKM((IMG_UINT32 *)((IMG_UINT8*)psDevInfo->pvRegsBaseKM + RGX_CR_SLC_STATUS0),
-							 0x0,
-							 RGX_CR_SLC_STATUS0_INVAL_PENDING_EN);
-
-	PDUMPREGPOL(RGX_PDUMPREG_NAME,
-				RGX_CR_SLC_STATUS0,
-				0x0,
-				RGX_CR_SLC_STATUS0_INVAL_PENDING_EN,
-				PDUMP_FLAGS_CONTINUOUS | PDUMP_FLAGS_POWERTRANS,
-				PDUMP_POLL_OPERATOR_EQUAL);
-#endif
 
 	/*
 	 * SLC Bypass control

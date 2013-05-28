@@ -256,74 +256,8 @@ PVRSRVBridgeRGXKickCDM(IMG_UINT32 ui32BridgeID,
 {
 	IMG_HANDLE hDevNodeInt;
 	DEVMEM_MEMDESC * psFWComputeContextInt;
-	DEVMEM_MEMDESC * pscCCBInt;
-	DEVMEM_MEMDESC * pscCCBCtlInt;
-	PVRSRV_CLIENT_SYNC_PRIM_OP* *sSyncOpInt = IMG_NULL;
-	SERVER_SYNC_PRIMITIVE * *psSyncHandleInt = IMG_NULL;
-	IMG_HANDLE *hSyncHandleInt2 = IMG_NULL;
-	IMG_BYTE *psCmdInt = IMG_NULL;
-	RGX_CC_CLEANUP_DATA * psCleanupCookieInt;
-	IMG_HANDLE hCleanupCookieInt2;
 
 	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_RGXCMP_RGXKICKCDM);
-
-	sSyncOpInt = kmalloc(psRGXKickCDMIN->ui32NumServerSyncs * sizeof(PVRSRV_CLIENT_SYNC_PRIM_OP*), GFP_KERNEL);
-	if (!sSyncOpInt)
-	{
-		psRGXKickCDMOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-
-		goto RGXKickCDM_exit;
-	}
-
-
-	if (copy_from_user(sSyncOpInt, psRGXKickCDMIN->psSyncOp,
-		psRGXKickCDMIN->ui32NumServerSyncs * sizeof(PVRSRV_CLIENT_SYNC_PRIM_OP*)) != 0)
-	{
-		psRGXKickCDMOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-		goto RGXKickCDM_exit;
-	}
-
-	psSyncHandleInt = kmalloc(psRGXKickCDMIN->ui32NumServerSyncs * sizeof(SERVER_SYNC_PRIMITIVE *), GFP_KERNEL);
-	if (!psSyncHandleInt)
-	{
-		psRGXKickCDMOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-
-		goto RGXKickCDM_exit;
-	}
-
-	hSyncHandleInt2 = kmalloc(psRGXKickCDMIN->ui32NumServerSyncs * sizeof(IMG_HANDLE), GFP_KERNEL);
-	if (!hSyncHandleInt2)
-	{
-		psRGXKickCDMOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-
-		goto RGXKickCDM_exit;
-	}
-
-	if (copy_from_user(hSyncHandleInt2, psRGXKickCDMIN->phSyncHandle,
-		psRGXKickCDMIN->ui32NumServerSyncs * sizeof(IMG_HANDLE)) != 0)
-	{
-		psRGXKickCDMOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-		goto RGXKickCDM_exit;
-	}
-
-	psCmdInt = kmalloc(psRGXKickCDMIN->ui32CmdSize * sizeof(IMG_BYTE), GFP_KERNEL);
-	if (!psCmdInt)
-	{
-		psRGXKickCDMOUT->eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-
-		goto RGXKickCDM_exit;
-	}
-
-
-	if (copy_from_user(psCmdInt, psRGXKickCDMIN->psCmd,
-		psRGXKickCDMIN->ui32CmdSize * sizeof(IMG_BYTE)) != 0)
-	{
-		psRGXKickCDMOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
-
-		goto RGXKickCDM_exit;
-	}
 
 
 	/* Look up the address from the handle */
@@ -346,96 +280,17 @@ PVRSRVBridgeRGXKickCDM(IMG_UINT32 ui32BridgeID,
 	{
 		goto RGXKickCDM_exit;
 	}
-	/* Look up the address from the handle */
-	psRGXKickCDMOUT->eError =
-		PVRSRVLookupHandle(psConnection->psHandleBase,
-						   (IMG_HANDLE *) &pscCCBInt,
-						   psRGXKickCDMIN->hcCCB,
-						   PVRSRV_HANDLE_TYPE_RGX_FW_MEMDESC);
-	if(psRGXKickCDMOUT->eError != PVRSRV_OK)
-	{
-		goto RGXKickCDM_exit;
-	}
-	/* Look up the address from the handle */
-	psRGXKickCDMOUT->eError =
-		PVRSRVLookupHandle(psConnection->psHandleBase,
-						   (IMG_HANDLE *) &pscCCBCtlInt,
-						   psRGXKickCDMIN->hcCCBCtl,
-						   PVRSRV_HANDLE_TYPE_RGX_FW_MEMDESC);
-	if(psRGXKickCDMOUT->eError != PVRSRV_OK)
-	{
-		goto RGXKickCDM_exit;
-	}
-	{
-	IMG_UINT32 i;
-
-	for (i=0;i<psRGXKickCDMIN->ui32NumServerSyncs;i++)
-	{
-	/* Look up the address from the handle */
-	psRGXKickCDMOUT->eError =
-		PVRSRVLookupHandle(psConnection->psHandleBase,
-						   (IMG_HANDLE *) &hSyncHandleInt2[i],
-						   hSyncHandleInt2[i],
-						   PVRSRV_HANDLE_TYPE_SERVER_SYNC_PRIMITIVE);
-	if(psRGXKickCDMOUT->eError != PVRSRV_OK)
-	{
-		goto RGXKickCDM_exit;
-	}
-
-	/* Look up the data from the resman address */
-	psRGXKickCDMOUT->eError = ResManFindPrivateDataByPtr(hSyncHandleInt2[i], (IMG_VOID **) &psSyncHandleInt[i]);
-	if(psRGXKickCDMOUT->eError != PVRSRV_OK)
-	{
-		goto RGXKickCDM_exit;
-	}
-	}
-	}
-	/* Look up the address from the handle */
-	psRGXKickCDMOUT->eError =
-		PVRSRVLookupHandle(psConnection->psHandleBase,
-						   (IMG_HANDLE *) &hCleanupCookieInt2,
-						   psRGXKickCDMIN->hCleanupCookie,
-						   PVRSRV_HANDLE_TYPE_RGX_CC_CLEANUP);
-	if(psRGXKickCDMOUT->eError != PVRSRV_OK)
-	{
-		goto RGXKickCDM_exit;
-	}
-
-	/* Look up the data from the resman address */
-	psRGXKickCDMOUT->eError = ResManFindPrivateDataByPtr(hCleanupCookieInt2, (IMG_VOID **) &psCleanupCookieInt);
-	if(psRGXKickCDMOUT->eError != PVRSRV_OK)
-	{
-		goto RGXKickCDM_exit;
-	}
 
 	psRGXKickCDMOUT->eError =
-		PVRSRVRGXKickCDMKM(psConnection,
+		PVRSRVRGXKickCDMKM(
 					hDevNodeInt,
 					psFWComputeContextInt,
-					psRGXKickCDMIN->pvcCCBWoffUpdate,
-					pscCCBInt,
-					pscCCBCtlInt,
-					psRGXKickCDMIN->ui32NumServerSyncs,
-					sSyncOpInt,
-					psSyncHandleInt,
-					psRGXKickCDMIN->ui32CmdSize,
-					psCmdInt,
-					psRGXKickCDMIN->ui32FenceOffset,
-					psRGXKickCDMIN->ui32UpdateOffset,
-					psRGXKickCDMIN->bbPDumpContinuous,
-					psCleanupCookieInt);
+					psRGXKickCDMIN->ui32cCCBWoffUpdate,
+					psRGXKickCDMIN->bbPDumpContinuous);
 
 
 
 RGXKickCDM_exit:
-	if (sSyncOpInt)
-		kfree(sSyncOpInt);
-	if (psSyncHandleInt)
-		kfree(psSyncHandleInt);
-	if (hSyncHandleInt2)
-		kfree(hSyncHandleInt2);
-	if (psCmdInt)
-		kfree(psCmdInt);
 
 	return 0;
 }

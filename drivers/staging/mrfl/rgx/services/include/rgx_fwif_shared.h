@@ -47,15 +47,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_types.h"
 #include "rgx_hwperf.h"
-#include "devicemem_typedefs.h"
-
-
-/*!
- ******************************************************************************
- * Device state flags
- *****************************************************************************/
-#define RGXKMIF_DEVICE_STATE_ZERO_FREELIST		(0x1 << 0)		/*!< Zeroing the physical pages of reconstructed freelists */
-
 
 /*!
  ******************************************************************************
@@ -92,7 +83,6 @@ typedef struct _RGXFWIF_RENDER_TARGET_		*PRGXFWIF_RENDER_TARGET;
 typedef struct _RGXFWIF_HWRTDATA_			*PRGXFWIF_HWRTDATA;
 typedef struct _RGXFWIF_FREELIST_			*PRGXFWIF_FREELIST;
 typedef struct _RGXFWIF_RTA_CTL_			*PRGXFWIF_RTA_CTL;
-typedef IMG_UINT32						*PRGXFWIF_UFO_ADDR;
 #else
 /* Compiling the host driver - use a firmware device virtual pointer */
 typedef RGXFWIF_DEV_VIRTADDR	PRGXFWIF_CCCB;
@@ -101,8 +91,11 @@ typedef RGXFWIF_DEV_VIRTADDR	PRGXFWIF_RENDER_TARGET;
 typedef RGXFWIF_DEV_VIRTADDR	PRGXFWIF_HWRTDATA;
 typedef RGXFWIF_DEV_VIRTADDR	PRGXFWIF_FREELIST;
 typedef RGXFWIF_DEV_VIRTADDR	PRGXFWIF_RTA_CTL;
-typedef RGXFWIF_DEV_VIRTADDR	PRGXFWIF_UFO_ADDR;
 #endif /* RGX_FIRMWARE */
+
+
+/* FIXME these should move back into rgx_fwif_client.h */
+typedef IMG_UINT32		*PRGXFWIF_UFO_ADDR;
 
 typedef struct _RGXFWIF_UFO_
 {
@@ -122,11 +115,20 @@ typedef enum
 	RGXFWIF_RTDATA_STATE_KICK3D,
 	RGXFWIF_RTDATA_STATE_3DFINISHED,
 	RGXFWIF_RTDATA_STATE_TAOUTOFMEM,
-	RGXFWIF_RTDATA_STATE_PARTIALRENDERFINISHED,
-	RGXFWIF_RTDATA_STATE_HWR					/*!< In case of HWR, we can't set the RTDATA state to NONE,
-													 as this will cause any TA to become a first TA.
-													 To ensure all related TA's are skipped, we use the HWR state */
+	RGXFWIF_RTDATA_STATE_PARTIALRENDERFINISHED
 } RGXFWIF_RTDATA_STATE;
+
+/*!
+	Cleanup state: states that a FWComCtxt goes through before cleanup
+*/
+typedef enum _RGXFWIF_CLEANUP_STATE_
+{
+	RGXFWIF_CLEANUP_NONE = 0,
+	RGXFWIF_CLEANUP_BG_NEEDED,
+	RGXFWIF_CLEANUP_BG_DONE,
+	RGXFWIF_CLEANUP_IRQ_NEEDED,
+	RGXFWIF_CLEANUP_FINISHED
+} RGXFWIF_CLEANUP_STATE;
 
 typedef struct _RGXFWIF_CLEANUP_CTL_
 {
@@ -191,7 +193,6 @@ typedef struct _RGXFWIF_FREELIST_
 typedef struct _RGXFWIF_RENDER_TARGET_
 {
 	IMG_DEV_VIRTADDR	RGXFW_ALIGN psVHeapTableDevVAddr; /*!< VHeap Data Store */
-	IMG_BOOL			bZeroTACaches;					  /*!< Whether RTC and TPC caches (on mem) need to be zeroed on next TA kick */
 
 } RGXFWIF_RENDER_TARGET;
 
@@ -229,26 +230,13 @@ typedef struct _RGXFWIF_HWRTDATA_
 
 	PRGXFWIF_RTA_CTL		psRTACtl;
 
-	IMG_UINT32				ui32PagesTE;		/*!< Number of pages allocated for TE (only setup/used by MLIST checker */
-	IMG_UINT32				ui32PagesVCE;		/*!< Number of pages allocated for VCE (only setup/used by MLIST checker */
-	IMG_UINT32				ui32PagesALIST;		/*!< Number of pages allocated for ALIST (only setup/used by MLIST checker */
-	IMG_UINT32				bHasLastTA;
-
 } RGXFWIF_HWRTDATA;
-
-typedef enum
-{
-	RGXFWIF_ZSBUFFER_UNBACKED = 0,
-	RGXFWIF_ZSBUFFER_BACKED,
-	RGXFWIF_ZSBUFFER_BACKING_PENDING,
-	RGXFWIF_ZSBUFFER_UNBACKING_PENDING,
-}RGXFWIF_ZSBUFFER_STATE;
 
 typedef struct _RGXFWIF_ZSBUFFER_
 {
-	IMG_UINT32				ui32ZSBufferID;				/*!< Buffer ID*/
 	IMG_BOOL				bOnDemand;					/*!< Needs On-demand ZS Buffer allocation */
-	RGXFWIF_ZSBUFFER_STATE	eState;						/*!< Z/S-Buffer state */
+	IMG_BOOL				bMapped;					/*!< Indicates if the buffer has been mapped by the FW or not */
+	IMG_UINT32				ui32MappingID;				/*!< Buffer ID*/
 	RGXFWIF_CLEANUP_CTL		sCleanupState;				/*!< Cleanup state */
 } RGXFWIF_FWZSBUFFER;
 
@@ -287,76 +275,6 @@ typedef struct _RGXFWIF_COMPCHECKS_
 	IMG_UINT32					ui32BuildOptions;	/*!< build options bit-field */
 	IMG_BOOL					bUpdated;			/*!< Information is valid */
 } RGXFWIF_COMPCHECKS;
-
-
-#define GET_CCB_SPACE(WOff, ROff, CCBSize) \
-	((((ROff) - (WOff)) + ((CCBSize) - 1)) & ((CCBSize) - 1))
-
-#define UPDATE_CCB_OFFSET(Off, PacketSize, CCBSize) \
-	(Off) = (((Off) + (PacketSize)) & ((CCBSize) - 1))
-
-#define RESERVED_CCB_SPACE 		(sizeof(IMG_UINT32))
-
-
-/* Defines relating to the per-context CCBs */
-#define RGX_CCB_SIZE_LOG2			(16) /* 64kB */
-#define RGX_CCB_ALLOCGRAN			(64)
-#define RGX_CCB_TYPE_TASK			(1 << 31)
-#define RGX_CCB_FWALLOC_ALIGN(size)	(((size) + (RGXFWIF_FWALLOC_ALIGN-1)) & ~(RGXFWIF_FWALLOC_ALIGN - 1))
-
-/*!
- ******************************************************************************
- * Client CCB commands for RGX
- *****************************************************************************/
-typedef enum _RGXFWIF_CCB_CMD_TYPE_
-{
-	RGXFWIF_CCB_CMD_TYPE_TA			= 201 | RGX_CCB_TYPE_TASK,
-	RGXFWIF_CCB_CMD_TYPE_3D			= 202 | RGX_CCB_TYPE_TASK,
-	RGXFWIF_CCB_CMD_TYPE_CDM		= 203 | RGX_CCB_TYPE_TASK,
-	RGXFWIF_CCB_CMD_TYPE_TQ_3D		= 204 | RGX_CCB_TYPE_TASK,
-	RGXFWIF_CCB_CMD_TYPE_TQ_2D		= 205 | RGX_CCB_TYPE_TASK,
-	RGXFWIF_CCB_CMD_TYPE_3D_PR		= 206 | RGX_CCB_TYPE_TASK,
-	RGXFWIF_CCB_CMD_TYPE_NULL		= 207 | RGX_CCB_TYPE_TASK,
-
-/* Leave a gap between CCB specific commands and generic commands */
-	RGXFWIF_CCB_CMD_TYPE_FENCE		= 211,
-	RGXFWIF_CCB_CMD_TYPE_UPDATE		= 212,
-	RGXFWIF_CCB_CMD_TYPE_FENCE_PR		= 213,
-	RGXFWIF_CCB_CMD_TYPE_PRIORITY		= 214,
-	
-	RGXFWIF_CCB_CMD_TYPE_PADDING	= 220,
-} RGXFWIF_CCB_CMD_TYPE;
-
-/*!
- ******************************************************************************
- * per context CCB control structure for RGX
- *****************************************************************************/
-typedef struct _RGX_CLIENT_CCB_
-{
-	IMG_HANDLE					hClientCCB;					/*!< kernel handle for CCB */
-	DEVMEM_EXPORTCOOKIE			sClientCCBExportCookie;		/*!< export cookie for CCB */
-	DEVMEM_MEMDESC				*psClientCCBMemDesc;		/*!< MemDesc for CCB */
-	IMG_VOID					*pui32CCBLinAddr;			/*!< linear address of the buffer */
-
-	IMG_HANDLE					hClientCCBCtl;				/*!< kernel handle for CCB control */
-	DEVMEM_EXPORTCOOKIE			sClientCCBCtlExportCookie;	/*!< export cookie for CCB control */
-	DEVMEM_MEMDESC				*psClientCCBCtlMemDesc;		/*!< MemDesc for CCB control */
-	volatile RGXFWIF_CCCB_CTL	*psCCBCtl;					/*!< CCB control structure used by the fw */
-
-	IMG_UINT32					ui32CCBWriteOffset;			/*!< CCB write offset from the driver side */
-	
-	IMG_UINT32					ui32Size;					/*!< ((Size of the buffer) - (overrun size)) */
-
-	IMG_HANDLE					hCleanupCookie;				/*!< Cookie to pass back to the server for cleanup */
-	IMG_BOOL					bDumpedCCBCtlAlready;		/*! <To track if we have already dumped CCBCtl */
-} RGX_CLIENT_CCB;
-
-
-typedef struct _RGXFWIF_CCB_CMD_HEADER_
-{
-	RGXFWIF_CCB_CMD_TYPE	eCmdType;
-	IMG_UINT32				ui32CmdSize;
-} RGXFWIF_CCB_CMD_HEADER;
 
 /*!
  *****************************************************************************

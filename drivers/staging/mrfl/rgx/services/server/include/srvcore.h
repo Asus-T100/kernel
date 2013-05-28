@@ -271,7 +271,7 @@ PVRSRVInitSrvDisconnectKM(CONNECTION_DATA *psConnection,
 							IMG_UINT32 ui32ClientBuildOptions);
 
 PVRSRV_ERROR
-PVRSRVDumpDebugInfoKM(IMG_UINT32 ui32VerbLevel);
+PVRSRVDumpDebugInfoKM(IMG_VOID);
 
 PVRSRV_ERROR
 PVRSRVHWOpTimeoutKM(IMG_VOID);

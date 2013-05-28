@@ -206,8 +206,7 @@ PVRSRVBridgePMRWritePMPageList(IMG_UINT32 ui32BridgeID,
 					psPMRWritePMPageListIN->uiTableLength,
 					psReferencePMRInt,
 					psPMRWritePMPageListIN->ui32Log2PageSize,
-					&psPageListInt,
-					&psPMRWritePMPageListOUT->ui32CheckSum);
+					&psPageListInt);
 	/* Exit early if bridged call fails */
 	if(psPMRWritePMPageListOUT->eError != PVRSRV_OK)
 	{

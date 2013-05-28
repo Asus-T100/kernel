@@ -200,22 +200,51 @@ PVRSRVDisconnectKM(IMG_VOID)
 	return PVRSRV_OK;
 }
 
+
+/*!
+******************************************************************************
+ @Function	PVRSRVDumpDebugInfo_ForEachVaCb
+
+ @Description
+
+ Callback function for List_PVRSRV_DEVICE_NODE_ForEach_va(). Dump debug info
+ for the device.
+
+ @Input psDeviceNode	- The device node
+ 		va				- variable arguments list, not used
+******************************************************************************/
+static IMG_VOID PVRSRVDumpDebugInfo_ForEachVaCb(PVRSRV_DEVICE_NODE *psDeviceNode, va_list va)
+{
+	PVR_UNREFERENCED_PARAMETER(va);
+
+	if (psDeviceNode->pfnDumpDebugInfo != IMG_NULL)
+	{
+		psDeviceNode->pfnDumpDebugInfo(psDeviceNode);
+	}
+}
+
+
 /*
 	PVRSRVDumpDebugInfoKM
 */
 PVRSRV_ERROR
-PVRSRVDumpDebugInfoKM(IMG_UINT32 ui32VerbLevel)
+PVRSRVDumpDebugInfoKM(IMG_VOID)
 {
-	if (ui32VerbLevel > DEBUG_REQUEST_VERBOSITY_MAX)
-	{
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
+	PVRSRV_DATA	*psPVRSRVData = PVRSRVGetPVRSRVData();
+	
 	PVR_LOG(("User requested PVR debug info"));
 
 	/* Dump system specific debug info */
 	PVRSRVSystemDebugInfo();
 
-	PVRSRVDebugRequest(ui32VerbLevel);
+
+	/*
+		Search through the device list for services managed devices, dumping
+		debug info for each.
+	*/
+	List_PVRSRV_DEVICE_NODE_ForEach_va(psPVRSRVData->psDeviceNodeList,
+									   &PVRSRVDumpDebugInfo_ForEachVaCb);
+
 									   
 	return PVRSRV_OK;
 }
@@ -231,8 +260,6 @@ PVRSRVHWOpTimeoutKM(IMG_VOID)
 	PVR_LOG(("User requested OS reset"));
 	OSPanic();
 #endif
-	PVR_LOG(("HW operation timeout, dump server info"));
-	PVRSRVDumpDebugInfoKM(DEBUG_REQUEST_VERBOSITY_MAX);
 	return PVRSRV_OK;
 }
 

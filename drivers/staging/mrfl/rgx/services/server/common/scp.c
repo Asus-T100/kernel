@@ -51,62 +51,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "lock.h"
 #include "sync_server.h"
 
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-#include <linux/file.h>
-#include <linux/seq_file.h>
-#include <linux/sw_sync.h>
-static PVRSRV_ERROR AllocReleaseFence(struct sw_sync_timeline *psTimeline, const char *szName, IMG_UINT32 ui32FenceVal, int *piFenceFd)
-{
-	struct sync_fence *psFence = IMG_NULL;
-	struct sync_pt *psPt;
-	int iFd = get_unused_fd();
-	PVRSRV_ERROR eError = PVRSRV_OK;
-
-	if (iFd < 0)
-	{
-		return PVRSRV_ERROR_RESOURCE_UNAVAILABLE;
-	}
-
-	psPt = sw_sync_pt_create(psTimeline, ui32FenceVal);
-	if(!psPt)
-	{
-		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto ErrorPutFd;
-	}
-
-	psFence = sync_fence_create(szName, psPt);
-	if(!psFence)
-	{
-		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto ErrorFreePoint;
-	}
-
-	sync_fence_install(psFence, iFd);
-
-	*piFenceFd = iFd;
-
-ErrorOut:
-	return eError;
-
-ErrorFreePoint:
-	sync_pt_free(psPt);
-
-ErrorPutFd:
-	put_unused_fd(iFd);
-
-	goto ErrorOut;
-}
-
-static void FreeReleaseFence(int iFenceFd)
-{
-	struct sync_fence *psFence = sync_fence_fdget(iFenceFd);
-	if (psFence)
-	{
-		sync_fence_put(psFence);
-	}
-}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
 struct _SCP_CONTEXT_
 {
 	IMG_VOID			*pvCCB;	            /*!< Pointer to the command circler buffer*/
@@ -116,10 +60,6 @@ struct _SCP_CONTEXT_
 	IMG_UINT32			ui32CCBSize;        /*!< CCB size */
 	IMG_UINT32			psSyncRequesterID;	/*!< Sync requester ID, used when taking sync operations */
 	POS_LOCK			hLock;				/*!< Lock for this structure */
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	IMG_VOID            *pvTimeline;
-	IMG_UINT32          ui32TimelineVal;
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 };
 
 typedef struct _SCP_SYNC_DATA_
@@ -142,10 +82,6 @@ typedef struct _SCP_COMMAND_
 	IMG_UINT32				ui32CmdSize;		/*!< Total size of the command (i.e. includes header) */
 	IMG_UINT32				ui32SyncCount;      /*!< Total number of syncs in pasSync */
 	SCP_SYNC_DATA			*pasSCPSyncData;    /*!< Pointer to the array of sync data (allocated in the CCB) */
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	struct sync_fence       *psAcquireFence;
-	struct sync_fence       *psReleaseFence;
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 	SCPReady				pfnReady;           /*!< Pointer to the funtion to check if the command is ready */
 	SCPDo					pfnDo;           	/*!< Pointer to the funtion to call when the command is ready to go */
 	IMG_PVOID				pvReadyData;        /*!< Data to pass into pfnReady */
@@ -328,26 +264,6 @@ PVRSRV_ERROR _SCPCommandReady(SCP_COMMAND *psCommand)
 		}
 	}
 
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	/* Check for the provided acquire fence */
-	if (psCommand->psAcquireFence != IMG_NULL)
-	{
-/*			int err = sync_fence_wait(psCommand->psAcquireFence, 0);*/
-/*			if (!err)*/
-		smp_rmb();
-		if (psCommand->psAcquireFence->status > 0)
-		{
-			/* Put the fence on success. */
-			sync_fence_put(psCommand->psAcquireFence);
-			psCommand->psAcquireFence = IMG_NULL;
-		}
-		else
-		{
-			return PVRSRV_ERROR_FAILED_DEPENDENCIES;
-		}
-	}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
 	/* Command is ready */
 	if (psCommand->pfnReady(psCommand->pvReadyData))
 	{
@@ -432,16 +348,6 @@ PVRSRV_ERROR IMG_CALLCONV SCPCreate(IMG_UINT32 ui32CCBSizeLog2,
 		goto ErrorExit;
 	}	
 
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	psContext->pvTimeline = sw_sync_timeline_create("pvr_scp");
-	if(psContext->pvTimeline == IMG_NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"SCPCreate: sw_sync_timeline_create() failed"));
-		goto ErrorExit;
-	}
-	psContext->ui32TimelineVal = 0;
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
 	SCP_DEBUG_PRINT("%s: New SCP %p of size %d", 
 			__FUNCTION__, psContext, ui32Power2QueueSize);
 
@@ -472,36 +378,18 @@ PVRSRV_ERROR IMG_CALLCONV SCPAllocCommand(SCP_CONTEXT *psContext,
 										  IMG_UINT32 ui32SyncPrimCount,
 										  SERVER_SYNC_PRIMITIVE **papsSync,
 										  IMG_BOOL *pabUpdate,
-										  IMG_INT32 i32AcquireFenceFd,
 										  SCPReady pfnCommandReady,
 										  SCPDo pfnCommandDo,
 										  IMG_SIZE_T ui32ReadyDataByteSize,
 										  IMG_SIZE_T ui32CompleteDataByteSize,
 										  IMG_PVOID *ppvReadyData,
-										  IMG_PVOID *ppvCompleteData,
-										  IMG_INT32 *pi32ReleaseFenceFd)
+										  IMG_PVOID *ppvCompleteData)
 {
 	PVRSRV_ERROR eError;
 	SCP_COMMAND *psCommand;
 	IMG_UINT32 ui32CommandSize;
 	IMG_UINT32 ui32SyncOpSize;
 	IMG_UINT32 i;
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	if (pi32ReleaseFenceFd)
-	{
-		/* Create a release sync for the caller. We do it before the alloc,
-		 * cause its easier to roll back in an error case. */
-		eError = AllocReleaseFence(psContext->pvTimeline, "pvr_scp_retire", ++psContext->ui32TimelineVal, pi32ReleaseFenceFd);
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-	}
-#else /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-	PVR_UNREFERENCED_PARAMETER(i32AcquireFenceFd);
-	PVR_UNREFERENCED_PARAMETER(pi32ReleaseFenceFd);
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 
 	/* Round up the incoming data sizes to be pointer granular */
 	ui32ReadyDataByteSize = (ui32ReadyDataByteSize & (~(sizeof(IMG_PVOID)-1))) + sizeof(IMG_PVOID);
@@ -519,12 +407,6 @@ PVRSRV_ERROR IMG_CALLCONV SCPAllocCommand(SCP_CONTEXT *psContext,
 	if(eError != PVRSRV_OK)
 	{
 		SCP_DEBUG_PRINT("%s: Failed to allocate command of size %d for ctx %p (%d)", __FUNCTION__, ui32CommandSize, psContext, eError);
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-		if (pi32ReleaseFenceFd)
-		{
-			FreeReleaseFence(*pi32ReleaseFenceFd);
-		}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 		return eError;
 	}
 
@@ -577,27 +459,6 @@ PVRSRV_ERROR IMG_CALLCONV SCPAllocCommand(SCP_CONTEXT *psContext,
 			psSCPSyncData->ui32Flags |= SCP_SYNC_DATA_UPDATE;
 		}
 	}
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	/* Copy over the fences */
-	if (i32AcquireFenceFd >= 0)
-	{
-		psCommand->psAcquireFence = sync_fence_fdget(i32AcquireFenceFd);
-	}
-	else
-	{
-		psCommand->psAcquireFence = IMG_NULL;
-	}
-
-	if (pi32ReleaseFenceFd)
-	{
-		psCommand->psReleaseFence = sync_fence_fdget(*pi32ReleaseFenceFd);
-	}
-	else
-	{
-		psCommand->psReleaseFence = IMG_NULL;
-	}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 
 	*ppvReadyData = psCommand->pvReadyData;
 	*ppvCompleteData = psCommand->pvCompleteData;
@@ -723,20 +584,9 @@ IMG_VOID SCPCommandComplete(SCP_CONTEXT *psContext)
 	
 				if (psSCPSyncData->ui32Flags & SCP_SYNC_DATA_UPDATE)
 				{
-					psSCPSyncData->ui32Flags = 0; /* Stop future interaction with this sync prim. */
 					ServerSyncCompleteOp(psSCPSyncData->psSync, psSCPSyncData->ui32Update);
-					psSCPSyncData->psSync = NULL; /* Clear psSync as it is no longer referenced. */
 				}
 			}
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-			if (psCommand->psReleaseFence)
-			{
-				sw_sync_timeline_inc(psContext->pvTimeline, 1);
-				/* Decrease the ref to this fence */
-				sync_fence_put(psCommand->psReleaseFence);
-			}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 
 			bContinue = IMG_FALSE;
 		}
@@ -753,54 +603,6 @@ IMG_VOID SCPCommandComplete(SCP_CONTEXT *psContext)
 
 }
 
-IMG_EXPORT
-IMG_VOID IMG_CALLCONV SCPDumpStatus(SCP_CONTEXT *psContext)
-{
-	SCP_COMMAND *psCommand;
-	/*
-		Acquire the lock to ensure that the SCP isn't run while
-		while we're dumping info
-	*/
-	OSLockAcquire(psContext->hLock);
-
-	/* Dump the command we're pending on */
-	psCommand = (SCP_COMMAND *)((IMG_UINT8 *)psContext->pvCCB +
-				psContext->ui32DepOffset);
-       
-	PVR_LOG(("Pending command:"));
-	if (psContext->ui32DepOffset == psContext->ui32ReadOffset)
-	{
-		PVR_LOG(("\tNone"));
-	}
-	else
-	{
-		IMG_UINT32 i;
-               
-		PVR_LOG(("\tCommand type = %d", psCommand->ui32CmdType));
-
-		if (psCommand->ui32CmdType == SCP_COMMAND_CALLBACK)
-		{
-			for (i = 0; i < psCommand->ui32SyncCount; i++)
-			{
-				SCP_SYNC_DATA *psSCPSyncData = &psCommand->pasSCPSyncData[i];
-               
-				/*
-					Only dump this sync if there is a fence operation on it
-				*/
-				if (psSCPSyncData->ui32Flags & SCP_SYNC_DATA_FENCE)
-				{
-					PVR_LOG(("\t\tFenced on 0x%08x = 0x%08x (?= 0x%08x)",
-							ServerSyncGetFWAddr(psSCPSyncData->psSync),
-							psSCPSyncData->ui32Fence,
-							ServerSyncGetValue(psSCPSyncData->psSync)));
-				}
-			}
-		}
-	}
-	OSLockRelease(psContext->hLock);
-}
-
-
 /*
 	SCPDestroy
 */
@@ -813,10 +615,6 @@ IMG_VOID IMG_CALLCONV SCPDestroy(SCP_CONTEXT *psContext)
 	*/
 	
 	PVR_ASSERT(psContext->ui32ReadOffset == psContext->ui32WriteOffset);
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	sync_timeline_destroy(psContext->pvTimeline);
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 
 	PVRSRVServerSyncRequesterUnregisterKM(psContext->psSyncRequesterID);
 	OSLockDestroy(psContext->hLock);

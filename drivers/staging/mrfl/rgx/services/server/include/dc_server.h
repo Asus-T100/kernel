@@ -109,9 +109,7 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 									   SERVER_SYNC_PRIMITIVE **papsSync,
 									   IMG_BOOL *pabUpdate,
 									   IMG_UINT32 ui32DisplayPeriod,
-									   IMG_UINT32 ui32MaxDepth,
-									   IMG_INT32 i32AcquireFenceFd,
-									   IMG_INT32 *pi32ReleaseFenceFd);
+									   IMG_UINT32 ui32MaxDepth);
 
 PVRSRV_ERROR DCDisplayContextDestroy(DC_DISPLAY_CONTEXT *psDisplayContext);
 

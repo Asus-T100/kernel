@@ -57,7 +57,6 @@ typedef struct _CONNECTION_DATA_
 {
 	PRESMAN_CONTEXT 	hResManContext;
 	PVRSRV_HANDLE_BASE 	*psHandleBase;
-	struct _SYNC_CONNECTION_DATA_ *psSyncConnectionData;
 #if defined (PVR_SECURE_HANDLES)
 	/* Handles are being allocated in batches */
 	IMG_BOOL			bHandlesBatched;

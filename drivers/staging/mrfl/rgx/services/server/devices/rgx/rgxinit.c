@@ -73,7 +73,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgx_heaps.h"
 
 #include "rgxta3d.h"
-#include "debug_request_ids.h"
 
 static PVRSRV_ERROR RGXDevInitCompatCheck(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_UINT32 ui32ClientBuildOptions);
 
@@ -95,13 +94,25 @@ static PVRSRV_ERROR RGXDevInitCompatCheck(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_
 
 #define VAR(x) #x
 
+
+typedef struct _DEVMEM_REF_LOOKUP_
+{
+	IMG_UINT32 ui32ZSBufferID;
+	RGX_ZSBUFFER_DATA *psZSBuffer;
+} DEVMEM_REF_LOOKUP;
+
+typedef struct _DEVMEM_FREELIST_LOOKUP_
+{
+	IMG_UINT32 ui32FreeListID;
+	RGX_FREELIST *psFreeList;
+} DEVMEM_FREELIST_LOOKUP;
+
 /* FIXME: This is a workaround due to having 2 inits but only 1 deinit */
 static IMG_BOOL g_bDevInit2Done = IMG_FALSE;
 
 
 static IMG_VOID RGX_DeInitHeaps(DEVICE_MEMORY_INFO *psDevMemoryInfo);
 
-IMG_UINT32 g_ui32HostSampleIRQCount = 0;
 
 
 #if !defined(NO_HARDWARE)
@@ -161,6 +172,185 @@ static IMG_VOID RGXCheckFWActivePowerState(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 }
 
+static IMG_BOOL _FindZSBuffer(PDLLIST_NODE psNode, IMG_PVOID pvCallbackData)
+{
+	DEVMEM_REF_LOOKUP *psRefLookUp = (DEVMEM_REF_LOOKUP *)pvCallbackData;
+	RGX_ZSBUFFER_DATA *psZSBuffer;
+
+	psZSBuffer = IMG_CONTAINER_OF(psNode, RGX_ZSBUFFER_DATA, sNode);
+
+	if (psZSBuffer->ui32DeferredAllocID == psRefLookUp->ui32ZSBufferID)
+	{
+		psRefLookUp->psZSBuffer = psZSBuffer;
+		return IMG_FALSE;
+	}
+	else
+	{
+		return IMG_TRUE;
+	}
+}
+
+static IMG_BOOL _FindFreeList(PDLLIST_NODE psNode, IMG_PVOID pvCallbackData)
+{
+	DEVMEM_FREELIST_LOOKUP *psRefLookUp = (DEVMEM_FREELIST_LOOKUP *)pvCallbackData;
+	RGX_FREELIST *psFreeList;
+
+	psFreeList = IMG_CONTAINER_OF(psNode, RGX_FREELIST, sNode);
+
+	if (psFreeList->ui32FreelistID == psRefLookUp->ui32FreeListID)
+	{
+		psRefLookUp->psFreeList = psFreeList;
+		return IMG_FALSE;
+	}
+	else
+	{
+		return IMG_TRUE;
+	}
+}
+
+static IMG_VOID RGXCheckZSBuffer(PVRSRV_DEVICE_NODE *psDeviceNode)
+{
+	volatile IMG_UINT32 *psAddress;
+	IMG_UINT32	ui32Value;
+	PVRSRV_ERROR eError;
+	DEVMEM_REF_LOOKUP sLookUp;
+
+	PVR_ASSERT(psDeviceNode);
+	PVR_ASSERT(psDeviceNode->psZSBufferPopulateSyncPrim);
+	PVR_ASSERT(psDeviceNode->psZSBufferUnPopulateSyncPrim);
+
+	/* Get populate sync prim value  */
+	psAddress = psDeviceNode->psZSBufferPopulateSyncPrim->pui32LinAddr;
+	ui32Value = *(IMG_UINT32 *)psAddress;
+
+	if (ui32Value)
+	{
+		/* scan all deferred allocations */
+		sLookUp.ui32ZSBufferID = ui32Value;
+		sLookUp.psZSBuffer = IMG_NULL;
+
+		OSLockAcquire(psDeviceNode->hLockZSBuffer);
+		dllist_foreach_node(&psDeviceNode->sDeferredAllocHead, _FindZSBuffer, (IMG_PVOID)&sLookUp);
+		OSLockRelease(psDeviceNode->hLockZSBuffer);
+
+		if (sLookUp.psZSBuffer)
+		{
+			/* Populate ZLS */
+			eError = RGXBackingZSBuffer(sLookUp.psZSBuffer);
+			if (eError != PVRSRV_OK)
+			{
+				/* Fixme: What to do if population fails? (mi) */
+				PVR_DPF((PVR_DBG_ERROR,"Populating ZS-Buffer failed failed with error %u (ID = 0x%08x)", eError, ui32Value));
+				PVR_ASSERT(IMG_FALSE);
+			}
+
+			/* Population of deferred memory completed. Clear down population request */
+			*psAddress = 0;
+
+			sLookUp.psZSBuffer->ui32NumReqByFW++;
+		}
+		else
+		{
+			PVR_DPF((PVR_DBG_ERROR,"ZS Buffer Lookup for ZS Buffer ID 0x%08x failed (Populate)", sLookUp.ui32ZSBufferID));
+		}
+	}
+
+
+	/* Get unpopulate sync prim value */
+	psAddress = psDeviceNode->psZSBufferUnPopulateSyncPrim->pui32LinAddr;
+	ui32Value = *(IMG_UINT32 *)psAddress;
+
+	if (ui32Value)
+	{
+		/* scan all deferred allocations */
+		sLookUp.ui32ZSBufferID = ui32Value;
+		sLookUp.psZSBuffer = IMG_NULL;
+
+		OSLockAcquire(psDeviceNode->hLockZSBuffer);
+		dllist_foreach_node(&psDeviceNode->sDeferredAllocHead, _FindZSBuffer, (IMG_PVOID)&sLookUp);
+		OSLockRelease(psDeviceNode->hLockZSBuffer);
+
+		if (sLookUp.psZSBuffer)
+		{
+			/* Populate ZLS */
+			eError = RGXUnbackingZSBuffer(sLookUp.psZSBuffer);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"UnPopulating ZS-Buffer failed failed with error %u (ID = 0x%08x)", eError, ui32Value));
+				PVR_ASSERT(IMG_FALSE);
+			}
+
+			/* Population of deferred memory completed. Clear down population request */
+			*psAddress = 0;
+		}
+		else
+		{
+			PVR_DPF((PVR_DBG_ERROR,"ZS Buffer Lookup for ZS Buffer ID 0x%08x failed (UnPopulate)", sLookUp.ui32ZSBufferID));
+		}
+	}
+}
+
+static IMG_VOID RGXCheckFreeList(PVRSRV_DEVICE_NODE *psDeviceNode)
+{
+	static IMG_UINT32 ui32LastValue = 0;
+	volatile IMG_UINT32 *psAddress;
+	IMG_UINT32	ui32Value;
+	PVRSRV_ERROR eError;
+	DEVMEM_FREELIST_LOOKUP sLookUp;
+	PVR_ASSERT(psDeviceNode);
+	PVR_ASSERT(psDeviceNode->psGrowSyncPrim);
+	PVR_ASSERT(psDeviceNode->psShrinkSyncPrim);
+
+	/* Get populate sync prim value  */
+	psAddress = psDeviceNode->psGrowSyncPrim->pui32LinAddr;
+	ui32Value = *(IMG_UINT32 *)psAddress;
+
+	if ((ui32Value != 0) && (ui32Value != ui32LastValue))
+	{
+		/* find the freelist with the corresponding ID */
+		sLookUp.ui32FreeListID = ui32Value & 0x7FFFFFFF;
+		sLookUp.psFreeList = IMG_NULL;
+
+		OSLockAcquire(psDeviceNode->hLockFreeList);
+		dllist_foreach_node(&psDeviceNode->sFreeListHead, _FindFreeList, (IMG_PVOID)&sLookUp);
+		OSLockRelease(psDeviceNode->hLockFreeList);
+
+		if (sLookUp.psFreeList)
+		{
+			RGX_FREELIST *psFreeList = sLookUp.psFreeList;
+
+			/* Try to grow the freelist */
+			eError = RGXGrowFreeList(psFreeList,
+									psFreeList->ui32GrowFLPages,
+									&psFreeList->sMemoryBlockHead);
+			if (eError == PVRSRV_OK)
+			{
+				/* Grow successful, return size of grow size */
+				SyncPrimSet(psDeviceNode->psGrowSyncPrim, psFreeList->ui32GrowFLPages);
+				ui32LastValue = psFreeList->ui32GrowFLPages;
+				psFreeList->ui32NumGrowReqByFW++;
+			}
+			else
+			{
+				/* Grow failed */
+				SyncPrimSet(psDeviceNode->psGrowSyncPrim, 0);
+				ui32LastValue = 0;
+				PVR_DPF((PVR_DBG_ERROR,"Grow for FreeList %p failed (error %u)",
+										psFreeList,
+										eError));
+			}
+		}
+		else
+		{
+			/* Should never happen */
+			PVR_DPF((PVR_DBG_ERROR,"FreeList Lookup for FreeList ID 0x%08x failed (Populate)", sLookUp.ui32FreeListID));
+			PVR_ASSERT(IMG_FALSE);
+		}
+	}
+
+	/* TODO: On-demand shrink (mi) */
+}
+
 
 /*
 	RGX MISR Handler
@@ -169,8 +359,6 @@ static IMG_VOID RGX_MISRHandler (IMG_VOID *pvData)
 {
 	PVRSRV_DEVICE_NODE	*psDeviceNode = pvData;
 	PVRSRV_RGXDEV_INFO	*psDevInfo	  = psDeviceNode->pvDevice;
-
-	g_ui32HostSampleIRQCount = psDevInfo->psRGXFWIfTraceBuf->ui32InterruptCount;
 
 	/* Inform other services devices that we have finished an operation */
 	PVRSRVCheckStatus(psDeviceNode);
@@ -184,14 +372,17 @@ static IMG_VOID RGX_MISRHandler (IMG_VOID *pvData)
 		RGXHWPerfDataStore(psDevInfo);
 	}
 
+	/* React to ZLS population/unpopulation requests */
+	RGXCheckZSBuffer(psDeviceNode);
+
+	/* React to grow/shrink requests */
+	RGXCheckFreeList(psDeviceNode);
+
 	/* Check APM state */
 	if (psDevInfo->pfnActivePowerCheck)
 	{
 		psDevInfo->pfnActivePowerCheck(psDeviceNode);
 	}
-
-	/* Process all firmware CCBs for pending commands */
-	RGXCheckFirmwareCCBs(psDeviceNode->pvDevice);
 }
 #endif
 
@@ -205,7 +396,6 @@ PVRSRV_ERROR PVRSRVRGXInitDevPart2KM (PVRSRV_DEVICE_NODE	*psDeviceNode,
 									  RGX_INIT_COMMAND		*psDbgScript,
 									  RGX_INIT_COMMAND		*psDeinitScript,
 									  IMG_UINT32			ui32KernelCatBase, 
-									  IMG_UINT32			ui32DeviceFlags,
 									  RGX_ACTIVEPM_CONF		eActivePMConf)
 {
 	PVRSRV_ERROR			eError;
@@ -259,27 +449,8 @@ PVRSRV_ERROR PVRSRVRGXInitDevPart2KM (PVRSRV_DEVICE_NODE	*psDeviceNode,
 	psDevInfo->ui32RegSize = psDevConfig->ui32RegsSize;
 	psDevInfo->sRegsPhysBase = psDevConfig->sRegsCpuPBase;
 
-	/* Initialise Device Flags */
-	psDevInfo->ui32DeviceFlags = 0;
-	if (ui32DeviceFlags & RGXKMIF_DEVICE_STATE_ZERO_FREELIST)
-	{
-		psDevInfo->ui32DeviceFlags |= RGXKM_DEVICE_STATE_ZERO_FREELIST;
-	}
-
-
-	/* Initialise lists of ZSBuffers */
-	eError = OSLockCreate(&psDevInfo->hLockZSBuffer,LOCK_TYPE_PASSIVE);
-	PVR_ASSERT(eError == PVRSRV_OK);
-	dllist_init(&psDevInfo->sZSBufferHead);
-	psDevInfo->ui32ZSBufferCurrID = 1;
 
 	eDefaultPowerState = PVRSRV_DEV_POWER_STATE_ON;
-
-	/* Initialise lists of growable Freelists */
-	eError = OSLockCreate(&psDevInfo->hLockFreeList,LOCK_TYPE_PASSIVE);
-	PVR_ASSERT(eError == PVRSRV_OK);
-	dllist_init(&psDevInfo->sFreeListHead);
-	psDevInfo->ui32FreelistCurrID = 1;
 
 	/* set-up the Active Power Mgmt callback */
 #if !defined(NO_HARDWARE)
@@ -602,56 +773,6 @@ PVRSRV_ERROR DevDeInitRGX (PVRSRV_DEVICE_NODE *psDeviceNode)
 		return PVRSRV_OK;
 	}
 
-	/* Unregister debug request notifiers first as they could depend on anything. */
-	PVRSRVUnregisterDbgRequestNotify(psDeviceNode->hDbgReqNotify);
-
-	/* Cancel notifications to this device */
-	PVRSRVUnregisterCmdCompleteNotify(psDeviceNode->hCmdCompNotify);
-	psDeviceNode->hCmdCompNotify = IMG_NULL;
-
-	/*
-	 *  De-initialise in reverse order, so stage 2 init is undone first.
-	 */
-	if (g_bDevInit2Done)
-	{
-		g_bDevInit2Done = IMG_FALSE;
-
-#if !defined(NO_HARDWARE)
-		(IMG_VOID) OSUninstallDeviceLISR(psDevInfo->pvLISRData);
-		(IMG_VOID) OSUninstallMISR(psDevInfo->pvMISRData);
-#endif /* !NO_HARDWARE */
-
-		/* Remove the device from the power manager */
-		eError = PVRSRVRemovePowerDevice(psDeviceNode->sDevId.ui32DeviceIndex);
-		if (eError != PVRSRV_OK)
-		{
-			return eError;
-		}
-
-		/* De-init Freelists/ZBuffers... */
-		OSLockDestroy(psDevInfo->hLockFreeList);
-		OSLockDestroy(psDevInfo->hLockZSBuffer);
-
-		/* Unregister MMU related stuff */
-		eError = RGXMMUInit_Unregister(psDeviceNode);
-		if (eError != PVRSRV_OK)
-		{
-			PVR_DPF((PVR_DBG_ERROR,"DevDeInitRGX: Failed RGXMMUInit_Unregister (0x%x)", eError));
-			return eError;
-		}
-
-		/* UnMap Regs */
-		if (psDevInfo->pvRegsBaseKM != IMG_NULL)
-		{
-#if !defined(NO_HARDWARE)
-			OSUnMapPhysToLin(psDevInfo->pvRegsBaseKM,
-							 psDevInfo->ui32RegSize,
-							 0);
-#endif /* !NO_HARDWARE */
-			psDevInfo->pvRegsBaseKM = IMG_NULL;
-		}
-	}
-
 #if 0 // FIXME
 	if (psDevInfo->hTimer)
 	{
@@ -664,6 +785,10 @@ PVRSRV_ERROR DevDeInitRGX (PVRSRV_DEVICE_NODE *psDeviceNode)
 		psDevInfo->hTimer = IMG_NULL;
 	}
 #endif /* FIXME */
+
+	/* Cancel notifications to this device */
+	PVRSRVUnregisterCmdCompleteNotify(psDeviceNode->hCmdCompNotify);
+	psDeviceNode->hCmdCompNotify = IMG_NULL;
 
     psDevMemoryInfo = &psDeviceNode->sDevMemoryInfo;
 
@@ -695,6 +820,39 @@ PVRSRV_ERROR DevDeInitRGX (PVRSRV_DEVICE_NODE *psDeviceNode)
 		PVR_ASSERT(eError == PVRSRV_OK);
 	}
 
+	if (g_bDevInit2Done)
+	{
+#if !defined(NO_HARDWARE)
+		(IMG_VOID) OSUninstallDeviceLISR(psDevInfo->pvLISRData);
+		(IMG_VOID) OSUninstallMISR(psDevInfo->pvMISRData);
+#endif /* !NO_HARDWARE */
+
+		/* unregister MMU related stuff */
+		eError = RGXMMUInit_Unregister(psDeviceNode);
+		if (eError != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR,"DevDeInitRGX: Failed RGXMMUInit_Unregister (0x%x)", eError));
+			return eError;
+		}
+
+		/* remove the device from the power manager */
+		eError = PVRSRVRemovePowerDevice(psDeviceNode->sDevId.ui32DeviceIndex);
+		if (eError != PVRSRV_OK)
+		{
+			return eError;
+		}
+
+		/* UnMap Regs */
+		if (psDevInfo->pvRegsBaseKM != IMG_NULL)
+		{
+#if !defined(NO_HARDWARE)
+			OSUnMapPhysToLin(psDevInfo->pvRegsBaseKM,
+							 psDevInfo->ui32RegSize,
+							 0);
+#endif /* !NO_HARDWARE */
+		}
+	}
+
 	/* DeAllocate devinfo */
 	OSFreeMem(psDevInfo);
 
@@ -706,16 +864,44 @@ PVRSRV_ERROR DevDeInitRGX (PVRSRV_DEVICE_NODE *psDeviceNode)
 /*!
 ******************************************************************************
  
- @Function	RGXDebugRequestNotify
+ @Function	RGXDumpDebugInfoWrapper
 
- @Description Dump the debug data for RGX
+ @Description Callback function for psDeviceNode->pfnDumpDebugInfo
   
 ******************************************************************************/
-static IMG_VOID RGXDebugRequestNotify(PVRSRV_DBGREQ_HANDLE hDbgReqestHandle, IMG_UINT32 ui32VerbLevel)
+static IMG_VOID RGXDumpDebugInfoWrapper (PVRSRV_DEVICE_NODE *psDeviceNode)
 {
-	PVRSRV_DEVICE_NODE *psDeviceNode = hDbgReqestHandle;
-	RGXDebugRequestProcess(psDeviceNode->pvDevice, IMG_TRUE, ui32VerbLevel);
+	RGXDumpDebugInfo(psDeviceNode->pvDevice, IMG_TRUE);
 }
+
+static PVRSRV_ERROR RGXZSBufferSyncPrimUpdateWrapper(PVRSRV_DEVICE_NODE *psDeviceNode,
+												PVRSRV_CLIENT_SYNC_PRIM *psZSBufferPopulateSyncPrim,
+												PVRSRV_CLIENT_SYNC_PRIM *psZSBufferUnPopulateSyncPrim,
+												PVRSRV_CLIENT_SYNC_PRIM *psGrowSyncPrim,
+												PVRSRV_CLIENT_SYNC_PRIM *psShrinkSyncPrim)
+{
+	RGXFWIF_KCCB_CMD			sZSBufferUpdate;
+
+	sZSBufferUpdate.eCmdType = RGXFWIF_KCCB_CMD_ZSBUFFER_SYNCPRIM_UDPATE;
+	sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.psZSBufferPopulateSyncPrimAddr = SyncPrimGetFirmwareAddr(psZSBufferPopulateSyncPrim);
+	sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.psZSBufferUnPopulateSyncPrimAddr = SyncPrimGetFirmwareAddr(psZSBufferUnPopulateSyncPrim);
+	sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.psGrowSyncPrimAddr = SyncPrimGetFirmwareAddr(psGrowSyncPrim);
+	sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.psShrinkSyncPrimAddr = SyncPrimGetFirmwareAddr(psShrinkSyncPrim);
+
+	PDUMPCOMMENT("ZS Buffer Sync Prim update Request [FW Populate = 0x%08x,  UnPopulate = 0x%08x]",
+					sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.psZSBufferPopulateSyncPrimAddr,
+					sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.psZSBufferUnPopulateSyncPrimAddr);
+
+	return RGXScheduleCommandAndWait(psDeviceNode->pvDevice,
+									RGXFWIF_DM_GP,
+									&sZSBufferUpdate,
+									sizeof(RGXFWIF_KCCB_CMD),
+									&sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.uiSyncObjDevVAddr,
+									&sZSBufferUpdate.uCmdData.sZSBufferSyncPrimUpdateData.uiUpdateVal,
+									psDeviceNode->psSyncPrim,
+									IMG_TRUE);
+}
+
 
 #if defined(PDUMP)
 static
@@ -913,7 +1099,6 @@ PVRSRV_ERROR RGXRegisterDevice (PVRSRV_DEVICE_NODE *psDeviceNode)
 	psDeviceNode->pfnPDumpInitDevice = &RGXResetPDump;
 #endif /* PDUMP */
 
-	psDeviceNode->eHealthStatus = PVRSRV_DEVICE_HEALTH_STATUS_OK;
 
 #if defined(SUPPORT_MEMORY_TILING)
 	psDeviceNode->pfnAllocMemTilingRange = RGX_AllocMemTilingRange;
@@ -941,10 +1126,10 @@ PVRSRV_ERROR RGXRegisterDevice (PVRSRV_DEVICE_NODE *psDeviceNode)
 	psDeviceNode->pfnFreeUFOBlock = RGXFreeUFOBlock;
 
 	/* Register callback for dumping debug info */
-	PVRSRVRegisterDbgRequestNotify(&psDeviceNode->hDbgReqNotify, &RGXDebugRequestNotify, DEBUG_REQUEST_RGX, psDeviceNode);
-	
-	/* Register callback for checking the device's health */
-	psDeviceNode->pfnUpdateHealthStatus = RGXUpdateHealthStatus;
+	psDeviceNode->pfnDumpDebugInfo = RGXDumpDebugInfoWrapper;
+
+	/* Register callback for updating ZLS Sync Prim */
+	psDeviceNode->pfnZSBufferSyncPrimUpdate = RGXZSBufferSyncPrimUpdateWrapper;
 
 
 	/*********************

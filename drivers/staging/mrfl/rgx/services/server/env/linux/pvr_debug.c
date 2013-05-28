@@ -456,6 +456,61 @@ IMG_VOID PVRSRVDebugPrintf	(
 			/* Traces don't need a location */
 			if (bTrace == IMG_FALSE)
 			{
+#ifdef DEBUG_LOG_PATH_TRUNCATE
+				/* Buffer for rewriting filepath in log messages */
+				static IMG_CHAR szFileNameRewrite[PVR_MAX_FILEPATH_LEN];
+
+   				IMG_CHAR* pszTruncIter;
+				IMG_CHAR* pszTruncBackInter;
+
+				/* Truncate path (DEBUG_LOG_PATH_TRUNCATE shoud be set to EURASIA env var)*/
+				pszFileName = pszFullFileName + strlen(DEBUG_LOG_PATH_TRUNCATE)+1;
+
+				/* Try to find '/../' entries and remove it together with
+				   previous entry. Repeat unit all removed */
+				strncpy(szFileNameRewrite, pszFileName,PVR_MAX_FILEPATH_LEN);
+
+				if(strlen(szFileNameRewrite) == PVR_MAX_FILEPATH_LEN-1) {
+					IMG_CHAR szTruncateMassage[] = "FILENAME TRUNCATED";
+					strcpy(szFileNameRewrite + (PVR_MAX_FILEPATH_LEN - 1 - strlen(szTruncateMassage)), szTruncateMassage);
+				}
+
+				pszTruncIter = szFileNameRewrite;
+				while(*pszTruncIter++ != 0)
+				{
+					IMG_CHAR* pszNextStartPoint;
+					/* Find '/../' pattern */
+					if(
+					   !( ( *pszTruncIter == '/' && (pszTruncIter-4 >= szFileNameRewrite) ) &&
+						 ( *(pszTruncIter-1) == '.') &&
+						 ( *(pszTruncIter-2) == '.') &&
+						 ( *(pszTruncIter-3) == '/') )
+					   ) continue;
+
+					/* Find previous '/' */
+					pszTruncBackInter = pszTruncIter - 3;
+					while(*(--pszTruncBackInter) != '/')
+					{
+						if(pszTruncBackInter <= szFileNameRewrite) break;
+					}
+					pszNextStartPoint = pszTruncBackInter;
+
+					/* Remove found region */
+					while(*pszTruncIter != 0)
+					{
+						*pszTruncBackInter++ = *pszTruncIter++;
+					}
+					*pszTruncBackInter = 0;
+
+					/* Start again */
+					pszTruncIter = pszNextStartPoint;
+				}
+
+				pszFileName = szFileNameRewrite;
+				/* Remove first '/' if exist (it's always relative path */
+				if(*pszFileName == '/') pszFileName++;
+#endif
+
 #if !defined(__sh__)
 				pszLeafName = (IMG_CHAR *)strrchr (pszFileName, '\\');
 

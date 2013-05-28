@@ -59,6 +59,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 @Input          hDeviceNode             Device node handle
 
+@Input          psContextList           If non-NULL the new sync prim context
+                                        will be added to this list
+
 @Output         hSyncPrimContext        Handle to the created synchronisation
                                         primitive context
 
@@ -69,6 +72,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 PVRSRV_ERROR
 SyncPrimContextCreate(SYNC_BRIDGE_HANDLE	hBridge,
 					  IMG_HANDLE			hDeviceNode,
+					  PDLLIST_NODE			 psContextList,
 					  PSYNC_PRIM_CONTEXT	*hSyncPrimContext);
 
 /*************************************************************************/ /*!
@@ -286,6 +290,19 @@ SyncPrimPDumpCBP(PVRSRV_CLIENT_SYNC_PRIM *psSync,
 				 IMG_UINT32 uiPacketSize,
 				 IMG_UINT32 uiBufferSize);
 
+
+/*************************************************************************/ /*!
+@Function       SyncPrimPDumpClientContexts
+
+@Description    Pdump all the synchronization memory for this client process
+
+@Input          psContextList           List of sync prim contexts to PDump
+
+@Return         None
+*/
+/*****************************************************************************/
+IMG_VOID
+SyncPrimPDumpClientContexts(PDLLIST_NODE psContextList);
 #else
 
 #ifdef INLINE_IS_PRAGMA
@@ -350,6 +367,12 @@ SyncPrimPDumpCBP(PVRSRV_CLIENT_SYNC_PRIM *psSync,
 	PVR_UNREFERENCED_PARAMETER(uiWriteOffset);
 	PVR_UNREFERENCED_PARAMETER(uiPacketSize);
 	PVR_UNREFERENCED_PARAMETER(uiBufferSize);
+}
+
+static INLINE IMG_VOID
+SyncPrimPDumpClientContexts(PDLLIST_NODE psContextList)
+{
+	PVR_UNREFERENCED_PARAMETER(psContextList);
 }
 #endif	/* PDUMP */
 #endif	/* _PVRSRV_SYNC_ */

@@ -51,9 +51,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pdump_km.h"
 #include "sync.h"
 #include "sync_internal.h"
-#include "pvrsrv.h"
-#include "debug_request_ids.h"
-#include "connection_server.h"
 
 #if defined(SUPPORT_SECURE_EXPORT)
 #include "ossecure_export.h"
@@ -67,9 +64,6 @@ struct _SYNC_PRIMITIVE_BLOCK_
 	IMG_UINT32			*pui32LinAddr;
 	IMG_UINT32			ui32BlockSize;		/*!< Size of the Sync Primitive Block */
 	IMG_UINT32			ui32RefCount;
-	POS_LOCK			hLock;
-	DLLIST_NODE			sConnectionNode;
-	SYNC_CONNECTION_DATA *psSyncConnectionData;	/*!< Link back to the sync connection data if there is one */
 };
 
 struct _SERVER_SYNC_PRIMITIVE_
@@ -79,13 +73,11 @@ struct _SERVER_SYNC_PRIMITIVE_
 	IMG_UINT32				ui32RefCount;
 	IMG_UINT32				ui32UID;
 	IMG_UINT32				ui32LastSyncRequesterID;
-	DLLIST_NODE				sNode;
 	/* PDump only data */
 	IMG_BOOL				bSWOperation;
 	IMG_BOOL				bSWOpStartedInCaptRange;
 	IMG_UINT32				ui32LastHWUpdate;
 	IMG_BOOL				bPDumped;
-	POS_LOCK				hLock;
 };
 
 struct _SERVER_SYNC_EXPORT_
@@ -125,19 +117,7 @@ struct _SERVER_OP_COOKIE_
 	
 };
 
-struct _SYNC_CONNECTION_DATA_
-{
-	DLLIST_NODE	sListHead;
-	IMG_UINT32	ui32RefCount;
-	POS_LOCK	hLock;
-	IMG_BOOL	bPDumpRequired;
-};
-
 static IMG_UINT32 g_ServerSyncUID = 0;
-
-POS_LOCK g_hListLock;
-static DLLIST_NODE g_sAllServerSyncs;
-IMG_HANDLE g_hNotify;
 
 #define SYNC_REQUESTOR_UNKNOWN 0
 static IMG_UINT32 g_ui32NextSyncRequestorID = 1;
@@ -155,114 +135,23 @@ static IMG_UINT32 g_ui32NextSyncRequestorID = 1;
 #endif
 
 static
-IMG_VOID _SyncConnectionRef(SYNC_CONNECTION_DATA *psSyncConnectionData)
-{
-	OSLockAcquire(psSyncConnectionData->hLock);
-	psSyncConnectionData->ui32RefCount++;
-	OSLockRelease(psSyncConnectionData->hLock);	
-
-	SYNC_REFCOUNT_PRINT("%s: Sync connection %p, refcount = %d",
-						__FUNCTION__, psSyncConnectionData, ui32RefCount);
-}
-
-static
-IMG_VOID _SyncConnectionUnref(SYNC_CONNECTION_DATA *psSyncConnectionData)
-{
-	IMG_UINT32 ui32RefCount;
-
-	OSLockAcquire(psSyncConnectionData->hLock);
-	ui32RefCount = --psSyncConnectionData->ui32RefCount;
-	OSLockRelease(psSyncConnectionData->hLock);
-
-	if (ui32RefCount == 0)
-	{
-		SYNC_REFCOUNT_PRINT("%s: Sync connection %p, refcount = %d",
-							__FUNCTION__, psSyncConnectionData, ui32RefCount);
-
-		PVR_ASSERT(dllist_is_empty(&psSyncConnectionData->sListHead));
-		OSLockDestroy(psSyncConnectionData->hLock);
-		OSFreeMem(psSyncConnectionData);
-	}
-	else
-	{
-		SYNC_REFCOUNT_PRINT("%s: Sync connection %p, refcount = %d",
-							__FUNCTION__, psSyncConnectionData, ui32RefCount);
-	}
-}
-
-static
-IMG_VOID _SyncConnectionAddBlock(CONNECTION_DATA *psConnection, SYNC_PRIMITIVE_BLOCK *psBlock)
-{
-	if (psConnection)
-	{
-		SYNC_CONNECTION_DATA *psSyncConnectionData = psConnection->psSyncConnectionData;
-
-		/*
-			Make sure the connection doesn't go away. It doesn't matter that we will release
-			the lock between as the refcount and list don't have to be atomic w.r.t. to each other
-		*/
-		_SyncConnectionRef(psSyncConnectionData);
-	
-		OSLockAcquire(psSyncConnectionData->hLock);
-		if (psConnection != IMG_NULL)
-		{
-			dllist_add_to_head(&psSyncConnectionData->sListHead, &psBlock->sConnectionNode);
-		}
-		OSLockRelease(psSyncConnectionData->hLock);
-		psBlock->psSyncConnectionData = psSyncConnectionData;
-	}
-	else
-	{
-		psBlock->psSyncConnectionData = IMG_NULL;
-	}
-}
-
-static
-IMG_VOID _SyncConnectionRemoveBlock(SYNC_PRIMITIVE_BLOCK *psBlock)
-{
-	SYNC_CONNECTION_DATA *psSyncConnectionData = psBlock->psSyncConnectionData;
-
-	if (psBlock->psSyncConnectionData)
-	{
-		OSLockAcquire(psSyncConnectionData->hLock);
-		dllist_remove_node(&psBlock->sConnectionNode);
-		OSLockRelease(psSyncConnectionData->hLock);
-
-		_SyncConnectionUnref(psBlock->psSyncConnectionData);
-	}
-}
-
-static
 IMG_VOID _SyncPrimitiveBlockRef(SYNC_PRIMITIVE_BLOCK *psSyncBlk)
 {
-	IMG_UINT32 ui32RefCount;
-
-	OSLockAcquire(psSyncBlk->hLock);
-	ui32RefCount = ++psSyncBlk->ui32RefCount;
-	OSLockRelease(psSyncBlk->hLock);
-
+	psSyncBlk->ui32RefCount++;
 	SYNC_REFCOUNT_PRINT("%s: Sync block %p, refcount = %d",
-						__FUNCTION__, psSyncBlk, ui32RefCount);
+						__FUNCTION__, psSyncBlk, psSyncBlk->ui32RefCount);
 }
 
 static
 IMG_VOID _SyncPrimitiveBlockUnref(SYNC_PRIMITIVE_BLOCK *psSyncBlk)
 {
-	IMG_UINT32 ui32RefCount;
-
-	OSLockAcquire(psSyncBlk->hLock);
-	ui32RefCount = --psSyncBlk->ui32RefCount;
-	OSLockRelease(psSyncBlk->hLock);
-
-	if (ui32RefCount == 0)
+	if (--psSyncBlk->ui32RefCount == 0)
 	{
 		PVRSRV_DEVICE_NODE *psDevNode = psSyncBlk->psDevNode;
 
 		SYNC_REFCOUNT_PRINT("%s: Sync block %p, refcount = %d (remove)",
-							__FUNCTION__, psSyncBlk, ui32RefCount);
-
-		_SyncConnectionRemoveBlock(psSyncBlk);
-		OSLockDestroy(psSyncBlk->hLock);
+							__FUNCTION__, psSyncBlk, psSyncBlk->ui32RefCount);
+	
 		DevmemUnexport(psSyncBlk->psMemDesc, &psSyncBlk->sExportCookie);
 		DevmemReleaseCpuVirtAddr(psSyncBlk->psMemDesc);
 		psDevNode->pfnFreeUFOBlock(psDevNode, psSyncBlk->psMemDesc);
@@ -271,13 +160,12 @@ IMG_VOID _SyncPrimitiveBlockUnref(SYNC_PRIMITIVE_BLOCK *psSyncBlk)
 	else
 	{
 		SYNC_REFCOUNT_PRINT("%s: Sync block %p, refcount = %d",
-							__FUNCTION__, psSyncBlk, ui32RefCount);
+							__FUNCTION__, psSyncBlk, psSyncBlk->ui32RefCount);
 	}
 }
 
 PVRSRV_ERROR
-PVRSRVAllocSyncPrimitiveBlockKM(CONNECTION_DATA *psConnection,
-								PVRSRV_DEVICE_NODE *psDevNode,
+PVRSRVAllocSyncPrimitiveBlockKM(PVRSRV_DEVICE_NODE *psDevNode,
 								SYNC_PRIMITIVE_BLOCK **ppsSyncBlk,
 								IMG_UINT32 *puiSyncPrimVAddr,
 								IMG_UINT32 *puiSyncPrimBlockSize,
@@ -318,16 +206,8 @@ PVRSRVAllocSyncPrimitiveBlockKM(CONNECTION_DATA *psConnection,
 		goto e3;
 	}
 
-	eError = OSLockCreate(&psNewSyncBlk->hLock, LOCK_TYPE_NONE);
-	if (eError != PVRSRV_OK)
-	{
-		goto e4;
-	}
-
-	psNewSyncBlk->ui32RefCount = 1;
-
-	/* If there is a connection pointer then add the new block onto it's list */
-	_SyncConnectionAddBlock(psConnection, psNewSyncBlk);
+	psNewSyncBlk->ui32RefCount = 0;
+	_SyncPrimitiveBlockRef(psNewSyncBlk);
 
 	*psExportCookie = &psNewSyncBlk->sExportCookie;
 	*ppsSyncBlk = psNewSyncBlk;
@@ -338,9 +218,6 @@ PVRSRVAllocSyncPrimitiveBlockKM(CONNECTION_DATA *psConnection,
 						  *puiSyncPrimVAddr);
 
 	return PVRSRV_OK;
-e4:
-	DevmemUnexport(psNewSyncBlk->psMemDesc, &psNewSyncBlk->sExportCookie);
-
 e3:
 	psDevNode->pfnFreeUFOBlock(psDevNode, psNewSyncBlk->psMemDesc);
 e2:
@@ -379,14 +256,9 @@ PVRSRVServerSyncPrimSetKM(SERVER_SYNC_PRIMITIVE *psServerSync, IMG_UINT32 ui32Va
 static
 IMG_VOID _ServerSyncRef(SERVER_SYNC_PRIMITIVE *psSync)
 {
-	IMG_UINT32 ui32RefCount;
-
-	OSLockAcquire(psSync->hLock);
-	ui32RefCount = ++psSync->ui32RefCount;
-	OSLockRelease(psSync->hLock);
-
+	psSync->ui32RefCount++;
 	SYNC_REFCOUNT_PRINT("%s: Server sync %p, refcount = %d",
-						__FUNCTION__, psSync, ui32RefCount);
+						__FUNCTION__, psSync, psSync->ui32RefCount);
 }
 
 PVRSRV_ERROR
@@ -410,34 +282,20 @@ PVRSRVServerSyncAllocKM(PVRSRV_DEVICE_NODE *psDevNode,
 		goto fail_sync_alloc;
 	}
 
-	eError = OSLockCreate(&psNewSync->hLock, LOCK_TYPE_NONE);
-	if (eError != PVRSRV_OK)
-	{
-		goto fail_lock_create;
-	}
-
 	SyncPrimSet(psNewSync->psSync, 0);
 
 	psNewSync->ui32NextOp = 0;
-	psNewSync->ui32RefCount = 1;
+	psNewSync->ui32RefCount = 0;
 	psNewSync->ui32UID = g_ServerSyncUID++;
 	psNewSync->ui32LastSyncRequesterID = SYNC_REQUESTOR_UNKNOWN;
 	psNewSync->bSWOperation = IMG_FALSE;
 	psNewSync->ui32LastHWUpdate = 0x0bad592c;
 	psNewSync->bPDumped = IMG_FALSE;
-
-	/* Add the sync to the global list */
-	OSLockAcquire(g_hListLock);
-	dllist_add_to_head(&g_sAllServerSyncs, &psNewSync->sNode);
-	OSLockRelease(g_hListLock);
-
+	_ServerSyncRef(psNewSync);
 	*pui32SyncPrimVAddr = SyncPrimGetFirmwareAddr(psNewSync->psSync);
 	SYNC_UPDATES_PRINT("%s: sync: %p, fwaddr: %8.8X", __FUNCTION__, psNewSync, *pui32SyncPrimVAddr);
 	*ppsSync = psNewSync;
 	return PVRSRV_OK;
-
-fail_lock_create:
-	SyncPrimFree(psNewSync->psSync);
 
 fail_sync_alloc:
 	OSFreeMem(psNewSync);
@@ -447,30 +305,17 @@ fail_sync_alloc:
 static
 IMG_VOID _ServerSyncUnref(SERVER_SYNC_PRIMITIVE *psSync)
 {
-	IMG_UINT32 ui32RefCount;
-
-	OSLockAcquire(psSync->hLock);
-	ui32RefCount = --psSync->ui32RefCount;
-	OSLockRelease(psSync->hLock);
-
-	if (ui32RefCount == 0)
+	if (--psSync->ui32RefCount == 0)
 	{
 		SYNC_REFCOUNT_PRINT("%s: Server sync %p, refcount = %d",
-							__FUNCTION__, psSync, ui32RefCount);
-
-		/* Remove the sync from the global list */
-		OSLockAcquire(g_hListLock);
-		dllist_remove_node(&psSync->sNode);
-		OSLockRelease(g_hListLock);
-
-		OSLockDestroy(psSync->hLock);
+							__FUNCTION__, psSync, psSync->ui32RefCount);
 		SyncPrimFree(psSync->psSync);
 		OSFreeMem(psSync);	
 	}
 	else
 	{
 		SYNC_REFCOUNT_PRINT("%s: Server sync %p, refcount = %d",
-							__FUNCTION__, psSync, ui32RefCount);
+							__FUNCTION__, psSync, psSync->ui32RefCount);
 	}
 }
 
@@ -517,8 +362,9 @@ _PVRSRVSyncPrimServerExportKM(SERVER_SYNC_PRIMITIVE *psSync,
 		goto e0;
 	}
 	
+	/* FIXME: Lock */
 	_ServerSyncRef(psSync);
-
+	/* FIXME: Unlock */
 	psNewExport->psSync = psSync;
 	*ppsExport = psNewExport;
 
@@ -530,7 +376,9 @@ e0:
 static PVRSRV_ERROR
 _PVRSRVSyncPrimServerUnexportKM(SERVER_SYNC_EXPORT *psExport)
 {
+	/* FIXME: Lock */
 	_ServerSyncUnref(psExport->psSync);
+	/* FIXME: Unlock */
 
 	OSFreeMem(psExport);
 
@@ -542,7 +390,9 @@ _PVRSRVSyncPrimServerImportKM(SERVER_SYNC_EXPORT *psExport,
 							  SERVER_SYNC_PRIMITIVE **ppsSync,
 							  IMG_UINT32 *pui32SyncPrimVAddr)
 {
+	/* FIXME: Lock */
 	_ServerSyncRef(psExport->psSync);
+	/* FIXME: Unlock */
 
 	*ppsSync = psExport->psSync;
 	*pui32SyncPrimVAddr = SyncPrimGetFirmwareAddr(psExport->psSync->psSync);
@@ -719,17 +569,8 @@ PVRSRVServerSyncQueueSWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
 						  IMG_BOOL bUpdate,
 						  IMG_BOOL *pbFenceRequired)
 {
-
+	/* FIXME: Lock */
 	_ServerSyncRef(psSync);
-
-	/*
-		_ServerSyncRef will acquire and release the lock but we need to
-		reacquire here to ensure the state that we're modifying below
-		will be consistent with itself. But it doesn't matter if another
-		thread acquires the lock in between as we've ensured the sync
-		wont go away
-	*/
-	OSLockAcquire(psSync->hLock);
 	_ServerSyncTakeOperation(psSync,
 							 bUpdate,
 							 pui32FenceValue,
@@ -771,37 +612,23 @@ PVRSRVServerSyncQueueSWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
 			SYNC_UPDATES_PRINT("%s: sync: %p, fence: %d, value: %d", __FUNCTION__, psSync, *pui32FenceValue, *pui32UpdateValue);
 		}
 	}
-
-	/* Only update the last requester id if we are make changes to this sync
-	 * object. */
-	if (bUpdate)
-		psSync->ui32LastSyncRequesterID = ui32SyncRequesterID;
-
-	OSLockRelease(psSync->hLock);
+	psSync->ui32LastSyncRequesterID = ui32SyncRequesterID;
+	/* FIXME: Unlock */
 
 	return PVRSRV_OK;
 }
 
 PVRSRV_ERROR
 PVRSRVServerSyncQueueHWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
-						       IMG_BOOL bUpdate,
 						       IMG_UINT32 *pui32FenceValue,
 						       IMG_UINT32 *pui32UpdateValue)
 {
-	/*
-		For HW opertions the client is required to ensure the
-		operation has completed before freeing the sync as we
-		no way of dropping the refcount if we where to acquire it
-		here.
-
-		Take the lock to ensure the state that we're modifying below
-		will be consistent with itself.
-	*/
-	OSLockAcquire(psSync->hLock);
+	/* FIXME: Lock */
 	_ServerSyncTakeOperation(psSync,
-							 bUpdate,
+							 IMG_TRUE,
 							 pui32FenceValue,
 							 pui32UpdateValue);
+	/* FIXME: Unlock */
 
 	/*
 		Note:
@@ -838,7 +665,6 @@ PVRSRVServerSyncQueueHWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
 		/* Reset the state as we've just done a HW operation */
 		psSync->bSWOperation = IMG_FALSE;
 	}
-	OSLockRelease(psSync->hLock);
 
 	SYNC_UPDATES_PRINT("%s: sync: %p, fence: %d, value: %d", __FUNCTION__, psSync, *pui32FenceValue, *pui32UpdateValue);
 
@@ -859,44 +685,6 @@ ServerSyncCompleteOp(SERVER_SYNC_PRIMITIVE *psSync,
 	SYNC_UPDATES_PRINT("%s: sync: %p (%d) = %d", __FUNCTION__, psSync, *psSync->psSync->pui32LinAddr, ui32UpdateValue);
 	*psSync->psSync->pui32LinAddr = ui32UpdateValue;
 	_ServerSyncUnref(psSync);
-}
-
-IMG_UINT32 ServerSyncGetFWAddr(SERVER_SYNC_PRIMITIVE *psSync)
-{
-	return SyncPrimGetFirmwareAddr(psSync->psSync);
-}
-
-IMG_UINT32 ServerSyncGetValue(SERVER_SYNC_PRIMITIVE *psSync)
-{
-	return *psSync->psSync->pui32LinAddr;
-}
-
-static IMG_BOOL _ServerSyncState(PDLLIST_NODE psNode, IMG_PVOID pvCallbackData)
-{
-	SERVER_SYNC_PRIMITIVE *psSync = IMG_CONTAINER_OF(psNode, SERVER_SYNC_PRIMITIVE, sNode);
-
-	if (*psSync->psSync->pui32LinAddr != psSync->ui32NextOp)
-	{
-		PVR_LOG(("\tPending server sync (ID = %d, FWAddr = 0x%08x): Current = 0x%08x, NextOp = 0x%08x",
-								psSync->ui32UID,
-								ServerSyncGetFWAddr(psSync),
-								ServerSyncGetValue(psSync),
-								psSync->ui32NextOp));
-	}
-	return IMG_TRUE;
-}
-
-static IMG_VOID _ServerSyncDebugRequest(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle, IMG_UINT32 ui32VerbLevel)
-{
-	PVR_UNREFERENCED_PARAMETER(hDebugRequestHandle);
-
-	if (ui32VerbLevel == DEBUG_REQUEST_VERBOSITY_HIGH)
-	{
-		PVR_LOG(("Dumping all pending server syncs"));
-		OSLockAcquire(g_hListLock);
-		dllist_foreach_node(&g_sAllServerSyncs, _ServerSyncState, IMG_NULL);
-		OSLockRelease(g_hListLock);
-	}
 }
 
 PVRSRV_ERROR
@@ -1317,109 +1105,3 @@ PVRSRVSyncPrimPDumpCBPKM(SYNC_PRIMITIVE_BLOCK *psSyncBlk, IMG_UINT32 ui32Offset,
 	return PVRSRV_OK;
 }
 #endif
-
-/* SyncRegisterConnection */
-PVRSRV_ERROR SyncRegisterConnection(SYNC_CONNECTION_DATA **ppsSyncConnectionData)
-{
-	SYNC_CONNECTION_DATA *psSyncConnectionData;
-	PVRSRV_ERROR eError;
-
-	psSyncConnectionData = OSAllocMem(sizeof(SYNC_CONNECTION_DATA));
-	if (psSyncConnectionData == IMG_NULL)
-	{
-		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto fail_alloc;
-	}
-
-	eError = OSLockCreate(&psSyncConnectionData->hLock, LOCK_TYPE_PASSIVE);
-	if (eError != PVRSRV_OK)
-	{
-		goto fail_lockcreate;
-	}
-	dllist_init(&psSyncConnectionData->sListHead);
-	psSyncConnectionData->ui32RefCount = 1;
-	psSyncConnectionData->bPDumpRequired = IMG_TRUE;
-
-	*ppsSyncConnectionData = psSyncConnectionData;
-	return PVRSRV_OK;
-
-fail_lockcreate:
-	OSFreeMem(psSyncConnectionData);
-fail_alloc:
-	PVR_ASSERT(eError != PVRSRV_OK);
-	return eError;
-}
-
-/* SyncUnregisterConnection */
-IMG_VOID SyncUnregisterConnection(SYNC_CONNECTION_DATA *psSyncConnectionData)
-{
-	_SyncConnectionUnref(psSyncConnectionData);
-}
-
-static
-IMG_BOOL _PDumpSyncBlock(PDLLIST_NODE psNode, IMG_PVOID pvCallbackData)
-{
-	SYNC_PRIMITIVE_BLOCK *psSyncBlock = IMG_CONTAINER_OF(psNode, SYNC_PRIMITIVE_BLOCK, sConnectionNode);
-	PVR_UNREFERENCED_PARAMETER(pvCallbackData);
-
-	DevmemPDumpLoadMem(psSyncBlock->psMemDesc,
-					   0,
-					   psSyncBlock->ui32BlockSize,
-					   PDUMP_FLAGS_CONTINUOUS);
-	return IMG_TRUE;
-}
-
-IMG_VOID SyncConnectionPDumpSyncBlocks(SYNC_CONNECTION_DATA *psSyncConnectionData)
-{
-	OSLockAcquire(psSyncConnectionData->hLock);
-
-	if (psSyncConnectionData->bPDumpRequired)
-	{
-		PDUMPCOMMENT("Dump client Sync Prim state");
-		dllist_foreach_node(&psSyncConnectionData->sListHead,
-							_PDumpSyncBlock,
-							IMG_NULL);
-		psSyncConnectionData->bPDumpRequired = IMG_FALSE;
-	}
-
-	OSLockRelease(psSyncConnectionData->hLock);
-}
-
-IMG_VOID SyncConnectionPDumpExit(SYNC_CONNECTION_DATA *psSyncConnectionData)
-{
-	psSyncConnectionData->bPDumpRequired = IMG_TRUE;
-}
-
-PVRSRV_ERROR ServerSyncInit(IMG_VOID)
-{
-	PVRSRV_ERROR eError;
-
-	eError = OSLockCreate(&g_hListLock, LOCK_TYPE_NONE);
-	if (eError != PVRSRV_OK)
-	{
-		goto fail_lock_create;
-	}
-	dllist_init(&g_sAllServerSyncs);
-
-	eError = PVRSRVRegisterDbgRequestNotify(&g_hNotify,
-											_ServerSyncDebugRequest,
-											DEBUG_REQUEST_SERVERSYNC,
-											IMG_NULL);
-	if (eError != PVRSRV_OK)
-	{
-		goto fail_dbg_register;
-	}
-
-	return PVRSRV_OK;
-
-fail_dbg_register:
-	OSLockDestroy(g_hListLock);;
-fail_lock_create:
-	return eError;
-}
-
-IMG_VOID ServerSyncDeinit(IMG_VOID)
-{
-	PVRSRVUnregisterDbgRequestNotify(g_hNotify);
-	OSLockDestroy(g_hListLock);
-}

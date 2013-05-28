@@ -46,7 +46,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_debug.h"
 #include "debugmisc_server.h"
 #include "rgxfwutils.h"
-#include "rgxta3d.h"
 #include "mm.h"
 #include "pdump_km.h"
 #include "mmu_common.h"
@@ -101,39 +100,6 @@ PVRSRVRGXDebugMiscSetFWLogKM(
 
 	/* set the new log type */
 	psDevInfo->psRGXFWIfTraceBuf->ui32LogType = ui32RGXFWLogType;
-
-	return PVRSRV_OK;
-
-}
-
-static IMG_BOOL
-_RGXDumpFreeListPageList(PDLLIST_NODE psNode, IMG_PVOID pvCallbackData)
-{
-	RGX_FREELIST *psFreeList = IMG_CONTAINER_OF(psNode, RGX_FREELIST, sNode);
-
-	RGXDumpFreeListPageList(psFreeList);
-
-	return IMG_TRUE;
-}
-
-IMG_EXPORT PVRSRV_ERROR
-PVRSRVRGXDebugMiscDumpFreelistPageListKM(
-	PVRSRV_DEVICE_NODE *psDeviceNode)
-{
-	PVRSRV_RGXDEV_INFO* psDevInfo = psDeviceNode->pvDevice;
-
-	if (dllist_is_empty(&psDevInfo->sFreeListHead))
-	{
-		return PVRSRV_OK;
-	}
-
-	PVR_LOG(("---------------[ Begin Freelist Page List Dump ]------------------"));
-
-	OSLockAcquire(psDevInfo->hLockFreeList);
-	dllist_foreach_node(&psDevInfo->sFreeListHead, _RGXDumpFreeListPageList, IMG_NULL);
-	OSLockRelease(psDevInfo->hLockFreeList);
-
-	PVR_LOG(("----------------[ End Freelist Page List Dump ]-------------------"));
 
 	return PVRSRV_OK;
 

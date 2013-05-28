@@ -49,10 +49,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxfwutils.h"
 #include "rgx_fwif_resetframework.h"
 
-#include "sync_server.h"
-#include "sync_internal.h"
-#include "connection_server.h"
-
 #if defined (__cplusplus)
 extern "C" {
 #endif
@@ -63,7 +59,6 @@ typedef struct {
 	DEVMEM_MEMDESC			*psFWFrameworkMemDesc;
 	RGX_FWCOMCTX_CLEANUP 	sFWComContextCleanup;
 	PVRSRV_CLIENT_SYNC_PRIM	*psCleanupSync;
-	IMG_BOOL				bDumpedCCBCtlAlready;
 } RGX_CC_CLEANUP_DATA;
 
 
@@ -120,21 +115,10 @@ PVRSRV_ERROR PVRSRVRGXDestroyComputeContextKM(RGX_CC_CLEANUP_DATA *psCleanupData
 
  @Return   PVRSRV_ERROR
 ******************************************************************************/
-PVRSRV_ERROR PVRSRVRGXKickCDMKM(CONNECTION_DATA		*psConnection,
-								PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR PVRSRVRGXKickCDMKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 								DEVMEM_MEMDESC 		*psFWComputeContextMemDesc,
-								IMG_UINT32			*pui32cCCBWoffUpdate,
-								DEVMEM_MEMDESC 		*pscCCBMemDesc,
-								DEVMEM_MEMDESC 		*psCCBCtlMemDesc,
-								IMG_UINT32			ui32ServerSyncPrims,
-								PVRSRV_CLIENT_SYNC_PRIM_OP**	pasSyncOp,
-								SERVER_SYNC_PRIMITIVE **pasServerSyncs,
-								IMG_UINT32			ui32CmdSize,
-								IMG_PBYTE			pui8Cmd,
-								IMG_UINT32			ui32FenceEnd,
-								IMG_UINT32			ui32UpdateEnd,
-								IMG_BOOL			bbPDumpContinuous,
-								RGX_CC_CLEANUP_DATA *psCleanupData);
+								IMG_UINT32			ui32cCCBWoffUpdate,
+								IMG_BOOL			bbPDumpContinuous);
 								
 /*!
 *******************************************************************************

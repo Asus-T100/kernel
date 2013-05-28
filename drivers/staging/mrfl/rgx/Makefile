@@ -55,9 +55,6 @@ ccflags-y += \
 	-Iinclude/drm \
 	-Iarch/arm/include
 
-#SUPPORT_ION
-#    ccflags-y += -I$(RGXDIR)/services/include/env/linux \
-#                -I$(RGXDIR)/generated/ion_bridge/
 
 ccflags-y += \
 	-DANDROID \
@@ -86,21 +83,6 @@ ccflags-y += \
 	-DSUPPORT_RGXFW_LOG \
 	-DLMA \
 	-DTC_MEMORY_CONFIG=TC_MEMORY_LOCAL
-	-DPVR_ANDROID_HAS_HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED=1 \
-    -DEGL_EXTENSION_ANDROID_FRAMEBUFFER_TARGET=1 \
-    -DPVR_ANDROID_HAS_CORKSCREW_API=1 \
-	$(NULL)
-
-ccflags-y += \
-    -DSUPPORT_EGL_IMAGE_SYNC_DEPENDENCY=1 \
-    -DCLIENT_DRIVER_DEFAULT_WAIT_RETRIES=50 \
-    -DEGL_EXTENSION_ANDROID_WAIT_SYNC=1 \
-    -DEGL_BASENAME_SUFFIX=_POWERVR_ROGUE\
-    -DEGL_EXTENSION_ANDROID_RECORDABLE=1 \
-    -DEGL_EXTENSION_ANDROID_BLOB_CACHE=1 \
-
-# -DPVR_ANDROID_NATIVE_WINDOW_HAS_SYNC=1 \
-  -DEGL_EXTENSION_ANDROID_NATIVE_FENCE_SYNC=1 \
 
 # Skip the following dependencies on Merrifield Virtual Platform
 ifneq ($(CONFIG_BOARD_MRFLD_VP),y)
@@ -178,10 +160,6 @@ merrifield_gfx-y += \
 
 #	services/server/env/linux/physmem_ion.o
 
-# WINDOW_HAS_SYNC
-#merrifield_gfx-y += \
-    services/server/env/linux/pvr_sync.o
-
 # for PDUMP
 merrifield_gfx-$(CONFIG_PDUMP) += \
 	services/server/common/pdump_common.o \
@@ -242,16 +220,6 @@ merrifield_gfx-y += \
 	generated/syncsexport_bridge/server_syncsexport_bridge.o
 ccflags-y += \
 	-I$(RGXDIR)/generated/smm_bridge
-
-##ifeq ($(SUPPORT_ION),1)
-#merrifield_gfx-y += generated/ion_bridge/server_ion_bridge.o \
-	services/system/common/env/linux/ion_support.o
-##ifeq ($(SUPPORT_OLD_ION_API),1)
-##merrifield_gfx-y += services/server/env/linux/physmem_ion_omap.o
-##else
-#merrifield_gfx-y += services/server/env/linux/physmem_ion.o
-##endif
-##endif # SUPPORT_ION
 
 # buffer class video
 merrifield_gfx-y += \

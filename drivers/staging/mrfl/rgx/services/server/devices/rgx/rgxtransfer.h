@@ -50,8 +50,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxfwutils.h"
 #include "rgx_fwif_resetframework.h"
 
-#include "sync_server.h"
-#include "connection_server.h"
 
 #if defined (__cplusplus)
 extern "C" {
@@ -63,7 +61,6 @@ typedef struct {
 	DEVMEM_MEMDESC			*psFWFrameworkMemDesc;
 	RGX_FWCOMCTX_CLEANUP	sFWComContextCleanup;
 	PVRSRV_CLIENT_SYNC_PRIM	*psCleanupSync;
-	IMG_BOOL				bDumpedCCBCtlAlready;
 } RGX_TQ2D_CLEANUP_DATA;
 
 
@@ -120,7 +117,6 @@ typedef struct {
 	DEVMEM_MEMDESC			*psFWFrameworkMemDesc;
 	RGX_FWCOMCTX_CLEANUP	sFWComContextCleanup;
 	PVRSRV_CLIENT_SYNC_PRIM	*psCleanupSync;
-	IMG_BOOL				bDumpedCCBCtlAlready;
 } RGX_TQ3D_CLEANUP_DATA;
 
 
@@ -189,23 +185,10 @@ PVRSRV_ERROR PVRSRVRGXDestroyTQ3DContextKM(RGX_TQ3D_CLEANUP_DATA *psCleanupData)
 
 ******************************************************************************/
 IMG_EXPORT
-PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(CONNECTION_DATA		*psConnection,
-									PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 									DEVMEM_MEMDESC 		*psFWTQ2DContextMemDesc,
-									IMG_UINT32			*pui32cCCBWoffUpdate,
-									DEVMEM_MEMDESC 		*pscCCBMemDesc,
-									DEVMEM_MEMDESC 		*psCCBCtlMemDesc,
-									IMG_UINT32			ui32ServerSyncPrims,
-									PVRSRV_CLIENT_SYNC_PRIM_OP**	pasSyncOp,
-									SERVER_SYNC_PRIMITIVE **pasServerSyncs,
-									IMG_UINT32			ui32CmdSize,
-									IMG_PBYTE			pui8Cmd,
-									IMG_UINT32			ui32FenceEnd,
-									IMG_UINT32			ui32UpdateEnd,
-									IMG_UINT32          ui32NumFenceFds,
-									IMG_INT32           *ai32FenceFds,
-									IMG_BOOL			bPDumpContinuous,
-									RGX_TQ2D_CLEANUP_DATA *psCleanupData);
+									IMG_UINT32			ui32TQ2DcCCBWoffUpdate,
+									IMG_BOOL			bPDumpContinuous);
 
 
 /*!
@@ -224,23 +207,10 @@ PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(CONNECTION_DATA		*psConnection,
 
 ******************************************************************************/
 IMG_EXPORT
-PVRSRV_ERROR PVRSRVSubmitTQ3DKickKM(CONNECTION_DATA		*psConnection,
-									PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR PVRSRVSubmitTQ3DKickKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 									DEVMEM_MEMDESC 		*psFWTQ3DContextMemDesc,
-									IMG_UINT32			*pui32cCCBWoffUpdate,
-									DEVMEM_MEMDESC 		*pscCCBMemDesc,
-									DEVMEM_MEMDESC 		*psCCBCtlMemDesc,
-									IMG_UINT32			ui32ServerSyncPrims,
-									PVRSRV_CLIENT_SYNC_PRIM_OP**	pasSyncOp,
-									SERVER_SYNC_PRIMITIVE **pasServerSyncs,
-									IMG_UINT32			ui32CmdSize,
-									IMG_PBYTE			pui8Cmd,
-									IMG_UINT32			ui32FenceEnd,
-									IMG_UINT32			ui32UpdateEnd,
-									IMG_UINT32          ui32NumFenceFds,
-									IMG_INT32           *ai32FenceFds,
-									IMG_BOOL			bPDumpContinuous,
-									RGX_TQ3D_CLEANUP_DATA *psCleanupData);
+									IMG_UINT32			ui32TQ3DcCCBWoffUpdate,
+									IMG_BOOL			bPDumpContinuous);
 
 
 #endif /* __RGXTRANSFER_H__ */

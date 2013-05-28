@@ -90,6 +90,7 @@ PVRSRV_ERROR OSConnectionPrivateDataInit(IMG_HANDLE *phOsPrivateData, IMG_PVOID 
 	OSSNPrintf(psEnvConnection->azIonClientName, ION_CLIENT_NAME_SIZE, "pvr_ion_client-%p-%d", *phOsPrivateData, OSGetCurrentProcessIDKM());
 	psEnvConnection->psIonClient =
 		ion_client_create(psEnvConnection->psIonDev,
+						  IonSupportedHeaps(),
 						  psEnvConnection->azIonClientName);
  
 	if (IS_ERR_OR_NULL(psEnvConnection->psIonClient))

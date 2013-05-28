@@ -123,10 +123,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if defined(SUPPORT_DRM)
 #include "pvr_drm.h"
 #endif
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-#include "pvr_sync.h"
-#endif
-
 /*
  * DRVNAME is the name we use to register our driver.
  * DEVNAME is the name we use to register actual device nodes.
@@ -867,7 +863,7 @@ static int __init PVRCore_Init(void)
 #endif
 {
 	int error;
-#if !defined(PVR_LDM_MODULE) || defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+#if !defined(PVR_LDM_MODULE)
 	PVRSRV_ERROR eError;
 #endif
 #if !defined(SUPPORT_DRM) && defined(PVR_LDM_DEVICE_CLASS)
@@ -997,22 +993,6 @@ static int __init PVRCore_Init(void)
 #endif /* defined(PVR_LDM_DEVICE_CLASS) */
 #endif /* !defined(SUPPORT_DRM) */
 
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	eError = PVRFDSyncDeviceInitKM();
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "PVRCore_Init: unable to create sync (%d)", eError));
-		error = -EBUSY;
-
-#if !defined(SUPPORT_DRM)
-		goto destroy_class;
-#else
-		goto init_failed;
-#endif
-
-	}
-#endif
-
 	return 0;
 
 #if !defined(SUPPORT_DRM)
@@ -1086,10 +1066,6 @@ static void __exit PVRCore_Cleanup(void)
 #endif
 {
 	PVR_TRACE(("PVRCore_Cleanup"));
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	PVRFDSyncDeviceDeInitKM();
-#endif
 
 #if !defined(SUPPORT_DRM)
 #if defined(PVR_LDM_DEVICE_CLASS)

@@ -53,14 +53,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_debug.h"
 #include "pvrsrv.h"
 #include "rgx_fwif_resetframework.h"
-#include "rgxccb.h"
 
-#include "sync_server.h"
-#include "sync_internal.h"
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-#include "pvr_sync.h"
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 
 IMG_EXPORT
 PVRSRV_ERROR PVRSRVRGXCreateTQ2DContextKM(PVRSRV_DEVICE_NODE		*psDeviceNode,
@@ -117,7 +110,6 @@ PVRSRV_ERROR PVRSRVRGXCreateTQ2DContextKM(PVRSRV_DEVICE_NODE		*psDeviceNode,
 	}
 	psTmpCleanup->psFWTQ2DContextMemDesc = *ppsFWTQ2DContextMemDesc;
 	psTmpCleanup->psDeviceNode = psDeviceNode;
-	psTmpCleanup->bDumpedCCBCtlAlready = IMG_FALSE;
 
 	/*
 		Temporarily map the firmware TQ 2D context to the kernel.
@@ -305,7 +297,6 @@ PVRSRV_ERROR PVRSRVRGXCreateTQ3DContextKM(PVRSRV_DEVICE_NODE		*psDeviceNode,
 	}
 	psTmpCleanup->psFWTQ3DContextMemDesc = *ppsFWTQ3DContextMemDesc;
 	psTmpCleanup->psDeviceNode = psDeviceNode;
-	psTmpCleanup->bDumpedCCBCtlAlready = IMG_FALSE;
 
 	/*
 		Temporarily map the firmware TQ 3D context to the kernel.
@@ -510,206 +501,13 @@ e0:
  * PVRSRVSubmit2DKickKM
  */
 IMG_EXPORT
-PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(CONNECTION_DATA		*psConnection,
-									PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 									DEVMEM_MEMDESC 		*psFWTQ2DContextMemDesc,
-									IMG_UINT32			*pui32cCCBWoffUpdate,
-									DEVMEM_MEMDESC 		*pscCCBMemDesc,
-									DEVMEM_MEMDESC 		*psCCBCtlMemDesc,
-									IMG_UINT32			ui32ServerSyncPrims,
-									PVRSRV_CLIENT_SYNC_PRIM_OP**	pasSyncOp,
-									SERVER_SYNC_PRIMITIVE **pasServerSyncs,
-									IMG_UINT32			ui32CmdSize,
-									IMG_PBYTE			pui8Cmd,
-									IMG_UINT32			ui32FenceEnd,
-									IMG_UINT32			ui32UpdateEnd,
-									IMG_UINT32          ui32NumFenceFds,
-									IMG_INT32           *ai32FenceFds,
-									IMG_BOOL			bPDumpContinuous,
-									RGX_TQ2D_CLEANUP_DATA *psCleanupData)
+									IMG_UINT32			ui32TQ2DcCCBWoffUpdate,
+									IMG_BOOL			bPDumpContinuous)
 {
 	RGXFWIF_KCCB_CMD		s2DCCBCmd;
 	PVRSRV_ERROR			eError;
-	volatile RGXFWIF_CCCB_CTL	*psCCBCtl;
-	IMG_UINT8					*pui8CmdPtr;
-	IMG_UINT32 i = 0;
-	RGXFWIF_UFO					*psUFOPtr;
-	IMG_UINT8 *pui8FencePtr = pui8Cmd + ui32FenceEnd; 
-	IMG_UINT8 *pui8UpdatePtr = pui8Cmd + ui32UpdateEnd;
-	IMG_UINT32                  ui32FDFenceCmdSize = 0;
-	IMG_UINT32                  ui32FDUpdateCmdSize = 0;
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	IMG_UINT32 ui32NumFenceSyncs = 0;
-	IMG_UINT32 *pui32FenceFWAddrs;
-	IMG_UINT32 *pui32FenceValues;
-	IMG_UINT32 ui32NumUpdateSyncs = 0;
-	IMG_UINT32 *pui32UpdateFWAddrs;
-	IMG_UINT32 *pui32UpdateValues;
-	RGXFWIF_CCB_CMD_HEADER *psFDFenceHdr  = IMG_NULL;
-	RGXFWIF_CCB_CMD_HEADER *psFDUpdateHdr = IMG_NULL;
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
-	for (i = 0; i < ui32ServerSyncPrims; i++)
-	{
-		PVRSRV_CLIENT_SYNC_PRIM_OP *psSyncOp = pasSyncOp[i];
-
-			IMG_BOOL bUpdate;
-			
-			PVR_ASSERT(psSyncOp->ui32Flags != 0);
-			if (psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_UPDATE)
-			{
-				bUpdate = IMG_TRUE;
-			}
-			else
-			{
-				bUpdate = IMG_FALSE;
-			}
-
-			eError = PVRSRVServerSyncQueueHWOpKM(pasServerSyncs[i],
-												  bUpdate,
-												  &psSyncOp->ui32FenceValue,
-												  &psSyncOp->ui32UpdateValue);
-			if (eError != PVRSRV_OK)
-			{
-				PVR_DPF((PVR_DBG_ERROR,"PVRSRVServerSyncQueueHWOpKM: Failed (0x%x)", eError));
-				return eError;
-			}
-			
-			if(psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_CHECK)
-			{
-				psUFOPtr = (RGXFWIF_UFO *) pui8FencePtr;
-				psUFOPtr->puiAddrUFO.ui32Addr =  SyncPrimGetFirmwareAddr(psSyncOp->psSync);
-				psUFOPtr->ui32Value = psSyncOp->ui32FenceValue;
-				PDUMPCOMMENT("TQ client server fence - 0x%x <- 0x%x",
-								   psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-				pui8FencePtr += sizeof(*psUFOPtr);
-			}
-			if(psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_UPDATE)
-			{
-				psUFOPtr = (RGXFWIF_UFO *) pui8UpdatePtr;
-				psUFOPtr->puiAddrUFO.ui32Addr =  SyncPrimGetFirmwareAddr(psSyncOp->psSync);
-				psUFOPtr->ui32Value = psSyncOp->ui32UpdateValue;
-				PDUMPCOMMENT("TQ client server update - 0x%x -> 0x%x",
-								   psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-				pui8UpdatePtr += sizeof(*psUFOPtr);
-			}
-		
-	}
-	
-	eError = DevmemAcquireCpuVirtAddr(psCCBCtlMemDesc,
-									  (IMG_VOID **)&psCCBCtl);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"CreateCCB: Failed to map client CCB control (0x%x)", eError));
-		return eError;
-	}
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	eError = PVRFDSyncQueryFencesKM(ui32NumFenceFds,
-									ai32FenceFds,
-									IMG_TRUE,
-									&ui32NumFenceSyncs,
-									&pui32FenceFWAddrs,
-									&pui32FenceValues,
-									&ui32NumUpdateSyncs,
-									&pui32UpdateFWAddrs,
-									&pui32UpdateValues);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"PVRFDSyncQueryFencesKM: Failed (0x%x)", eError));
-		return eError;
-	}			
-	if (ui32NumFenceSyncs)
-	{
-		ui32FDFenceCmdSize = RGX_CCB_FWALLOC_ALIGN(ui32NumFenceSyncs * sizeof(RGXFWIF_UFO) + sizeof(RGXFWIF_CCB_CMD_HEADER));
-	}
-	if (ui32NumUpdateSyncs)
-	{
-		ui32FDUpdateCmdSize = RGX_CCB_FWALLOC_ALIGN(ui32NumUpdateSyncs * sizeof(RGXFWIF_UFO) + sizeof(RGXFWIF_CCB_CMD_HEADER));
-	}
-
-	ui32CmdSize += ui32FDFenceCmdSize + ui32FDUpdateCmdSize;
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
-	/*
-	 * Acquire space in the CCB for the command.
-	 */
-	eError = RGXAcquireCCB(psCCBCtl,
-						   pui32cCCBWoffUpdate,
-						   pscCCBMemDesc,
-						   ui32CmdSize,
-						   (IMG_PVOID *)&pui8CmdPtr,
-						   psCleanupData->bDumpedCCBCtlAlready,
-						   bPDumpContinuous);
-
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSubmitTQ2DKickKM: Failed to acquire %d bytes in client CCB", ui32CmdSize));
-		PVR_ASSERT(0);
-		return eError;
-	}
-	
-	OSMemCopy(&pui8CmdPtr[ui32FDFenceCmdSize], pui8Cmd, ui32CmdSize - ui32FDFenceCmdSize - ui32FDUpdateCmdSize);
-	
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	if (ui32FDFenceCmdSize)
-	{
-		/* Fill the fence header */
-		psFDFenceHdr = (RGXFWIF_CCB_CMD_HEADER *) pui8CmdPtr;
-		psFDFenceHdr->eCmdType = RGXFWIF_CCB_CMD_TYPE_FENCE;
-		psFDFenceHdr->ui32CmdSize = RGX_CCB_FWALLOC_ALIGN(sizeof(RGXFWIF_UFO) * ui32NumFenceSyncs);;
-		/* Fill in the actual fence commands */
-		pui8FencePtr = (IMG_UINT8 *) &pui8CmdPtr[sizeof(RGXFWIF_CCB_CMD_HEADER)];
-		for (i = 0; i < ui32NumFenceSyncs; i++)
-		{
-			psUFOPtr = (RGXFWIF_UFO *) pui8FencePtr;
-			psUFOPtr->puiAddrUFO.ui32Addr = pui32FenceFWAddrs[i];
-			psUFOPtr->ui32Value = pui32FenceValues[i];
-			PDUMPCOMMENT("TQ client server fence - 0x%x <- 0x%x (Android native fence)",
-						 psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-			pui8FencePtr += sizeof(*psUFOPtr);
-		}
-		OSFreeMem(pui32FenceFWAddrs);
-		OSFreeMem(pui32FenceValues);
-	}
-	if (ui32FDUpdateCmdSize)
-	{
-		/* Fill the update header */
-		psFDUpdateHdr = (RGXFWIF_CCB_CMD_HEADER *) &pui8CmdPtr[ui32CmdSize - ui32FDUpdateCmdSize];
-		psFDUpdateHdr->eCmdType = RGXFWIF_CCB_CMD_TYPE_UPDATE;
-		psFDUpdateHdr->ui32CmdSize = RGX_CCB_FWALLOC_ALIGN(sizeof(RGXFWIF_UFO) * ui32NumUpdateSyncs);
-		/* Fill in the actual update commands */
-		pui8UpdatePtr = (IMG_UINT8 *) &pui8CmdPtr[ui32CmdSize - ui32FDUpdateCmdSize + sizeof(RGXFWIF_CCB_CMD_HEADER)];
-		for (i = 0; i < ui32NumUpdateSyncs; i++)
-		{
-			psUFOPtr = (RGXFWIF_UFO *) pui8UpdatePtr;
-			psUFOPtr->puiAddrUFO.ui32Addr = pui32UpdateFWAddrs[i];
-			psUFOPtr->ui32Value = pui32UpdateValues[i];
-			PDUMPCOMMENT("TQ client server update - 0x%x -> 0x%x (Android native fence)",
-						 psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-			pui8UpdatePtr += sizeof(*psUFOPtr);
-		}
-		OSFreeMem(pui32UpdateFWAddrs);
-		OSFreeMem(pui32UpdateValues);
-	}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
-	eError = RGXReleaseCCB(psDeviceNode, 
-						   psCCBCtl,
-						   pscCCBMemDesc, 
-						   psCCBCtlMemDesc,
-						   &psCleanupData->bDumpedCCBCtlAlready,
-						   pui32cCCBWoffUpdate,
-						   ui32CmdSize, 
-						   bPDumpContinuous,
-						   psConnection->psSyncConnectionData);
-
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSubmitTQ2DKickKM: Failed to release space in TQ CCB"));
-		return eError;
-	}
-	
 
 	/*
 	 * Construct the kernel 2D CCB command.
@@ -718,7 +516,7 @@ PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(CONNECTION_DATA		*psConnection,
 	RGXSetFirmwareAddress(&s2DCCBCmd.uCmdData.sCmdKickData.psContext, psFWTQ2DContextMemDesc,
 						  0,
 						  RFW_FWADDR_NOREF_FLAG);
-	s2DCCBCmd.uCmdData.sCmdKickData.ui32CWoffUpdate = *pui32cCCBWoffUpdate;
+	s2DCCBCmd.uCmdData.sCmdKickData.ui32CWoffUpdate = ui32TQ2DcCCBWoffUpdate;
 
 	eError = RGXScheduleCommand(psDeviceNode->pvDevice,
 								RGXFWIF_DM_2D,
@@ -730,19 +528,6 @@ PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(CONNECTION_DATA		*psConnection,
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSubmitTQ2DKickKM : failed to schedule kernel 2D command. Error:%u", eError));
 		return eError;
 	}
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) && defined(NO_HARDWARE)
-	for (i = 0; i < ui32NumFenceFds; i++)
-	{
-		if (PVRFDSyncNoHwUpdateFenceKM(ai32FenceFds[i]) != PVRSRV_OK)
-		{
-			PVR_DPF((PVR_DBG_ERROR, "%s: Failed nohw update on fence fd=%d",
-					 __func__, ai32FenceFds[i]));
-		}
-	}
-#endif
-
-	DevmemReleaseCpuVirtAddr(psCCBCtlMemDesc);
 	return PVRSRV_OK;
 }
 
@@ -751,225 +536,23 @@ PVRSRV_ERROR PVRSRVSubmitTQ2DKickKM(CONNECTION_DATA		*psConnection,
  * PVRSRVSubmitTQ3DKickKM
  */
 IMG_EXPORT
-PVRSRV_ERROR PVRSRVSubmitTQ3DKickKM(CONNECTION_DATA		*psConnection,
-									PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR PVRSRVSubmitTQ3DKickKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 									DEVMEM_MEMDESC 		*psFWTQ3DContextMemDesc,
-									IMG_UINT32			*pui32cCCBWoffUpdate,
-									DEVMEM_MEMDESC 		*pscCCBMemDesc,
-									DEVMEM_MEMDESC 		*psCCBCtlMemDesc,
-									IMG_UINT32			ui32ServerSyncPrims,
-									PVRSRV_CLIENT_SYNC_PRIM_OP**	pasSyncOp,
-									SERVER_SYNC_PRIMITIVE **pasServerSyncs,
-									IMG_UINT32			ui32CmdSize,
-									IMG_PBYTE			pui8Cmd,
-									IMG_UINT32			ui32FenceEnd,
-									IMG_UINT32			ui32UpdateEnd,
-									IMG_UINT32          ui32NumFenceFds,
-									IMG_INT32           *ai32FenceFds,
-									IMG_BOOL			bPDumpContinuous,
-									RGX_TQ3D_CLEANUP_DATA *psCleanupData)
+									IMG_UINT32			ui32TQ3DcCCBWoffUpdate,
+									IMG_BOOL			bPDumpContinuous)
 {
 	RGXFWIF_KCCB_CMD		s3DCCBCmd;
 	PVRSRV_ERROR			eError;
-	volatile RGXFWIF_CCCB_CTL	*psCCBCtl;
-	IMG_UINT8					*pui8CmdPtr;
-	IMG_UINT32 i = 0;
-	RGXFWIF_UFO					*psUFOPtr;
-	IMG_UINT8 *pui8FencePtr = pui8Cmd + ui32FenceEnd; 
-	IMG_UINT8 *pui8UpdatePtr = pui8Cmd + ui32UpdateEnd;
-	IMG_UINT32                  ui32FDFenceCmdSize = 0;
-	IMG_UINT32                  ui32FDUpdateCmdSize = 0;
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	IMG_UINT32 ui32NumFenceSyncs = 0;
-	IMG_UINT32 *pui32FenceFWAddrs;
-	IMG_UINT32 *pui32FenceValues;
-	IMG_UINT32 ui32NumUpdateSyncs = 0;
-	IMG_UINT32 *pui32UpdateFWAddrs;
-	IMG_UINT32 *pui32UpdateValues;
-	RGXFWIF_CCB_CMD_HEADER *psFDFenceHdr  = IMG_NULL;
-	RGXFWIF_CCB_CMD_HEADER *psFDUpdateHdr = IMG_NULL;
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
-	for (i = 0; i < ui32ServerSyncPrims; i++)
-	{
-		PVRSRV_CLIENT_SYNC_PRIM_OP *psSyncOp = pasSyncOp[i];
-
-			IMG_BOOL bUpdate;
-			
-			PVR_ASSERT(psSyncOp->ui32Flags != 0);
-			if (psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_UPDATE)
-			{
-				bUpdate = IMG_TRUE;
-			}
-			else
-			{
-				bUpdate = IMG_FALSE;
-			}
-
-			eError = PVRSRVServerSyncQueueHWOpKM(pasServerSyncs[i],
-												  bUpdate,
-												  &psSyncOp->ui32FenceValue,
-												  &psSyncOp->ui32UpdateValue);
-			if (eError != PVRSRV_OK)
-			{
-				PVR_DPF((PVR_DBG_ERROR,"PVRSRVServerSyncQueueHWOpKM: Failed (0x%x)", eError));
-				return eError;
-			}
-			
-			if(psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_CHECK)
-			{
-				psUFOPtr = (RGXFWIF_UFO *) pui8FencePtr;
-				psUFOPtr->puiAddrUFO.ui32Addr =  SyncPrimGetFirmwareAddr(psSyncOp->psSync);
-				psUFOPtr->ui32Value = psSyncOp->ui32FenceValue;
-				PDUMPCOMMENT("TQ3D client server fence - 0x%x <- 0x%x",
-								   psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-				pui8FencePtr += sizeof(*psUFOPtr);
-			}
-			if(psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_UPDATE)
-			{
-				psUFOPtr = (RGXFWIF_UFO *) pui8UpdatePtr;
-				psUFOPtr->puiAddrUFO.ui32Addr =  SyncPrimGetFirmwareAddr(psSyncOp->psSync);
-				psUFOPtr->ui32Value = psSyncOp->ui32UpdateValue;
-				PDUMPCOMMENT("TQ3D client server update - 0x%x -> 0x%x",
-								   psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-				pui8UpdatePtr += sizeof(*psUFOPtr);
-			}
-	}
-	
-	eError = DevmemAcquireCpuVirtAddr(psCCBCtlMemDesc,
-									  (IMG_VOID **)&psCCBCtl);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"CreateCCB: Failed to map client CCB control (0x%x)", eError));
-		return eError;
-	}
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	eError = PVRFDSyncQueryFencesKM(ui32NumFenceFds,
-									ai32FenceFds,
-									IMG_TRUE,
-									&ui32NumFenceSyncs,
-									&pui32FenceFWAddrs,
-									&pui32FenceValues,
-									&ui32NumUpdateSyncs,
-									&pui32UpdateFWAddrs,
-									&pui32UpdateValues);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"PVRFDSyncQueryFencesKM: Failed (0x%x)", eError));
-		return eError;
-	}			
-	if (ui32NumFenceSyncs)
-	{
-		ui32FDFenceCmdSize = RGX_CCB_FWALLOC_ALIGN(ui32NumFenceSyncs * sizeof(RGXFWIF_UFO) + sizeof(RGXFWIF_CCB_CMD_HEADER));
-	}
-	if (ui32NumUpdateSyncs)
-	{
-		ui32FDUpdateCmdSize = RGX_CCB_FWALLOC_ALIGN(ui32NumUpdateSyncs * sizeof(RGXFWIF_UFO) + sizeof(RGXFWIF_CCB_CMD_HEADER));
-	}
-
-	ui32CmdSize += ui32FDFenceCmdSize + ui32FDUpdateCmdSize;
-
-	if (ui32NumFenceSyncs || ui32NumUpdateSyncs)
-	{
-		PDUMPCOMMENT("(TQ) Android native fences in use: %u fence syncs, %u update syncs, %u total cmd size",
-					 ui32NumFenceSyncs, ui32NumUpdateSyncs, ui32FDFenceCmdSize + ui32FDUpdateCmdSize);
-	}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 
 	/*
-	 * Acquire space in the TQ CCB for the command.
-	 */
-	eError = RGXAcquireCCB(psCCBCtl,
-						   pui32cCCBWoffUpdate,
-						   pscCCBMemDesc,
-						   ui32CmdSize,
-						   (IMG_PVOID *)&pui8CmdPtr,
-						   psCleanupData->bDumpedCCBCtlAlready,
-						   bPDumpContinuous);
-
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSubmitTQ2DKickKM: Failed to acquire %d bytes in client CCB", ui32CmdSize));
-		PVR_ASSERT(0);
-		return eError;
-	}
-	
-	OSMemCopy(&pui8CmdPtr[ui32FDFenceCmdSize], pui8Cmd, ui32CmdSize - ui32FDFenceCmdSize - ui32FDUpdateCmdSize);
-	
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
-	if (ui32FDFenceCmdSize)
-	{
-		/* Fill the fence header */
-		psFDFenceHdr = (RGXFWIF_CCB_CMD_HEADER *) pui8CmdPtr;
-		psFDFenceHdr->eCmdType = RGXFWIF_CCB_CMD_TYPE_FENCE;
-		psFDFenceHdr->ui32CmdSize = RGX_CCB_FWALLOC_ALIGN(sizeof(RGXFWIF_UFO) * ui32NumFenceSyncs);;
-		/* Fill in the actual fence commands */
-		pui8FencePtr = (IMG_UINT8 *) &pui8CmdPtr[sizeof(RGXFWIF_CCB_CMD_HEADER)];
-		for (i = 0; i < ui32NumFenceSyncs; i++)
-		{
-			psUFOPtr = (RGXFWIF_UFO *) pui8FencePtr;
-			psUFOPtr->puiAddrUFO.ui32Addr = pui32FenceFWAddrs[i];
-			psUFOPtr->ui32Value = pui32FenceValues[i];
-			PDUMPCOMMENT("TQ3D client server fence - 0x%x <- 0x%x (Android native fence)",
-						 psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-			pui8FencePtr += sizeof(*psUFOPtr);
-		}
-		OSFreeMem(pui32FenceFWAddrs);
-		OSFreeMem(pui32FenceValues);
-	}
-	if (ui32FDUpdateCmdSize)
-	{
-		/* Fill the update header */
-		psFDUpdateHdr = (RGXFWIF_CCB_CMD_HEADER *) &pui8CmdPtr[ui32CmdSize - ui32FDUpdateCmdSize];
-		psFDUpdateHdr->eCmdType = RGXFWIF_CCB_CMD_TYPE_UPDATE;
-		psFDUpdateHdr->ui32CmdSize = RGX_CCB_FWALLOC_ALIGN(sizeof(RGXFWIF_UFO) * ui32NumUpdateSyncs);
-		/* Fill in the actual update commands */
-		pui8UpdatePtr = (IMG_UINT8 *) &pui8CmdPtr[ui32CmdSize - ui32FDUpdateCmdSize + sizeof(RGXFWIF_CCB_CMD_HEADER)];
-		for (i = 0; i < ui32NumUpdateSyncs; i++)
-		{
-			psUFOPtr = (RGXFWIF_UFO *) pui8UpdatePtr;
-			psUFOPtr->puiAddrUFO.ui32Addr = pui32UpdateFWAddrs[i];
-			psUFOPtr->ui32Value = pui32UpdateValues[i];
-			PDUMPCOMMENT("TQ3D client server update - 0x%x -> 0x%x (Android native fence)",
-						 psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
-			pui8UpdatePtr += sizeof(*psUFOPtr);
-		}
-		OSFreeMem(pui32UpdateFWAddrs);
-		OSFreeMem(pui32UpdateValues);
-	}
-#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
-
-	/*
-	 * Release the TQ CCB for the command.
-	 */
-	PDUMPCOMMENT("TQ 3D command");
-
-	eError = RGXReleaseCCB(psDeviceNode, 
-						   psCCBCtl,
-						   pscCCBMemDesc, 
-						   psCCBCtlMemDesc,
-						   &psCleanupData->bDumpedCCBCtlAlready,
-						   pui32cCCBWoffUpdate,
-						   ui32CmdSize, 
-						   bPDumpContinuous,
-						   psConnection->psSyncConnectionData);
-
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "RGXKickCDM: Failed to release space in TQ CCB"));
-		return eError;
-	}
-	
-	/*
-	 * Construct the kernel TQ3D CCB command.
+	 * Construct the kernel 3D CCB command.
 	 */
 	s3DCCBCmd.eCmdType = RGXFWIF_KCCB_CMD_KICK;
 	RGXSetFirmwareAddress(&s3DCCBCmd.uCmdData.sCmdKickData.psContext,
 						  psFWTQ3DContextMemDesc,
 						  0,
 						  RFW_FWADDR_NOREF_FLAG);
-	s3DCCBCmd.uCmdData.sCmdKickData.ui32CWoffUpdate = *pui32cCCBWoffUpdate;
+	s3DCCBCmd.uCmdData.sCmdKickData.ui32CWoffUpdate = ui32TQ3DcCCBWoffUpdate;
 
 	eError = RGXScheduleCommand(psDeviceNode->pvDevice,
 								RGXFWIF_DM_3D,
@@ -981,19 +564,6 @@ PVRSRV_ERROR PVRSRVSubmitTQ3DKickKM(CONNECTION_DATA		*psConnection,
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSubmitTQ3DKickKM : failed to schedule kernel TQ command. Error:%u", eError));
 		return eError;
 	}
-
-#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) && defined(NO_HARDWARE)
-	for (i = 0; i < ui32NumFenceFds; i++)
-	{
-		if (PVRFDSyncNoHwUpdateFenceKM(ai32FenceFds[i]) != PVRSRV_OK)
-		{
-			PVR_DPF((PVR_DBG_ERROR, "%s: Failed nohw update on fence fd=%d",
-					 __func__, ai32FenceFds[i]));
-		}
-	}
-#endif
-
-	DevmemReleaseCpuVirtAddr(psCCBCtlMemDesc);
 	return PVRSRV_OK;
 }
 

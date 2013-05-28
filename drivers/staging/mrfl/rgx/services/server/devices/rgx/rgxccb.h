@@ -46,7 +46,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "devicemem.h"
 #include "device.h"
-#include "sync_server.h"
 
 #if defined (__cplusplus)
 extern "C" {
@@ -58,9 +57,6 @@ typedef struct {
 	DEVMEM_EXPORTCOOKIE sClientCCBExportCookie;
 	DEVMEM_EXPORTCOOKIE sClientCCBCtlExportCookie;
 } RGX_CCB_CLEANUP_DATA;
-
-
-#define PADDING_COMMAND_SIZE	(sizeof(RGXFWIF_CCB_CMD_HEADER))
 
 /*!
 *******************************************************************************
@@ -106,22 +102,4 @@ FIXME fill this in
 IMG_IMPORT
 PVRSRV_ERROR PVRSRVRGXDestroyCCBKM(RGX_CCB_CLEANUP_DATA *psCleanupData);
 
-
-PVRSRV_ERROR RGXAcquireCCB(volatile RGXFWIF_CCCB_CTL	*psCCBCtl,
-										IMG_UINT32		*pui32Woff,
-										DEVMEM_MEMDESC 		*pscCCBMemDesc,
-										IMG_UINT32		ui32CmdSize,
-										IMG_PVOID		*ppvBufferSpace,
-										IMG_BOOL		bDumpedCCBCtlAlready,
-										IMG_BOOL		bPDumpContinuous);
-
-PVRSRV_ERROR RGXReleaseCCB(PVRSRV_DEVICE_NODE	*psDevNode,
-										volatile RGXFWIF_CCCB_CTL	*psCCBCtl,
-										DEVMEM_MEMDESC 		*pscCCBMemDesc,
-										DEVMEM_MEMDESC 		*pscCCBCtlMemDesc,
-										IMG_BOOL		*pbDumpedCCBCtlAlready,
-										IMG_UINT32		*pui32Woff,
-										IMG_UINT32		ui32CmdSize,
-										IMG_BOOL		bPDumpContinuous,
-										SYNC_CONNECTION_DATA 	*psSyncConnectionData);
 #endif /* __RGXCCB_H__ */

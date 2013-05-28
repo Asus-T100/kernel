@@ -52,7 +52,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_device.h"
 #include "pvr_debug.h"
 #include "sync.h"
-#include "sync_server.h"
 
 #include "pvrversion.h"
 
@@ -69,20 +68,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxinit.h"
 #endif
 
-#include "debug_request_ids.h"
-
-typedef struct DEBUG_REQUEST_ENTRY_TAG
-{
-	IMG_UINT32		ui32RequesterID;
-	DLLIST_NODE		sListHead;
-} DEBUG_REQUEST_ENTRY;
-
-typedef struct DEBUG_REQUEST_TABLE_TAG
-{
-	IMG_UINT32				ui32RequestCount;
-	DEBUG_REQUEST_ENTRY		asEntry[1];
-}DEBUG_REQUEST_TABLE;
-
 static PVRSRV_DATA	*gpsPVRSRVData = IMG_NULL;
 
 static PVRSRV_SYSTEM_CONFIG *gpsSysConfig = IMG_NULL;
@@ -96,9 +81,6 @@ static PFN_UNREGISTER_DEVICE sUnregisterDevice[PVRSRV_DEVICE_TYPE_LAST + 1];
 static PVRSRV_ERROR IMG_CALLCONV PVRSRVRegisterDevice(PVRSRV_DEVICE_CONFIG *psDevConfig);
 static PVRSRV_ERROR IMG_CALLCONV PVRSRVUnregisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
 
-static PVRSRV_ERROR PVRSRVRegisterDbgTable(IMG_UINT32 *paui32Table, IMG_UINT32 ui32Length, IMG_PVOID *phTable);
-static IMG_VOID PVRSRVUnregisterDbgTable(IMG_PVOID hTable);
-
 IMG_UINT32	g_ui32InitFlags;
 
 /* mark which parts of Services were initialised */
@@ -108,18 +90,6 @@ IMG_UINT32	g_ui32InitFlags;
 /* Head of the list of callbacks called when Cmd complete happens */
 static DLLIST_NODE sCmdCompNotifyHead;
 static POSWR_LOCK hNotifyLock = IMG_NULL;
-
-/* Debug request table and lock */
-static POSWR_LOCK g_hDbgNotifyLock = IMG_NULL;
-static DEBUG_REQUEST_TABLE *g_psDebugTable;
-
-static IMG_PVOID g_hDebugTable = IMG_NULL;
-
-static IMG_UINT32 g_aui32DebugOrderTable[] = {
-	DEBUG_REQUEST_RGX,
-	DEBUG_REQUEST_DC,
-	DEBUG_REQUEST_SERVERSYNC
-};
 
 /*!
 ******************************************************************************
@@ -350,44 +320,6 @@ static IMG_VOID CleanupThread(IMG_PVOID pvData)
 	OSReleaseBridgeLock();
 }
 
-
-static IMG_VOID FatalErrorDetectionThread(IMG_PVOID pvData)
-{
-	PVRSRV_DATA  *psPVRSRVData = pvData;
-	
-	/* Loop continuously checking the device status every few seconds. */
-	while (!psPVRSRVData->bUnload)
-	{
-		IMG_UINT32  i;
-		
-		/* Wait time between polls (done at the start of the loop to allow devices to initialise)... */
-		OSSleepms(FATAL_ERROR_DETECTION_POLL_MS);
-		
-		for (i = 0;  i < psPVRSRVData->ui32RegisteredDevices;  i++)
-		{
-			PVRSRV_DEVICE_NODE*  psDeviceNode = psPVRSRVData->apsRegisteredDevNodes[i];
-			
-			if (psDeviceNode->pfnUpdateHealthStatus != IMG_NULL)
-			{
-				PVRSRV_ERROR  eError;
-
-				eError = psDeviceNode->pfnUpdateHealthStatus(psDeviceNode, IMG_TRUE);
-				if (eError != PVRSRV_OK)
-				{
-					PVR_DPF((PVR_DBG_WARNING, "FatalErrorDetectionThread: Could not check for fatal error (%d)!",
-							 eError));
-				}
-			}
-
-			if (psDeviceNode->eHealthStatus != PVRSRV_DEVICE_HEALTH_STATUS_OK)
-			{
-				PVR_DPF((PVR_DBG_ERROR, "FatalErrorDetectionThread: Fatal Error Detected!!!"));
-			}
-		}
-	}
-}
-
-
 PVRSRV_DATA *PVRSRVGetPVRSRVData()
 {
 	return gpsPVRSRVData;
@@ -514,34 +446,12 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVInit(IMG_VOID)
 	{
 		goto Error;
 	}
-	gpsPVRSRVData->ui32GEOConsecutiveTimeouts = 0;
 
 	/* initialise list of command complete notifiers */
 	dllist_init(&sCmdCompNotifyHead);
 
 	/* Create a lock of the list notifiers */
 	eError = OSWRLockCreate(&hNotifyLock);
-	if (eError != PVRSRV_OK)
-	{
-		goto Error;
-	}
-
-	/* Create a lock of the debug notifiers */
-	eError = OSWRLockCreate(&g_hDbgNotifyLock);
-	if (eError != PVRSRV_OK)
-	{
-		goto Error;
-	}
-
-	eError = PVRSRVRegisterDbgTable(g_aui32DebugOrderTable,
-									sizeof(g_aui32DebugOrderTable)/sizeof(g_aui32DebugOrderTable[0]),
-									&g_hDebugTable);
-	if (eError != PVRSRV_OK)
-	{
-		goto Error;
-	}
-
-	eError = ServerSyncInit();
 	if (eError != PVRSRV_OK)
 	{
 		goto Error;
@@ -579,22 +489,6 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVInit(IMG_VOID)
 							"pvr_defer_free",
 							CleanupThread,
 							gpsPVRSRVData);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"PVRSRVInit: Failed to create deferred cleanup thread"));
-		goto Error;
-	}
-
-	/* Create a thread which is used to detect fatal errors */
-	eError = OSThreadCreate(&gpsPVRSRVData->hFatalErrorDetectionThread,
-							"pvr_fatal_error_detection",
-							FatalErrorDetectionThread,
-							gpsPVRSRVData);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"PVRSRVInit: Failed to create fatal error detection thread"));
-		goto Error;
-	}
 
 	return eError;
 
@@ -623,7 +517,6 @@ IMG_VOID IMG_CALLCONV PVRSRVDeInit(IMG_VOID)
 	/* Destroy the cleanup thread */
 	psPVRSRVData->bUnload = IMG_TRUE;
 	OSEventObjectSignal(psPVRSRVData->hGlobalEventObject);
-	OSThreadDestory(gpsPVRSRVData->hFatalErrorDetectionThread);
 	OSThreadDestory(gpsPVRSRVData->hCleanupThread);
 
 	if (g_ui32InitFlags & INIT_GLOBAL_RESMAN)
@@ -654,6 +547,33 @@ IMG_VOID IMG_CALLCONV PVRSRVDeInit(IMG_VOID)
 				SyncPrimFree(psDeviceNode->psSyncPrimPreKick);
 				psDeviceNode->psSyncPrimPreKick = IMG_NULL;
 			}
+			if (psDeviceNode->psZSBufferPopulateSyncPrim != IMG_NULL)
+			{
+				/* Free ZS Buffer populate sync primitive */
+				SyncPrimFree(psDeviceNode->psZSBufferPopulateSyncPrim);
+				psDeviceNode->psZSBufferPopulateSyncPrim = IMG_NULL;
+			}
+			if (psDeviceNode->psZSBufferUnPopulateSyncPrim != IMG_NULL)
+			{
+				/* Free ZS Buffer unpopulate sync primitive */
+				SyncPrimFree(psDeviceNode->psZSBufferUnPopulateSyncPrim);
+				psDeviceNode->psZSBufferUnPopulateSyncPrim = IMG_NULL;
+			}
+			if (psDeviceNode->psGrowSyncPrim != IMG_NULL)
+			{
+				/* Free ZS Buffer populate sync primitive */
+				SyncPrimFree(psDeviceNode->psGrowSyncPrim);
+				psDeviceNode->psGrowSyncPrim = IMG_NULL;
+			}
+			if (psDeviceNode->psShrinkSyncPrim != IMG_NULL)
+			{
+				/* Free ZS Buffer unpopulate sync primitive */
+				SyncPrimFree(psDeviceNode->psShrinkSyncPrim);
+				psDeviceNode->psShrinkSyncPrim = IMG_NULL;
+			}
+
+			OSLockDestroy(psDeviceNode->hLockZSBuffer);
+			OSLockDestroy(psDeviceNode->hLockFreeList);
 
 			SyncPrimContextDestroy(psDeviceNode->hSyncPrimContext);
 			psDeviceNode->hSyncPrimContext = IMG_NULL;
@@ -663,18 +583,6 @@ IMG_VOID IMG_CALLCONV PVRSRVDeInit(IMG_VOID)
 		psPVRSRVData->apsRegisteredDevNodes[i] = IMG_NULL;
 	}
 	SysDestroyConfigData(gpsSysConfig);
-
-	ServerSyncDeinit();
-
-	if (g_hDebugTable)
-	{
-		PVRSRVUnregisterDbgTable(g_hDebugTable);
-	}
-
-	if (g_hDbgNotifyLock)
-	{
-		OSWRLockDestroy(g_hDbgNotifyLock);
-	}
 
 	if (hNotifyLock)
 	{
@@ -1156,6 +1064,7 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVFinaliseSystem(IMG_BOOL bInitSuccessful, IMG_UIN
 
 			SyncPrimContextCreate(IMG_NULL,
 								  psDeviceNode,
+								  IMG_NULL,
 								  &psDeviceNode->hSyncPrimContext);
 
 			/* Allocate general purpose sync primitive */
@@ -1172,6 +1081,63 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVFinaliseSystem(IMG_BOOL bInitSuccessful, IMG_UIN
 				PVR_DPF((PVR_DBG_ERROR,"PVRSRVFinaliseSystem: Failed to allocate PreKick sync primitive with error (%u)", eError));
 				return eError;
 			}
+			/* Allocate sync primitive for deferred ZS Buffer population */
+			eError = SyncPrimAlloc(psDeviceNode->hSyncPrimContext, &psDeviceNode->psZSBufferPopulateSyncPrim);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"PVRSRVFinaliseSystem: Failed to allocate ZS buffer population sync primitive with error (%u)", eError));
+				return eError;
+			}
+			SyncPrimSet(psDeviceNode->psZSBufferPopulateSyncPrim,0);
+
+			/* Allocate sync primitive for deferred ZS Buffer unpopulation */
+			eError = SyncPrimAlloc(psDeviceNode->hSyncPrimContext, &psDeviceNode->psZSBufferUnPopulateSyncPrim);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"PVRSRVFinaliseSystem: Failed to allocate ZS buffer unpopulation sync primitive with error (%u)", eError));
+				return eError;
+			}
+			SyncPrimSet(psDeviceNode->psZSBufferUnPopulateSyncPrim,0);
+
+			/* Allocate sync primitive for grow */
+			eError = SyncPrimAlloc(psDeviceNode->hSyncPrimContext, &psDeviceNode->psGrowSyncPrim);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"PVRSRVFinaliseSystem: Failed to allocate grow sync primitive with error (%u)", eError));
+				return eError;
+			}
+			SyncPrimSet(psDeviceNode->psGrowSyncPrim,0);
+
+			/* Allocate sync primitive for shrink */
+			eError = SyncPrimAlloc(psDeviceNode->hSyncPrimContext, &psDeviceNode->psShrinkSyncPrim);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"PVRSRVFinaliseSystem: Failed to allocate shrink sync primitive with error (%u)", eError));
+				return eError;
+			}
+			SyncPrimSet(psDeviceNode->psShrinkSyncPrim,0);
+
+			/* Register ZLS Sync prim */
+			eError = psDeviceNode->pfnZSBufferSyncPrimUpdate(psDeviceNode,
+															psDeviceNode->psZSBufferPopulateSyncPrim,
+															psDeviceNode->psZSBufferUnPopulateSyncPrim,
+															psDeviceNode->psGrowSyncPrim,
+															psDeviceNode->psShrinkSyncPrim);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"PVRSRVFinaliseSystem: Failed to submit ZLS sync primitive to firmware with error (%u)", eError));
+				return eError;
+			}
+
+			/* Init lists of deferred Allocations */
+			eError = OSLockCreate(&psDeviceNode->hLockZSBuffer,LOCK_TYPE_PASSIVE);
+			PVR_ASSERT(eError == PVRSRV_OK);
+			dllist_init(&psDeviceNode->sDeferredAllocHead);
+			eError = OSLockCreate(&psDeviceNode->hLockFreeList,LOCK_TYPE_PASSIVE);
+			PVR_ASSERT(eError == PVRSRV_OK);
+			dllist_init(&psDeviceNode->sFreeListHead);
+			psDeviceNode->ui32DeferredAllocCurrID = 1;
+			psDeviceNode->ui32FreelistCurrID = 1;
 		}
 
 		/* Verify firmware compatibility for devices */
@@ -1511,15 +1477,7 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKM (volatile IMG_UINT32	*pui32LinMem
 		{
 			/* wait for event and retry */
 			eErrorWait = OSEventObjectWait(hOSEvent);
-			if (eErrorWait == PVRSRV_ERROR_TIMEOUT)
-			{
-				psPVRSRVData->ui32GEOConsecutiveTimeouts++;
-			}
-			else if (eErrorWait == PVRSRV_OK)
-			{
-				psPVRSRVData->ui32GEOConsecutiveTimeouts = 0;
-			}
-			else
+			if (eErrorWait != PVRSRV_OK)
 			{
 				PVR_DPF((PVR_DBG_WARNING,"PVRSRVWaitForValueKM: Waiting for value failed with error %d. Expected 0x%x but found 0x%x (Mask 0x%08x). Retrying",
 							eErrorWait,
@@ -1531,12 +1489,6 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKM (volatile IMG_UINT32	*pui32LinMem
 	} END_LOOP_UNTIL_TIMEOUT();
 
 	OSEventObjectClose(hOSEvent);
-
-	/* One last check incase the object wait ended after the loop timeout... */
-	if (eError != PVRSRV_OK  &&  (*pui32LinMemAddr & ui32Mask) == ui32Value)
-	{
-		eError = PVRSRV_OK;
-	}
 
 EventObjectOpenError:
 
@@ -1584,13 +1536,6 @@ IMG_VOID IMG_CALLCONV PVRSRVCheckStatus(PVRSRV_CMDCOMP_HANDLE hCmdCompCallerHand
 			OSEventObjectSignal(hOSEventKM);
 		}
 	}
-}
-
-PVRSRV_ERROR IMG_CALLCONV PVRSRVKickDevicesKM(IMG_VOID)
-{
-	PVR_DPF((PVR_DBG_ERROR, "PVRSRVKickDevicesKM"));
-	PVRSRVCheckStatus(IMG_NULL);
-	return PVRSRV_OK;
 }
 
 /*!
@@ -1735,181 +1680,6 @@ PVRSRV_ERROR PVRSRVUnregisterCmdCompleteNotify(IMG_HANDLE hNotify)
 
 	return PVRSRV_OK;
 
-}
-
-static IMG_BOOL _DebugRequest(PDLLIST_NODE psNode, IMG_PVOID hVerbLevel)
-{
-	IMG_UINT32 *pui32VerbLevel = (IMG_UINT32 *) hVerbLevel;
-	PVRSRV_DBGREQ_NOTIFY *psNotify;
-
-	psNotify = IMG_CONTAINER_OF(psNode, PVRSRV_DBGREQ_NOTIFY, sListNode);
-
-	psNotify->pfnDbgRequestNotify(psNotify->hDbgRequestHandle, *pui32VerbLevel);
-
-	/* keep processing until the end of the list */
-	return IMG_TRUE;
-}
-
-/*
-	PVRSRVDebugRequest
-*/
-IMG_VOID IMG_CALLCONV PVRSRVDebugRequest(IMG_UINT32 ui32VerbLevel)
-{
-	IMG_UINT32 i,j;
-
-	/* notify any registered device to check if block work items can now proceed */
-	/* Lock the lists */
-	OSWRLockAcquireRead(g_hDbgNotifyLock);
-
-	/* For each verbosity level */
-	for (j=0;j<(ui32VerbLevel+1);j++)
-	{
-		/* For each requester */
-		for (i=0;i<g_psDebugTable->ui32RequestCount;i++)
-		{
-			dllist_foreach_node(&g_psDebugTable->asEntry[i].sListHead, _DebugRequest, &j);
-		}
-	}
-
-	/* Unlock the lists */
-	OSWRLockReleaseRead(g_hDbgNotifyLock);
-}
-
-/*
-	PVRSRVRegisterDebugRequestNotify
-*/
-PVRSRV_ERROR PVRSRVRegisterDbgRequestNotify(IMG_HANDLE *phNotify, PFN_DBGREQ_NOTIFY pfnDbgRequestNotify, IMG_UINT32 ui32RequesterID, PVRSRV_DBGREQ_HANDLE hDbgRequestHandle)
-{
-	PVRSRV_DBGREQ_NOTIFY *psNotify;
-	PDLLIST_NODE psHead = IMG_NULL;
-	IMG_UINT32 i;
-	PVRSRV_ERROR eError;
-
-	if ((phNotify == IMG_NULL) || (pfnDbgRequestNotify == IMG_NULL))
-	{
-		PVR_DPF((PVR_DBG_ERROR,"%s: Bad arguments (%p, %p,)", __FUNCTION__, phNotify, pfnDbgRequestNotify));
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto fail_params;
-	}
-
-	psNotify = OSAllocMem(sizeof(*psNotify));
-	if (psNotify == IMG_NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"%s: Not enough memory to allocate DbgRequestNotify structure", __FUNCTION__));
-		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto fail_alloc;
-	}
-
-	/* Set-up the notify data */
-	psNotify->hDbgRequestHandle = hDbgRequestHandle;
-	psNotify->pfnDbgRequestNotify = pfnDbgRequestNotify;
-	psNotify->ui32RequesterID = ui32RequesterID;
-
-	/* Lock down all the lists */
-	OSWRLockAcquireWrite(g_hDbgNotifyLock);
-
-	/* Find which list to add it to */
-	for (i=0;i<g_psDebugTable->ui32RequestCount;i++)
-	{
-		if (g_psDebugTable->asEntry[i].ui32RequesterID == ui32RequesterID)
-		{
-			psHead = &g_psDebugTable->asEntry[i].sListHead;
-		}
-	}
-
-	if (psHead == IMG_NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"%s: Failed to find debug requester", __FUNCTION__));
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto fail_add;
-	}
-
-	/* Add it to the list of Notify functions */
-	dllist_add_to_tail(psHead, &psNotify->sListNode);
-
-	/* Unlock the lists */
-	OSWRLockReleaseWrite(g_hDbgNotifyLock);
-
-	*phNotify = psNotify;
-
-	return PVRSRV_OK;
-
-fail_add:
-	OSWRLockReleaseWrite(g_hDbgNotifyLock);
-	OSFreeMem(psNotify);
-fail_alloc:
-fail_params:
-	return eError;
-}
-
-/*
-	PVRSRVUnregisterCmdCompleteNotify
-*/
-PVRSRV_ERROR PVRSRVUnregisterDbgRequestNotify(IMG_HANDLE hNotify)
-{
-	PVRSRV_DBGREQ_NOTIFY *psNotify = (PVRSRV_DBGREQ_NOTIFY*) hNotify;
-
-	if (psNotify == IMG_NULL)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"%s: Bad arguments (%p)", __FUNCTION__, hNotify));
-		return PVRSRV_ERROR_INVALID_PARAMS;
-	}
-
-	/* remove the node from the list */
-	OSWRLockAcquireWrite(g_hDbgNotifyLock);
-	dllist_remove_node(&psNotify->sListNode);
-	OSWRLockReleaseWrite(g_hDbgNotifyLock);
-
-	/* free the notify structure that holds the node */
-	OSFreeMem(psNotify);
-
-	return PVRSRV_OK;
-}
-
-
-static PVRSRV_ERROR PVRSRVRegisterDbgTable(IMG_UINT32 *paui32Table, IMG_UINT32 ui32Length, IMG_PVOID *phTable)
-{
-	IMG_UINT32 i;
-	if (g_psDebugTable != IMG_NULL)
-	{
-		return PVRSRV_ERROR_DBGTABLE_ALREADY_REGISTERED;
-	}
-
-	g_psDebugTable = OSAllocMem(sizeof(DEBUG_REQUEST_TABLE) + (sizeof(DEBUG_REQUEST_ENTRY) * (ui32Length-1)));
-	if (!g_psDebugTable)
-	{
-		return PVRSRV_ERROR_OUT_OF_MEMORY;
-	}
-
-	g_psDebugTable->ui32RequestCount = ui32Length;
-
-	/* Init the list heads */
-	for (i=0;i<ui32Length;i++)
-	{
-		g_psDebugTable->asEntry[i].ui32RequesterID = paui32Table[i];
-		dllist_init(&g_psDebugTable->asEntry[i].sListHead);
-	}
-
-	*phTable = g_psDebugTable;
-	return PVRSRV_OK;
-}
-
-static IMG_VOID PVRSRVUnregisterDbgTable(IMG_PVOID hTable)
-{
-	IMG_UINT32 i;
-
-	PVR_ASSERT(hTable == g_psDebugTable);
-
-	for (i=0;i<g_psDebugTable->ui32RequestCount;i++)
-	{
-		if (!dllist_is_empty(&g_psDebugTable->asEntry[i].sListHead))
-		{
-			PVR_DPF((PVR_DBG_ERROR, "PVRSRVUnregisterDbgTable: Found registered callback(s) on %d", i));
-		}
-	}
-	OSFreeMem(g_psDebugTable);
-	
-	g_psDebugTable = IMG_NULL;
 }
 
 PVRSRV_ERROR AcquireGlobalEventObjectServer(IMG_HANDLE *phGlobalEventObject)
