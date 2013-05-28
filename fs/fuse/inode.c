@@ -841,12 +841,35 @@ static void process_init_reply(struct fuse_conn *fc, struct fuse_req *req)
 				fc->big_writes = 1;
 			if (arg->flags & FUSE_DONT_MASK)
 				fc->dont_mask = 1;
+			if (arg->flags & FUSE_FAST_PATH_ENABLE) {
+				/* Save PID */
+				fc->ring3_pid = (int)arg->pid;
+				if (fc->ring3_pid <= 0) {
+					fc->ring3_pid = 0;
+					arg->flags &= ~FUSE_FAST_PATH_ENABLE;
+					goto continue_fc;
+				}
+
+				/* Get task_struct and
+				struct file array based on PID */
+				fc->ring3_task = NULL;
+				fc->ring3_task = pid_task(
+						find_vpid(fc->ring3_pid),
+						PIDTYPE_PID);
+				if (!fc->ring3_task) {
+					arg->flags &= ~FUSE_FAST_PATH_ENABLE;
+					goto continue_fc;
+				}
+				fc->enable_fast_path = 1;
+			} else {
+				fc->enable_fast_path = 0;
+			}
 		} else {
 			ra_pages = fc->max_read / PAGE_CACHE_SIZE;
 			fc->no_lock = 1;
 			fc->no_flock = 1;
 		}
-
+continue_fc:
 		fc->bdi.ra_pages = min(fc->bdi.ra_pages, ra_pages);
 		fc->minor = arg->minor;
 		fc->max_write = arg->minor < 5 ? 4096 : arg->max_write;
@@ -866,7 +889,7 @@ static void fuse_send_init(struct fuse_conn *fc, struct fuse_req *req)
 	arg->max_readahead = fc->bdi.ra_pages * PAGE_CACHE_SIZE;
 	arg->flags |= FUSE_ASYNC_READ | FUSE_POSIX_LOCKS | FUSE_ATOMIC_O_TRUNC |
 		FUSE_EXPORT_SUPPORT | FUSE_BIG_WRITES | FUSE_DONT_MASK |
-		FUSE_FLOCK_LOCKS;
+		FUSE_FLOCK_LOCKS | FUSE_FAST_PATH_ENABLE;
 	req->in.h.opcode = FUSE_INIT;
 	req->in.numargs = 1;
 	req->in.args[0].size = sizeof(*arg);
