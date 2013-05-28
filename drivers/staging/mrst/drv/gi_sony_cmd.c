@@ -71,7 +71,6 @@ static u8 gi_l5f3_set_row_add[] = {0x2b, 0x00, 0x00, 0x01,
 static u8 gi_l5f3_set_address_mode[] = {0x36, 0xd0, 0x00, 0x00};
 static u8 gi_l5f3_set_pixel_format[] = {0x3a, 0x77, 0x00, 0x00};
 static u8 gi_l5f3_set_te_scanline[] = {0x44, 0x00, 0x00, 0x00};
-static u8 gi_l5f3_set_tear_on[] = {0x35, 0x00, 0x00, 0x00};
 static u8 gi_l5f3_passwd1_on[] = {0xf0, 0x5a, 0x5a, 0x00};
 static u8 gi_l5f3_passwd2_on[] = {0xf1, 0x5a, 0x5a, 0x00};
 static u8 gi_l5f3_dstb_on[] = {0xdf, 0x01, 0x00, 0x00};
@@ -122,7 +121,6 @@ static u8 gi_l5f3_set_wrblctl[] = {0xc3, 0x00, 0x10, 0x20};
 static u8 gi_l5f3_passwd1_off[] = {0xf0, 0xa5, 0xa5, 0x00};
 static u8 gi_l5f3_turn_on_backlight[] = {0x53, 0x24, 0x00, 0x00};
 static u8 gi_l5f3_disable_cabc[] = {0x55, 0x00, 0x00, 0x00};
-static u8 gi_l5f3_exit_sleep_mode[] = {0x11, 0x00, 0x00, 0x00};
 
 /* FIXME Optimize the delay time after PO.  */
 static
@@ -351,7 +349,6 @@ struct drm_display_mode *gi_sony_cmd_get_config_mode(void)
 static
 int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 {
-	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 param[4];

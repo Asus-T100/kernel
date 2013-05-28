@@ -502,22 +502,20 @@ static int __init PVRSRVDrmInit(void)
 
 static void __exit PVRSRVDrmExit(void)
 {
-	int ret = 0;
 	printk(KERN_INFO "__SGX_pvr exit..\n");
 #ifdef CONFIG_GPU_BURST
     if(gburst_init_state == 1){
-        ret = gburst_module_exit();
+        int ret = gburst_module_exit();
         gburst_init_state = 0;
-        if (ret){
+        if (ret) {
             printk(KERN_ERR "gburst_module_exit failure!");
-            return ret;
+            return;
         }
     }
 #endif
 	PVRSRVDrmUnload(g_drm_dev);
 	SYSPVRClearCallback(g_drm_dev);
 	printk(KERN_INFO "__SGX_pvr exit ok..\n");
-	return 0;
 }
 
 #endif

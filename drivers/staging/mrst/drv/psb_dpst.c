@@ -19,7 +19,9 @@
  *
  */
 
+#include "dispmgrnl.h"
 #include "psb_umevents.h"
+#include "psb_drm.h"
 #include "psb_dpst.h"
 #include "psb_dpst_func.h"
 

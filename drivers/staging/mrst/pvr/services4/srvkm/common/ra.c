@@ -1166,7 +1166,8 @@ RA_Create (IMG_CHAR *name,
 	}
 
 	pArena->name = name;
-	pArena->pImportAlloc = (imp_alloc!=IMG_NULL) ? imp_alloc : &_RequestAllocFail;
+	pArena->pImportAlloc = (void *)((imp_alloc != IMG_NULL)
+					? imp_alloc : &_RequestAllocFail);
 	pArena->pImportFree = imp_free;
 	pArena->pBackingStoreFree = backingstore_free;
 	pArena->pImportHandle = pImportHandle;

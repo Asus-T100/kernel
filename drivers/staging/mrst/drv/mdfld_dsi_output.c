@@ -82,6 +82,7 @@ static int __init parse_LABC_control(char *arg)
 early_param ("LABC", parse_LABC_control);
 #endif
 
+#if DEBUG
 /**
  * make these MCS command global 
  * we don't need 'movl' everytime we send them.
@@ -179,6 +180,7 @@ static void mdfld_dsi_write_gamma_setting (struct mdfld_dsi_config * dsi_config,
 				   3,
 				   MDFLD_DSI_SEND_PACKAGE);
 }
+#endif
 
 /**
  * Check and see if the generic control or data buffer is empty and ready.
@@ -508,15 +510,17 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector * connector, stru
 
 static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 {
-	/*first, execute dpms*/
-	drm_helper_connector_dpms(connector, mode);
-
 #ifdef CONFIG_PM_RUNTIME
 	struct drm_device *dev = connector->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config **dsi_configs;
 	bool panel_on = false, panel_on1 = false, panel_on2 = false;
+#endif
 
+	/*first, execute dpms*/
+	drm_helper_connector_dpms(connector, mode);
+
+#ifdef CONFIG_PM_RUNTIME
 	dsi_configs = dev_priv->dsi_configs;
 
 	if (dsi_configs[0])
@@ -555,7 +559,7 @@ static struct drm_encoder * mdfld_dsi_connector_best_encoder(struct drm_connecto
 	struct mdfld_dsi_encoder * encoder = NULL;
 	if (!dsi_config) {
 		DRM_ERROR("Invalid config\n");
-		return -EINVAL;
+		return NULL;
 	}
 	
 	PSB_DEBUG_ENTRY("config type %d\n", dsi_config->type);

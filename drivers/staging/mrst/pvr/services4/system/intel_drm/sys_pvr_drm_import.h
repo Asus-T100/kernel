@@ -44,6 +44,8 @@
 
 #define DRM_PSB_STOLEN_MEMORY		0x0D
 
+#undef DRM_PSB_PLACEMENT_OFFSET
+
 #if defined(PDUMP)
 #define DRM_PSB_PLACEMENT_OFFSET	0x21
 #else

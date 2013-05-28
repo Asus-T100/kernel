@@ -573,14 +573,10 @@ void dpst_execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 	switch (cmd_hdr->cmd) {
 	case DISPMGR_DPST_GET_MODE:
 		{
-			if (cmd_hdr->data_size) {
-				unsigned long value =
-				    *((unsigned long *)cmd_hdr->data);
-			}
-
-			uint32_t xy = 0;
-			psb_dpst_mode(g_dev, &xy);
 			struct dispmgr_command_hdr send_cmd_hdr;
+			uint32_t xy = 0;
+
+			psb_dpst_mode(g_dev, &xy);
 			send_cmd_hdr.data_size = sizeof(xy);
 			send_cmd_hdr.data = &xy;
 			send_cmd_hdr.module = DISPMGR_MOD_DPST;
