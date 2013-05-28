@@ -112,7 +112,8 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_EVENT_PORT_EOF	CSS_EVENT(PORT_EOF)
 
-#define CSS_MIPI_FRAME_BUFFER_SIZE	0x60000
+#define CSS_MIPI_FRAME_BUFFER_SIZE_1	0x60000
+#define CSS_MIPI_FRAME_BUFFER_SIZE_2	0x80000
 
 struct atomisp_device;
 

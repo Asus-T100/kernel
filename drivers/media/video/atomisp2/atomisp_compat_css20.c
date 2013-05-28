@@ -33,6 +33,8 @@
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
+#include <asm/intel-mid.h>
+
 enum frame_info_type {
 	ATOMISP_CSS_VF_FRAME,
 	ATOMISP_CSS_OUTPUT_FRAME,
@@ -968,8 +970,14 @@ void atomisp_css_input_set_mode(struct atomisp_device *isp,
 				enum atomisp_css_input_mode mode)
 {
 	isp->css_env.stream_config.mode = mode;
-	if (mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
-		ia_css_mipi_frame_specify(CSS_MIPI_FRAME_BUFFER_SIZE, false);
+
+	if (mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
+		return;
+
+	ia_css_mipi_frame_specify(
+		intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER
+		? CSS_MIPI_FRAME_BUFFER_SIZE_2 : CSS_MIPI_FRAME_BUFFER_SIZE_1,
+		false);
 }
 
 void atomisp_css_capture_enable_online(struct atomisp_device *isp,
