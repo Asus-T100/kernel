@@ -32,7 +32,7 @@ export INSTALL_MOD_PATH
 CURDIR := $(shell pwd)
 
 # Note: This export of KBUILD_OUTPUT is equivalent to -O=the_same
-export KBUILD_OUTPUT := $(ANDROID_PRODUCT_OUT)/kernel_build
+export KBUILD_OUTPUT := $(ANDROID_PRODUCT_OUT)/linux/kernel
 
 # In this makefile (used only for external module builds), force
 # GBURST_EXT_MOD_BUILD=y to allow standalone module builds for development
