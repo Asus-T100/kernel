@@ -1004,8 +1004,11 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	spin_lock_init(&isp->lock);
 	init_completion(&isp->init_done);
 
-	/* FIXME: Add config option for CSS 2.0 */
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	isp->media_dev.driver_version = ATOMISP_CSS_VERSION_20;
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	isp->media_dev.driver_version = ATOMISP_CSS_VERSION_15;
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 	switch (id->device & ATOMISP_PCI_DEVICE_SOC_MASK) {
 	case ATOMISP_PCI_DEVICE_SOC_MRFLD:
