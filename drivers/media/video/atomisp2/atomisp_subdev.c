@@ -852,6 +852,16 @@ static const struct v4l2_ctrl_config ctrl_continuous_viewfinder = {
 	.def = 0,
 };
 
+static void atomisp_init_subdev_pipe(struct atomisp_device *isp,
+		struct atomisp_video_pipe *pipe, enum v4l2_buf_type buf_type)
+{
+	pipe->type = buf_type;
+	pipe->isp = isp;
+	spin_lock_init(&pipe->irq_lock);
+	INIT_LIST_HEAD(&pipe->activeq);
+	INIT_LIST_HEAD(&pipe->activeq_out);
+}
+
 /*
  * isp_subdev_init_entities - Initialize V4L2 subdev and media entity
  * @isp_subdev: ISP CCDC module
@@ -892,21 +902,21 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	if (ret < 0)
 		return ret;
 
-	isp_subdev->video_in.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-	isp_subdev->video_in.isp = isp_subdev->isp;
-	spin_lock_init(&isp_subdev->video_in.irq_lock);
+	atomisp_init_subdev_pipe(isp_subdev->isp,
+			&isp_subdev->video_in,
+			V4L2_BUF_TYPE_VIDEO_OUTPUT);
 
-	isp_subdev->video_out_preview.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	isp_subdev->video_out_preview.isp = isp_subdev->isp;
-	spin_lock_init(&isp_subdev->video_out_preview.irq_lock);
+	atomisp_init_subdev_pipe(isp_subdev->isp,
+			&isp_subdev->video_out_preview,
+			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	isp_subdev->video_out_vf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	isp_subdev->video_out_vf.isp = isp_subdev->isp;
-	spin_lock_init(&isp_subdev->video_out_vf.irq_lock);
+	atomisp_init_subdev_pipe(isp_subdev->isp,
+			&isp_subdev->video_out_vf,
+			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	isp_subdev->video_out_capture.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	isp_subdev->video_out_capture.isp = isp_subdev->isp;
-	spin_lock_init(&isp_subdev->video_out_capture.irq_lock);
+	atomisp_init_subdev_pipe(isp_subdev->isp,
+			&isp_subdev->video_out_capture,
+			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
 	ret = atomisp_video_init(&isp_subdev->video_in, "MEMORY");
 	if (ret < 0)
