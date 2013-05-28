@@ -49,11 +49,19 @@ static struct intel_mid_ops tangier_ops = {
 
 static void tangier_power_off(void)
 {
+#if defined(CONFIG_INTEL_MID_OSIP) && !defined(CONFIG_BOARD_REDRIDGE)
+	if (!get_force_shutdown_occured() &&
+	    power_supply_is_system_supplied()) {
+#else
 	if (power_supply_is_system_supplied()) {
+#endif
+		pr_info("%s: Power system supplied, do COLD_BOOT\n", __func__);
 		outb(RSTC_COLD_BOOT, RSTC_IO_PORT_ADDR); /* Request cold boot */
 		udelay(50);
-	} else
+	} else {
+		pr_info("%s: Execute pmu_power_off\n", __func__);
 		pmu_power_off();
+	}
 }
 
 static unsigned long __init tangier_calibrate_tsc(void)
