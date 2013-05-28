@@ -170,6 +170,23 @@ int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
 				enum atomisp_css_buffer_type buf_type,
 				struct atomisp_css_buffer *isp_css_buffer);
 
+int atomisp_css_allocate_3a_dis_bufs(struct atomisp_device *isp,
+				struct atomisp_s3a_buf *s3a_buf,
+				struct atomisp_dis_buf *dis_buf);
+
+void atomisp_css_free_3a_buffers(struct atomisp_s3a_buf *s3a_buf);
+
+void atomisp_css_free_dis_buffers(struct atomisp_dis_buf *dis_buf);
+
+void atomisp_css_free_3a_dis_buffers(struct atomisp_device *isp);
+
+int atomisp_css_get_grid_info(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id);
+
+int atomisp_alloc_3a_output_buf(struct atomisp_device *isp);
+
+int atomisp_alloc_dis_coef_buf(struct atomisp_device *isp);
+
 int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
 				  struct atomisp_css_buffer *isp_css_buffer);
 

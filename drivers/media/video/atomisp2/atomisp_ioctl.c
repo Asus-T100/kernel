@@ -801,58 +801,57 @@ static void atomisp_videobuf_free_queue(struct videobuf_queue *q)
 
 int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
 {
-	struct atomisp_s3a_buf *s3a_buf = NULL;
-	struct atomisp_dis_buf *dis_buf = NULL;
+	struct atomisp_s3a_buf *s3a_buf = NULL, *_s3a_buf;
+	struct atomisp_dis_buf *dis_buf = NULL, *_dis_buf;
 	/* 2 css pipes consuming 3a buffers */
 	int count = ATOMISP_CSS_Q_DEPTH * 2;
 
 	if (!list_empty(&isp->s3a_stats) && !list_empty(&isp->dis_stats))
 		return 0;
 
-	v4l2_dbg(2, dbg_level, &atomisp_dev,
-		    "allocating %d 3a & dis buffers\n", count);
+	dev_dbg(isp->dev, "allocating %d 3a & dis buffers\n", count);
+
 	while (count--) {
 		s3a_buf = kzalloc(sizeof(struct atomisp_s3a_buf), GFP_KERNEL);
 		if (!s3a_buf) {
-			v4l2_err(&atomisp_dev, "s3a stat buf alloc failed\n");
+			dev_err(isp->dev, "s3a stat buf alloc failed\n");
 			goto error;
 		}
 
 		dis_buf = kzalloc(sizeof(struct atomisp_dis_buf), GFP_KERNEL);
 		if (!dis_buf) {
-			v4l2_err(&atomisp_dev, "dis stat buf alloc failed\n");
+			dev_err(isp->dev, "dis stat buf alloc failed\n");
+			kfree(s3a_buf);
 			goto error;
 		}
 
-		if (isp->params.curr_grid_info.s3a_grid.use_dmem) {
-			if (sh_css_allocate_stat_buffers_from_info(
-						&s3a_buf->s3a_data,
-						&dis_buf->dis_data,
-						&isp->params.curr_grid_info)) {
-				v4l2_err(&atomisp_dev,
-						"stat buf allocation failed\n");
-				goto error;
-			}
-		} else {
-			if (sh_css_allocate_stat_buffers_from_info(
-						&s3a_buf->s3a_data,
-						&dis_buf->dis_data,
-						&isp->params.curr_grid_info)) {
-				v4l2_err(&atomisp_dev,
-						"stat buf allocation failed\n");
-				goto error;
-			}
+		if (atomisp_css_allocate_3a_dis_bufs(isp, s3a_buf, dis_buf)) {
+			kfree(s3a_buf);
+			kfree(dis_buf);
+			goto error;
 		}
+
 		list_add_tail(&s3a_buf->list, &isp->s3a_stats);
 		list_add_tail(&dis_buf->list, &isp->dis_stats);
 	}
 
 	return 0;
+
 error:
-	v4l2_err(&atomisp_dev,
-		    "failed to allocate statistics buffers\n");
-	kfree(s3a_buf);
-	kfree(dis_buf);
+	dev_err(isp->dev, "failed to allocate statistics buffers\n");
+
+	list_for_each_entry_safe(dis_buf, _dis_buf, &isp->dis_stats, list) {
+		atomisp_css_free_dis_buffers(dis_buf);
+		list_del(&dis_buf->list);
+		kfree(dis_buf);
+	}
+
+	list_for_each_entry_safe(s3a_buf, _s3a_buf, &isp->s3a_stats, list) {
+		atomisp_css_free_3a_buffers(s3a_buf);
+		list_del(&s3a_buf->list);
+		kfree(s3a_buf);
+	}
+
 	return -ENOMEM;
 }
 

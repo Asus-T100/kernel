@@ -569,6 +569,173 @@ int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
 	return 0;
 }
 
+int atomisp_css_allocate_3a_dis_bufs(struct atomisp_device *isp,
+				struct atomisp_s3a_buf *s3a_buf,
+				struct atomisp_dis_buf *dis_buf)
+{
+	s3a_buf->s3a_data = ia_css_isp_3a_statistics_allocate(
+					&isp->params.curr_grid_info.s3a_grid);
+	if (!s3a_buf->s3a_data) {
+		dev_err(isp->dev, "3a buf allocation failed.\n");
+		return -EINVAL;
+	}
+
+	dis_buf->dis_data = ia_css_isp_dvs_statistics_allocate(
+					&isp->params.curr_grid_info.dvs_grid);
+	if (!dis_buf->dis_data) {
+		dev_err(isp->dev, "dvs buf allocation failed.\n");
+		ia_css_isp_3a_statistics_free(s3a_buf->s3a_data);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_free_3a_buffers(struct atomisp_s3a_buf *s3a_buf)
+{
+	ia_css_isp_3a_statistics_free(s3a_buf->s3a_data);
+}
+
+void atomisp_css_free_dis_buffers(struct atomisp_dis_buf *dis_buf)
+{
+	ia_css_isp_dvs_statistics_free(dis_buf->dis_data);
+}
+
+void atomisp_css_free_3a_dis_buffers(struct atomisp_device *isp)
+{
+	struct atomisp_s3a_buf *s3a_buf, *_s3a_buf;
+	struct atomisp_dis_buf *dis_buf, *_dis_buf;
+
+	/* 3A statistics use vmalloc, DIS use kmalloc */
+	if (isp->params.curr_grid_info.dvs_grid.enable) {
+		ia_css_dvs_coefficients_free(isp->params.dvs_coeff);
+		ia_css_dvs_statistics_free(isp->params.dvs_stat);
+		isp->params.dvs_coeff = NULL;
+		isp->params.dvs_stat = NULL;
+		isp->params.dvs_hor_proj_bytes = 0;
+		isp->params.dvs_ver_proj_bytes = 0;
+		isp->params.dvs_hor_coef_bytes = 0;
+		isp->params.dvs_ver_coef_bytes = 0;
+		isp->params.dvs_proj_data_valid = false;
+		list_for_each_entry_safe(dis_buf, _dis_buf,
+						&isp->dis_stats, list) {
+			ia_css_isp_dvs_statistics_free(dis_buf->dis_data);
+			list_del(&dis_buf->list);
+			kfree(dis_buf);
+		}
+	}
+	if (isp->params.curr_grid_info.s3a_grid.enable) {
+		ia_css_3a_statistics_free(isp->params.s3a_user_stat);
+		isp->params.s3a_user_stat = NULL;
+		isp->params.s3a_buf_data_valid = false;
+		isp->params.s3a_output_bytes = 0;
+		list_for_each_entry_safe(s3a_buf, _s3a_buf,
+						&isp->s3a_stats, list) {
+			ia_css_isp_3a_statistics_free(s3a_buf->s3a_stat);
+			list_del(&s3a_buf->list);
+			kfree(s3a_buf);
+		}
+	}
+}
+
+int atomisp_css_get_grid_info(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id)
+{
+	struct ia_css_pipe_info p_info;
+	struct ia_css_grid_info old_info;
+
+	memset(&p_info, 0, sizeof(struct ia_css_pipe_info));
+	memset(&old_info, 0, sizeof(struct ia_css_grid_info));
+
+	ia_css_pipe_get_info(isp->css_env.pipes[pipe_id], &p_info);
+
+	memcpy(&old_info, &isp->params.curr_grid_info,
+					sizeof(struct ia_css_grid_info));
+	memcpy(&isp->params.curr_grid_info, &p_info.grid_info,
+					sizeof(struct ia_css_grid_info));
+
+	/* If the grid info has not changed and the buffers for 3A and
+	 * DIS statistics buffers are allocated or buffer size would be zero
+	 * then no need to do anything. */
+	if ((!memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info))
+	    && isp->params.s3a_user_stat && isp->params.dvs_stat)
+	    || isp->params.curr_grid_info.s3a_grid.width == 0
+	    || isp->params.curr_grid_info.s3a_grid.height == 0) {
+		dev_dbg(isp->dev,
+			"grid info change escape. memcmp=%d, s3a_user_stat=%d,"
+			"dvs_stat=%d, s3a.width=%d, s3a.height=%d,"
+			"dvs_stat hor coef addr=0x%x,"
+			"dvs_stat ver coef addr=0x%x\n",
+			 !memcmp(&old_info,
+				 &isp->params.curr_grid_info, sizeof(old_info)),
+			 !!isp->params.s3a_user_stat,	!!isp->params.dvs_stat,
+			 isp->params.curr_grid_info.s3a_grid.width,
+			 isp->params.curr_grid_info.s3a_grid.height,
+			 (unsigned int)isp->params.dvs_coeff->hor_coefs,
+			 (unsigned int)isp->params.dvs_coeff->ver_coefs);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int atomisp_alloc_3a_output_buf(struct atomisp_device *isp)
+{
+	isp->params.s3a_user_stat = ia_css_3a_statistics_allocate(
+					&isp->params.curr_grid_info.s3a_grid);
+	if (!isp->params.s3a_user_stat)
+		return -ENOMEM;
+	/* 3A statistics. These can be big, so we use vmalloc. */
+	isp->params.s3a_output_bytes =
+	    isp->params.curr_grid_info.s3a_grid.width *
+	    isp->params.curr_grid_info.s3a_grid.height *
+	    sizeof(*isp->params.s3a_user_stat->data);
+
+	isp->params.s3a_buf_data_valid = false;
+
+	return 0;
+}
+
+int atomisp_alloc_dis_coef_buf(struct atomisp_device *isp)
+{
+	if (!isp->params.curr_grid_info.dvs_grid.enable)
+		return 0;
+
+	/* DIS coefficients. */
+	isp->params.dvs_coeff = ia_css_dvs_coefficients_allocate(
+				&isp->params.curr_grid_info.dvs_grid);
+	if (!isp->params.dvs_coeff)
+		return -ENOMEM;
+
+	isp->params.dvs_hor_coef_bytes =
+		isp->params.curr_grid_info.dvs_grid.num_hor_coefs*
+		IA_CSS_DVS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dvs_coeff->hor_coefs);
+
+	isp->params.dvs_ver_coef_bytes =
+		isp->params.curr_grid_info.dvs_grid.num_ver_coefs *
+		IA_CSS_DVS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dvs_coeff->ver_coefs);
+
+	/* DIS projections. */
+	isp->params.dvs_proj_data_valid = false;
+	isp->params.dvs_stat = ia_css_dvs_statistics_allocate(
+				&isp->params.curr_grid_info.dvs_grid);
+	if (!isp->params.dvs_stat)
+		return -ENOMEM;
+	isp->params.dvs_hor_proj_bytes =
+		isp->params.curr_grid_info.dvs_grid.aligned_height *
+		IA_CSS_DVS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dvs_stat->hor_proj);
+
+	isp->params.dvs_ver_proj_bytes =
+		isp->params.curr_grid_info.dvs_grid.aligned_width *
+		IA_CSS_DVS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dvs_stat->ver_proj);
+
+	return 0;
+}
+
 int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
 				  struct atomisp_css_buffer *isp_css_buffer)
 {

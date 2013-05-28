@@ -1631,90 +1631,15 @@ void atomisp_free_internal_buffers(struct atomisp_device *isp)
 
 void atomisp_free_3a_dis_buffers(struct atomisp_device *isp)
 {
-	struct atomisp_s3a_buf *s3a_buf, *_s3a_buf;
-	struct atomisp_dis_buf *dis_buf, *_dis_buf;
-
-	/* 3A statistics use vmalloc, DIS use kmalloc */
-	if (isp->params.s3a_output_buf)
-		vfree(isp->params.s3a_output_buf);
-	isp->params.s3a_output_buf = NULL;
-	isp->params.s3a_output_bytes = 0;
-	isp->params.s3a_buf_data_valid = false;
-
-	kfree(isp->params.dis_hor_proj_buf);
-	kfree(isp->params.dis_ver_proj_buf);
-	kfree(isp->params.dis_hor_coef_buf);
-	kfree(isp->params.dis_ver_coef_buf);
-
-	isp->params.dis_hor_proj_buf = NULL;
-	isp->params.dis_ver_proj_buf = NULL;
-	isp->params.dis_hor_coef_buf = NULL;
-	isp->params.dis_ver_coef_buf = NULL;
-	isp->params.dis_hor_proj_bytes = 0;
-	isp->params.dis_ver_proj_bytes = 0;
-	isp->params.dis_hor_coef_bytes = 0;
-	isp->params.dis_ver_coef_bytes = 0;
-	isp->params.dis_proj_data_valid = false;
-
-	list_for_each_entry_safe(s3a_buf, _s3a_buf, &isp->s3a_stats, list) {
-		sh_css_free_stat_buffers(&s3a_buf->s3a_data, NULL);
-		list_del(&s3a_buf->list);
-		kfree(s3a_buf);
-	}
-
-	list_for_each_entry_safe(dis_buf, _dis_buf, &isp->dis_stats, list) {
-		sh_css_free_stat_buffers(NULL, &dis_buf->dis_data);
-		list_del(&dis_buf->list);
-		kfree(dis_buf);
-	}
+	atomisp_css_free_3a_dis_buffers(isp);
 }
 
-static void atomisp_update_grid_info(struct atomisp_device *isp)
+static void atomisp_update_grid_info(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id)
 {
 	int err;
-	struct sh_css_grid_info old_info = isp->params.curr_grid_info;
-	switch (isp->isp_subdev.run_mode->val) {
-	case ATOMISP_RUN_MODE_PREVIEW:
-		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, preview\n",
-			 __func__);
-		err = sh_css_preview_get_grid_info(&isp->params.curr_grid_info);
-		if(err) {
-			dev_err(isp->dev,
-				 "sh_css_preview_get_grid_info failed: %d\n",
-				 err);
-			return;
-		}
-		break;
-	case ATOMISP_RUN_MODE_VIDEO:
-		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, video\n", __func__);
-		err = sh_css_video_get_grid_info(&isp->params.curr_grid_info);
-		if (err) {
-			dev_err(isp->dev,
-				 "sh_css_video_get_grid_info failed: %d\n",
-				 err);
-			return;
-		}
-		break;
-	default:
-		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, default(capture)\n",
-			 __func__);
-		err = sh_css_capture_get_grid_info(&isp->params.curr_grid_info);
-		if (err) {
-			dev_err(isp->dev,
-				 "sh_css_capture_get_grid_info failed: %d\n",
-				 err);
-			return;
-		}
-		break;
-	}
 
-	/* If the grid info has not changed and the buffers for 3A and
-	 * DIS statistics buffers are allocated or buffer size would be zero
-	 * then no need to do anything. */
-	if ((!memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info)) &&
-		isp->params.s3a_output_buf && isp->params.dis_hor_coef_buf) ||
-		isp->params.curr_grid_info.s3a_grid.width == 0 ||
-		isp->params.curr_grid_info.s3a_grid.height == 0)
+	if (atomisp_css_get_grid_info(isp, pipe_id))
 		return;
 
 	/* We must free all buffers because they no longer match
@@ -1727,69 +1652,10 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 		goto err_3a;
 	}
 
-	/* 3A statistics. These can be big, so we use vmalloc. */
-	isp->params.s3a_output_bytes =
-		isp->params.curr_grid_info.s3a_grid.width *
-		isp->params.curr_grid_info.s3a_grid.height *
-		sizeof(*isp->params.s3a_output_buf);
-
-	v4l2_dbg(3, dbg_level, &atomisp_dev,
-			"isp->params.s3a_output_bytes: %d\n",
-			isp->params.s3a_output_bytes);
-	isp->params.s3a_output_buf = vmalloc(isp->params.s3a_output_bytes);
-
-	if (isp->params.s3a_output_buf == NULL &&
-			isp->params.s3a_output_bytes != 0)
+	if (atomisp_alloc_3a_output_buf(isp))
 		goto err_3a;
 
-	memset(isp->params.s3a_output_buf, 0, isp->params.s3a_output_bytes);
-	isp->params.s3a_buf_data_valid = false;
-
-	/* DIS coefficients. */
-	isp->params.dis_hor_coef_bytes =
-		isp->params.curr_grid_info.dvs_hor_coef_num *
-		SH_CSS_DIS_NUM_COEF_TYPES *
-		sizeof(*isp->params.dis_hor_coef_buf);
-
-	isp->params.dis_ver_coef_bytes =
-		isp->params.curr_grid_info.dvs_ver_coef_num *
-		SH_CSS_DIS_NUM_COEF_TYPES *
-		sizeof(*isp->params.dis_ver_coef_buf);
-
-	isp->params.dis_hor_coef_buf =
-		kzalloc(isp->params.dis_hor_coef_bytes, GFP_KERNEL);
-	if (isp->params.dis_hor_coef_buf == NULL &&
-			isp->params.dis_hor_coef_bytes != 0)
-		goto err_dis;
-
-	isp->params.dis_ver_coef_buf =
-		kzalloc(isp->params.dis_ver_coef_bytes, GFP_KERNEL);
-	if (isp->params.dis_ver_coef_buf == NULL &&
-			isp->params.dis_ver_coef_bytes != 0)
-		goto err_dis;
-
-	/* DIS projections. */
-	isp->params.dis_proj_data_valid = false;
-	isp->params.dis_hor_proj_bytes =
-		isp->params.curr_grid_info.dvs_grid.aligned_height *
-		SH_CSS_DIS_NUM_COEF_TYPES *
-		sizeof(*isp->params.dis_hor_proj_buf);
-
-	isp->params.dis_ver_proj_bytes =
-		isp->params.curr_grid_info.dvs_grid.aligned_width *
-		SH_CSS_DIS_NUM_COEF_TYPES *
-		sizeof(*isp->params.dis_ver_proj_buf);
-
-	isp->params.dis_hor_proj_buf = kzalloc(isp->params.dis_hor_proj_bytes,
-			GFP_KERNEL);
-	if (isp->params.dis_hor_proj_buf == NULL &&
-			isp->params.dis_hor_proj_bytes != 0)
-		goto err_dis;
-
-	isp->params.dis_ver_proj_buf = kzalloc(isp->params.dis_ver_proj_bytes,
-			GFP_KERNEL);
-	if (isp->params.dis_ver_proj_buf == NULL &&
-			isp->params.dis_ver_proj_bytes != 0)
+	if (atomisp_alloc_dis_coef_buf(isp))
 		goto err_dis;
 
 	return;
@@ -2086,9 +1952,15 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		return -EAGAIN;
 	}
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	ret = copy_to_user(config->data,
+			   isp->params.s3a_user_stat->data,
+			   isp->params.s3a_output_bytes);
+#else
 	ret = copy_to_user(config->data,
 			   isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
+#endif
 	if (ret) {
 		dev_err(isp->dev, "copy to user failed: copied %lu bytes\n",
 				ret);
@@ -3057,6 +2929,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct atomisp_sub_device *asd = &isp->isp_subdev;
 	const struct atomisp_format_bridge *format;
 	struct v4l2_rect *isp_sink_crop;
+	enum atomisp_css_pipe_id pipe_id;
 	int (*configure_output)(struct atomisp_device *isp,
 				unsigned int width, unsigned int height,
 				enum atomisp_css_frame_format sh_fmt);
@@ -3174,10 +3047,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	    || isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER) {
 		configure_output = atomisp_css_video_configure_output;
 		get_frame_info = atomisp_css_video_get_output_frame_info;
+		pipe_id = CSS_PIPE_ID_VIDEO;
 	} else if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
 		configure_output = atomisp_css_preview_configure_output;
 		get_frame_info = atomisp_css_preview_get_output_frame_info;
 		configure_pp_input = atomisp_css_preview_configure_pp_input;
+		pipe_id = CSS_PIPE_ID_PREVIEW;
 	} else {
 		if (format->sh_fmt == CSS_FRAME_FORMAT_RAW)
 			atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_RAW);
@@ -3189,6 +3064,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		configure_output = atomisp_css_capture_configure_output;
 		get_frame_info = atomisp_css_capture_get_output_frame_info;
 		configure_pp_input = atomisp_css_capture_configure_pp_input;
+		pipe_id = CSS_PIPE_ID_CAPTURE;
 
 		if (!isp->params.online_process &&
 		    !isp->isp_subdev.continuous_mode->val) {
@@ -3230,7 +3106,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		return -EINVAL;
 	}
 
-	atomisp_update_grid_info(isp);
+	atomisp_update_grid_info(isp, pipe_id);
 
 	/* Free the raw_dump buffer first */
 	atomisp_css_frame_free(isp->raw_output_frame);
