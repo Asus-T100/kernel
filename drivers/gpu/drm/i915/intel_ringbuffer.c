@@ -1385,7 +1385,6 @@ gen6_ring_dispatch_execbuffer(struct intel_ring_buffer *ring,
 	intel_ring_emit(ring, offset);
 	intel_ring_advance(ring);
 
-	i915_add_request_noflush(ring);
 	return 0;
 }
 
