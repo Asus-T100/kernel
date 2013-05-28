@@ -221,12 +221,6 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 		power_island |= OSPM_DISPLAY_MIO;
 
-	/*
-	 * FIXME: need to dynamically power un-gate DISPLAY C island for
-	 * Overlay C & Sprite D planes.
-	 */
-	power_island |= OSPM_DISPLAY_C;
-
 	if (!power_island_get(power_island))
 		return -EAGAIN;
 
@@ -506,12 +500,6 @@ power_off_err:
 
 	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 		power_island |= OSPM_DISPLAY_MIO;
-
-	/*
-	 * FIXME: need to dynamically power gate DISPLAY C island for
-	 * Overlay C & Sprite D planes.
-	 */
-	power_island |= OSPM_DISPLAY_C;
 
 	if (!power_island_put(power_island))
 		return -EINVAL;

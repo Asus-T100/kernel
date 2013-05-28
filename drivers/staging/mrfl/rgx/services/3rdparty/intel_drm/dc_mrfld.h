@@ -31,12 +31,7 @@
 #include "kerneldisplay.h"
 #include "displayclass_interface.h"
 
-enum {
-	DC_PIPE_A,
-	DC_PIPE_B,
-	DC_PIPE_C,
-	MAX_PIPE_NUM,
-};
+#define MAX_PIPE_NUM	3
 
 typedef enum {
 	DCMrfldEX_BUFFER_SOURCE_ALLOC,
@@ -48,9 +43,6 @@ typedef enum {
 	DC_MRFLD_FLIP_SURFACE,
 	DC_MRFLD_FLIP_CONTEXT,
 } DC_MRFLD_FLIP_OP;
-
-/* max count of plane contexts which share the same buffer*/
-#define MAX_CONTEXT_COUNT   3
 
 typedef struct {
 	IMG_HANDLE hDisplayContext;
@@ -74,9 +66,7 @@ typedef struct {
 	IMG_UINT32 ui32RefCount;
 	DCMrfldEX_BUFFER_SOURCE eSource;
 	DC_MRFLD_FLIP_OP eFlipOp;
-	IMG_UINT32 ui32ContextCount;
-	/* This buffer */
-	DC_MRFLD_SURF_CUSTOM sContext[MAX_CONTEXT_COUNT];
+	DC_MRFLD_SURF_CUSTOM sContext;
 } DC_MRFLD_BUFFER;
 
 /*Display Controller Device*/
@@ -87,15 +77,10 @@ typedef struct {
 	PVRSRV_SURFACE_INFO sPrimInfo;
 	DC_DISPLAY_INFO	sDisplayInfo;
 
-	/*plane enabling*/
-	IMG_UINT32 ui32ActiveOverlays;
-	IMG_UINT32 ui32ActiveSprites;
-
 	/*mutex lock for flip queue*/
 	struct mutex sFlipQueueLock;
 	/*context configure queue*/
-	struct list_head sFlipQueues[MAX_PIPE_NUM];
-	void *psLastFlip;
+	struct list_head sFlipQueue;
 } DC_MRFLD_DEVICE;
 
 typedef struct {
@@ -115,14 +100,12 @@ enum DC_MRFLD_FLIP_STATUS {
 };
 
 typedef struct {
-	struct list_head sFlips[MAX_PIPE_NUM];
-	IMG_UINT32 eFlipStates[MAX_PIPE_NUM];
-	struct DC_MRFLD_PIPE_INFO asPipeInfo[MAX_PIPE_NUM];
-	IMG_UINT32 uiNumBuffers;
-	IMG_UINT32 uiRefCount;
+	struct list_head sFlip;
 	IMG_HANDLE hConfigData;
+	IMG_UINT32 eFlipState;
+	IMG_UINT32 uiNumBuffers;
 	IMG_UINT32 uiSwapInterval;
-	IMG_UINT32 uiPowerIslands;
+	struct DC_MRFLD_PIPE_INFO asPipeInfo[MAX_PIPE_NUM];
 	DC_MRFLD_BUFFER asBuffers[0];
 } DC_MRFLD_FLIP;
 
