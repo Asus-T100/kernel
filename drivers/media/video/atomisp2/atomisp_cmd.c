@@ -970,7 +970,6 @@ void atomisp_wdt_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  wdt_work);
-	char debug_context[64];
 	enum atomisp_css_pipe_id css_pipe_id;
 	int ret;
 
@@ -999,7 +998,7 @@ void atomisp_wdt_work(struct work_struct *work)
 	default:
 		sh_css_set_dtrace_level(CSS_DTRACE_VERBOSITY_TIMEOUT);
 		sh_css_dump_sp_sw_debug_info();
-		sh_css_dump_debug_info(debug_context);
+		sh_css_dump_debug_info(__func__);
 		sh_css_set_dtrace_level(CSS_DTRACE_VERBOSITY_LEVEL);
 		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
 			isp->isp_subdev.video_out_capture.vdev.name,
