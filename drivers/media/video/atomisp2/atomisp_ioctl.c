@@ -275,151 +275,151 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 		.pixelformat = V4L2_PIX_FMT_YUV420,
 		.depth = 12,
 		.mbus_code = 0x8001,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420,
+		.sh_fmt = CSS_FRAME_FORMAT_YUV420,
 		.description = "YUV420, planner"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_YVU420,
 		.depth = 12,
 		.mbus_code = 0x8002,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YV12,
+		.sh_fmt = CSS_FRAME_FORMAT_YV12,
 		.description = "YVU420, planner"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_YUV422P,
 		.depth = 16,
 		.mbus_code = 0x8003,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV422,
+		.sh_fmt = CSS_FRAME_FORMAT_YUV422,
 		.description = "YUV422, planner"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_YUV444,
 		.depth = 24,
 		.mbus_code = 0x8004,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV444,
+		.sh_fmt = CSS_FRAME_FORMAT_YUV444,
 		.description = "YUV444"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_NV12,
 		.depth = 12,
 		.mbus_code = 0x8005,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_NV12,
+		.sh_fmt = CSS_FRAME_FORMAT_NV12,
 		.description = "NV12, interleaved"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_NV21,
 		.depth = 12,
 		.mbus_code = 0x8006,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_NV21,
+		.sh_fmt = CSS_FRAME_FORMAT_NV21,
 		.description = "NV21, interleaved"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_NV16,
 		.depth = 16,
 		.mbus_code = 0x8007,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_NV16,
+		.sh_fmt = CSS_FRAME_FORMAT_NV16,
 		.description = "NV16, interleaved"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_YUYV,
 		.depth = 16,
 		.mbus_code = 0x8008,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUYV,
+		.sh_fmt = CSS_FRAME_FORMAT_YUYV,
 		.description = "YUYV, interleaved"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_UYVY,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_UYVY8_1X16,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_UYVY,
+		.sh_fmt = CSS_FRAME_FORMAT_UYVY,
 		.description = "UYVY, interleaved"
 	}, { /* This one is for parallel sensors! DO NOT USE! */
 		.pixelformat = V4L2_PIX_FMT_UYVY,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_UYVY8_2X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_UYVY,
+		.sh_fmt = CSS_FRAME_FORMAT_UYVY,
 		.description = "UYVY, interleaved"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR16,
 		.depth = 16,
 		.mbus_code = 0x8009,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 16"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR8,
 		.depth = 8,
 		.mbus_code = V4L2_MBUS_FMT_SBGGR8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 8"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGBRG8,
 		.depth = 8,
 		.mbus_code = V4L2_MBUS_FMT_SGBRG8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 8"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGRBG8,
 		.depth = 8,
 		.mbus_code = V4L2_MBUS_FMT_SGRBG8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 8"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SRGGB8,
 		.depth = 8,
 		.mbus_code = V4L2_MBUS_FMT_SRGGB8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 8"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR10,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 10"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGBRG10,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SGBRG10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 10"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGRBG10,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SGRBG10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 10"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SRGGB10,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SRGGB10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 10"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR12,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGBRG12,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SGBRG12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGRBG12,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SGRBG12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SRGGB12,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SRGGB12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.sh_fmt = CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_RGB32,
 		.depth = 32,
 		.mbus_code = 0x800a,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RGBA888,
+		.sh_fmt = CSS_FRAME_FORMAT_RGBA888,
 		.description = "32 RGB 8-8-8-8"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_RGB565,
 		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_BGR565_2X8_LE,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RGB565,
+		.sh_fmt = CSS_FRAME_FORMAT_RGB565,
 		.description = "16 RGB 5-6-5"
 	},
 };
@@ -448,48 +448,6 @@ const struct atomisp_format_bridge *atomisp_get_format_bridge_from_mbus(
 	}
 
 	return NULL;
-}
-
-static int __get_css_frame_info(struct atomisp_device *isp,
-				uint16_t source_pad,
-				struct sh_css_frame_info *frame_info)
-{
-	int ret = -1;
-
-	switch (source_pad) {
-	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
-		    || isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
-			ret = atomisp_css_video_get_output_frame_info(isp,
-								frame_info);
-		else
-			ret = atomisp_css_capture_get_output_frame_info(isp,
-								frame_info);
-		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			ret = sh_css_video_get_viewfinder_frame_info(
-					frame_info);
-		else if (!atomisp_is_mbuscode_raw(
-				 isp->isp_subdev.
-				 fmt[isp->isp_subdev.capture_pad].fmt.code))
-			ret = sh_css_capture_get_viewfinder_frame_info(
-					frame_info);
-		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			ret = sh_css_video_get_viewfinder_frame_info(
-					frame_info);
-		else
-			ret = atomisp_css_preview_get_output_frame_info(isp,
-								frame_info);
-		break;
-	default:
-		/* Return with error */
-		break;
-	}
-
-	return ret != sh_css_success ? -EINVAL : 0;
 }
 
 /*
@@ -907,8 +865,8 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct sh_css_frame_info frame_info;
-	struct sh_css_frame *frame;
+	struct atomisp_css_frame_info frame_info;
+	struct atomisp_css_frame *frame;
 	struct videobuf_vmalloc_memory *vm_mem;
 	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret = 0, i = 0;
@@ -936,9 +894,9 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	if (req->memory == V4L2_MEMORY_USERPTR)
 		return 0;
 
-	ret = __get_css_frame_info(isp, source_pad, &frame_info);
+	ret = atomisp_get_css_frame_info(isp, source_pad, &frame_info);
 	if (ret)
-		return -EINVAL;
+		return ret;
 
 	/*
 	 * Allocate the real frame here for selected node using our
@@ -1027,8 +985,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
-	struct sh_css_frame_info frame_info;
-	struct sh_css_frame *handle = NULL;
+	struct atomisp_css_frame_info frame_info;
+	struct atomisp_css_frame *handle = NULL;
 	u32 length;
 	u32 pgnr;
 	int ret = 0;
@@ -1072,8 +1030,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		if (vb->baddr == buf->m.userptr && vm_mem->vaddr)
 			goto done;
 
-		if (__get_css_frame_info(isp, atomisp_subdev_source_pad(vdev),
-					 &frame_info)) {
+		if (atomisp_get_css_frame_info(isp,
+				atomisp_subdev_source_pad(vdev), &frame_info)) {
 			ret = -EIO;
 			goto error;
 		}
@@ -1228,14 +1186,14 @@ enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 {
 	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
-		return SH_CSS_PREVIEW_PIPELINE;
+		return CSS_PIPE_ID_PREVIEW;
 
 	/*
 	 * Disable vf_pp and run CSS in video mode. This allows using ISP
 	 * scaling but it has one frame delay due to CSS internal buffering.
 	 */
 	if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
-		return SH_CSS_VIDEO_PIPELINE;
+		return CSS_PIPE_ID_VIDEO;
 
 	/*
 	 * Disable vf_pp and run CSS in still capture mode. In this mode
@@ -1243,17 +1201,17 @@ enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 	 * is not available.
 	 */
 	if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT)
-		return SH_CSS_CAPTURE_PIPELINE;
+		return CSS_PIPE_ID_CAPTURE;
 
 	switch (isp->isp_subdev.run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:
-		return SH_CSS_PREVIEW_PIPELINE;
+		return CSS_PIPE_ID_PREVIEW;
 	case ATOMISP_RUN_MODE_VIDEO:
-		return SH_CSS_VIDEO_PIPELINE;
+		return CSS_PIPE_ID_VIDEO;
 	case ATOMISP_RUN_MODE_STILL_CAPTURE:
 		/* fall through */
 	default:
-		return SH_CSS_CAPTURE_PIPELINE;
+		return CSS_PIPE_ID_CAPTURE;
 	}
 }
 

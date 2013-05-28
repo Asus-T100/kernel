@@ -93,7 +93,30 @@
 
 #define CSS_MORPH_TABLE_NUM_PLANES	CSS_ID(CSS_MORPH_TABLE_NUM_PLANES)
 
+#define CSS_FRAME_FORMAT_NV11		CSS_ID(CSS_FRAME_FORMAT_NV11)
+#define CSS_FRAME_FORMAT_NV12		CSS_ID(CSS_FRAME_FORMAT_NV12)
+#define CSS_FRAME_FORMAT_NV16		CSS_ID(CSS_FRAME_FORMAT_NV16)
+#define CSS_FRAME_FORMAT_NV21		CSS_ID(CSS_FRAME_FORMAT_NV21)
+#define CSS_FRAME_FORMAT_NV61		CSS_ID(CSS_FRAME_FORMAT_NV61)
+#define CSS_FRAME_FORMAT_YV12		CSS_ID(CSS_FRAME_FORMAT_YV12)
+#define CSS_FRAME_FORMAT_YV16		CSS_ID(CSS_FRAME_FORMAT_YV16)
+#define CSS_FRAME_FORMAT_YUV420		CSS_ID(CSS_FRAME_FORMAT_YUV420)
+#define CSS_FRAME_FORMAT_YUV420_16	CSS_ID(CSS_FRAME_FORMAT_YUV420_16)
+#define CSS_FRAME_FORMAT_YUV422		CSS_ID(CSS_FRAME_FORMAT_YUV422)
+#define CSS_FRAME_FORMAT_YUV422_16	CSS_ID(CSS_FRAME_FORMAT_YUV422_16)
+#define CSS_FRAME_FORMAT_UYVY		CSS_ID(CSS_FRAME_FORMAT_UYVY)
+#define CSS_FRAME_FORMAT_YUYV		CSS_ID(CSS_FRAME_FORMAT_YUYV)
+#define CSS_FRAME_FORMAT_YUV444		CSS_ID(CSS_FRAME_FORMAT_YUV444)
+#define CSS_FRAME_FORMAT_YUV_LINE	CSS_ID(CSS_FRAME_FORMAT_YUV_LINE)
+#define CSS_FRAME_FORMAT_RAW		CSS_ID(CSS_FRAME_FORMAT_RAW)
+#define CSS_FRAME_FORMAT_RGB565		CSS_ID(CSS_FRAME_FORMAT_RGB565)
+#define CSS_FRAME_FORMAT_PLANAR_RGB888	CSS_ID(CSS_FRAME_FORMAT_PLANAR_RGB888)
+#define CSS_FRAME_FORMAT_RGBA888	CSS_ID(CSS_FRAME_FORMAT_RGBA888)
+#define CSS_FRAME_FORMAT_QPLANE6	CSS_ID(CSS_FRAME_FORMAT_QPLANE6)
+#define CSS_FRAME_FORMAT_BINARY_8	CSS_ID(CSS_FRAME_FORMAT_BINARY_8)
+
 struct atomisp_device;
+struct video_device;
 
 void atomisp_set_css_env(struct atomisp_device *isp);
 
@@ -218,6 +241,13 @@ int atomisp_css_frame_map(struct atomisp_css_frame **frame,
 				const void *data, uint16_t attribute,
 				void *context);
 
+int atomisp_css_set_black_frame(struct atomisp_device *isp,
+			const struct atomisp_css_frame *raw_black_frame);
+
+int atomisp_css_allocate_continuous_frames(bool init_time);
+
+void atomisp_css_update_continuous_frames(void);
+
 int atomisp_css_stop(struct atomisp_device *isp,
 			enum atomisp_css_pipe_id pipe_id, bool in_reset);
 
@@ -237,6 +267,27 @@ int atomisp_css_capture_configure_output(struct atomisp_device *isp,
 int atomisp_css_video_configure_output(struct atomisp_device *isp,
 				unsigned int width, unsigned int height,
 				enum atomisp_css_frame_format format);
+
+int atomisp_get_css_frame_info(struct atomisp_device *isp,
+				uint16_t source_pad,
+				struct atomisp_css_frame_info *frame_info);
+
+int atomisp_css_video_configure_viewfinder(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format);
+
+int atomisp_css_capture_configure_viewfinder(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format);
+
+int atomisp_css_video_get_viewfinder_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info);
+
+int atomisp_css_capture_get_viewfinder_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info);
+
+int atomisp_css_capture_get_output_raw_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info);
 
 int atomisp_css_preview_get_output_frame_info(struct atomisp_device *isp,
 					struct atomisp_css_frame_info *info);

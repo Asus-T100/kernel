@@ -20,6 +20,7 @@
  */
 
 #include <media/videobuf-vmalloc.h>
+#include <media/v4l2-dev.h>
 
 #include "sh_css_debug.h"
 #include "host/mmu_local.h"
@@ -485,6 +486,28 @@ int atomisp_css_frame_map(struct atomisp_css_frame **frame,
 	return 0;
 }
 
+int atomisp_css_set_black_frame(struct atomisp_device *isp,
+				const struct atomisp_css_frame *raw_black_frame)
+{
+	if (sh_css_set_black_frame(raw_black_frame) != sh_css_success)
+		return -ENOMEM;
+
+	return 0;
+}
+
+int atomisp_css_allocate_continuous_frames(bool init_time)
+{
+	if (sh_css_allocate_continuous_frames(init_time) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+void atomisp_css_update_continuous_frames(void)
+{
+	sh_css_update_continuous_frames();
+}
+
 int atomisp_css_stop(struct atomisp_device *isp,
 			enum atomisp_css_pipe_id pipe_id, bool in_reset)
 {
@@ -566,6 +589,57 @@ int atomisp_css_video_configure_output(struct atomisp_device *isp,
 	return 0;
 }
 
+int atomisp_css_video_configure_viewfinder(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	if (sh_css_video_configure_viewfinder(width, height, format)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_configure_viewfinder(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	if (sh_css_capture_configure_viewfinder(width, height, format)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_video_get_viewfinder_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_video_get_viewfinder_frame_info(info) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_get_viewfinder_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_capture_get_viewfinder_frame_info(info)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_get_output_raw_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_capture_get_output_raw_frame_info(info)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
 int atomisp_css_preview_get_output_frame_info(struct atomisp_device *isp,
 					struct atomisp_css_frame_info *info)
 {
@@ -591,6 +665,45 @@ int atomisp_css_video_get_output_frame_info(struct atomisp_device *isp,
 		return -EINVAL;
 
 	return 0;
+}
+
+int atomisp_get_css_frame_info(struct atomisp_device *isp,
+				uint16_t source_pad,
+				struct atomisp_css_frame_info *frame_info)
+{
+	enum sh_css_err ret = sh_css_err_internal_error;
+
+	switch (source_pad) {
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
+			ret = sh_css_video_get_output_frame_info(frame_info);
+		else
+			ret = sh_css_capture_get_output_frame_info(frame_info);
+		break;
+	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+			ret = sh_css_video_get_viewfinder_frame_info(
+					frame_info);
+		else if (!atomisp_is_mbuscode_raw(
+				isp->isp_subdev.
+				fmt[isp->isp_subdev.capture_pad].fmt.code))
+			ret = sh_css_capture_get_viewfinder_frame_info(
+					frame_info);
+		break;
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+			ret = sh_css_video_get_viewfinder_frame_info(
+					frame_info);
+		else
+			ret = sh_css_preview_get_output_frame_info(frame_info);
+		break;
+	default:
+		/* Return with error */
+		break;
+	}
+
+	return ret != sh_css_success ? -EINVAL : 0;
 }
 
 int atomisp_css_preview_configure_pp_input(struct atomisp_device *isp,

@@ -108,7 +108,6 @@ struct atomisp_css_env {
 	struct ia_css_pipe_config pipe_configs[IA_CSS_PIPE_ID_NUM];
 	struct ia_css_pipe_extra_config pipe_extra_configs[IA_CSS_PIPE_ID_NUM];
 	bool update_pipe[IA_CSS_PIPE_ID_NUM];
-	unsigned int curr_pipe;
 	enum atomisp_css2_stream_state stream_state;
 };
 
