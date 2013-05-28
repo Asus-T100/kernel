@@ -47,16 +47,22 @@
 
 #include "sh_css_debug.h"
 #include "sh_css_hrt.h"
-#include "sh_css_types.h"
-#include "sh_css_accelerate.h"
 #include "sh_css_defs.h"
-#include "sh_css.h"
 #include "system_global.h"
 #include "sh_css_internal.h"
 #include "sh_css_sp.h"
 #include "gp_device.h"
 #include "device_access.h"
 #include "irq.h"
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css_accelerate.h"
+#include "ia_css_types.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
+#include "sh_css_accelerate.h"
+#include "sh_css.h"
+#include "sh_css_types.h"
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 #include "hrt/bits.h"
 

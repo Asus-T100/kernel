@@ -21,11 +21,14 @@
  *
  */
 
-#include <sh_css.h>
 #include <media/v4l2-event.h>
 #include <media/v4l2-mediabus.h>
 #include "atomisp_internal.h"
 #include "atomisp_tpg.h"
+
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+#include "sh_css.h"
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 static int tpg_s_stream(struct v4l2_subdev *sd, int enable)
 {

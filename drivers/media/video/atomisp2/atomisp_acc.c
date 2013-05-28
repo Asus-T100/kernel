@@ -33,8 +33,13 @@
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 #include "memory_access/memory_access.h"
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css.h"
+#include "ia_css_accelerate.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 #include "sh_css.h"
 #include "sh_css_accelerate.h"
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 #ifndef CONFIG_VIDEO_ATOMISP_CSS20
 static const struct {

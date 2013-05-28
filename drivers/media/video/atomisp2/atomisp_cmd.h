@@ -30,8 +30,14 @@
 
 #include <media/v4l2-subdev.h>
 
-#include "sh_css_types.h"
 #include "atomisp_internal.h"
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css_types.h"
+#include "ia_css.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
+#include "sh_css_types.h"
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 struct atomisp_device;
 struct atomisp_css_frame;

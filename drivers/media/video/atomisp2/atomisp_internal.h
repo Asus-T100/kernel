@@ -32,7 +32,12 @@
 #include <media/media-device.h>
 #include <media/v4l2-subdev.h>
 
-#include <sh_css_types.h>
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css_types.h"
+#include "sh_css_legacy.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
+#include "sh_css_types.h"
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 #include "atomisp_csi2.h"
 #include "atomisp_file.h"

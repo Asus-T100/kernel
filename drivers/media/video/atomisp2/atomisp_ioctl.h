@@ -24,7 +24,11 @@
 #ifndef	__ATOMISP_IOCTL_H__
 #define	__ATOMISP_IOCTL_H__
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 #include <sh_css.h>
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 struct atomisp_device;
 struct atomisp_video_pipe;
