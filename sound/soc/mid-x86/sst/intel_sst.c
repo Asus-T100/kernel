@@ -1094,7 +1094,7 @@ static int intel_sst_runtime_suspend(struct device *dev)
 
 static int intel_sst_runtime_resume(struct device *dev)
 {
-	u32 csr;
+	u32 csr, pmcsr;
 	int ret = 0;
 	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
 
@@ -1110,6 +1110,11 @@ static int intel_sst_runtime_resume(struct device *dev)
 #endif
 		/* wait for device power up a/c to PCI spec */
 		usleep_range(10000, 11000);
+		pmcsr = sst_shim_read(ctx->pmcsr, 0x84);
+		pr_info("%s:PMCSR:%u", __func__, pmcsr);
+		if ((pmcsr & 0x3) == 0x3)
+			pr_err("LPE device is not in D0 state !");
+
 		sst_restore_shim64(ctx, ctx->shim, ctx->shim_regs64);
 	}
 
