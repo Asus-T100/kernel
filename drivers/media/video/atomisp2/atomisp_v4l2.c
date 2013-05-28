@@ -285,6 +285,9 @@ static int atomisp_mrfld_pre_power_down(struct atomisp_device *isp)
 	u32 irq;
 	unsigned long timeout;
 
+	if (!IS_ISP2400(isp))
+		return 0;
+
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN)
 		return 0;
 
@@ -327,6 +330,9 @@ static int atomisp_mrfld_power_down(struct atomisp_device *isp)
 {
 	unsigned long timeout;
 	u32 reg_value;
+
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		return 0;
 
 	/* writing 0x3 to ISPSSPM0 bit[1:0] to power off the IUNIT */
 	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
@@ -399,21 +405,16 @@ static int atomisp_runtime_suspend(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	if (IS_ISP2400(isp)) {
-		ret = atomisp_mrfld_pre_power_down(isp);
-		if (ret)
-			return ret;
-	}
+	ret = atomisp_mrfld_pre_power_down(isp);
+	if (ret)
+		return ret;
 
 	/*Turn off the ISP d-phy*/
 	ret = atomisp_ospm_dphy_down(isp);
 	if (ret)
 		return ret;
 	pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		ret = atomisp_mrfld_power_down(isp);
-
-	return ret;
+	return atomisp_mrfld_power_down(isp);
 }
 
 static int atomisp_runtime_resume(struct device *dev)
@@ -473,11 +474,9 @@ static int atomisp_suspend(struct device *dev)
 	spin_unlock_irqrestore(&isp->lock, flags);
 
 	/* Prepare for MRFLD IUNIT power down */
-	if (IS_ISP2400(isp)) {
-		ret = atomisp_mrfld_pre_power_down(isp);
-		if (ret)
-			return ret;
-	}
+	ret = atomisp_mrfld_pre_power_down(isp);
+	if (ret)
+		return ret;
 
 	/*Turn off the ISP d-phy */
 	ret = atomisp_ospm_dphy_down(isp);
@@ -486,10 +485,7 @@ static int atomisp_suspend(struct device *dev)
 		return ret;
 	}
 	pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		ret = atomisp_mrfld_power_down(isp);
-
-	return ret;
+	return atomisp_mrfld_power_down(isp);
 }
 
 static int atomisp_resume(struct device *dev)
@@ -1164,6 +1160,21 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	hmm_pool_unregister(HMM_POOL_TYPE_RESERVED);
 }
 
+static void atomisp_pci_shutdown(struct pci_dev *dev)
+{
+	struct atomisp_device *isp = pci_get_drvdata(dev);
+
+	if (atomisp_mrfld_pre_power_down(isp))
+		return;
+
+	/*Turn off the ISP d-phy*/
+	if (atomisp_ospm_dphy_down(isp))
+		return;
+
+	pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
+	atomisp_mrfld_power_down(isp);
+};
+
 static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0148)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0149)},
@@ -1202,6 +1213,7 @@ static struct pci_driver atomisp_pci_driver = {
 	.id_table = atomisp_pci_tbl,
 	.probe = atomisp_pci_probe,
 	.remove = atomisp_pci_remove,
+	.shutdown = atomisp_pci_shutdown,
 };
 
 static int __init atomisp_init(void)
