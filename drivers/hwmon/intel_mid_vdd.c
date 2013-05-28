@@ -44,6 +44,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_pmic.h>
 #include <linux/spinlock.h>
+#include <linux/ratelimit.h>
 
 #define DRIVER_NAME "msic_vdd"
 #define DEVICE_NAME "msic_vdd"
@@ -413,7 +414,8 @@ static void handle_events(int flag, void *dev_data)
 		goto handle_ipc_fail;
 
 	if (flag & VCRIT_EVENT) {
-		dev_info(&vinfo->pdev->dev, "VCRIT_EVENT occurred\n");
+		pr_info_ratelimited("%s: VCRIT_EVENT occurred\n",
+					DRIVER_NAME);
 		if (!(irq_data & SVCRIT)) {
 			/*
 			 * interrupt up for VCRIT timers are removed as
@@ -441,7 +443,8 @@ static void handle_events(int flag, void *dev_data)
 		kobject_uevent(&vinfo->pdev->dev.kobj, KOBJ_CHANGE);
 	}
 	if (flag & VWARNB_EVENT) {
-		dev_info(&vinfo->pdev->dev, "VWARNB_EVENT occurred\n");
+		pr_info_ratelimited("%s: VWARNB_EVENT occurred\n",
+					DRIVER_NAME);
 		if (!(irq_data & SVWARNB)) {
 			/* Vsys is above WARNB level */
 			intel_scu_ipc_ioread8(BCUDISB_BEH, &sticky_data);
@@ -461,7 +464,8 @@ static void handle_events(int flag, void *dev_data)
 		}
 	}
 	if (flag & VWARNA_EVENT) {
-		dev_info(&vinfo->pdev->dev, "VWARNA_EVENT occurred\n");
+		pr_info_ratelimited("%s: VWARNA_EVENT occurred\n",
+					DRIVER_NAME);
 		if (!(irq_data & SVWARNA)) {
 			/* Vsys is above WARNA level */
 			intel_scu_ipc_ioread8(BCUDISA_BEH, &sticky_data);
