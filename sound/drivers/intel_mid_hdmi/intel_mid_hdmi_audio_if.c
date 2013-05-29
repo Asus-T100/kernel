@@ -423,7 +423,7 @@ int had_process_hot_unplug(struct snd_intelhad *intelhaddata)
 		caps = HDMI_AUDIO_BUFFER_DONE;
 		retval = had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
 		retval = had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
-		had_read_modify(AUD_CONFIG, 0, BIT(0));
+		intelhaddata->ops->enable_audio(intelhaddata->stream_info.had_substream, 0);
 	}
 
 	intelhaddata->drv_status = HAD_DRV_DISCONNECTED;

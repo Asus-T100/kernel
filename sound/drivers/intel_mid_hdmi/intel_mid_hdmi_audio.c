@@ -83,6 +83,85 @@ MODULE_VERSION(HAD_DRIVER_VERSION);
 #define LAYOUT0			0
 #define LAYOUT1			1
 #define SWAP_LFE_CENTER		0x00fac4c8
+#define AUD_CONFIG_CH_MASK_V2	0x70
+
+/*
+ * ELD SA bits in the CEA Speaker Allocation data block
+*/
+static int eld_speaker_allocation_bits[] = {
+	[0] = FL | FR,
+	[1] = LFE,
+	[2] = FC,
+	[3] = RL | RR,
+	[4] = RC,
+	[5] = FLC | FRC,
+	[6] = RLC | RRC,
+	/* the following are not defined in ELD yet */
+	[7] = 0,
+};
+
+/*
+ * This is an ordered list!
+ *
+ * The preceding ones have better chances to be selected by
+ * hdmi_channel_allocation().
+ */
+static struct cea_channel_speaker_allocation channel_allocations[] = {
+/*                        channel:   7     6    5    4    3     2    1    0  */
+{ .ca_index = 0x00,  .speakers = {   0,    0,   0,   0,   0,    0,  FR,  FL } },
+				/* 2.1 */
+{ .ca_index = 0x01,  .speakers = {   0,    0,   0,   0,   0,  LFE,  FR,  FL } },
+				/* Dolby Surround */
+{ .ca_index = 0x02,  .speakers = {   0,    0,   0,   0,  FC,    0,  FR,  FL } },
+				/* surround40 */
+{ .ca_index = 0x08,  .speakers = {   0,    0,  RR,  RL,   0,    0,  FR,  FL } },
+				/* surround41 */
+{ .ca_index = 0x09,  .speakers = {   0,    0,  RR,  RL,   0,  LFE,  FR,  FL } },
+				/* surround50 */
+{ .ca_index = 0x0a,  .speakers = {   0,    0,  RR,  RL,  FC,    0,  FR,  FL } },
+				/* surround51 */
+{ .ca_index = 0x0b,  .speakers = {   0,    0,  RR,  RL,  FC,  LFE,  FR,  FL } },
+				/* 6.1 */
+{ .ca_index = 0x0f,  .speakers = {   0,   RC,  RR,  RL,  FC,  LFE,  FR,  FL } },
+				/* surround71 */
+{ .ca_index = 0x13,  .speakers = { RRC,  RLC,  RR,  RL,  FC,  LFE,  FR,  FL } },
+
+{ .ca_index = 0x03,  .speakers = {   0,    0,   0,   0,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x04,  .speakers = {   0,    0,   0,  RC,   0,    0,  FR,  FL } },
+{ .ca_index = 0x05,  .speakers = {   0,    0,   0,  RC,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x06,  .speakers = {   0,    0,   0,  RC,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x07,  .speakers = {   0,    0,   0,  RC,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x0c,  .speakers = {   0,   RC,  RR,  RL,   0,    0,  FR,  FL } },
+{ .ca_index = 0x0d,  .speakers = {   0,   RC,  RR,  RL,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x0e,  .speakers = {   0,   RC,  RR,  RL,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x10,  .speakers = { RRC,  RLC,  RR,  RL,   0,    0,  FR,  FL } },
+{ .ca_index = 0x11,  .speakers = { RRC,  RLC,  RR,  RL,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x12,  .speakers = { RRC,  RLC,  RR,  RL,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x14,  .speakers = { FRC,  FLC,   0,   0,   0,    0,  FR,  FL } },
+{ .ca_index = 0x15,  .speakers = { FRC,  FLC,   0,   0,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x16,  .speakers = { FRC,  FLC,   0,   0,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x17,  .speakers = { FRC,  FLC,   0,   0,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x18,  .speakers = { FRC,  FLC,   0,  RC,   0,    0,  FR,  FL } },
+{ .ca_index = 0x19,  .speakers = { FRC,  FLC,   0,  RC,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x1a,  .speakers = { FRC,  FLC,   0,  RC,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x1b,  .speakers = { FRC,  FLC,   0,  RC,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x1c,  .speakers = { FRC,  FLC,  RR,  RL,   0,    0,  FR,  FL } },
+{ .ca_index = 0x1d,  .speakers = { FRC,  FLC,  RR,  RL,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x1e,  .speakers = { FRC,  FLC,  RR,  RL,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x1f,  .speakers = { FRC,  FLC,  RR,  RL,  FC,  LFE,  FR,  FL } },
+};
+
+static struct channel_map_table map_tables[] = {
+	{ SNDRV_CHMAP_FL,       0x00,   FL },
+	{ SNDRV_CHMAP_FR,       0x01,   FR },
+	{ SNDRV_CHMAP_RL,       0x04,   RL },
+	{ SNDRV_CHMAP_RR,       0x05,   RR },
+	{ SNDRV_CHMAP_LFE,      0x02,   LFE },
+	{ SNDRV_CHMAP_FC,       0x03,   FC },
+	{ SNDRV_CHMAP_RLC,      0x06,   RLC },
+	{ SNDRV_CHMAP_RRC,      0x07,   RRC },
+	{} /* terminator */
+};
 
 /* hardware capability structure */
 static const struct snd_pcm_hardware snd_intel_hadstream = {
@@ -206,6 +285,71 @@ inline int had_read_modify(uint32_t offset, uint32_t data, uint32_t mask)
 				base_addr + offset, data, mask);
 
 	return retval;
+}
+/**
+ * had_read_modify_aud_config_v2 - Specific function to read-modify AUD_CONFIG
+ * register on VLV2.The had_read_modify() function should not directly be used
+ * on VLV2 for updating AUD_CONFIG register.
+ * This is because:
+ * Bit6 of AUD_CONFIG register is writeonly due to a silicon bug on VLV2 HDMI IP.
+ * As a result a read-modify of AUD_CONFIG regiter will always clear bit6.
+ * AUD_CONFIG[6:4] represents the "channels" field of the register.
+ * This field should be 1xy binary for configuration with 6 or more channels.
+ * Read-modify of AUD_CONFIG (Eg. for enabling audio) causes the "channels" field
+ * to be updated as 0xy binary resulting in bad audio.
+ * The fix is to always write the AUD_CONFIG[6:4] with appropriate value when
+ * doing read-modify of AUD_CONFIG register.
+ *
+ * @substream: the current substream or NULL if no active substream
+ * @data : data to be written
+ * @mask : mask
+ *
+ */
+inline int had_read_modify_aud_config_v2(struct snd_pcm_substream *substream,
+					uint32_t data, uint32_t mask)
+{
+	union aud_cfg cfg_val = {.cfg_regval = 0};
+	u8 channels;
+
+	/* If substream is NULL, there is no active stream.
+	   In this case just set channels to 2*/
+	if (substream)
+		channels = substream->runtime->channels;
+	else
+		channels = 2;
+	cfg_val.cfg_regx_v2.num_ch = channels - 2;
+
+	data = data | cfg_val.cfg_regval;
+	mask = mask | AUD_CONFIG_CH_MASK_V2;
+
+	pr_debug("%s : data = %x, mask =%x\n", __func__, data, mask);
+
+	return had_read_modify(AUD_CONFIG, data, mask);
+}
+
+/**
+ * snd_intelhad_enable_audio_v1 - to enable audio
+ *
+ * @substream: Current substream or NULL if no active substream.
+ * @enable: 1 if audio is to be enabled; 0 if audio is to be disabled.
+ *
+ */
+static void snd_intelhad_enable_audio_v1(struct snd_pcm_substream *substream,
+					u8 enable)
+{
+	had_read_modify(AUD_CONFIG, enable, BIT(0));
+}
+
+/**
+ * snd_intelhad_enable_audio_v2 - to enable audio
+ *
+ * @substream: Current substream or NULL if no active substream.
+ * @enable: 1 if audio is to be enabled; 0 if audio is to be disabled.
+ */
+static void snd_intelhad_enable_audio_v2(struct snd_pcm_substream *substream,
+					u8 enable)
+{
+	had_read_modify_aud_config_v2(substream, enable, BIT(0));
 }
 
 /**
@@ -1198,7 +1342,7 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		caps = HDMI_AUDIO_BUFFER_DONE;
 		retval = had_set_caps(HAD_SET_ENABLE_AUDIO_INT, &caps);
 		retval = had_set_caps(HAD_SET_ENABLE_AUDIO, NULL);
-		had_read_modify(AUD_CONFIG, 1, BIT(0));
+		intelhaddata->ops->enable_audio(substream, 1);
 
 		pr_debug("Processed _Start\n");
 
@@ -1221,7 +1365,7 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		caps = HDMI_AUDIO_BUFFER_DONE;
 		had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
 		had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
-		had_read_modify(AUD_CONFIG, 0, BIT(0));
+		intelhaddata->ops->enable_audio(substream, 0);
 		/* Reset buffer pointers */
 		had_write_register(AUD_HDMI_STATUS, 1);
 		had_write_register(AUD_HDMI_STATUS, 0);
@@ -1378,7 +1522,7 @@ int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
 	intelhaddata = snd_pcm_substream_chip(substream);
 
 	/* Disable Audio */
-	had_read_modify(AUD_CONFIG, 0, BIT(0));
+	intelhaddata->ops->enable_audio(substream, 0);
 
 	/* Update CTS value */
 	retval = had_get_caps(HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
@@ -1397,7 +1541,7 @@ int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
 					disp_samp_freq, n_param, intelhaddata);
 
 	/* Enable Audio */
-	had_read_modify(AUD_CONFIG, 1, BIT(0));
+	intelhaddata->ops->enable_audio(substream, 1);
 
 out:
 	return retval;
@@ -1520,6 +1664,7 @@ static struct snd_intel_had_interface had_interface = {
 };
 
 static struct had_ops had_ops_v1 = {
+	.enable_audio = snd_intelhad_enable_audio_v1,
 	.prog_n =	snd_intelhad_prog_n_v1,
 	.prog_cts =	snd_intelhad_prog_cts_v1,
 	.audio_ctrl =	snd_intelhad_prog_audio_ctrl_v1,
@@ -1528,6 +1673,7 @@ static struct had_ops had_ops_v1 = {
 };
 
 static struct had_ops had_ops_v2 = {
+	.enable_audio = snd_intelhad_enable_audio_v2,
 	.prog_n =	snd_intelhad_prog_n_v2,
 	.prog_cts =	snd_intelhad_prog_cts_v2,
 	.audio_ctrl =	snd_intelhad_prog_audio_ctrl_v2,
