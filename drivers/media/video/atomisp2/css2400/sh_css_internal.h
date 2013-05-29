@@ -51,8 +51,8 @@
 #define SP_DEBUG_NONE	(0)
 #define SP_DEBUG_DUMP	(1)
 #define SP_DEBUG_COPY	(2)
-#define SP_DEBUG_TRACE	(3) /* not yet functional */
-#define SP_DEBUG_STALL  (4)
+#define SP_DEBUG_TRACE	(3)
+#define SP_DEBUG_STALL	(4)
 
 #define SP_DEBUG SP_DEBUG_NONE
 
@@ -70,7 +70,7 @@
 */
 
 /* The maximum depth of the frame buffer queue */
-#define NUM_CONTINUOUS_FRAMES	10
+#define NUM_CONTINUOUS_FRAMES	15
 
 #define NUM_OFFLINE_INIT_CONTINUOUS_FRAMES	3
 #define NUM_ONLINE_INIT_CONTINUOUS_FRAMES	2
@@ -490,8 +490,8 @@ struct sh_css_sp_debug_state {
 
 #elif SP_DEBUG == SP_DEBUG_TRACE
 
-#define SH_CSS_SP_DBG_NR_OF_TRACES	(4)
-#define SH_CSS_SP_DBG_TRACE_DEPTH	(20)
+#define SH_CSS_SP_DBG_NR_OF_TRACES	(1)
+#define SH_CSS_SP_DBG_TRACE_DEPTH	(40)
 
 #define SH_CSS_SP_DBG_TRACE_FILE_ID_BIT_POS (13)
 
@@ -506,9 +506,9 @@ struct sh_css_sp_debug_trace {
 };
 
 struct sh_css_sp_debug_state {
-	unsigned int mipi_fifo_high_water;
 	struct sh_css_sp_debug_trace
 		trace[SH_CSS_SP_DBG_NR_OF_TRACES][SH_CSS_SP_DBG_TRACE_DEPTH];
+	uint16_t index_last[SH_CSS_SP_DBG_NR_OF_TRACES];
 	uint8_t index[SH_CSS_SP_DBG_NR_OF_TRACES];
 };
 

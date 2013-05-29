@@ -2550,6 +2550,9 @@ sh_css_allocate_continuous_frames(
 void
 sh_css_update_continuous_frames(void);
 
+void
+sh_css_set_cont_prev_start_time(unsigned int overlap);
+
 /* For convenience, so users only need to include sh_css.h
  * To be removed: the remaining sh_css_params functions should move to here.
  */

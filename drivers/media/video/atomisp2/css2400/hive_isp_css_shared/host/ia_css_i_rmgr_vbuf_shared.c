@@ -103,6 +103,11 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 			sizeof(struct ia_css_i_host_rmgr_vbuf_handle *) *
 			pool->size;
 		pool->handles = sh_css_malloc(bytes_needed);
+		assert(pool->handles != NULL);
+		if (pool->handles == NULL) {
+			pool->size = 0;
+			return;
+		}
 		memset(pool->handles, 0, bytes_needed);
 	}
 	else {
