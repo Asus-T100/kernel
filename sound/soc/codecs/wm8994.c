@@ -3684,7 +3684,7 @@ static irqreturn_t wm1811_jackdet_irq(int irq, void *data)
 		snd_soc_update_bits(codec, WM1811_JACKDET_CTRL,
 				    WM1811_JACKDET_DB, WM1811_JACKDET_DB);
 
-		wm8994->mic_detecting = false;
+		wm8994->mic_detecting = true;
 		wm8994->jack_mic = false;
 		snd_soc_update_bits(codec, WM8958_MIC_DETECT_1,
 				    WM8958_MICD_ENA, 0);
@@ -3885,6 +3885,12 @@ static irqreturn_t wm8958_mic_irq(int irq, void *data)
 			dev_dbg(codec->dev, "Ignoring removed jack\n");
 			return IRQ_HANDLED;
 		}
+	} else if (!(reg & WM8958_MICD_STS)) {
+		snd_soc_jack_report(wm8994->micdet[0].jack, 0,
+				    SND_JACK_MECHANICAL | SND_JACK_HEADSET |
+				    wm8994->btn_mask);
+		wm8994->mic_detecting = true;
+		goto out;
 	}
 
 	if (wm8994->mic_detecting)
