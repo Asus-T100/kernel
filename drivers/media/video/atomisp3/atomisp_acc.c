@@ -311,6 +311,8 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	struct ia_css_pipe_config *pipe_config;
 	const struct ia_css_stream_config *s_config =
 			&isp->css2_basis.stream_config;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 	int ret = 0;
 
 	dev_dbg(isp->dev, ">%s\n", __func__);
@@ -412,7 +414,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
-	isp->params.dvs_proj_data_valid = false;
+	isp_subdev->params.dvs_proj_data_valid = false;
 	isp->acc.pipeline = isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC];
 
 	dev_dbg(isp->dev, "<%s\n", __func__);
