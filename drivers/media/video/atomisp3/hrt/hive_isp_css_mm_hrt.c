@@ -33,6 +33,12 @@
 #define __page_align(size)	(((size) + (PAGE_SIZE-1)) & (~(PAGE_SIZE-1)))
 
 static unsigned init_done;
+/*
+ * to serialize MMIO access , this is due to ISP2400 silicon issue Sighting
+ * #4684168, if concurrency access happened, system may hard hang.
+ */
+static DEFINE_SPINLOCK(mmio_lock);
+
 void hrt_isp_css_mm_init(void)
 {
 	if (!init_done) {
@@ -245,27 +251,57 @@ ia_css_ptr atomisp_css2_mm_mmap(const void *ptr, const size_t size,
 }
 void atomisp_css2_hw_store_8(hrt_address addr, uint8_t data)
 {
+	unsigned long flags;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	_hrt_master_port_store_8(addr, data);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 void atomisp_css2_hw_store_16(hrt_address addr, uint16_t data)
 {
+	unsigned long flags;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	_hrt_master_port_store_16(addr, data);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 void atomisp_css2_hw_store_32(hrt_address addr, uint32_t data)
 {
+	unsigned long flags;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	_hrt_master_port_store_32(addr, data);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 uint8_t atomisp_css2_hw_load_8(hrt_address addr)
 {
-	return _hrt_master_port_load_8(addr);
+	unsigned long flags;
+	uint8_t ret;
+
+	spin_lock_irqsave(&mmio_lock, flags);
+	ret = _hrt_master_port_load_8(addr);
+	spin_unlock_irqrestore(&mmio_lock, flags);
+	return ret;
 }
 uint16_t atomisp_css2_hw_load_16(hrt_address addr)
 {
-	return _hrt_master_port_load_16(addr);
+	unsigned long flags;
+	uint16_t ret;
+
+	spin_lock_irqsave(&mmio_lock, flags);
+	ret = _hrt_master_port_load_16(addr);
+	spin_unlock_irqrestore(&mmio_lock, flags);
+	return ret;
 }
 uint32_t atomisp_css2_hw_load_32(hrt_address addr)
 {
-	return _hrt_master_port_load_32(addr);
+	unsigned long flags;
+	uint32_t ret;
+
+	spin_lock_irqsave(&mmio_lock, flags);
+	ret = _hrt_master_port_load_32(addr);
+	spin_unlock_irqrestore(&mmio_lock, flags);
+	return ret;
 }
 
 void atomisp_css2_hw_store(hrt_address addr, const void *from, uint32_t n)
