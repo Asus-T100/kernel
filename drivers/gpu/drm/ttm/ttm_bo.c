@@ -306,6 +306,7 @@ void ttm_bo_unreserve_locked(struct ttm_buffer_object *bo)
 	atomic_set(&bo->reserved, 0);
 	wake_up_all(&bo->event_queue);
 }
+EXPORT_SYMBOL(ttm_bo_unreserve_locked);
 
 void ttm_bo_unreserve(struct ttm_buffer_object *bo)
 {

@@ -25,11 +25,9 @@ void panel_handler(struct sfi_device_table_entry *pentry,
 	pr_info("Panel name = %16.16s\n", pentry->name);
 
 	if (!strcmp(pentry->name, "PANEL_CMI_CMD"))
-		set_panel_id(CMI_CMD);
+		PanelID = CMI_CMD;
 	else if (!strcmp(pentry->name, "PANEL_JDI_VID"))
-		set_panel_id(JDI_VID);
+		PanelID = JDI_VID;
 	else if (!strcmp(pentry->name, "PANEL_JDI_CMD"))
-		set_panel_id(JDI_CMD);
-
+		PanelID = JDI_CMD;
 }
-

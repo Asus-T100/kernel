@@ -2,7 +2,7 @@
 # Makefile for the drm device driver.  This driver provides support for the
 # Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
 
-ccflags-y := -Iinclude/drm -Idrivers/staging/intel_media/common/baytrail -Idrivers/staging/intel_media/video/common -Idrivers/staging/intel_media/video/decode -Idrivers/staging/intel_media/common
+ccflags-y := -Iinclude/drm -I../modules/intel_media/common/baytrail -I../modules/intel_media/video/common -I../modules/intel_media/video/decode -I../modules/intel_media/common
 #ccflags-y := -Iinclude/drm -Iinclude/drm/ttm -Idrivers/gpu/drm/i915 -Idrivers/staging/intel_media/common/baytrail -Idrivers/staging/intel_media/video/common -Idrivers/staging/intel_media/video/decode
 i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  i915_debugfs.o \

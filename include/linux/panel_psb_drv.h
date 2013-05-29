@@ -20,7 +20,7 @@
 #ifndef _PANEL_PSB_DRV_H_
 #define _PANEL_PSB_DRV_H_
 
-extern void set_panel_id(int panel_id);
+extern int PanelID;
 
 enum panel_type {
 	TPO_CMD,
