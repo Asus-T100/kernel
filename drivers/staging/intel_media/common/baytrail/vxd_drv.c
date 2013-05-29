@@ -655,9 +655,11 @@ static void vxd_power_down(struct drm_device *dev)
 	PSB_DEBUG_PM("MSVDX: power off msvdx.\n");
 
 	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+	udelay(10);
 	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	while (pwr_sts != 0x03000003) {
 		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+		udelay(10);
 		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	}
 }
@@ -668,23 +670,29 @@ static void vxd_power_on(struct drm_device *dev)
 	PSB_DEBUG_PM("MSVDX: power on msvdx.\n");
 
 	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+	udelay(10);
 	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	while (pwr_sts != 0x0) {
 		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+		udelay(10);
 		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	}
 
 	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+	udelay(10);
 	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	while (pwr_sts != 0x03000003) {
 		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+		udelay(10);
 		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	}
 
 	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+	udelay(10);
 	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	while (pwr_sts != 0x0) {
 		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+		udelay(10);
 		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	}
 }
@@ -722,9 +730,9 @@ static void vxd_power_post_init(struct drm_device *dev)
  */
 bool is_vxd_on()
 {
-	PSB_DEBUG_PM("MSVDX: check if vxd is power on.\n");
 	uint32_t pwr_sts =
 		intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	PSB_DEBUG_PM("check if vxd is power on, pwr_sts is 0x%x.\n", pwr_sts);
 	if (pwr_sts == VXD_APM_STS_D0)
 		return true;
 	else
