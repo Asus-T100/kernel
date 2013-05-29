@@ -349,6 +349,7 @@ struct atomisp_device {
 		struct ia_css_pipe *pipeline;
 		bool extension_mode;
 		struct ida ida;
+		struct completion acc_done;
 	} acc;
 
 	unsigned int s3a_bufs_in_css[IA_CSS_PIPE_ID_NUM];
