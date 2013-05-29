@@ -300,7 +300,7 @@ long vxd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 #define OSPM_VIDEO_DEC_ISLAND	1
 bool ospm_power_using_video_begin(int hw_island);
 void ospm_power_using_video_end(int hw_island);
-void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off);
+int ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off);
 /* end */
 
 #endif

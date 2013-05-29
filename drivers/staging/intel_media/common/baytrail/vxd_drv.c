@@ -29,6 +29,7 @@
 #include <linux/console.h>
 #include <linux/module.h>
 #include <asm/uaccess.h>
+#include <linux/intel_mid_pm.h>
 
 extern int drm_psb_trap_pagefaults;
 
@@ -295,6 +296,7 @@ int vxd_driver_unload(struct drm_device *dev)
 #define PUNIT_PORT			0x04
 #define VEDSSPM0 			0x32
 #define VEDSSPM1 			0x33
+#define VEDSSC				0x1
 
 u32 intel_mid_msgbus_read32_vxd(u8 port, u32 addr)
 {
@@ -649,11 +651,14 @@ err_i1:
 	return retcode;
 }
 
+#define USING_PRIVATE_PMU_FUNC 1
+
 static void vxd_power_down(struct drm_device *dev)
 {
 	uint32_t pwr_sts;
 	PSB_DEBUG_PM("MSVDX: power off msvdx.\n");
 
+#ifdef USING_PRIVATE_PMU_FUNC
 	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
 	udelay(10);
 	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
@@ -662,13 +667,20 @@ static void vxd_power_down(struct drm_device *dev)
 		udelay(10);
 		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	}
+#else
+	if (pmu_nc_set_power_state(VEDSSC, OSPM_ISLAND_DOWN, VEDSSPM0)) {
+		PSB_DEBUG_PM("VED: pmu_nc_set_power_state DOWN failed!\n");
+		return false;
+	}
+#endif
 }
 
 static void vxd_power_on(struct drm_device *dev)
 {
 	uint32_t pwr_sts;
 	PSB_DEBUG_PM("MSVDX: power on msvdx.\n");
-
+#ifdef USING_PRIVATE_PMU_FUNC
+	/* TODO: need be replaced by pmu_nc_get_power_state */
 	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
 	udelay(10);
 	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
@@ -695,6 +707,12 @@ static void vxd_power_on(struct drm_device *dev)
 		udelay(10);
 		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
 	}
+#else
+	if (pmu_nc_set_power_state(VEDSSC, OSPM_ISLAND_UP, VEDSSPM0)) {
+		PSB_DEBUG_PM("VED: pmu_nc_set_power_state ON failed!\n");
+		return false;
+	}
+#endif
 }
 
 static void vxd_power_init(struct drm_device *dev)
@@ -739,17 +757,18 @@ bool is_vxd_on()
 		return false;
 }
 
-void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
+int ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	PSB_DEBUG_PM("MSVDX: work queue is scheduled to power off msvdx.\n");
-
+	int ret = 0;
 	mutex_lock(&dev_priv->vxd_pm_mutex);
 	if (force_off)
 		goto power_off;
 
 	if (atomic_read(&g_videodec_access_count)) {
+		ret = -EBUSY;
 		PSB_DEBUG_PM("g_videodec_access_count has been set.\n");
 		goto out;
 	}
@@ -759,49 +778,24 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 		goto out;
 	}
 
-	if (psb_check_msvdx_idle(dev))
+	if (psb_check_msvdx_idle(dev)) {
+		ret = -EBUSY;
 		goto out;
+	}
 
 	psb_msvdx_save_context(dev);
 
 power_off:
 	vxd_power_down(dev);
+#ifdef CONFIG_PM_RUNTIME
+	i915_rpm_put_vxd(dev);
+#endif
 
 	/* MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN); */
 
 out:
 	mutex_unlock(&dev_priv->vxd_pm_mutex);
-	return;
-}
-
-/*
- * ospm_resume_pci
- *
- * Description: Resume the pci device restoring state and enabling
- * as necessary.
- */
-static bool ospm_resume_pci(struct pci_dev *pdev)
-{
-	struct drm_device *dev = pci_get_drvdata(pdev);
-	struct drm_psb_private *dev_priv = psb_priv(dev);
-	int ret = 0;
-
-	PSB_DEBUG_PM("ospm_resume_pci.\n");
-
-	pci_set_power_state(pdev, PCI_D0);
-	pci_restore_state(pdev);
-#if 0
-	pci_write_config_dword(pdev, 0x5c, dev_priv->saveBSM);
-	pci_write_config_dword(pdev, 0xFC, dev_priv->saveVBT);
-	/* retoring MSI address and data in PCIx space */
-	pci_write_config_dword(pdev, PSB_PCIx_MSI_ADDR_LOC, dev_priv->msi_addr);
-	pci_write_config_dword(pdev, PSB_PCIx_MSI_DATA_LOC, dev_priv->msi_data);
-#endif
-	ret = pci_enable_device(pdev);
-
-	if (ret != 0)
-		printk(KERN_ALERT "ospm_resume_pci: pci_enable_device failed: %d\n", ret);
-	return true;
+	return ret;
 }
 
 bool ospm_power_using_video_begin(int hw_island)
@@ -813,9 +807,13 @@ bool ospm_power_using_video_begin(int hw_island)
 		DRM_ERROR("failed.\n");
 		return true;
 	}
+
 	mutex_lock(&dev_priv->vxd_pm_mutex);
 	/* ospm_resume_pci(pdev); */
 	if (!is_vxd_on()) {
+#ifdef CONFIG_PM_RUNTIME
+		i915_rpm_get_vxd(dev_priv->dev);
+#endif
 		vxd_power_on(gpDrmDevice);
 	}
 	atomic_inc(&g_videodec_access_count);
