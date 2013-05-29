@@ -160,7 +160,8 @@ static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
 	struct v4l2_fh *fh,
 	struct v4l2_event_subscription *sub)
 {
-	if (sub->type != V4L2_EVENT_FRAME_SYNC)
+	if (sub->type != V4L2_EVENT_FRAME_SYNC &&
+	    sub->type != V4L2_EVENT_ATOMISP_3A_STATS_READY)
 		return -EINVAL;
 
 	return v4l2_event_subscribe(fh, sub, 16, NULL);

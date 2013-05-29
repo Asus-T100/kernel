@@ -433,6 +433,16 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
 }
 
+static void atomisp_3a_stats_ready_event(struct atomisp_device *isp)
+{
+	struct v4l2_event event = {0};
+
+	event.type = V4L2_EVENT_ATOMISP_3A_STATS_READY;
+	event.u.frame_sync.frame_sequence = atomic_read(&isp->sequence);
+
+	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
+}
+
 static void print_csi_rx_errors(struct atomisp_device *isp)
 {
 	u32 infos = 0;
@@ -797,6 +807,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			isp->params.s3a_buf_data_valid = true;
 		}
 		isp->s3a_bufs_in_css[css_pipe_id]--;
+		atomisp_3a_stats_ready_event(isp);
 		break;
 	case IA_CSS_BUFFER_TYPE_DIS_STATISTICS:
 		/* ignore error in case of dis statistics for now */
