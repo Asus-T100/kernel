@@ -138,7 +138,8 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	u32 dspcntr;
 	u32 dspstride;
 	u32 reg_offset;
-	u32 val;
+	u32 val = 0;
+	u32 power_island = 0;
 	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_hw_context *dsi_ctx;
 

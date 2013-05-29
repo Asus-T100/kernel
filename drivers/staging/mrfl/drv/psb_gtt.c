@@ -840,8 +840,8 @@ psb_gtt_mm_insert_mem_mapping_locked(struct drm_open_hash *ht,
 	struct psb_gtt_hash_entry *entry;
 	int ret;
 
-	if (!hentry) {
-		DRM_DEBUG("hentry is NULL\n");
+	if (!hentry || !ht) {
+		DRM_DEBUG("parameter error\n");
 		return -EINVAL;
 	}
 
@@ -917,6 +917,11 @@ static struct psb_gtt_mem_mapping *psb_gtt_mm_remove_mem_mapping_locked(struct
 	struct psb_gtt_mem_mapping *tmp;
 	struct psb_gtt_hash_entry *entry;
 	int ret;
+
+	if (!ht) {
+		DRM_DEBUG("ht is NULL\n");
+		return NULL;
+	}
 
 	ret = psb_gtt_mm_get_mem_mapping_locked(ht, key, &tmp);
 	if (ret) {

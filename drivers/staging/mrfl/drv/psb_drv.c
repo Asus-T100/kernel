@@ -1090,6 +1090,10 @@ bool mid_get_pci_revID(struct drm_psb_private *dev_priv)
 {
 	uint32_t platform_rev_id = 0;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
+	if (!pci_gfx_root) {
+		DRM_ERROR("pci_gfx_root is NULL\n");
+		return false;
+	}
 
 	/*get the revison ID, B0:D2:F0;0x08 */
 	pci_read_config_dword(pci_gfx_root, 0x08, &platform_rev_id);
@@ -1112,6 +1116,10 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	struct gct_r10_timing_info ti;
 	void *pGCT;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
+	if (!pci_gfx_root) {
+		DRM_ERROR("pci_gfx_root is NULL\n");
+		return false;
+	}
 
 	/*get the address of the platform config vbt, B0:D2:F0;0xFC */
 	pci_read_config_dword(pci_gfx_root, 0xFC, &platform_config_address);
@@ -1130,6 +1138,11 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	/* get the virtual address of the vbt */
 	pVBT_virtual = ioremap(platform_config_address, sizeof(*pVBT));
 
+	if (!pVBT_virtual) {
+		DRM_ERROR("pVBT_virtual is NULL, problem during ioremap\n");
+		return false;
+	}
+
 	memcpy(pVBT, pVBT_virtual, sizeof(*pVBT));
 	iounmap(pVBT_virtual);	/* Free virtual address space */
 
@@ -1141,6 +1154,10 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		pVBT->mrst_gct =
 		    ioremap(platform_config_address + sizeof(*pVBT) - 4,
 			    pVBT->Size - sizeof(*pVBT) + 4);
+		if (!pVBT->mrst_gct) {
+			DRM_ERROR("pVBT->mrst_gct NULL from ioremap\n");
+			return false;
+		}
 		pGCT = pVBT->mrst_gct;
 		bpi = ((struct mrst_gct_v1 *)pGCT)->PD.BootPanelIndex;
 		dev_priv->gct_data.bpi = bpi;

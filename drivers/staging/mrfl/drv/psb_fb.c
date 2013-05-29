@@ -110,6 +110,11 @@ static int psbfb_kms_off(struct drm_device *dev, int suspend)
 
 	DRM_DEBUG("psbfb_kms_off_ioctl\n");
 
+	if (!psbfb) {
+		DRM_ERROR("psbfb is NULL\n");
+		return 0;
+	}
+
 	mutex_lock(&dev->mode_config.mutex);
 	list_for_each_entry(fb, &dev->mode_config.fb_list, head) {
 		struct fb_info *info = psbfb->fbdev;
@@ -143,6 +148,11 @@ static int psbfb_kms_on(struct drm_device *dev, int resume)
 	struct psb_framebuffer *psbfb = to_psb_fb(fb);
 
 	DRM_DEBUG("psbfb_kms_on_ioctl\n");
+
+	if (!psbfb) {
+		DRM_ERROR("psbfb is NULL\n");
+		return 0;
+	}
 
 	mutex_lock(&dev->mode_config.mutex);
 	list_for_each_entry(fb, &dev->mode_config.fb_list, head) {
@@ -445,7 +455,7 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	if (!fb) {
 		DRM_ERROR("failed to allocate fb.\n");
 		ret = -ENOMEM;
-		goto out_err0;
+		goto out_err1;
 	}
 
 	psbfb = to_psb_fb(fb);
@@ -461,7 +471,7 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	info = framebuffer_alloc(sizeof(struct psb_fbdev), device);
 	if (!info) {
 		ret = -ENOMEM;
-		goto out_err1;
+		goto out_err0;
 	}
 
 	info->par = fbdev;
@@ -697,6 +707,10 @@ static int psb_create_backlight_property(struct drm_device *dev)
 
 	backlight = drm_property_create(dev,
 					DRM_MODE_PROP_RANGE, "backlight", 2);
+	if (!backlight) {
+		DRM_ERROR("backlight is NULL\n");
+		return 0;
+	}
 	backlight->values[0] = 0;
 	backlight->values[1] = 100;
 

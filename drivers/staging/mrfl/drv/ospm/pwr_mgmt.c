@@ -399,6 +399,11 @@ bool is_island_on(u32 hw_island)
 	struct ospm_power_island *p_island = get_island_ptr(hw_island);
 	bool island_on = false;
 
+	if (!p_island) {
+		DRM_ERROR("p_island is NULL\n");
+		return false;
+	}
+
 	/* TODO: add lock here. */
 	island_on = (p_island->island_state == OSPM_POWER_ON) ? true : false;
 
@@ -584,6 +589,10 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 	unsigned long flags;
 	p_island = get_island_ptr(OSPM_VIDEO_DEC_ISLAND);
 
+	if (!p_island) {
+		DRM_ERROR("p_island is NULL\n");
+		return;
+	}
 
 	if (force_off) {
 		spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
@@ -618,6 +627,11 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 
 	PSB_DEBUG_PM("Power down VEC...\n");
 	p_island = get_island_ptr(OSPM_VIDEO_ENC_ISLAND);
+
+	if (!p_island) {
+		DRM_ERROR("p_island is NULL\n");
+		return;
+	}
 
 	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
 

@@ -145,6 +145,10 @@ static int __dpi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_pkg_sender *sender
 		= mdfld_dsi_get_pkg_sender(dsi_config);
+	if (!sender) {
+		DRM_ERROR("pkg sender is NULL\n");
+		return -EINVAL;
+	}
 
 	ctx->device_ready = REG_READ(regs->device_ready_reg);
 
@@ -387,8 +391,13 @@ reset_recovery:
 	val = ctx->dspcntr | BIT31;
 	REG_WRITE(regs->dspcntr_reg, val);
 
-	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
+	if (p_funcs && p_funcs->set_brightness) {
+		if (p_funcs->set_brightness(dsi_config,
+				ctx->lastbrightnesslevel))
+			DRM_ERROR("Failed to set panel brightness\n");
+	} else {
 		DRM_ERROR("Failed to set panel brightness\n");
+	}
 
 	return err;
 
@@ -602,6 +611,11 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	p_funcs = dpi_output->p_funcs;
 	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_encoder);
+	if (!dsi_connector) {
+		DRM_ERROR("dsi_connector is NULL\n");
+		return -EINVAL;
+	}
+
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
 
@@ -653,6 +667,11 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
+	if (!dsi_config) {
+		DRM_ERROR("dsi_config is NULL\n");
+		return;
+	}
+
 	int pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 	struct drm_device *dev = dsi_config->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -691,6 +710,10 @@ void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	if (!dsi_config) {
+		DRM_ERROR("dsi_config is NULL\n");
+		return;
+	}
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
 
@@ -712,7 +735,14 @@ bool mdfld_dsi_dpi_mode_fixup(struct drm_encoder *encoder,
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
-	struct drm_display_mode *fixed_mode = dsi_config->fixed_mode;
+	struct drm_display_mode *fixed_mode;
+
+	if (!dsi_config) {
+		DRM_ERROR("dsi_config is NULL\n");
+		return;
+	}
+
+	fixed_mode = dsi_config->fixed_mode;
 
 	PSB_DEBUG_ENTRY("\n");
 

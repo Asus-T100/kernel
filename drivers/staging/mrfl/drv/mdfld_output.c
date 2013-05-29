@@ -71,6 +71,9 @@ mdfld_dsi_encoder_t is_panel_vid_or_cmd(struct drm_device *dev)
 	}
 
 	BUG();
+
+	/* This should be unreachable */
+	return 0;
 }
 
 void init_panel(struct drm_device *dev, int mipi_pipe, enum panel_type p_type)

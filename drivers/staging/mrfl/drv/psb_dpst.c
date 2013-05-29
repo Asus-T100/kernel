@@ -126,6 +126,9 @@ struct dpst_state *psb_dpst_init(struct kobject *parent_kobj)
 	struct umevent_obj *working_umevent;
 
 	state = kzalloc(sizeof(struct dpst_state), GFP_KERNEL);
+	if (!state)
+		return NULL;
+
 	state->list = NULL;
 	state->list = psb_dpst_device_pool_create_and_init(parent_kobj, state);
 	working_umevent = psb_dpst_create_and_notify_um("init", state);
