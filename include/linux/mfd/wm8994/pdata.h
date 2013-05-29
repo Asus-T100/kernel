@@ -177,6 +177,11 @@ struct wm8994_pdata {
 	 */
 	int micdet_delay;
 
+	/* Delay between microphone detect completing and reporting on
+	 * insert (specified in ms)
+	 */
+	int mic_id_delay;
+
 	/* IRQ for microphone detection if brought out directly as a
 	 * signal.
 	 */
