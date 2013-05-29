@@ -78,6 +78,14 @@
 #define DEFAULT_MAX_TEMP	85
 #define MIN_CRIT_TEMP		55
 
+/*
+ * Default Hysteresis value: 15 corresponds to 3C.
+ * Why 15? : Hysteresis value is 4 bits wide. This is
+ * the maximum possible value that can be supported.
+ * Can be changed at run-time through Sysfs interface
+ */
+#define DEFAULT_HYST		15
+
 #define NUM_ALERT_LEVELS	3
 #define ALERT_RW_MASK		0x07
 #define LEVEL_ALERT0		0
@@ -411,6 +419,28 @@ static int temp_to_adc(int direct, int temp, int *adc_val)
 }
 
 /**
+ * set_hyst_val - sets the given 'val' as the 'hysteresis'
+ * @alert_reg_h: The 'high' register address
+ * @hyst:        Hysteresis value (in ADC codes) to be programmed
+ *
+ * Not protected. Calling function should handle synchronization.
+ * Can sleep
+ */
+static int set_hyst_val(int alert_reg_h, int hyst)
+{
+	int ret;
+
+	ret = intel_mid_pmic_readb(alert_reg_h);
+	if (ret < 0)
+		return ret;
+
+	/* Set bits [2:5] to value of hyst */
+	ret = (ret & 0xC3) | (hyst << 2);
+
+	return intel_mid_pmic_writeb(alert_reg_h, ret);
+}
+
+/**
  * set_alert_temp - sets the given 'adc_val' to the 'alert_reg'
  * @alert_reg_l: The 'low' register address
  * @adc_val:     ADC value to be programmed
@@ -427,16 +457,6 @@ static int set_alert_temp(int alert_reg_l, int adc_val, int level)
 	 * The alert register stores B[1:8] of val and the HW
 	 * while comparing prefixes and suffixes this value with
 	 * a 0; i.e B[0] and B[9] are 0.
-	 */
-	if (level == LEVEL_ALERT2) {
-		adc_val = (adc_val & 0x1FF) >> 1;
-		return intel_mid_pmic_writeb(alert_reg_l, adc_val);
-	}
-
-	/*
-	 * The alert register stores B[1:8] of val and the HW
-	 * while comparing prefixes and suffixes this value with
-	 * a 0.
 	 */
 	if (level == LEVEL_ALERT2) {
 		adc_val = (adc_val & 0x1FF) >> 1;
@@ -519,6 +539,13 @@ static int program_tmax(struct device *dev)
 						val, level);
 			if (ret < 0)
 				goto exit_err;
+			/* Set default Hysteresis for Alerts 0,1 only */
+			if (level == LEVEL_ALERT2)
+				continue;
+			ret = set_hyst_val(alert_regs_l[level][i] - 1,
+					DEFAULT_HYST);
+			if (ret < 0)
+				goto exit_err;
 		}
 	}
 
@@ -540,21 +567,13 @@ static ssize_t store_trip_hyst(struct thermal_zone_device *tzd,
 	 * Alert level 2 does not support hysteresis; and (for
 	 * other levels) the hysteresis value is 4 bits wide.
 	 */
-	if (trip == LEVEL_ALERT2 || hyst > 15)
+	if (trip == LEVEL_ALERT2 || hyst > DEFAULT_HYST)
 		return -EINVAL;
 
 	mutex_lock(&thrm_update_lock);
 
-	ret = intel_mid_pmic_readb(alert_reg);
-	if (ret < 0)
-		goto exit;
+	ret = set_hyst_val(alert_reg, hyst);
 
-	/* Set bits [2:5] to value of hyst */
-	ret = (ret & 0xC3) | (hyst << 2);
-
-	ret = intel_mid_pmic_writeb(alert_reg, ret);
-
-exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
 }
