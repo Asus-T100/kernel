@@ -593,6 +593,10 @@ static int __dwc3_gadget_ep_disable(struct dwc3_ep *dep)
 	dep->type = 0;
 	dep->flags = 0;
 
+	/* set normal endpoint maxpacket to default value */
+	if (dep->number > 1)
+		dep->endpoint.maxpacket = 1024;
+
 	return 0;
 }
 
