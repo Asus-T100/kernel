@@ -100,8 +100,18 @@ int dw9719_vcm_power_up(struct v4l2_subdev *sd)
 	/* Need 100us to transit from SHUTDOWN to STANDBY*/
 	usleep_range(100, 1000);
 
-	/* Reset device */
-	ret = dw9719_i2c_wr8(client, DW9719_CONTROL, 1);
+	/* Enable the ringing compensation */
+	ret = dw9719_i2c_wr8(client, DW9719_CONTROL, DW9719_ENABLE_RINGING);
+	if (ret < 0)
+		goto fail_powerdown;
+
+	/* Use SAC3 mode */
+	ret = dw9719_i2c_wr8(client, DW9719_MODE, DW9719_MODE_SAC3);
+	if (ret < 0)
+		goto fail_powerdown;
+
+	/* Set the resonance frequency */
+	ret = dw9719_i2c_wr8(client, DW9719_VCM_FREQ, DW9719_DEFAULT_VCM_FREQ);
 	if (ret < 0)
 		goto fail_powerdown;
 
