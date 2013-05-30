@@ -1302,6 +1302,7 @@ extern bool i915_enable_hangcheck __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
 extern int i915_enable_turbo __read_mostly;
 extern int i915_psr_support __read_mostly;
+extern struct drm_display_mode rot_mode;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
@@ -1688,6 +1689,8 @@ int i915_set_plane_zorder(struct drm_device *dev, void *data,
 			  struct drm_file *file);
 int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
 					 struct drm_file *file);
+int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
+			struct drm_file *file);
 int i915_disp_screen_control(struct drm_device *dev, void *data,
 			struct drm_file *file);
 

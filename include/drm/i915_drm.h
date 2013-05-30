@@ -228,6 +228,7 @@ typedef struct _drm_i915_sarea {
 #define DRM_I915_EDP_PSR_CTL            0x33
 #define DRM_I915_EDP_PSR_EXIT           0x34
 #define DRM_I915_DISP_SCREEN_CONTROL	0x35
+#define DRM_I915_SET_PLANE_180_ROTATION 0x36
 #define DRM_I915_SET_RESERVED_REG_BIT_2	0x37
 #define DRM_I915_GEM_VMAP		0x38
 #define DRM_I915_SET_CSC                0x39
@@ -291,6 +292,9 @@ typedef struct _drm_i915_sarea {
 #define DRM_IOCTL_I915_DISP_SCREEN_CONTROL             \
 		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_DISP_SCREEN_CONTROL, \
 		struct drm_i915_disp_screen_control)
+#define DRM_IOCTL_I915_SET_PLANE_180_ROTATION  \
+		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_SET_PLANE_180_ROTATION, \
+		struct drm_i915_plane_180_rotation)
 #define DRM_IOCTL_I915_SET_RESERVED_REG_BIT_2		\
 		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_SET_RESERVED_REG_BIT_2, \
 		struct drm_i915_reserved_reg_bit_2)
@@ -1025,6 +1029,11 @@ struct drm_i915_set_plane_zorder {
 struct drm_i915_disp_screen_control {
 	__u32 on_off_cntrl;
 	__u32 crtc_id;
+};
+
+struct drm_i915_plane_180_rotation {
+	__u32 crtc_id;
+	__u32 rotate;
 };
 
 struct drm_i915_reserved_reg_bit_2 {
