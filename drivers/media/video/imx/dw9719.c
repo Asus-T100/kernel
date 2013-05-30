@@ -172,8 +172,7 @@ int dw9719_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 	int ret;
 
 	value = clamp(value, 0, DW9719_MAX_FOCUS_POS);
-	ret = dw9719_i2c_wr16(client, DW9719_VCM_CURRENT,
-					DW9719_MAX_FOCUS_POS - value);
+	ret = dw9719_i2c_wr16(client, DW9719_VCM_CURRENT, value);
 	if (ret < 0)
 		return ret;
 
