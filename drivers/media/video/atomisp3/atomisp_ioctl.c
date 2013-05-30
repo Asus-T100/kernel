@@ -449,12 +449,9 @@ const struct atomisp_format_bridge *atomisp_get_format_bridge_from_mbus(
 	return NULL;
 }
 
-unsigned int atomisp_get_pipe_index(struct atomisp_device *isp,
+unsigned int atomisp_get_pipe_index(struct atomisp_sub_device *isp_subdev,
 					uint16_t source_pad)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	switch (source_pad) {
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
@@ -478,15 +475,13 @@ unsigned int atomisp_get_pipe_index(struct atomisp_device *isp,
 
 	return IA_CSS_PIPE_ID_NUM;
 }
-static int __get_css_frame_info(struct atomisp_device *isp,
+static int __get_css_frame_info(struct atomisp_sub_device *isp_subdev,
 				uint16_t source_pad,
 				struct ia_css_frame_info *frame_info)
 {
 	enum ia_css_err ret;
 	struct ia_css_pipe_info info;
-	int pipe_index = atomisp_get_pipe_index(isp, source_pad);
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	int pipe_index = atomisp_get_pipe_index(isp_subdev, source_pad);
 
 	if (pipe_index >= IA_CSS_PIPE_ID_NUM)
 		return -EINVAL;
@@ -876,14 +871,12 @@ static void atomisp_videobuf_free_queue(struct videobuf_queue *q)
 	}
 }
 
-int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
+int atomisp_alloc_css_stat_bufs(struct atomisp_sub_device *isp_subdev)
 {
 	struct atomisp_s3a_buf *s3a_buf = NULL;
 	struct atomisp_dvs_buf *dvs_buf = NULL;
 	/* 2 css pipes consuming 3a buffers */
 	int count = ATOMISP_CSS_Q_DEPTH * 2;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!list_empty(&isp_subdev->s3a_stats) &&
 	    !list_empty(&isp_subdev->dvs_stats))
@@ -988,7 +981,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	if (ret)
 		return ret;
 
-	atomisp_alloc_css_stat_bufs(isp);
+	atomisp_alloc_css_stat_bufs(isp_subdev);
 
 	/*
 	 * for user pointer type, buffers are not really allcated here,
@@ -997,7 +990,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	if (req->memory == V4L2_MEMORY_USERPTR)
 		return 0;
 
-	ret = __get_css_frame_info(isp, source_pad, &frame_info);
+	ret = __get_css_frame_info(isp_subdev, source_pad, &frame_info);
 	if (ret)
 		return -EINVAL;
 
@@ -1138,7 +1131,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		if (vb->baddr == buf->m.userptr && vm_mem->vaddr)
 			goto done;
 
-		if (__get_css_frame_info(isp, atomisp_subdev_source_pad(vdev),
+		if (__get_css_frame_info(isp_subdev,
+					 atomisp_subdev_source_pad(vdev),
 					 &frame_info)) {
 			ret = -EIO;
 			goto error;
@@ -1189,7 +1183,7 @@ done:
 
 	/* TODO: do this better, not best way to queue to css */
 	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
-		atomisp_qbuffers_to_css(isp);
+		atomisp_qbuffers_to_css(isp_subdev);
 
 		if (!timer_pending(&isp->wdt) &&
 		    atomisp_buffers_queued(isp_subdev))
@@ -1294,11 +1288,9 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	return 0;
 }
 
-enum ia_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
+enum ia_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_sub_device
+					    *isp_subdev)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	if (isp_subdev->continuous_mode->val &&
 	    isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return IA_CSS_PIPE_ID_PREVIEW;
@@ -1412,12 +1404,12 @@ static int atomisp_streamon(struct file *file, void *fh,
 				goto out;
 			}
 		}
-		atomisp_qbuffers_to_css(isp);
+		atomisp_qbuffers_to_css(isp_subdev);
 		goto out;
 	}
 
 	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
-		atomisp_qbuffers_to_css(isp);
+		atomisp_qbuffers_to_css(isp_subdev);
 		goto start_sensor;
 	}
 
@@ -1468,7 +1460,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	isp->sw_contex.invalid_frame = false;
 	isp_subdev->params.dvs_proj_data_valid = false;
 
-	atomisp_qbuffers_to_css(isp);
+	atomisp_qbuffers_to_css(isp_subdev);
 
 	/* Only start sensor when the last streaming instance started */
 	if (atomisp_streaming_count(isp) < sensor_start_stream)
