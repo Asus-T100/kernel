@@ -143,7 +143,14 @@ static int dsi_error_handler(struct mdfld_dsi_pkg_sender *sender)
 		case BIT5:
 		case BIT6:
 		case BIT7:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			break;
 		case BIT8:
+			/*No Action required.*/
+			REG_WRITE(intr_stat_reg, mask);
+			break;
 		case BIT9:
 		case BIT10:
 		case BIT11:

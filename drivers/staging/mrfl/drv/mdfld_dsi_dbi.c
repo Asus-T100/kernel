@@ -1074,9 +1074,12 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_dbi_output *dbi_output = NULL;
 	struct panel_funcs *p_funcs  = NULL;
+	struct drm_device *dev;
 
 	dbi_output = dev_priv->dbi_output;
 	dsi_config = dev_priv->dsi_configs[0];
+	dev = dsi_config->dev;
+
 	if (!dsi_config || !dbi_output)
 		return;
 
@@ -1090,10 +1093,15 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	if (p_funcs) {
 		mutex_lock(&dsi_config->context_lock);
 
+		DRM_INFO("Starts ESD panel reset\n");
+
 		if (__dbi_panel_power_off(dsi_config, p_funcs)) {
 			mutex_unlock(&dsi_config->context_lock);
 			return;
 		}
+		if (get_panel_type(dev, 0) == JDI_CMD)
+			if (p_funcs && p_funcs->reset)
+				p_funcs->reset(dsi_config);
 
 		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
 			mutex_unlock(&dsi_config->context_lock);

@@ -346,7 +346,7 @@ void mdfld_cmi_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->intr_en = 0xFFFFFFFF;
 	hw_ctx->hs_tx_timeout = 0xFFFFFF;
 	hw_ctx->lp_rx_timeout = 0xFFFFFF;
-	hw_ctx->turn_around_timeout = 0x14;
+	hw_ctx->turn_around_timeout = 0x1f;
 	hw_ctx->device_reset_timer = 0xffff;
 	hw_ctx->high_low_switch_count = 0x20;
 	hw_ctx->clk_lane_switch_time_cnt = 0x20000E;
