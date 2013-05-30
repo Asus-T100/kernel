@@ -380,7 +380,7 @@ static void *imx_otp_read(struct v4l2_subdev *sd)
 static int __imx_update_exposure_timing(struct i2c_client *client, u16 exposure,
 			u16 llp, u16 fll)
 {
-	int ret;
+	int ret = 0;
 
 	/* Increase the VTS to match exposure + margin */
 	if (exposure > fll - IMX_INTEGRATION_TIME_MARGIN)
@@ -394,8 +394,10 @@ static int __imx_update_exposure_timing(struct i2c_client *client, u16 exposure,
 	if (ret)
 		return ret;
 
-	return imx_write_reg(client, IMX_16BIT, IMX_COARSE_INTEGRATION_TIME,
-			exposure);
+	if (exposure)
+		ret = imx_write_reg(client, IMX_16BIT,
+			IMX_COARSE_INTEGRATION_TIME, exposure);
+	return ret;
 }
 
 static int __imx_update_gain(struct v4l2_subdev *sd, u16 gain)
@@ -622,17 +624,19 @@ static int power_down(struct v4l2_subdev *sd)
 static int __imx_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	int ret, r;
+	int ret = 0;
+	int r = 0;
 
 	if (on == 0) {
 		ret = power_down(sd);
-
-		r = dev->vcm_driver->power_down(sd);
+		if (dev->vcm_driver && dev->vcm_driver->power_down)
+			r = dev->vcm_driver->power_down(sd);
 		if (ret == 0)
 			ret = r;
 		dev->power = 0;
 	} else {
-		ret = dev->vcm_driver->power_up(sd);
+		if (dev->vcm_driver && dev->vcm_driver->power_up)
+			ret = dev->vcm_driver->power_up(sd);
 		if (ret)
 			return ret;
 		ret = power_up(sd);
@@ -713,7 +717,9 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	if (ret)
 		return ret;
 	pre_pll_clk_div = data[0] & IMX_MASK_4BIT;
-	ret = imx_read_reg(client, 2, IMX_PLL_MULTIPLIER, data);
+	ret = imx_read_reg(client, 2,
+		(dev->sensor_id == IMX132_ID) ?
+		IMX132_PLL_MULTIPLIER : IMX_PLL_MULTIPLIER, data);
 	if (ret)
 		return ret;
 	pll_multiplier = data[0] & IMX_MASK_11BIT;
@@ -772,10 +778,14 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	buf->output_height = data[0];
 
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
-	ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
-	if (ret)
-		return ret;
-	read_mode = data[0] & IMX_MASK_2BIT;
+	if (dev->sensor_id == IMX132_ID)
+		read_mode = 0;
+	else {
+		ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
+		if (ret)
+			return ret;
+		read_mode = data[0] & IMX_MASK_2BIT;
+	}
 
 	div = pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div;
 	if (div == 0)
@@ -798,19 +808,24 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	buf->line_length_pck = line_length_pck;
 	buf->read_mode = read_mode;
 
-	ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data);
-	if (ret)
-		return ret;
-	/* 1:binning enabled, 0:disabled */
-	if (data[0] == 1) {
-		ret = imx_read_reg(client, 1, IMX_BINNING_TYPE, data);
-		if (ret)
-			return ret;
-		buf->binning_factor_x = data[0] >> 4 & 0x0f;
-		buf->binning_factor_y = data[0] & 0xf;
-	} else {
+	if (dev->sensor_id == IMX132_ID) {
 		buf->binning_factor_x = 1;
 		buf->binning_factor_y = 1;
+	} else {
+		ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data);
+		if (ret)
+			return ret;
+		/* 1:binning enabled, 0:disabled */
+		if (data[0] == 1) {
+			ret = imx_read_reg(client, 1, IMX_BINNING_TYPE, data);
+			if (ret)
+				return ret;
+			buf->binning_factor_x = data[0] >> 4 & 0x0f;
+			buf->binning_factor_y = data[0] & 0xf;
+		} else {
+			buf->binning_factor_x = 1;
+			buf->binning_factor_y = 1;
+		}
 	}
 
 	return 0;
@@ -904,61 +919,80 @@ static int imx_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
 int imx_vcm_power_up(struct v4l2_subdev *sd)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->power_up(sd);
+	if (dev->vcm_driver && dev->vcm_driver->power_up)
+		return dev->vcm_driver->power_up(sd);
+	return 0;
 }
+
 int imx_vcm_power_down(struct v4l2_subdev *sd)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->power_down(sd);
-
+	if (dev->vcm_driver && dev->vcm_driver->power_down)
+		return dev->vcm_driver->power_down(sd);
+	return 0;
 }
+
 int imx_vcm_init(struct v4l2_subdev *sd)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->init(sd);
-
+	if (dev->vcm_driver && dev->vcm_driver->init)
+		return dev->vcm_driver->init(sd);
+	return 0;
 }
+
 int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->t_focus_vcm(sd, val);
-
+	if (dev->vcm_driver && dev->vcm_driver->t_focus_vcm)
+		return dev->vcm_driver->t_focus_vcm(sd, val);
+	return 0;
 }
+
 int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->t_focus_abs(sd, value);
-
+	if (dev->vcm_driver && dev->vcm_driver->t_focus_abs)
+		return dev->vcm_driver->t_focus_abs(sd, value);
+	return 0;
 }
 int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->t_focus_rel(sd, value);
-
+	if (dev->vcm_driver && dev->vcm_driver->t_focus_rel)
+		return dev->vcm_driver->t_focus_rel(sd, value);
+	return 0;
 }
+
 int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->q_focus_status(sd, value);
-
+	if (dev->vcm_driver && dev->vcm_driver->q_focus_status)
+		return dev->vcm_driver->q_focus_status(sd, value);
+	return 0;
 }
+
 int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->q_focus_abs(sd, value);
-
+	if (dev->vcm_driver && dev->vcm_driver->q_focus_abs)
+		return dev->vcm_driver->q_focus_abs(sd, value);
+	return 0;
 }
+
 int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->t_vcm_slew(sd, value);
-
+	if (dev->vcm_driver && dev->vcm_driver->t_vcm_slew)
+		return dev->vcm_driver->t_vcm_slew(sd, value);
+	return 0;
 }
+
 int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return dev->vcm_driver->t_vcm_timing(sd, value);
-
+	if (dev->vcm_driver && dev->vcm_driver->t_vcm_timing)
+		return dev->vcm_driver->t_vcm_timing(sd, value);
+	return 0;
 }
 
 struct imx_control imx_controls[] = {
@@ -1340,7 +1374,7 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 			dev->curr_res_table[dev->fmt_idx].lines_per_frame;
 
 	ret = __imx_update_exposure_timing(client, dev->coarse_itg,
-			dev->pixels_per_line, dev->lines_per_frame);
+		dev->pixels_per_line, dev->lines_per_frame);
 	if (ret)
 		goto out;
 
@@ -1388,6 +1422,12 @@ static int imx_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		goto found;
 
 	/* check sensor chip ID	 */
+	if (imx_read_reg(client, IMX_16BIT, IMX132_CHIP_ID, id)) {
+		v4l2_err(client, "sensor_id = 0x%x\n", *id);
+		return -ENODEV;
+	}
+	if (*id == IMX132_ID)
+		goto found;
 	if (imx_read_reg(client, IMX_16BIT, IMX135_CHIP_ID, id)) {
 		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
@@ -1539,8 +1579,11 @@ static int imx_s_config(struct v4l2_subdev *sd,
 	dev->sensor_revision = sensor_revision;
 
 	/* Read sensor's OTP data */
-	dev->otp_data = imx_otp_read(sd);
-
+	if (dev->sensor_id == IMX132_ID)
+		dev->otp_data = devm_kzalloc(&client->dev,
+				IMX_OTP_DATA_SIZE, GFP_KERNEL);
+	else
+		dev->otp_data = imx_otp_read(sd);
 	/* power off sensor */
 	ret = __imx_s_power(sd, 0);
 	mutex_unlock(&dev->input_lock);
@@ -1789,6 +1832,10 @@ static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
 			dev->vcm_driver = &imx_vcms[IMX135_SALTBAY];
 		}
 		break;
+	case IMX132_ID:
+		dev->mode_tables = &imx_sets[IMX132_SALTBAY];
+		dev->vcm_driver = NULL;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1857,6 +1904,7 @@ out_free:
 static const struct i2c_device_id imx_ids[] = {
 	{IMX_NAME_175, IMX175_ID},
 	{IMX_NAME_135, IMX135_ID},
+	{IMX_NAME_132, IMX132_ID},
 	{}
 };
 
