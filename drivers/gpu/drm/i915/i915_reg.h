@@ -3405,6 +3405,7 @@ EDP_PSR_SW_TIMER
 #define _SPBTILEOFF		0x722a4
 #define _SPBCONSTALPHA		0x722a8
 #define _SPBGAMC		0x722f4
+#define VLV_NUM_SPRITES		2
 
 #define SPCNTR(pipe, plane) _PIPE(pipe * 2 + plane, _SPACNTR, _SPBCNTR)
 #define SPLINOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPALINOFF, _SPBLINOFF)

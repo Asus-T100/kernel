@@ -1960,6 +1960,21 @@ static void intel_disable_plane(struct drm_i915_private *dev_priv,
 	I915_WRITE(reg, val & ~DISPLAY_PLANE_ENABLE);
 	intel_flush_display_plane(dev_priv, plane);
 	intel_wait_for_vblank(dev_priv->dev, pipe);
+
+	/* disable the sprite planes */
+	if (IS_VALLEYVIEW(dev_priv->dev)) {
+		int i;
+		for (i = 0; i < VLV_NUM_SPRITES; i++) {
+			val = I915_READ(SPCNTR(pipe, i));
+			if ((val & SP_ENABLE) == 0)
+				break;
+
+			I915_WRITE(SPCNTR(pipe, i), (val & ~SP_ENABLE));
+			/* Activate double buffered register update */
+			I915_MODIFY_DISPBASE(SPSURF(pipe, i), 0);
+			POSTING_READ(SPSURF(pipe, i));
+		}
+	}
 }
 
 static void disable_pch_dp(struct drm_i915_private *dev_priv,
