@@ -126,7 +126,7 @@ struct thermal_device_info {
 struct thermal_data {
 	struct platform_device *pdev;
 	struct iio_channel *iio_chan;
-	struct thermal_zone_device *tzd[PMIC_THERMAL_SENSORS];
+	struct thermal_zone_device **tzd;
 	void *thrm_addr;
 	unsigned int irq;
 	/* Caching information */
@@ -501,6 +501,44 @@ exit:
 	return ret;
 }
 
+#ifdef CONFIG_DEBUG_THERMAL
+static int read_slope(struct thermal_zone_device *tzd, long *slope)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	*slope = td_info->sensor->slope;
+
+	return 0;
+}
+
+static int update_slope(struct thermal_zone_device *tzd, long slope)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	td_info->sensor->slope = slope;
+
+	return 0;
+}
+
+static int read_intercept(struct thermal_zone_device *tzd, long *intercept)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	*intercept = td_info->sensor->intercept;
+
+	return 0;
+}
+
+static int update_intercept(struct thermal_zone_device *tzd, long intercept)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	td_info->sensor->intercept = intercept;
+
+	return 0;
+}
+#endif
+
 static int enable_tm(void)
 {
 	int ret;
@@ -607,6 +645,12 @@ static struct thermal_zone_device_ops tzd_ops = {
 	.set_trip_temp = store_trip_temp,
 	.get_trip_hyst = show_trip_hyst,
 	.set_trip_hyst = store_trip_hyst,
+#ifdef CONFIG_DEBUG_THERMAL
+	.get_slope = read_slope,
+	.set_slope = update_slope,
+	.get_intercept = read_intercept,
+	.set_intercept = update_intercept,
+#endif
 };
 
 static int mrfl_thermal_probe(struct platform_device *pdev)
@@ -632,11 +676,20 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 	tdata->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, tdata);
 
+	tdata->tzd = kzalloc(
+		(sizeof(struct thermal_zone_device *) * tdata->num_sensors),
+								GFP_KERNEL);
+	if (!tdata->tzd) {
+		dev_err(&pdev->dev, "kzalloc failed\n");
+		ret = -ENOMEM;
+		goto exit_free;
+	}
+
 	/* Program a default _max value for each sensor */
 	ret = program_tmax(&pdev->dev);
 	if (ret) {
 		dev_err(&pdev->dev, "Programming _max failed:%d\n", ret);
-		goto exit_free;
+		goto exit_tzd;
 	}
 
 	/*
@@ -649,7 +702,7 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 	if (tdata->iio_chan == NULL) {
 		dev_err(&pdev->dev, "tdata->iio_chan is null\n");
 		ret = -EINVAL;
-		goto exit_free;
+		goto exit_tzd;
 	}
 
 	/* Check whether we got all the four channels */
@@ -709,6 +762,8 @@ exit_reg:
 		thermal_zone_device_unregister(tdata->tzd[i]);
 exit_iio:
 	iio_st_channel_release_all(tdata->iio_chan);
+exit_tzd:
+	kfree(tdata->tzd);
 exit_free:
 	kfree(tdata);
 	return ret;
@@ -740,6 +795,7 @@ static int mrfl_thermal_remove(struct platform_device *pdev)
 	free_irq(tdata->irq, tdata);
 	iounmap(tdata->thrm_addr);
 	iio_st_channel_release_all(tdata->iio_chan);
+	kfree(tdata->tzd);
 	kfree(tdata);
 	return 0;
 }
