@@ -123,9 +123,8 @@ static struct platform_device bcm43xx_vwlan_device = {
 
 static void generate_nvram_id(void)
 {
-	if (INTEL_MID_BOARD(3, PHONE, CLVTP, VB, PRO, PR1A) ||
-			INTEL_MID_BOARD(3, PHONE, CLVTP, VB, PRO, PR1B)) {
-		strncpy(nvram_id, "victoriabay_pr1", sizeof(nvram_id));
+	if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)) {
+		strncpy(nvram_id, "victoriabay_prx", sizeof(nvram_id));
 	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO)) {
 		strncpy(nvram_id, "bodegabay_pr1", sizeof(nvram_id));
 	} else {
