@@ -2432,7 +2432,7 @@ static void sfi_table_invalid_batt(struct msic_batt_sfi_prop *sfi_table)
  * SFI table has entries for the temperature limits
  * which is populated in a local structure
  */
-static int __init sfi_table_populate(struct sfi_table_header *table)
+static int sfi_table_populate(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
 	struct msic_batt_sfi_prop *pentry;
@@ -3072,7 +3072,7 @@ out:
 	return ret;
 }
 
-static void __devexit msic_battery_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void msic_battery_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	msic_battery_module_exit();
 	dev_info(&rpdev->dev, "Removed msic_battery rpmsg device\n");
@@ -3099,7 +3099,7 @@ static struct rpmsg_driver msic_battery_rpmsg = {
 	.id_table	= msic_battery_rpmsg_id_table,
 	.probe		= msic_battery_rpmsg_probe,
 	.callback	= msic_battery_rpmsg_cb,
-	.remove		= __devexit_p(msic_battery_rpmsg_remove),
+	.remove		= msic_battery_rpmsg_remove,
 };
 
 static int __init msic_battery_rpmsg_init(void)
