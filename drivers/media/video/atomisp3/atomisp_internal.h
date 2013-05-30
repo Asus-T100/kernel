@@ -240,8 +240,6 @@ struct atomisp_device {
 		struct completion acc_done;
 	} acc;
 
-	unsigned int s3a_bufs_in_css[IA_CSS_PIPE_ID_NUM];
-	unsigned int dis_bufs_in_css;
 	struct ia_css_fw css_fw;
 
 	/*
@@ -266,15 +264,8 @@ struct atomisp_device {
 	 * "mutex".
 	 */
 	struct mutex streamoff_mutex;
-	struct list_head s3a_stats;
-	struct list_head dvs_stats;
-
-	struct ia_css_frame *vf_frame; /* TODO: needed? */
-	struct ia_css_frame *raw_output_frame;
-	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
 
 	int input_cnt;
-	int input_curr;
 	struct atomisp_input_subdev inputs[ATOM_ISP_MAX_INPUTS];
 	struct v4l2_subdev *flash;
 	struct v4l2_subdev *motor;
@@ -297,7 +288,6 @@ struct atomisp_device {
 	atomic_t sequence_temp;
 
 	spinlock_t lock; /* Just for streaming below */
-	unsigned int streaming; /* Hold both mutex and lock to change this */
 
 	bool need_gfx_throttle;
 

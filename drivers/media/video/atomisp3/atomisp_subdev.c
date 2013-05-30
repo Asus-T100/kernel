@@ -356,7 +356,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			crop[pad]->width -= pad_w, crop[pad]->height -= pad_h;
 
 		/* if subdev type is SOC camera,we do not need to set DVS */
-		if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
+		if (isp->inputs[isp_sd->input_curr].type == SOC_CAMERA)
 			isp_sd->params.video_dis_en = 0;
 
 		if (isp_sd->params.video_dis_en &&
@@ -457,18 +457,20 @@ static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 	struct v4l2_control ctrl = {0};
 	int hbin, vbin;
 	int ret;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	if (isp->inputs[isp->input_curr].type == FILE_INPUT ||
-		isp->inputs[isp->input_curr].type == TEST_PATTERN)
+	if (isp->inputs[isp_subdev->input_curr].type == FILE_INPUT ||
+		isp->inputs[isp_subdev->input_curr].type == TEST_PATTERN)
 		return 0;
 
 	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
+	ret = v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera, core,
 			       g_ctrl, &ctrl);
 	hbin = ctrl.value;
 	ctrl.id = V4L2_CID_BIN_FACTOR_VERT;
-	ret |= v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
-				g_ctrl, &ctrl);
+	ret |= v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
+				core, g_ctrl, &ctrl);
 	vbin = ctrl.value;
 
 	/*
@@ -597,6 +599,8 @@ static const struct v4l2_subdev_ops isp_subdev_v4l2_ops = {
 static void isp_subdev_init_params(struct atomisp_sub_device *isp_subdev)
 {
 	/* parameters initialization */
+	INIT_LIST_HEAD(&isp_subdev->s3a_stats);
+	INIT_LIST_HEAD(&isp_subdev->dvs_stats);
 }
 
 /*
@@ -699,7 +703,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 		mode = ctrl->val;
 
 	c = v4l2_ctrl_find(
-		isp->inputs[isp->input_curr].camera->ctrl_handler,
+		isp->inputs[isp_subdev->input_curr].camera->ctrl_handler,
 		V4L2_CID_RUN_MODE);
 
 	if (c)
@@ -709,7 +713,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 	p.parm.capture.capturemode = modes[mode];
 
 	return v4l2_subdev_call(
-		isp->inputs[isp->input_curr].camera, video, s_parm, &p);
+		isp->inputs[isp_subdev->input_curr].camera, video, s_parm, &p);
 }
 
 int atomisp_update_run_mode(struct atomisp_device *isp)
