@@ -1035,7 +1035,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		complete(&isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
-		if (ia_css_stop(isp, true))
+		if (ia_css_stop(isp_subdev, true))
 			v4l2_warn(&atomisp_dev,
 				  "stop css failed, reset may be failed.\n");
 
@@ -1065,7 +1065,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		if (atomisp_acc_load_extensions(isp) < 0)
 			dev_err(isp->dev, "acc extension failed to reload\n");
 
-		if (ia_css_start(isp, true) != IA_CSS_SUCCESS)
+		if (ia_css_start(isp_subdev, true) != IA_CSS_SUCCESS)
 			v4l2_warn(&atomisp_dev,
 				  "re-start css failed, reset may be failed.\n");
 
@@ -3829,16 +3829,20 @@ static mipi_port_ID_t __get_mipi_port(struct atomisp_device *isp,
 	}
 }
 
-static inline void atomisp_set_sensor_mipi_to_isp(struct atomisp_device *isp,
+static inline void atomisp_set_sensor_mipi_to_isp(struct atomisp_sub_device
+						  *isp_subdev,
 		struct camera_mipi_info *mipi_info)
 {
 	/* Compatibility for sensors which provide no media bus code
 	 * in s_mbus_framefmt() nor support pad formats. */
 	if (mipi_info->input_format != -1) {
-		ia_css_input_set_bayer_order(isp, mipi_info->raw_bayer_order);
-		ia_css_input_set_format(isp, mipi_info->input_format);
+		ia_css_input_set_bayer_order(isp_subdev,
+					     mipi_info->raw_bayer_order);
+		ia_css_input_set_format(isp_subdev, mipi_info->input_format);
 	}
-	ia_css_input_configure_port(isp, __get_mipi_port(isp, mipi_info->port),
+	ia_css_input_configure_port(isp_subdev,
+				    __get_mipi_port(isp_subdev->isp,
+						    mipi_info->port),
 				    mipi_info->num_lanes, 0xffff4);
 }
 
@@ -3850,10 +3854,10 @@ static int __enable_continuous_mode(struct atomisp_sub_device *isp_subdev,
 	dev_dbg(isp->dev, "continuous mode %d, raw buffers %d, stop preview %d\n",
 		enable, isp_subdev->continuous_raw_buffer_size->val,
 		!isp_subdev->continuous_viewfinder->val);
-	ia_css_capture_set_mode(isp, IA_CSS_CAPTURE_MODE_PRIMARY);
-	ia_css_capture_enable_online(isp, !enable);
-	ia_css_preview_enable_online(isp, !enable);
-	ia_css_enable_continuous(isp, enable);
+	ia_css_capture_set_mode(isp_subdev, IA_CSS_CAPTURE_MODE_PRIMARY);
+	ia_css_capture_enable_online(isp_subdev, !enable);
+	ia_css_preview_enable_online(isp_subdev, !enable);
+	ia_css_enable_continuous(isp_subdev, enable);
 	sh_css_enable_cont_capt(enable,
 				!isp_subdev->continuous_viewfinder->val);
 	/* TODO: remove this if FW limitation is removed*/
@@ -3869,18 +3873,20 @@ static int __enable_continuous_mode(struct atomisp_sub_device *isp_subdev,
 		return -EINVAL;
 	}
 	if (!enable) {
-		ia_css_enable_raw_binning(isp, false);
-		ia_css_input_set_two_pixels_per_clock(isp, false);
+		ia_css_enable_raw_binning(isp_subdev, false);
+		ia_css_input_set_two_pixels_per_clock(isp_subdev, false);
 	}
 
 	if (isp->inputs[isp_subdev->input_curr].type != TEST_PATTERN &&
 		isp->inputs[isp_subdev->input_curr].type != FILE_INPUT) {
-		ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
+		ia_css_input_set_mode(isp_subdev,
+				      IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
 	}
 	return atomisp_update_run_mode(isp);
 }
 
-static enum ia_css_err configure_pp_input_nop(struct atomisp_device *isp,
+static enum ia_css_err configure_pp_input_nop(struct atomisp_sub_device
+					      *isp_subdev,
 					      unsigned int width,
 					      unsigned int height)
 {
@@ -3899,13 +3905,15 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct atomisp_sub_device *asd = &isp->isp_subdev[0];
 	const struct atomisp_format_bridge *format;
 	struct v4l2_rect *isp_sink_crop;
-	enum ia_css_err (*configure_output)(struct atomisp_device *isp,
+	enum ia_css_err (*configure_output)(struct atomisp_sub_device
+					    *isp_subdev,
 					    unsigned int width,
 					    unsigned int height,
 					    enum ia_css_frame_format sh_fmt);
-	enum ia_css_err (*get_frame_info)(struct atomisp_device *isp,
+	enum ia_css_err (*get_frame_info)(struct atomisp_sub_device *isp_subdev,
 					  struct ia_css_frame_info *finfo);
-	enum ia_css_err (*configure_pp_input)(struct atomisp_device *isp,
+	enum ia_css_err (*configure_pp_input)(struct atomisp_sub_device
+					      *isp_subdev,
 					      unsigned int width,
 					      unsigned int height) =
 		configure_pp_input_nop;
@@ -3929,7 +3937,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			dev_err(isp->dev, "mipi_info is NULL\n");
 			return -EINVAL;
 		}
-		atomisp_set_sensor_mipi_to_isp(isp, mipi_info);
+		atomisp_set_sensor_mipi_to_isp(isp_subdev, mipi_info);
 
 		if ((format->sh_fmt == IA_CSS_FRAME_FORMAT_RAW) &&
 		     raw_output_format_match_input(
@@ -3970,11 +3978,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || !isp_subdev->enable_vfpp->val)
-			ia_css_video_configure_viewfinder(isp,
+			ia_css_video_configure_viewfinder(isp_subdev,
 				vf_size.width, vf_size.height,
 				isp_subdev->video_out_vf.sh_fmt);
 		else if (source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW)
-			ia_css_capture_configure_viewfinder(isp,
+			ia_css_capture_configure_viewfinder(isp_subdev,
 				vf_size.width, vf_size.height,
 				isp_subdev->video_out_vf.sh_fmt);
 	}
@@ -3987,8 +3995,9 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			 * Always enable raw_binning on MRFLD.
 			 */
 			if (width >= 2576 || height >= 1936) {
-				ia_css_enable_raw_binning(isp, true);
-				ia_css_input_set_two_pixels_per_clock(isp, false);
+				ia_css_enable_raw_binning(isp_subdev, true);
+				ia_css_input_set_two_pixels_per_clock(
+							isp_subdev, false);
 			}
 		} else {
 			ret = __enable_continuous_mode(isp_subdev, false);
@@ -3999,9 +4008,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 	if (isp->inputs[isp_subdev->input_curr].type != TEST_PATTERN &&
 		isp->inputs[isp_subdev->input_curr].type != FILE_INPUT)
-		ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
+		ia_css_input_set_mode(isp_subdev,
+				      IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
 
-	ia_css_disable_vf_pp(isp, !isp_subdev->enable_vfpp->val);
+	ia_css_disable_vf_pp(isp_subdev, !isp_subdev->enable_vfpp->val);
 
 	/* video same in continuouscapture and online modes */
 	if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
@@ -4014,14 +4024,16 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		configure_pp_input = ia_css_preview_configure_pp_input;
 	} else {
 		if (format->sh_fmt == IA_CSS_FRAME_FORMAT_RAW) {
-			ia_css_capture_set_mode(isp, IA_CSS_CAPTURE_MODE_RAW);
-			ia_css_enbale_dz(isp, false);
+			ia_css_capture_set_mode(isp_subdev,
+						IA_CSS_CAPTURE_MODE_RAW);
+			ia_css_enbale_dz(isp_subdev, false);
 		} else {
-			ia_css_capture_set_mode(isp, IA_CSS_CAPTURE_MODE_PRIMARY);
+			ia_css_capture_set_mode(isp_subdev,
+						IA_CSS_CAPTURE_MODE_PRIMARY);
 		}
 
 		if (!isp_subdev->continuous_mode->val)
-			ia_css_capture_enable_online(isp,
+			ia_css_capture_enable_online(isp_subdev,
 					isp_subdev->params.online_process);
 
 		configure_output = ia_css_capture_configure_output;
@@ -4030,7 +4042,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 		if (!isp_subdev->params.online_process &&
 		    !isp_subdev->continuous_mode->val)
-			if (ia_css_capture_get_output_raw_frame_info(isp,
+			if (ia_css_capture_get_output_raw_frame_info(isp_subdev,
 						raw_output_info))
 				return -EINVAL;
 		if (!isp_subdev->continuous_mode->val &&
@@ -4043,16 +4055,16 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		}
 	}
 
-	ret = configure_output(isp, width, height, format->sh_fmt);
+	ret = configure_output(isp_subdev, width, height, format->sh_fmt);
 	if (ret) {
 		dev_err(isp->dev, "configure_output %ux%u, format %8.8x\n",
 			width, height, format->sh_fmt);
 		return -EINVAL;
 	}
 	if (isp_subdev->continuous_mode->val) {
-		configure_pp_input(isp, 0, 0);
+		configure_pp_input(isp_subdev, 0, 0);
 	} else {
-		ret = configure_pp_input(isp, isp_sink_crop->width,
+		ret = configure_pp_input(isp_subdev, isp_sink_crop->width,
 					 isp_sink_crop->height);
 		if (ret) {
 			dev_err(isp->dev, "configure_pp_input %ux%u\n",
@@ -4060,7 +4072,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 		}
 	}
-	ret = get_frame_info(isp, output_info);
+	ret = get_frame_info(isp_subdev, output_info);
 	if (ret) {
 		dev_err(isp->dev, "get_frame_info %ux%u\n", width, height);
 		return -EINVAL;
@@ -4214,15 +4226,17 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		}
 
 		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
-			ia_css_video_configure_viewfinder(isp,
+			ia_css_video_configure_viewfinder(isp_subdev,
 				f->fmt.pix.width, f->fmt.pix.height,
 				format_bridge->sh_fmt);
-			ia_css_video_get_viewfinder_frame_info(isp, &output_info);
+			ia_css_video_get_viewfinder_frame_info(isp_subdev,
+							       &output_info);
 		} else {
-			ia_css_capture_configure_viewfinder(isp,
+			ia_css_capture_configure_viewfinder(isp_subdev,
 				f->fmt.pix.width, f->fmt.pix.height,
 				format_bridge->sh_fmt);
-			ia_css_capture_get_viewfinder_frame_info(isp, &output_info);
+			ia_css_capture_get_viewfinder_frame_info(isp_subdev,
+								 &output_info);
 		}
 
 		goto done;
@@ -4448,8 +4462,8 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	}
 
 	pipe->pix = f->fmt.pix;
-	ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_FIFO);
-	ia_css_input_configure_port(isp,
+	ia_css_input_set_mode(isp_subdev, IA_CSS_INPUT_MODE_FIFO);
+	ia_css_input_configure_port(isp_subdev,
 		__get_mipi_port(isp, ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
 
 	ffmt.width = f->fmt.pix.width;

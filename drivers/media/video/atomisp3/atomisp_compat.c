@@ -47,15 +47,12 @@ enum ia_css_pipe_mode __pipe_id_to_pipe_mode(enum ia_css_pipe_id pipe_id)
 	}
 
 }
-static void __configure_output(struct atomisp_device *isp,
+static void __configure_output(struct atomisp_sub_device *isp_subdev,
 			       unsigned int width,
 			       unsigned int height,
 			       enum ia_css_frame_format format,
 			       enum ia_css_pipe_id pipe_id)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = pipe_id;
 	isp_subdev->css2_basis.pipe_configs[pipe_id].mode =
 	    __pipe_id_to_pipe_mode(pipe_id);
@@ -71,14 +68,11 @@ static void __configure_output(struct atomisp_device *isp,
 		 "configuring pipe[%d] output info w=%d.h=%d.f=%d.\n",
 		 pipe_id, width, height, format);
 }
-static void __configure_pp_input(struct atomisp_device *isp,
+static void __configure_pp_input(struct atomisp_sub_device *isp_subdev,
 				 unsigned int width,
 				 unsigned int height,
 				 enum ia_css_pipe_id pipe_id)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	if (width == 0 && height == 0)
 		return;
 
@@ -96,15 +90,12 @@ static void __configure_pp_input(struct atomisp_device *isp,
 		 "configuring pipe[%d]capture pp input w=%d.h=%d.\n",
 		 pipe_id, width, height);
 }
-static void __configure_vf_output(struct atomisp_device *isp,
+static void __configure_vf_output(struct atomisp_sub_device *isp_subdev,
 				  unsigned int width,
 				  unsigned int height,
 				  enum ia_css_frame_format format,
 				  enum ia_css_pipe_id pipe_id)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = pipe_id;
 	isp_subdev->css2_basis.pipe_configs[pipe_id].mode =
 	    __pipe_id_to_pipe_mode(pipe_id);
@@ -121,15 +112,14 @@ static void __configure_vf_output(struct atomisp_device *isp,
 		 pipe_id, width, height, format);
 }
 
-static enum ia_css_err __destroy_pipes(struct atomisp_device *isp, bool force)
+static enum ia_css_err __destroy_pipes(struct atomisp_sub_device *isp_subdev,
+				       bool force)
 {
 	int i;
 	enum ia_css_err ret = IA_CSS_SUCCESS;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (isp_subdev->css2_basis.stream) {
-		dev_dbg(isp->dev, "destroy css stream first.\n");
+		dev_dbg(isp_subdev->isp->dev, "destroy css stream first.\n");
 		return IA_CSS_ERR_INTERNAL_ERROR;
 	}
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
@@ -150,14 +140,12 @@ static enum ia_css_err __destroy_pipes(struct atomisp_device *isp, bool force)
 
 	return ret;
 }
-static enum ia_css_err __create_pipe(struct atomisp_device *isp)
+static enum ia_css_err __create_pipe(struct atomisp_sub_device *isp_subdev)
 {
 
 	int i, j;
 	enum ia_css_err ret;
 	struct ia_css_pipe_extra_config extra_config;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s\n", __func__);
 	ia_css_pipe_extra_config_defaults(&extra_config);
@@ -209,14 +197,12 @@ pipe_err:
 
 	return ret;
 }
-static void __dump_stream_pipe_config(struct atomisp_device *isp)
+static void __dump_stream_pipe_config(struct atomisp_sub_device *isp_subdev)
 {
 	struct ia_css_pipe_config *p_config;
 	struct ia_css_pipe_extra_config *pe_config;
 	struct ia_css_stream_config *s_config;
 	int i = 0;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		if (isp_subdev->css2_basis.pipes[i]) {
@@ -305,13 +291,12 @@ static void __dump_stream_pipe_config(struct atomisp_device *isp)
 		 "stream_config.continuous=%d.\n",
 		 s_config->continuous);
 }
-static enum ia_css_err __destroy_stream(struct atomisp_device *isp, bool force)
+static enum ia_css_err __destroy_stream(struct atomisp_sub_device *isp_subdev,
+					bool force)
 {
 	int i;
 	enum ia_css_err ret;
 	bool pipe_updated = false;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!isp_subdev->css2_basis.stream)
 		return IA_CSS_SUCCESS;
@@ -345,16 +330,14 @@ static enum ia_css_err __destroy_stream(struct atomisp_device *isp, bool force)
 
 	return IA_CSS_SUCCESS;
 }
-static enum ia_css_err __create_stream(struct atomisp_device *isp)
+static enum ia_css_err __create_stream(struct atomisp_sub_device *isp_subdev)
 {
 	int pipe_index = 0, i;
 	struct ia_css_pipe *multi_pipes[IA_CSS_PIPE_ID_NUM];
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 	const struct ia_css_stream_config *s_config =
 			&isp_subdev->css2_basis.stream_config;
 
-	__dump_stream_pipe_config(isp);
+	__dump_stream_pipe_config(isp_subdev);
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		if (isp_subdev->css2_basis.pipes[i])
 			multi_pipes[pipe_index++] =
@@ -364,55 +347,55 @@ static enum ia_css_err __create_stream(struct atomisp_device *isp)
 				    &isp_subdev->css2_basis.stream);
 }
 
-enum ia_css_err ia_css_update_stream(struct atomisp_device *isp)
+enum ia_css_err ia_css_update_stream(struct atomisp_sub_device *isp_subdev)
 {
 	enum ia_css_err ret;
 
-	if (__destroy_stream(isp, true) != IA_CSS_SUCCESS)
-		dev_warn(isp->dev, "destroy stream failed.\n");
+	if (__destroy_stream(isp_subdev, true) != IA_CSS_SUCCESS)
+		dev_warn(isp_subdev->isp->dev, "destroy stream failed.\n");
 
-	if (__destroy_pipes(isp, true) != IA_CSS_SUCCESS)
-		dev_warn(isp->dev, "destroy pipe failed.\n");
+	if (__destroy_pipes(isp_subdev, true) != IA_CSS_SUCCESS)
+		dev_warn(isp_subdev->isp->dev, "destroy pipe failed.\n");
 
-	ret = __create_pipe(isp);
+	ret = __create_pipe(isp_subdev);
 	if (ret != IA_CSS_SUCCESS) {
-		dev_err(isp->dev, "create pipe failed.\n");
+		dev_err(isp_subdev->isp->dev, "create pipe failed.\n");
 		return ret;
 	}
 
-	ret = __create_stream(isp);
+	ret = __create_stream(isp_subdev);
 	if (ret != IA_CSS_SUCCESS) {
-		dev_warn(isp->dev, "create stream failed.\n");
-		__destroy_pipes(isp, true);
+		dev_warn(isp_subdev->isp->dev, "create stream failed.\n");
+		__destroy_pipes(isp_subdev, true);
 		return ret;
 	}
 
 	return ret;
 }
 
-static enum ia_css_err __get_frame_info(struct atomisp_device *isp,
+static enum ia_css_err __get_frame_info(struct atomisp_sub_device *isp_subdev,
 				struct ia_css_frame_info *info,
 				enum frame_info_type type)
 {
 	enum ia_css_err ret;
 	struct ia_css_pipe_info p_info;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 	unsigned int pipe_id = isp_subdev->css2_basis.curr_pipe;
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev,
 		 ">%s.\n", __func__);
 
-	if (__destroy_stream(isp, true) != IA_CSS_SUCCESS)
-		dev_warn(isp->dev, "destroy stream failed.\n");
+	if (__destroy_stream(isp_subdev, true) != IA_CSS_SUCCESS)
+		dev_warn(isp_subdev->isp->dev, "destroy stream failed.\n");
 
-	if (__destroy_pipes(isp, true) != IA_CSS_SUCCESS)
-		dev_warn(isp->dev, "destroy pipe failed.\n");
+	if (__destroy_pipes(isp_subdev, true) != IA_CSS_SUCCESS)
+		dev_warn(isp_subdev->isp->dev, "destroy pipe failed.\n");
 
-	if ((ret = __create_pipe(isp)) != IA_CSS_SUCCESS)
+	ret = __create_pipe(isp_subdev);
+	if (ret != IA_CSS_SUCCESS)
 		goto pipe_err;
 
-	if((ret = __create_stream(isp)) != IA_CSS_SUCCESS)
+	ret = __create_stream(isp_subdev);
+	if (ret != IA_CSS_SUCCESS)
 		goto stream_err;
 
 	ret = ia_css_pipe_get_info(
@@ -445,142 +428,129 @@ static enum ia_css_err __get_frame_info(struct atomisp_device *isp,
 	}
 
 stream_err:
-	__destroy_pipes(isp, true);
+	__destroy_pipes(isp_subdev, true);
 pipe_err:
 
 	return ret;
 }
 
 enum ia_css_err ia_css_preview_configure_output(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	unsigned int width,
 	unsigned int height,
 	enum ia_css_frame_format format)
 {
-	__configure_output(isp, width, height, format, IA_CSS_PIPE_ID_PREVIEW);
+	__configure_output(isp_subdev, width, height, format,
+			   IA_CSS_PIPE_ID_PREVIEW);
 	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err ia_css_preview_get_output_frame_info(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	struct ia_css_frame_info *info)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_PREVIEW;
-	return __get_frame_info(isp, info, OUTPUT_FRAME);
+	return __get_frame_info(isp_subdev, info, OUTPUT_FRAME);
 }
 
 enum ia_css_err ia_css_capture_configure_output(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	unsigned int width,
 	unsigned int height,
 	enum ia_css_frame_format format)
 {
-	__configure_output(isp, width, height, format, IA_CSS_PIPE_ID_CAPTURE);
+	__configure_output(isp_subdev, width, height, format,
+			   IA_CSS_PIPE_ID_CAPTURE);
 	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err ia_css_capture_get_output_frame_info(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	struct ia_css_frame_info *info)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
-	return __get_frame_info(isp, info, OUTPUT_FRAME);
+	return __get_frame_info(isp_subdev, info, OUTPUT_FRAME);
 }
 
 enum ia_css_err ia_css_capture_configure_viewfinder(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	unsigned int width,
 	unsigned int height,
 	enum ia_css_frame_format format)
 {
-	__configure_vf_output(isp, width, height, format, IA_CSS_PIPE_ID_CAPTURE);
+	__configure_vf_output(isp_subdev, width, height, format,
+			      IA_CSS_PIPE_ID_CAPTURE);
 	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err ia_css_capture_get_viewfinder_frame_info(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	struct ia_css_frame_info *info)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
-	__get_frame_info(isp, info, VF_FRAME);
+	__get_frame_info(isp_subdev, info, VF_FRAME);
 	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err ia_css_video_configure_output(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	unsigned int width,
 	unsigned int height,
 	enum ia_css_frame_format format)
 {
-	__configure_output(isp, width, height, format, IA_CSS_PIPE_ID_VIDEO);
+	__configure_output(isp_subdev, width, height, format,
+			   IA_CSS_PIPE_ID_VIDEO);
 	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err ia_css_video_get_output_frame_info(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	struct ia_css_frame_info *info)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_VIDEO;
-	return __get_frame_info(isp, info, OUTPUT_FRAME);
+	return __get_frame_info(isp_subdev, info, OUTPUT_FRAME);
 }
 
 enum ia_css_err ia_css_video_configure_viewfinder(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	unsigned int width,
 	unsigned int height,
 	enum ia_css_frame_format format)
 {
-	__configure_vf_output(isp, width, height, format, IA_CSS_PIPE_ID_VIDEO);
+	__configure_vf_output(isp_subdev, width, height, format,
+			      IA_CSS_PIPE_ID_VIDEO);
 	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err ia_css_video_get_viewfinder_frame_info(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	struct ia_css_frame_info *info)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_VIDEO;
-	return __get_frame_info(isp, info, VF_FRAME);
+	return __get_frame_info(isp_subdev, info, VF_FRAME);
 }
 
 enum ia_css_err ia_css_preview_configure_pp_input(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	unsigned int width,
 	unsigned int height)
 {
-	__configure_pp_input(isp, width, height, IA_CSS_PIPE_ID_PREVIEW);
+	__configure_pp_input(isp_subdev, width, height, IA_CSS_PIPE_ID_PREVIEW);
 	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err ia_css_capture_configure_pp_input(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	unsigned int width,
 	unsigned int height)
 {
-	__configure_pp_input(isp, width, height, IA_CSS_PIPE_ID_CAPTURE);
+	__configure_pp_input(isp_subdev, width, height, IA_CSS_PIPE_ID_CAPTURE);
 	return IA_CSS_SUCCESS;
 }
 void
-ia_css_capture_set_mode(struct atomisp_device *isp,
+ia_css_capture_set_mode(struct atomisp_sub_device *isp_subdev,
 			enum ia_css_capture_mode mode)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
 	if (isp_subdev->css2_basis.pipe_configs[IA_CSS_PIPE_ID_CAPTURE].
 	    default_capture_config.mode != mode) {
@@ -592,12 +562,9 @@ ia_css_capture_set_mode(struct atomisp_device *isp,
 }
 
 void
-ia_css_capture_enable_online(struct atomisp_device *isp,
+ia_css_capture_enable_online(struct atomisp_sub_device *isp_subdev,
 			     bool enable)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
 	if (isp_subdev->css2_basis.stream_config.online != enable) {
 		isp_subdev->css2_basis.stream_config.online = enable;
@@ -607,12 +574,10 @@ ia_css_capture_enable_online(struct atomisp_device *isp,
 }
 
 void
-ia_css_input_set_two_pixels_per_clock(struct atomisp_device *isp,
+ia_css_input_set_two_pixels_per_clock(struct atomisp_sub_device *isp_subdev,
 					   bool enable)
 {
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (isp_subdev->css2_basis.stream_config.two_pixels_per_clock !=
 	    enable) {
@@ -624,12 +589,10 @@ ia_css_input_set_two_pixels_per_clock(struct atomisp_device *isp,
 }
 
 void
-ia_css_enable_raw_binning(struct atomisp_device *isp,
+ia_css_enable_raw_binning(struct atomisp_sub_device *isp_subdev,
 			     bool enable)
 {
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		if (isp_subdev->css2_basis.pipe_extra_configs[i].
@@ -641,12 +604,10 @@ ia_css_enable_raw_binning(struct atomisp_device *isp,
 	}
 }
 
-void ia_css_enable_continuous(struct atomisp_device *isp,
+void ia_css_enable_continuous(struct atomisp_sub_device *isp_subdev,
 				  bool enable)
 {
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (isp_subdev->css2_basis.stream_config.continuous != enable) {
 		isp_subdev->css2_basis.stream_config.continuous = enable;
@@ -655,12 +616,10 @@ void ia_css_enable_continuous(struct atomisp_device *isp,
 	}
 }
 
-void ia_css_preview_enable_online(struct atomisp_device *isp,
+void ia_css_preview_enable_online(struct atomisp_sub_device *isp_subdev,
 				  bool enable)
 {
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (isp_subdev->css2_basis.stream_config.online != enable) {
 		isp_subdev->css2_basis.stream_config.online = enable;
@@ -670,14 +629,11 @@ void ia_css_preview_enable_online(struct atomisp_device *isp,
 }
 
 enum ia_css_err ia_css_capture_get_output_raw_frame_info(
-	struct atomisp_device *isp,
+	struct atomisp_sub_device *isp_subdev,
 	struct ia_css_frame_info *info)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
-	return __get_frame_info(isp, info, RAW_FRAME);
+	return __get_frame_info(isp_subdev, info, RAW_FRAME);
 }
 
 void atomisp_sh_css_mmu_set_page_table_base_index(unsigned int base_index)
@@ -686,24 +642,25 @@ void atomisp_sh_css_mmu_set_page_table_base_index(unsigned int base_index)
 	sh_css_mmu_set_page_table_base_index((hrt_data) base_index);
 #endif
 }
-enum ia_css_err ia_css_start(struct atomisp_device *isp, bool in_reset)
+enum ia_css_err ia_css_start(struct atomisp_sub_device *isp_subdev,
+			     bool in_reset)
 {
 	enum ia_css_err ret;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (in_reset) {
-		if (__destroy_stream(isp, true) != IA_CSS_SUCCESS)
-			dev_warn(isp->dev, "destroy stream failed.\n");
+		if (__destroy_stream(isp_subdev, true) != IA_CSS_SUCCESS)
+			dev_warn(isp_subdev->isp->dev, "destroy stream failed.\n");
 
-		if (__destroy_pipes(isp, true) != IA_CSS_SUCCESS)
-			dev_warn(isp->dev, "destroy pipe failed.\n");
+		if (__destroy_pipes(isp_subdev, true) != IA_CSS_SUCCESS)
+			dev_warn(isp_subdev->isp->dev, "destroy pipe failed.\n");
 
-		if ((ret = __create_pipe(isp)) != IA_CSS_SUCCESS) {
+		ret = __create_pipe(isp_subdev);
+		if (ret != IA_CSS_SUCCESS) {
 			v4l2_err(&atomisp_dev, "create pipe error.\n");
 			goto pipe_err;
 		}
-		if ((ret = __create_stream(isp)) != IA_CSS_SUCCESS) {
+		ret = __create_stream(isp_subdev);
+		if (ret != IA_CSS_SUCCESS) {
 			v4l2_err(&atomisp_dev, "create stream error.\n");
 			goto stream_err;
 		}
@@ -723,9 +680,9 @@ enum ia_css_err ia_css_start(struct atomisp_device *isp, bool in_reset)
 	return IA_CSS_SUCCESS;
 
 start_err:
-	__destroy_stream(isp, true);
+	__destroy_stream(isp_subdev, true);
 stream_err:
-	__destroy_pipes(isp, true);
+	__destroy_pipes(isp_subdev, true);
 
 	/* css 2.0 API limitation: ia_css_stop_sp() could be only called after
 	 * destroy all pipes
@@ -736,18 +693,19 @@ stream_err:
 pipe_err:
 	return ret;
 }
-enum ia_css_err ia_css_stop(struct atomisp_device *isp, bool in_reset)
+enum ia_css_err ia_css_stop(struct atomisp_sub_device *isp_subdev,
+			    bool in_reset)
 {
 	int i = 0;
 	enum ia_css_err ret = IA_CSS_SUCCESS;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	if ((ret = __destroy_stream(isp, true)) != IA_CSS_SUCCESS) {
+	ret = __destroy_stream(isp_subdev, true);
+	if (ret != IA_CSS_SUCCESS) {
 		v4l2_err(&atomisp_dev, "destroy stream failed.\n");
 		goto err;
 	}
-	if ((ret = __destroy_pipes(isp, true)) != IA_CSS_SUCCESS) {
+	ret = __destroy_pipes(isp_subdev, true);
+	if (ret != IA_CSS_SUCCESS) {
 		v4l2_err(&atomisp_dev, "destroy pipes failed.\n");
 		goto err;
 	}
@@ -783,11 +741,9 @@ err:
 }
 
 void
-ia_css_disable_vf_pp(struct atomisp_device *isp, bool disable)
+ia_css_disable_vf_pp(struct atomisp_sub_device *isp_subdev, bool disable)
 {
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
 		isp_subdev->css2_basis.pipe_extra_configs[i].disable_vf_pp
@@ -795,11 +751,9 @@ ia_css_disable_vf_pp(struct atomisp_device *isp, bool disable)
 }
 
 void
-ia_css_enable_high_speed(struct atomisp_device *isp, bool enable)
+ia_css_enable_high_speed(struct atomisp_sub_device *isp_subdev, bool enable)
 {
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
 		isp_subdev->css2_basis.pipe_extra_configs[i].enable_high_speed
@@ -807,23 +761,19 @@ ia_css_enable_high_speed(struct atomisp_device *isp, bool enable)
 }
 
 void
-ia_css_enbale_dz(struct atomisp_device *isp, bool enable)
+ia_css_enbale_dz(struct atomisp_sub_device *isp_subdev, bool enable)
 {
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
 		isp_subdev->css2_basis.pipe_extra_configs[i].enable_dz = enable;
 }
 
 void
-ia_css_video_set_dis_envelope(struct atomisp_device *isp,
+ia_css_video_set_dis_envelope(struct atomisp_sub_device *isp_subdev,
 			      unsigned int dvs_w,
 			      unsigned int dvs_h)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 	unsigned int pipe_id = isp_subdev->css2_basis.curr_pipe;
 
 	isp_subdev->css2_basis.pipe_configs[pipe_id].dvs_envelope.width = dvs_w;
@@ -831,75 +781,55 @@ ia_css_video_set_dis_envelope(struct atomisp_device *isp,
 	    dvs_h;
 }
 void
-ia_css_input_set_effective_resolution(struct atomisp_device *isp,
+ia_css_input_set_effective_resolution(struct atomisp_sub_device *isp_subdev,
 			unsigned int width, unsigned int height)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.stream_config.effective_res.width = width;
 	isp_subdev->css2_basis.stream_config.effective_res.height = height;
 }
 void
-ia_css_input_set_resolution(struct atomisp_device *isp,
+ia_css_input_set_resolution(struct atomisp_sub_device *isp_subdev,
 			unsigned int width, unsigned int height)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.stream_config.input_res.width = width;
 	isp_subdev->css2_basis.stream_config.input_res.height = height;
 }
 
 void
-ia_css_input_set_binning_factor(struct atomisp_device *isp, unsigned int binning)
+ia_css_input_set_binning_factor(struct atomisp_sub_device *isp_subdev,
+				unsigned int binning)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.stream_config.sensor_binning_factor = binning;
 }
 
 void
-ia_css_input_set_bayer_order(struct atomisp_device *isp,
+ia_css_input_set_bayer_order(struct atomisp_sub_device *isp_subdev,
 			     enum ia_css_bayer_order order)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.stream_config.bayer_order = order;
 }
 
 void
-ia_css_input_set_format(struct atomisp_device *isp,
+ia_css_input_set_format(struct atomisp_sub_device *isp_subdev,
 			     enum ia_css_stream_format format)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.stream_config.format = format;
 }
 
 void
-ia_css_input_configure_port(struct atomisp_device *isp,
+ia_css_input_configure_port(struct atomisp_sub_device *isp_subdev,
 			    const mipi_port_ID_t port,
 			    const unsigned int	 num_lanes,
 			    const unsigned int	 timeout)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.stream_config.source.port.port = port;
 	isp_subdev->css2_basis.stream_config.source.port.num_lanes = num_lanes;
 	isp_subdev->css2_basis.stream_config.source.port.timeout = timeout;
 }
 void
-ia_css_input_set_mode(struct atomisp_device *isp,
+ia_css_input_set_mode(struct atomisp_sub_device *isp_subdev,
 		      enum ia_css_input_mode mode)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	isp_subdev->css2_basis.stream_config.mode = mode;
 	if (mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR) {
 		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
