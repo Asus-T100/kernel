@@ -469,6 +469,12 @@ static int atomisp_open(struct file *file)
 
 	atomisp_init_struct(isp);
 
+	ret = v4l2_subdev_call(isp->flash, core, s_power, 1);
+	if (ret < 0 && ret != -ENODEV && ret != -ENOIOCTLCMD) {
+		dev_err(isp->dev, "Failed to power-on flash\n");
+		goto error;
+	}
+
 done:
 	pipe->users++;
 	mutex_unlock(&isp->mutex);
@@ -554,6 +560,10 @@ static int atomisp_release(struct file *file)
 	atomisp_free_internal_buffers(isp);
 	atomisp_css_uninit(isp);
 	hrt_isp_css_mm_clear();
+
+	ret = v4l2_subdev_call(isp->flash, core, s_power, 0);
+	if (ret < 0 && ret != -ENODEV && ret != -ENOIOCTLCMD)
+		dev_warn(isp->dev, "Failed to power-off flash\n");
 
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_power, 0);

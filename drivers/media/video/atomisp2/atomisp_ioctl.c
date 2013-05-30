@@ -1369,9 +1369,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 start_sensor:
 	if (isp->flash) {
-		ret = v4l2_subdev_call(isp->flash, core, s_power, 1);
-		if (ret && ret != -ENODEV && ret != -ENOIOCTLCMD)
-			dev_info(isp->dev, "can't power on flash\n");
 		isp->params.num_flash_frames = 0;
 		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 		atomisp_setup_flash(isp);
@@ -1555,7 +1552,6 @@ stopsensor:
 				       video, s_stream, 0);
 
 	if (isp->flash) {
-		ret += v4l2_subdev_call(isp->flash, core, s_power, 0);
 		isp->params.num_flash_frames = 0;
 		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 	}
