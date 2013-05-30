@@ -264,12 +264,8 @@ static int mid_hdmi_audio_set_caps(
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 		REG_READ(hdmi_priv->hdmib_reg);
 
-		power_island_put(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI);
 		break;
 	case HAD_SET_DISABLE_AUDIO:
-		if (!power_island_get(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI))
-			return -EINVAL;
-
 		hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_AUDIO_ENABLE;
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 		REG_READ(hdmi_priv->hdmib_reg);
