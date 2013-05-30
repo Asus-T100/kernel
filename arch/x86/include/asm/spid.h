@@ -375,6 +375,8 @@ enum {
 	MRFL_PHONE_SB_PR2,  /* Salt Bay PR2-FF (B0) */
 	MRFL_PHONE_SB_PR3M, /* Salt Bay PR3-Macro (B0) */
 	MRFL_PHONE_SB_PR3,  /* Salt Bay PR3-FF (B0) */
+	MRFL_PHONE_SB_PR11,  /* Salt Bay PR1.1-FF (A0) */
+	MRFL_PHONE_SB_PR11M,  /* Salt Bay PR1.1-Macro (A0) */
 	MRFL_PHONE_SB_RSVD,
 	MRFL_PHONE_SB_UNKNOWN = 0xFFFF
 };
