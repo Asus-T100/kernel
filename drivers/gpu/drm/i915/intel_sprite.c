@@ -885,6 +885,7 @@ intel_disable_plane(struct drm_plane *plane)
 
 	if (plane->crtc)
 		intel_enable_primary(plane->crtc);
+
 	intel_plane->disable_plane(plane);
 
 	if (!intel_plane->obj)
