@@ -251,7 +251,7 @@ static inline int sst_validate_elf(const struct firmware *sst_bin, bool dynamic)
 
 	if ((elf->e_ident[0] != 0x7F) || (elf->e_ident[1] != 'E') ||
 		(elf->e_ident[2] != 'L') || (elf->e_ident[3] != 'F')) {
-		pr_debug("ELF Header Not found!%d\n", sst_bin->size);
+		pr_debug("ELF Header Not found!%zu\n", sst_bin->size);
 		return -EINVAL;
 	}
 
@@ -261,7 +261,7 @@ static inline int sst_validate_elf(const struct firmware *sst_bin, bool dynamic)
 			return -EINVAL;
 		}
 	}
-	pr_debug("Valid ELF Header...%d\n", sst_bin->size);
+	pr_debug("Valid ELF Header...%zu\n", sst_bin->size);
 	return 0;
 }
 
@@ -283,7 +283,7 @@ static int sst_validate_fw_image(const void *sst_fw_in_mem, unsigned long size,
 
 	/* Read the header information from the data pointer */
 	header = (struct fw_header *)sst_fw_in_mem;
-	pr_debug("header sign=%s size=%x modules=%x fmt=%x size=%x\n",
+	pr_debug("header sign=%s size=%x modules=%x fmt=%x size=%zx\n",
 			header->signature, header->file_size, header->modules,
 			header->file_format, sizeof(*header));
 
@@ -750,7 +750,7 @@ static int sst_parse_module_dma(struct fw_module_header *module,
 
 		/*converting from physical to virtual because
 		scattergather list works on virtual pointers*/
-		ram = (int) phys_to_virt(ram);
+		ram = (unsigned long) phys_to_virt(ram);
 		ram = (unsigned long)(ram + block->ram_offset);
 		src = (unsigned long) (void *)block + sizeof(*block);
 
@@ -1536,12 +1536,11 @@ static int sst_relocate_got_entries(Elf32_Rela *table, unsigned int size,
 		if (ELF32_R_SYM(entry->r_info) != 0) {
 			return -EINVAL;
 		} else {
-			target_addr = (Elf32_Addr *)(in_elf + entry->r_offset);
-			if (((unsigned int)target_addr - (unsigned int)in_elf)
-							> elf_size) {
+			if (entry->r_offset > elf_size) {
 				pr_err("GOT table target addr out of range\n");
 				return -EINVAL;
 			}
+			target_addr = (Elf32_Addr *)(in_elf + entry->r_offset);
 			unreloc_addr = *target_addr + entry->r_addend;
 			*target_addr = unreloc_addr + rel_base;
 		}
@@ -1645,7 +1644,7 @@ free_dma_res:
 }
 
 static void sst_fill_fw_module_table(struct sst_module_info *mod_list,
-		int list_size, int ddr_base)
+		int list_size, unsigned long ddr_base)
 {
 	int i;
 	u32 *write_ptr = (u32 *)ddr_base;
@@ -1767,7 +1766,7 @@ int sst_load_all_modules_elf(struct intel_sst_drv *ctx)
 
 	/* write module table to DDR */
 	sst_fill_fw_module_table(sst_modules_mrfld,
-				ARRAY_SIZE(sst_modules_mrfld),
-				(int)(ctx->ddr + MRFLD_FW_MOD_TABLE_OFFSET));
+			ARRAY_SIZE(sst_modules_mrfld),
+			(unsigned long)(ctx->ddr + MRFLD_FW_MOD_TABLE_OFFSET));
 	return retval;
 }

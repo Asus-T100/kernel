@@ -787,7 +787,7 @@ static inline int sst_calc_tstamp(struct pcm_stream_info *info,
 	pointer_bytes = fw_tstamp->ring_buffer_counter % buffer_sz;
 	pointer_samples = bytes_to_samples(substream->runtime, pointer_bytes);
 
-	pr_debug("pcm delay %d in bytes\n", delay_bytes);
+	pr_debug("pcm delay %zu in bytes\n", delay_bytes);
 
 	info->buffer_ptr = pointer_samples / substream->runtime->channels;
 

@@ -488,7 +488,7 @@ static ssize_t sst_debug_lpe_log_enable_read(struct file *file,
 		size1 = buf_hdr.wr_addr - buf_hdr.rd_addr;
 		offset = (buf_hdr.rd_addr - buf_hdr.base_addr)
 						+ SST_SCU_LPE_LOG_BUF;
-		pr_debug("Size = %d, offset = %x\n", size1, offset);
+		pr_debug("Size = %zu, offset = %zx\n", size1, offset);
 		buf = vmalloc(size1);
 		if (buf == NULL) {
 			pr_err("Not enough memory to allocate\n");
@@ -506,7 +506,7 @@ static ssize_t sst_debug_lpe_log_enable_read(struct file *file,
 		size1 = buf_hdr.end_addr - buf_hdr.rd_addr + 1;
 		offset = (buf_hdr.rd_addr - buf_hdr.base_addr)
 						+ SST_SCU_LPE_LOG_BUF;
-		pr_debug("Size = %d, offset = %x\n", size1, offset);
+		pr_debug("Size = %zu, offset = %zx\n", size1, offset);
 		buf = vmalloc(size1);
 		if (buf == NULL) {
 			pr_err("Not enough memory to allocate\n");
@@ -526,7 +526,7 @@ static ssize_t sst_debug_lpe_log_enable_read(struct file *file,
 		buf = NULL;
 		size2 = (buf_hdr.wr_addr - buf_hdr.base_addr);
 		offset = SST_SCU_LPE_LOG_BUF;
-		pr_debug("Size = %d, offset = %x\n", size2, offset);
+		pr_debug("Size = %zu, offset = %zx\n", size2, offset);
 		buf = vmalloc(size2);
 		if (buf == NULL) {
 			pr_err("Not enough memory to allocate\n");
@@ -985,7 +985,7 @@ static int sst_debug_remap(struct vm_area_struct *vma, char *buf,
 	pr_debug("iram length 0x%x\n", length);
 
 	/* round it up to the page bondary  */
-	mem_area = (void *)PAGE_ALIGN((unsigned int)buf);
+	mem_area = (void *)PAGE_ALIGN((unsigned long)buf);
 
 	/* map the whole physically contiguous area in one piece  */
 	retval = remap_pfn_range(vma,
