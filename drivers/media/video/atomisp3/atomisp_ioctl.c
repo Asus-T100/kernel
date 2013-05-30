@@ -491,7 +491,8 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 	if (pipe_index >= IA_CSS_PIPE_ID_NUM)
 		return -EINVAL;
 
-	ret = ia_css_pipe_get_info(isp->css2_basis.pipes[pipe_index], &info);
+	ret = ia_css_pipe_get_info(isp_subdev->css2_basis.pipes[pipe_index],
+				   &info);
 	if (ret != IA_CSS_SUCCESS)
 		return -EINVAL;
 
@@ -1386,7 +1387,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 				mutex_lock(&isp->mutex);
 			}
 			ret = ia_css_stream_capture(
-				isp->css2_basis.stream,
+				isp_subdev->css2_basis.stream,
 				isp_subdev->params.offline_parm.num_captures,
 				isp_subdev->params.offline_parm.skip_frames,
 				isp_subdev->params.offline_parm.offset);
@@ -1529,7 +1530,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		if (atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    isp_subdev->params.offline_parm.num_captures == -1)
-			ia_css_stream_capture(isp->css2_basis.stream,
+			ia_css_stream_capture(isp_subdev->css2_basis.stream,
 					0, 0, 0);
 		/*
 		 * Currently there is no way to flush buffers queued to css.

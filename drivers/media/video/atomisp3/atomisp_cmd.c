@@ -794,7 +794,8 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	}
 
 	buffer.type = buf_type;
-	err = ia_css_pipe_dequeue_buffer(isp->css2_basis.pipes[css_pipe_id],
+	err = ia_css_pipe_dequeue_buffer(
+				isp_subdev->css2_basis.pipes[css_pipe_id],
 					&buffer);
 	if (err){
 		dev_err(isp->dev, "sh_css_dequeue_buffer failed: 0x%x\n", err);
@@ -948,7 +949,8 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	 * Queue/dequeue order will change if driver recycles image buffers.
 	 */
 	if (requeue) {
-		err = ia_css_pipe_enqueue_buffer(isp->css2_basis.pipes[css_pipe_id], &buffer);
+		err = ia_css_pipe_enqueue_buffer(
+			isp_subdev->css2_basis.pipes[css_pipe_id], &buffer);
 		if (err)
 			dev_err(isp->dev, "%s, q to css fails: %d\n",
 					__func__, err);
@@ -1139,7 +1141,7 @@ void atomisp_setup_flash(struct atomisp_device *isp)
 			dev_err(isp->dev, "flash timeout configure failed\n");
 			return;
 		}
-		ia_css_stream_request_flash(isp->css2_basis.stream);
+		ia_css_stream_request_flash(isp_subdev->css2_basis.stream);
 		isp_subdev->params.flash_state = ATOMISP_FLASH_ONGOING;
 	} else {
 		/* Flashing all frames is done */
@@ -1397,7 +1399,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 
 	if (frame_done_found &&
 	    isp_subdev->params.css_update_params_needed) {
-		ia_css_stream_set_isp_config(isp->css2_basis.stream,
+		ia_css_stream_set_isp_config(isp_subdev->css2_basis.stream,
 					     &isp_subdev->params.config);
 		atomisp_ISP_parameters_clean_up(isp,
 						&isp_subdev->params.config);
@@ -1621,7 +1623,7 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
 	/* FIXME: Function should take isp_subdev as parameter */
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	if (!isp->css2_basis.stream) {
+	if (!isp_subdev->css2_basis.stream) {
 		v4l2_err(&atomisp_dev,
 			 "%s called after streamoff, skipping.\n",
 			 __func__);
@@ -1629,7 +1631,8 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
 	}
 	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 	isp_config.capture_config = &isp_subdev->params.capture_config;
-	ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+	ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+				     &isp_config);
 
 	if (isp_subdev->params.low_light)
 		capture_mode = IA_CSS_CAPTURE_MODE_LOW_LIGHT;
@@ -1733,7 +1736,7 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
 		struct ia_css_nr_config nr_config;
 		struct ia_css_isp_config isp_config;
 
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -1744,7 +1747,8 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
 
 		/* Get nr config from current setup */
 		isp_config.nr_config = &nr_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(
+				isp_subdev->css2_basis.stream, &isp_config);
 		memcpy(arg, &nr_config, sizeof(*arg));
 	} else {
 		/* Set nr config to isp parameters */
@@ -1781,7 +1785,7 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_tnr_config tnr_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -1790,7 +1794,8 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 		memset(&tnr_config, 0, sizeof(struct ia_css_tnr_config));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.tnr_config = &tnr_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 
 		/* Get tnr config from current setup */
 		memcpy(config, isp_config.tnr_config, sizeof(*config));
@@ -1828,7 +1833,7 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_ob_config ob_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -1838,7 +1843,8 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.ob_config = &ob_config;
 		/* Get ob config from current setup */
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		memcpy(config, &ob_config, sizeof(*config));
 	} else {
 		if (!isp_subdev->params.config.ob_config)
@@ -1874,7 +1880,7 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_ee_config ee_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -1884,7 +1890,8 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		/* Get ee config from current setup */
 		isp_config.ee_config = &ee_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		memcpy(config, &ee_config, sizeof(*config));
 	} else {
 		if (!isp_subdev->params.config.ee_config)
@@ -1920,7 +1927,7 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_gamma_table tab;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -1930,7 +1937,8 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		/* Get gamma table from current setup */
 		isp_config.gamma_table = &tab;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		memcpy(config, &tab, sizeof(*config));
 	} else {
 		if (!isp_subdev->params.config.gamma_table)
@@ -1965,7 +1973,7 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_ctc_table tab;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -1975,7 +1983,8 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		/* Get ctc table from current setup */
 		isp_config.ctc_table = &tab;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		memcpy(config, &tab, sizeof(*config));
 	} else {
 		if (!isp_subdev->params.config.ctc_table)
@@ -2007,7 +2016,7 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_gc_config gc_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -2016,7 +2025,8 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 		memset(&gc_config, 0, sizeof(struct ia_css_gc_config));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.gc_config = &gc_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		/* Get gamma correction params from current setup */
 		memcpy(config, &gc_config, sizeof(*config));
 	} else {
@@ -2095,7 +2105,8 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 	struct ia_css_grid_info old_info = {0};
 
 	memset(&p_info, 0, sizeof(struct ia_css_pipe_info));
-	ia_css_pipe_get_info(isp->css2_basis.pipes[isp->css2_basis.curr_pipe],
+	ia_css_pipe_get_info(
+		isp_subdev->css2_basis.pipes[isp_subdev->css2_basis.curr_pipe],
 			     &p_info);
 	memcpy(&old_info, &isp_subdev->params.curr_grid_info,
 	       sizeof(struct ia_css_grid_info));
@@ -2249,7 +2260,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 		struct ia_css_isp_config isp_config;
 		memset(&tab, 0, sizeof(struct ia_css_morph_table));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -2257,7 +2268,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 		}
 		/* Get gdc table from current setup */
 		isp_subdev->params.config.morph_table = &tab;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream,
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
 					     &isp_subdev->params.config);
 
 		config->width = tab.width;
@@ -2913,10 +2924,10 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 		}
 	}
 
-	if (isp->css2_basis.stream
+	if (isp_subdev->css2_basis.stream
 		&& isp_subdev->run_mode->val
 			== ATOMISP_RUN_MODE_STILL_CAPTURE) {
-		ia_css_stream_set_isp_config(isp->css2_basis.stream,
+		ia_css_stream_set_isp_config(isp_subdev->css2_basis.stream,
 					     &isp_subdev->params.config);
 		atomisp_ISP_parameters_clean_up(isp,
 						&isp_subdev->params.config);
@@ -3299,7 +3310,7 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_dp_config dp_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -3308,7 +3319,8 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 		memset(&dp_config, 0, sizeof(struct ia_css_dp_config));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.dp_config = &dp_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		/* Get bad pixel from current setup */
 		memcpy(config, isp_subdev->params.config.dp_config,
 		       sizeof(*config));
@@ -3455,6 +3467,8 @@ int atomisp_fixed_pattern_table(struct atomisp_device *isp,
 {
 	struct ia_css_frame *raw_black_frame = NULL;
 	int ret;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (arg == NULL)
 		return -EINVAL;
@@ -3463,7 +3477,8 @@ int atomisp_fixed_pattern_table(struct atomisp_device *isp,
 	if (ret)
 		return ret;
 
-	if (sh_css_set_black_frame(isp->css2_basis.stream, raw_black_frame) != IA_CSS_SUCCESS)
+	if (sh_css_set_black_frame(isp_subdev->css2_basis.stream,
+				   raw_black_frame) != IA_CSS_SUCCESS)
 		ret = -ENOMEM;
 
 	ia_css_frame_free(raw_black_frame);
@@ -3519,7 +3534,7 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_de_config de_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -3528,7 +3543,8 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 		memset(&de_config, 0, sizeof(struct ia_css_de_config));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.de_config = &de_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		/* Get false color from current setup */
 		memcpy(config, &de_config, sizeof(*config));
 	} else {
@@ -3565,7 +3581,7 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_wb_config wb_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -3574,7 +3590,8 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 		memset(&wb_config, 0, sizeof(struct ia_css_wb_config));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.wb_config = &wb_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		/* Get white balance from current setup */
 		memcpy(config, &wb_config, sizeof(*config));
 	} else {
@@ -3609,7 +3626,7 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 	if (flag == 0) {
 		struct ia_css_3a_config s3a_config;
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -3618,7 +3635,8 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 		memset(&s3a_config, 0, sizeof(struct ia_css_3a_config));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.s3a_config = &s3a_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		/* Get white balance from current setup */
 		memcpy(config, &s3a_config, sizeof(*config));
 	} else {
@@ -3675,7 +3693,7 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 	if (flag == 0) {
 		struct ia_css_dz_config dz_config;  /**< Digital Zoom */
 		struct ia_css_isp_config isp_config;
-		if (!isp->css2_basis.stream) {
+		if (!isp_subdev->css2_basis.stream) {
 			v4l2_err(&atomisp_dev,
 				 "%s called after streamoff, skipping.\n",
 				 __func__);
@@ -3684,7 +3702,8 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 		memset(&dz_config, 0, sizeof(struct ia_css_dz_config));
 		memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 		isp_config.dz_config = &dz_config;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
+		ia_css_stream_get_isp_config(isp_subdev->css2_basis.stream,
+					     &isp_config);
 		*value = max_zoom - dz_config.dx;
 	} else {
 		if (*value < 0)
@@ -3921,7 +3940,7 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 		NUM_CONTINUOUS_FRAMES)
 		isp_subdev->continuous_raw_buffer_size->val =
 		    NUM_CONTINUOUS_FRAMES;
-	if (ia_css_stream_set_buffer_depth(isp->css2_basis.stream,
+	if (ia_css_stream_set_buffer_depth(isp_subdev->css2_basis.stream,
 			isp_subdev->continuous_raw_buffer_size->val)
 		!= IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "css_continuous_set_num_raw_frames failed\n");
@@ -4732,7 +4751,8 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 			 *       has been updated to use control API */
 			isp_subdev->continuous_raw_buffer_size->val =
 				num_raw_frames;
-			ia_css_stream_set_buffer_depth(isp->css2_basis.stream,
+			ia_css_stream_set_buffer_depth(
+					isp_subdev->css2_basis.stream,
 							num_raw_frames);
 		}
 
