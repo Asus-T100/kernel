@@ -41,7 +41,6 @@
 #include "sst_platform_pvt.h"
 
 struct sst_device *sst_dsp;
-static struct device *sst_pdev;
 extern struct snd_compr_ops sst_platform_compr_ops;
 
 static DEFINE_MUTEX(sst_dsp_lock);
@@ -754,44 +753,9 @@ static struct snd_soc_platform_driver sst_soc_platform_drv  __devinitdata = {
 	.read		= sst_soc_read,
 	.write		= sst_soc_write,
 };
-int sst_fill_config_data(struct sst_data *sst)
-{
-	int len;
-	char *platform_data;
-	struct sst_platform_data *sst_pdata = sst->pdata;
-
-	pr_debug("%s called\n", __func__);
-	len = sizeof(*(sst_pdata->bdata)) + sizeof(*(sst_pdata->pdata));
-	platform_data = devm_kzalloc(sst_pdev,
-					(len + sizeof(u32)), GFP_KERNEL);
-	if (platform_data == NULL) {
-		pr_err("kzalloc failed\n");
-		return -ENOMEM;
-	}
-	memcpy(platform_data, &len, sizeof(len));
-	memcpy(platform_data + sizeof(int), sst_pdata->bdata,
-					sizeof(*(sst_pdata->bdata)));
-	memcpy(platform_data + sizeof(int) + sizeof(*(sst_pdata->bdata)),
-					sst_pdata->pdata, sizeof(*(sst_pdata->pdata)));
-	sst_dsp->ops->set_generic_params(SST_SET_SSP_CONFIG, platform_data);
-
-	return 0;
-}
 
 int sst_register_dsp(struct sst_device *sst_dev)
 {
-
-	struct sst_data *sst;
-	struct sst_platform_data *sst_pdata;
-
-	if (!sst_pdev)
-		return -ENODEV;
-
-	sst =  dev_get_drvdata(sst_pdev);
-	if (!sst)
-		return -ENODEV;
-	sst_pdata = sst->pdata;
-
 	if (!sst_dev)
 		return -ENODEV;
 	mutex_lock(&sst_dsp_lock);
@@ -803,8 +767,6 @@ int sst_register_dsp(struct sst_device *sst_dev)
 	pr_debug("registering device %s\n", sst_dev->name);
 
 	sst_dsp = sst_dev;
-	if (!(sst_pdata->bdata == NULL) && !(sst_pdata->pdata == NULL))
-		sst_fill_config_data(sst);
 	mutex_unlock(&sst_dsp_lock);
 	return 0;
 }
@@ -840,7 +802,6 @@ static int __devinit sst_platform_probe(struct platform_device *pdev)
 		pr_err("kzalloc failed\n");
 		return -ENOMEM;
 	};
-	sst_pdev = &pdev->dev;
 	sst->pdata = pdata;
 	mutex_init(&sst->lock);
 	dev_set_drvdata(&pdev->dev, sst);

@@ -45,6 +45,7 @@
 #include <linux/acpi.h>
 #include <asm/intel-mid.h>
 #include <asm/platform_sst_audio.h>
+#include <asm/platform_sst.h>
 #include "../sst_platform.h"
 #include "../platform_ipc_v2.h"
 #include "sst.h"
@@ -57,39 +58,8 @@ MODULE_DESCRIPTION("Intel (R) SST(R) Audio Engine Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(SST_DRIVER_VERSION);
 
-/* GPIO pins used for SSP3 */
-#define CLV_I2S_3_CLK_GPIO_PIN	12
-#define CLV_I2S_3_FS_GPIO_PIN	13
-#define CLV_I2S_3_TXD_GPIO_PIN	74
-#define CLV_I2S_3_RXD_GPIO_PIN	75
-
-/* FIXME: Remove the hardcoding after SSP changes */
-#define SSP_BASE_CTP 0xFFA23000
 #define SSP_SIZE_CTP 0x1000
-
-#define DMA_BASE_CTP 0xFFAF8000
 #define DMA_SIZE_CTP 0x1000
-
-#define INFO(_iram_start, _iram_end, _iram_use,		\
-		_dram_start, _dram_end, _dram_use,	\
-		_imr_start, _imr_end, _imr_use,		\
-		_use_elf, _max_streams, _dma_max_len,	\
-		_num_probes)				\
-	((kernel_ulong_t)&(struct sst_probe_info) {\
-		.iram_start = (_iram_start),		\
-		.iram_end = (_iram_end),		\
-		.iram_use = (_iram_use),		\
-		.dram_start = (_dram_start),		\
-		.dram_end = (_dram_end),		\
-		.dram_use = (_dram_use),		\
-		.imr_start = (_imr_start),		\
-		.imr_end = (_imr_end),			\
-		.imr_use = (_imr_use),			\
-		.use_elf = (_use_elf),			\
-		.max_streams = (_max_streams),		\
-		.dma_max_len = (_dma_max_len),		\
-		.num_probes = (_num_probes),		\
-	 })
 
 struct intel_sst_drv *sst_drv_ctx;
 static struct mutex drv_ctx_lock;
@@ -550,7 +520,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 {
 	int i, ret = 0;
 	struct intel_sst_ops *ops;
-	struct sst_probe_info *info;
+	struct sst_pci_info *sst_pdata = pci->dev.platform_data;
 	int ddr_base;
 
 	pr_debug("Probe for DID %x\n", pci->device);
@@ -560,7 +530,14 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_drv_ctx->dev = &pci->dev;
 	sst_drv_ctx->pci_id = pci->device;
+	if (!sst_pdata)
+		return -EINVAL;
+	sst_drv_ctx->pdata = sst_pdata;
 
+	if (!sst_drv_ctx->pdata->probe_data)
+		return -EINVAL;
+	memcpy(&sst_drv_ctx->info, sst_drv_ctx->pdata->probe_data,
+					sizeof(sst_drv_ctx->info));
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		sst_drv_ctx->use_32bit_ops = true;
 	/* This is work around and needs to be removed once we
@@ -617,8 +594,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	spin_lock_init(&sst_drv_ctx->block_lock);
 	spin_lock_init(&sst_drv_ctx->pvt_id_lock);
 
-	info = (void *)pci_id->driver_data;
-	memcpy(&sst_drv_ctx->info, info, sizeof(sst_drv_ctx->info));
 #ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
 	sst_drv_ctx->ipc_reg.ipcx = SST_PRH_IPCX;
 	sst_drv_ctx->ipc_reg.ipcd = SST_PRH_IPCD;
@@ -708,22 +683,27 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 
 		/* SSP Register */
-		sst_drv_ctx->debugfs.ssp = ioremap(SSP_BASE_CTP, SSP_SIZE_CTP);
+		u32 ssp_base_add;
+		u32 dma_base_add;
+
+		ssp_base_add = sst_pdata->ssp_data->base_add;
+		sst_drv_ctx->debugfs.ssp = ioremap(ssp_base_add, SSP_SIZE_CTP);
 		if (!sst_drv_ctx->debugfs.ssp)
 			goto do_unmap_dram;
 
 		pr_debug("\n ssp io 0x%p ssp 0x%x size 0x%x",
 			sst_drv_ctx->debugfs.ssp,
-			SSP_BASE_CTP, SSP_SIZE_CTP);
+			ssp_base_add, SSP_SIZE_CTP);
 
 		/* DMA Register */
-		sst_drv_ctx->debugfs.dma_reg = ioremap(DMA_BASE_CTP, DMA_SIZE_CTP);
+		dma_base_add = sst_pdata->pdata->sst_dma_base[0];
+		sst_drv_ctx->debugfs.dma_reg = ioremap(dma_base_add, DMA_SIZE_CTP);
 		if (!sst_drv_ctx->debugfs.dma_reg)
 			goto do_unmap_ssp;
 
 		pr_debug("\n dma io 0x%p ssp 0x%x size 0x%x",
 			sst_drv_ctx->debugfs.dma_reg,
-			DMA_BASE_CTP, DMA_SIZE_CTP);
+			dma_base_add, DMA_SIZE_CTP);
 	}
 
 	/* Do not access iram/dram etc before LPE is reset */
@@ -835,18 +815,10 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 			goto do_free_misc;
 		}
 	}
-
-	/* GPIO_PIN 12,13,74,75 needs to be configured in
-	 * ALT_FUNC_2 mode for SSP3 IOs
-	 */
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
-		lnw_gpio_set_alt(CLV_I2S_3_CLK_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
-
+	if (sst_drv_ctx->pdata->ssp_data) {
+		if (sst_drv_ctx->pdata->ssp_data->in_use)
+			sst_set_gpio_conf(&sst_drv_ctx->pdata->ssp_data->gpio);
 	}
-
 	pci_set_drvdata(pci, sst_drv_ctx);
 	pm_runtime_allow(sst_drv_ctx->dev);
 	pm_runtime_put_noidle(sst_drv_ctx->dev);
@@ -858,6 +830,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_free_misc;
 	pm_qos_add_request(sst_drv_ctx->qos, PM_QOS_CPU_DMA_LATENCY,
 				PM_QOS_DEFAULT_VALUE);
+
 	pr_info("%s successfully done!\n", __func__);
 	return ret;
 
@@ -1129,19 +1102,11 @@ static int intel_sst_runtime_resume(struct device *dev)
 		 */
 		csr |= (ctx->csr_value | 0x30000);
 		sst_shim_write(ctx->shim, SST_CSR, csr);
-
-		/* GPIO_PIN 12,13,74,75 needs to be configured in
-		 * ALT_FUNC_2 mode for SSP3 IOs
-		 */
-		if (ctx->pci_id == SST_CLV_PCI_ID) {
-			lnw_gpio_set_alt(CLV_I2S_3_CLK_GPIO_PIN, LNW_ALT_2);
-			lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
-			lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
-			lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
-
+		if (sst_drv_ctx->pdata->ssp_data) {
+			if (ctx->pdata->ssp_data->in_use)
+				sst_set_gpio_conf(&ctx->pdata->ssp_data->gpio);
 		}
 	}
-
 	/* When fw_clear_cache is set, clear the cached firmware copy */
 	/* fw_clear_cache is set through debugfs support */
 	if (atomic_read(&ctx->fw_clear_cache)) {
@@ -1234,33 +1199,10 @@ struct sst_probe_info *sst_get_acpi_driver_data(const char *hid)
 	return NULL;
 }
 
-#define SST_MFLD_IRAM_START	0
-#define SST_MFLD_IRAM_END	0x80000
-#define SST_MFLD_DRAM_START	0x400000
-#define SST_MFLD_DRAM_END	0x480000
-
 /* PCI Routines */
 static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
-	{ PCI_VDEVICE(INTEL, SST_MRST_PCI_ID),
-		INFO(0, 0, false,
-			0, 0, false,
-			0, 0, false,
-			false, 3, SST_MAX_DMA_LEN, 0)},
-	{ PCI_VDEVICE(INTEL, SST_MFLD_PCI_ID),
-		INFO(SST_MFLD_IRAM_START, SST_MFLD_IRAM_END, true,
-			SST_MFLD_DRAM_START, SST_MFLD_DRAM_END, true,
-			0, 0, false,
-			false, 5, SST_MAX_DMA_LEN, 0)},
-	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID),
-		INFO(0, 0, false,
-			0, 0, false,
-			0, 0, false,
-			false, 5, SST_MAX_DMA_LEN, 1)},
-	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID),
-		INFO(0, 0, false,
-			0, 0, false,
-			0, 0, false,
-			true, 23, SST_MAX_DMA_LEN_MRFLD, 16)},
+	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID), 0},
+	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID), 0},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);

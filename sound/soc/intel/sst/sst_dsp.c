@@ -170,7 +170,7 @@ void intel_sst_set_bypass_mfld(bool set)
 
 }
 
-static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_probe_info info,
+static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_info info,
 			Elf32_Phdr *pr, void **dstn, unsigned int *dstn_phys, int *mem_type)
 {
 #ifdef MRFLD_WORD_WA
@@ -210,7 +210,7 @@ static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_probe_info info,
 }
 
 static void sst_fill_info(struct intel_sst_drv *sst,
-			struct sst_probe_info *info)
+			struct sst_info *info)
 {
 	/* first we setup addresses to be used for elf sections */
 	if (sst->info.iram_use) {
@@ -376,7 +376,7 @@ static bool chan_filter(struct dma_chan *chan, void *param)
 
 static unsigned int
 sst_get_elf_sg_len(struct intel_sst_drv *sst, Elf32_Ehdr *elf, Elf32_Phdr *pr,
-		struct sst_probe_info info)
+		struct sst_info info)
 {
 	unsigned int i = 0, count = 0;
 
@@ -626,7 +626,7 @@ static int sst_fill_sglist(unsigned long from, unsigned long to,
 }
 
 static int sst_parse_elf_module_dma(struct intel_sst_drv *sst, const void *fw,
-		 struct sst_probe_info info, Elf32_Phdr *pr,
+		 struct sst_info info, Elf32_Phdr *pr,
 		 struct scatterlist **sg_src, struct scatterlist **sg_dstn,
 		 struct sst_sg_list *fw_sg_list)
 {
@@ -656,7 +656,7 @@ sst_parse_elf_fw_dma(struct intel_sst_drv *sst, const void *fw_in_mem,
 
 	Elf32_Ehdr *elf;
 	Elf32_Phdr *pr;
-	struct sst_probe_info info;
+	struct sst_info info;
 	struct scatterlist *sg_src = NULL, *sg_dst = NULL;
 	unsigned int sg_len;
 
@@ -810,19 +810,18 @@ static void sst_dma_free_resources(struct sst_dma *dma)
 
 void sst_fill_config(struct intel_sst_drv *sst_ctx)
 {
-	u32 sign;
-	int len;
+	struct sst_fill_config sst_config;
 
-	sign = SST_CONFIG_SSP_SIGN;
-
-	if (!sst_ctx->ssp_config)
+	 if (!(sst_ctx->pdata->bdata && sst_ctx->pdata->pdata))
 		return;
-	len = sst_ctx->ssp_config->size;
 
-	memcpy_toio(sst_ctx->dram, &sign, sizeof(u32));
-	memcpy_toio(sst_ctx->dram + sizeof(u32), (sst_ctx->ssp_config->bytes), len);
-	memcpy_toio(sst_ctx->dram + len + sizeof(u32), &sst_ctx->shim_phy_add, sizeof(u32));
-	memcpy_toio(sst_ctx->dram + len + sizeof(u64), &sst_ctx->mailbox_add, sizeof(u32));
+	sst_config.sign = SST_CONFIG_SSP_SIGN;
+	memcpy(&sst_config.sst_bdata, sst_ctx->pdata->bdata, sizeof(struct sst_board_config_data));
+	memcpy(&sst_config.sst_pdata, sst_ctx->pdata->pdata, sizeof(struct sst_platform_config_data));
+	sst_config.shim_phy_add = sst_ctx->shim_phy_add;
+	sst_config.mailbox_add = sst_ctx->mailbox_add;
+	memcpy_toio(sst_ctx->dram, &sst_config, sizeof(sst_config));
+
 }
 
 /**
@@ -877,7 +876,7 @@ static int sst_fill_memcpy_list(struct list_head *memcpy_list,
 }
 
 static int sst_parse_elf_module_memcpy(struct intel_sst_drv *sst,
-		const void *fw, struct sst_probe_info info, Elf32_Phdr *pr,
+		const void *fw, struct sst_info info, Elf32_Phdr *pr,
 		struct list_head *memcpy_list)
 {
 	void *dstn;
@@ -905,7 +904,7 @@ sst_parse_elf_fw_memcpy(struct intel_sst_drv *sst, const void *fw_in_mem,
 
 	Elf32_Ehdr *elf;
 	Elf32_Phdr *pr;
-	struct sst_probe_info info;
+	struct sst_info info;
 
 	BUG_ON(!fw_in_mem);
 
