@@ -948,9 +948,10 @@ enum hdmi_force_audio {
 };
 
 enum hdmi_panel_fitter {
-	AUTO_SCALE,
-	PILLAR_BOX,
-	LETTER_BOX,
+	PFIT_OFF,
+	AUTOSCALE,
+	PILLARBOX,
+	LETTERBOX,
 };
 
 enum i915_cache_level {
