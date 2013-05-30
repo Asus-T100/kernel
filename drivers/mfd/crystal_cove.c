@@ -217,6 +217,7 @@ int intel_mid_pmic_readb(int reg)
 	mutex_unlock(&pmic->io_lock);
 	return ret;
 }
+EXPORT_SYMBOL(intel_mid_pmic_readb);
 
 int intel_mid_pmic_writeb(int reg, u8 val)
 {
@@ -227,6 +228,7 @@ int intel_mid_pmic_writeb(int reg, u8 val)
 	mutex_unlock(&pmic->io_lock);
 	return ret;
 }
+EXPORT_SYMBOL(intel_mid_pmic_writeb);
 
 int intel_mid_pmic_setb(int reg, u8 mask)
 {
@@ -240,6 +242,7 @@ int intel_mid_pmic_setb(int reg, u8 mask)
 	mutex_unlock(&pmic->io_lock);
 	return ret;
 }
+EXPORT_SYMBOL(intel_mid_pmic_setb);
 
 int intel_mid_pmic_clearb(int reg, u8 mask)
 {
@@ -253,6 +256,7 @@ int intel_mid_pmic_clearb(int reg, u8 mask)
 	mutex_unlock(&pmic->io_lock);
 	return ret;
 }
+EXPORT_SYMBOL(intel_mid_pmic_clearb);
 
 static void pmic_irq_enable(struct irq_data *data)
 {
