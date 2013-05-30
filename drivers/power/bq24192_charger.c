@@ -664,7 +664,10 @@ int bq24192_get_battery_health(void)
 		(temp > BATT_TEMP_MAX_DEF))
 		return POWER_SUPPLY_HEALTH_OVERHEAT;
 
-	/* Check if battery OVP condition occured */
+	/* Check if battery OVP condition occured. Reading the register
+	value two times to get reliable reg value, recommended by vendor*/
+	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	msleep(22);
 	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
 	if (ret < 0) {
 		dev_warn(&chip->client->dev,
