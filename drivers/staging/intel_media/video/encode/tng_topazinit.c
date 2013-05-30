@@ -1187,7 +1187,7 @@ static void tng_get_bank_size(
 	PSB_DEBUG_TOPAZ("TOPAZ: Save/Restore MTX at RAM address %08x of" \
 		"size: %08x bytes for codec %s on ctx %08x\n",
 		video_ctx->fw_data_dma_offset, video_ctx->fw_data_dma_size,
-		codec_to_string(codec), (unsigned int)(video_ctx->filp));
+		codec_to_string(codec), video_ctx->filp);
 }
 
 /* setup fw when start a new context */
