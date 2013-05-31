@@ -269,7 +269,7 @@ void ps_hdmi_power_islands_off(int hw_island)
 	 * HDMI cable, but here fabric error happens.
 	 */
 	if (!hw_island)
-		hw_island = OSPM_DISPLAY_B;
+		hw_island = OSPM_DISPLAY_A | OSPM_DISPLAY_B;
 
 	ospm_power_using_hw_end(hw_island);
 }
