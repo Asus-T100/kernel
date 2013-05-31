@@ -930,6 +930,8 @@
 #define GMBUS5			0x5120 /* byte index */
 #define   GMBUS_2BYTE_INDEX_EN	(1<<31)
 #define GMBUSFREQ		0x6510
+#define CD_CZ_CLOCK_FREQ_REG	0x6508	/* CZ Clock, CD Clock Frequency
+					 * Ratio register */
 
 /*
  * Clock control & power management
