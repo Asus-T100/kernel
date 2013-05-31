@@ -513,7 +513,6 @@ struct intel_sst_drv {
 	void __iomem		*mailbox;
 	void __iomem		*iram;
 	void __iomem		*dram;
-	void __iomem		*pmcsr;
 	unsigned int		mailbox_add;
 	unsigned int		iram_base;
 	unsigned int		dram_base;
@@ -522,7 +521,6 @@ struct intel_sst_drv {
 	unsigned int		dram_end;
 	unsigned int		ddr_end;
 	unsigned int		ddr_base;
-	unsigned int		pmcsr_base;
 	struct sst_shim_regs64	*shim_regs64;
 	struct list_head        block_list;
 	struct list_head	ipc_dispatch_list;

@@ -103,8 +103,11 @@
  * the valid range of [0..max] and not [1..max+1] */
 #define LM3559_PERCENT_TO_VALUE(p, step)     ((((p)-1) * 100) / (step))
 
-/* Flash brightness in percentage */
-#define LM3559_FLASH_DEFAULT_BRIGHTNESS		100
+/* Flash brightness, input is percentage, output is [0..15] */
+#define LM3559_FLASH_STEP                    625
+#define LM3559_FLASH_DEFAULT              15
+#define LM3559_FLASH_DEFAULT_BRIGHTNESS \
+	LM3559_VALUE_TO_PERCENT(LM3559_FLASH_DEFAULT, LM3559_FLASH_STEP)
 
 /* Torch brightness, input is percentage, output is [0..7] */
 #define LM3559_TORCH_STEP                    1250
@@ -129,8 +132,6 @@ struct lm3559_platform_data {
 	unsigned int current_limit;
 	unsigned int envm_tx2;
 	unsigned int tx2_polarity;
-	unsigned int flash_current_limit;
-	unsigned int disable_tx2;
 };
 
 #endif /* _LM3559_H_ */

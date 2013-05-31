@@ -65,7 +65,6 @@ struct lm3559_ctrl_id {
 #define LM3559_FLASH_BRIGHTNESS_REG	0xb0
 #define LM3559_FLASH_LED1_CURRENT_SHIFT	0
 #define LM3559_FLASH_LED2_CURRENT_SHIFT	4
-#define LM3559_FLASH_MAX_CURRENT	15
 
 #define LM3559_FLASH_DURATION_REG	0xc0
 #define LM3559_FLASH_TIMEOUT_SHIFT	0
@@ -86,16 +85,11 @@ struct lm3559_ctrl_id {
 
 #define LM3559_CONFIG_REG_1_INIT_SETTING	0xec
 #define LM3559_CONFIG_REG_2_INIT_SETTING	0x01
-#define LM3559_GPIO_REG_INIT_SETTING		0x00
 
 #define LM3559_ENVM_TX2_SHIFT		0
 #define LM3559_ENVM_TX2_MASK		0x01
 #define LM3559_TX2_POLARITY_SHIFT	6
 #define LM3559_TX2_POLARITY_MASK	0x40
-
-#define LM3559_GPIO_REG			0x20
-#define LM3559_GPIO_DISABLE_TX2_SHIFT	3
-#define LM3559_GPIO_DISABLE_TX2_MASK	(1 << LM3559_GPIO_DISABLE_TX2_SHIFT)
 
 struct privacy_indicator {
 	u8 indicator_current;
@@ -234,18 +228,33 @@ static int lm3559_set_config(struct lm3559 *flash)
 
 	val = LM3559_CONFIG_REG_2_INIT_SETTING & ~LM3559_ENVM_TX2_MASK;
 	val |= flash->pdata->envm_tx2 << LM3559_ENVM_TX2_SHIFT;
-	ret = lm3559_write(flash, LM3559_CONFIG_REG_2, val);
-	if (ret)
-		return ret;
-
-	val = LM3559_GPIO_REG_INIT_SETTING & ~LM3559_GPIO_DISABLE_TX2_MASK;
-	val |= flash->pdata->disable_tx2 << LM3559_GPIO_DISABLE_TX2_SHIFT;
-	return lm3559_write(flash, LM3559_GPIO_REG, val);
+	return lm3559_write(flash, LM3559_CONFIG_REG_2, val);
 }
 
 /* -----------------------------------------------------------------------------
- * Hardware trigger
+ * Hardware reset and trigger
  */
+
+static int lm3559_hw_reset(struct i2c_client *client)
+{
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3559 *flash = to_lm3559(sd);
+	struct lm3559_platform_data *pdata = flash->pdata;
+	int ret;
+
+	ret = gpio_request(pdata->gpio_reset, "flash reset");
+	if (ret < 0)
+		return ret;
+
+	gpio_set_value(pdata->gpio_reset, 0);
+	usleep_range(100, 100);
+
+	gpio_set_value(pdata->gpio_reset, 1);
+	usleep_range(100, 100);
+
+	gpio_free(pdata->gpio_reset);
+	return ret;
+}
 
 static void lm3559_flash_off_delay(long unsigned int arg)
 {
@@ -359,13 +368,10 @@ static int lm3559_g_flash_timeout(struct v4l2_subdev *sd, s32 *val)
 static int lm3559_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 {
 	struct lm3559 *flash = to_lm3559(sd);
-	unsigned int limit = flash->pdata->flash_current_limit;
-
-	if (limit == 0)
-		limit = LM3559_FLASH_MAX_CURRENT;
 
 	intensity = LM3559_CLAMP_PERCENTAGE(intensity);
-	intensity = intensity * limit / LM3559_MAX_PERCENT;
+	intensity = LM3559_PERCENT_TO_VALUE(intensity, LM3559_FLASH_STEP);
+
 	flash->flash_current = intensity;
 
 	return lm3559_set_flash(flash);
@@ -374,12 +380,9 @@ static int lm3559_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 static int lm3559_g_flash_intensity(struct v4l2_subdev *sd, s32 *val)
 {
 	struct lm3559 *flash = to_lm3559(sd);
-	unsigned int limit = flash->pdata->flash_current_limit;
 
-	if (limit == 0)
-		limit = LM3559_FLASH_MAX_CURRENT;
-
-	*val = flash->flash_current * LM3559_MAX_PERCENT / limit;
+	*val = LM3559_VALUE_TO_PERCENT((u32)flash->flash_current,
+			LM3559_FLASH_STEP);
 
 	return 0;
 }
@@ -615,7 +618,6 @@ static int lm3559_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 static int lm3559_setup(struct lm3559 *flash)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(&flash->sd);
-	unsigned int flash_current_limit = flash->pdata->flash_current_limit;
 	int ret;
 
 	/* clear the flags register */
@@ -639,10 +641,7 @@ static int lm3559_setup(struct lm3559 *flash)
 	if (ret < 0)
 		return ret;
 
-	if (flash_current_limit == 0)
-		flash_current_limit = LM3559_FLASH_MAX_CURRENT;
-	flash->flash_current = LM3559_FLASH_DEFAULT_BRIGHTNESS *
-				flash_current_limit / LM3559_MAX_PERCENT;
+	flash->flash_current = LM3559_FLASH_DEFAULT;
 	ret = lm3559_set_flash(flash);
 	if (ret < 0)
 		return ret;
@@ -664,21 +663,13 @@ static int __lm3559_s_power(struct lm3559 *flash, int power)
 	if (ret < 0)
 		return ret;
 
-	gpio_set_value(pdata->gpio_reset, power);
-	gpio_free(pdata->gpio_reset);
+	if (power)
+		gpio_set_value(pdata->gpio_reset, 1);
+	else
+		gpio_set_value(pdata->gpio_reset, 0);
+
 	usleep_range(100, 100);
-
-	if (power) {
-		/* Setup default values. This makes sure that the chip
-		 * is in a known state.
-		 */
-		ret = lm3559_setup(flash);
-		if (ret < 0) {
-			__lm3559_s_power(flash, 0);
-			return ret;
-		}
-	}
-
+	gpio_free(pdata->gpio_reset);
 	return 0;
 }
 
@@ -726,18 +717,26 @@ static int lm3559_detect(struct v4l2_subdev *sd)
 		return -ENODEV;
 	}
 
-	/* Make sure the power is initially off to ensure chip is resetted */
-	__lm3559_s_power(flash, 0);
-
-	/* Power up the flash driver, resetting and initializing it. */
+	/* Power up the flash driver and reset it */
 	ret = lm3559_s_power(&flash->sd, 1);
-	if (ret < 0) {
-		dev_err(&client->dev, "Failed to power on lm3559 LED flash\n");
-	} else {
-		dev_dbg(&client->dev, "Successfully detected lm3559 LED flash\n");
-		lm3559_s_power(&flash->sd, 0);
-	}
+	if (ret < 0)
+		return ret;
 
+	lm3559_hw_reset(client);
+
+	/* Setup default values. This makes sure that the chip is in a known
+	 * state.
+	 */
+	ret = lm3559_setup(flash);
+	if (ret < 0)
+		goto fail;
+
+	dev_dbg(&client->dev, "Successfully detected lm3559 LED flash\n");
+	lm3559_s_power(&flash->sd, 0);
+	return 0;
+
+fail:
+	lm3559_s_power(&flash->sd, 0);
 	return ret;
 }
 
