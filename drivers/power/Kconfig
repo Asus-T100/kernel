@@ -342,6 +342,16 @@ config CHARGER_SMB347
 	  Say Y to include support for Summit Microelectronics SMB347
 	  Battery Charger.
 
+config BYT_FFRD8_CHARGER
+	tristate "BYT charger initialization module"
+	depends on I2C
+	help
+	  This module initializes the BYT FFRD8 platform data. This
+	  module will initialize the I2C addresses for charger and FG.
+
+	  Say Y here if you have baytrail ffrd8 platform and to support
+	  BYT FFRD8 Battery Charger.
+
 config AB8500_BM
 	bool "AB8500 Battery Management Driver"
 	depends on AB8500_CORE && AB8500_GPADC

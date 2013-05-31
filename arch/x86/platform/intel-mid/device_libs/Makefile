@@ -47,6 +47,7 @@ else
 obj-$(subst m,y,$(CONFIG_BATTERY_MAX17050))				+= platform_max17042.o
 endif
 obj-$(subst m,y,$(CONFIG_BYT_ULPMC_BATTERY))				+= platform_ulpmc_battery.o
+obj-$(subst m,y,$(CONFIG_BYT_FFRD8_CHARGER))				+= platform_byt_ffrd8_charger.o
 obj-$(subst m,y,$(CONFIG_EXTCON_FSA9285))				+= platform_fsa9285.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_ATMEL_MXT224))			+= platform_mxt224.o
 obj-$(subst m,y,$(CONFIG_A1026))					+= platform_a1026.o

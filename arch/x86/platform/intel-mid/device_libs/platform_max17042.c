@@ -12,6 +12,7 @@
 
 #include <linux/export.h>
 #include <linux/gpio.h>
+#include <asm/intel-mid.h>
 #include <linux/i2c.h>
 #include <linux/lnw_gpio.h>
 #include <linux/power_supply.h>
@@ -25,6 +26,8 @@
 #include <asm/intel-mid.h>
 #include <asm/delay.h>
 #include <asm/intel_scu_ipc.h>
+#include <linux/acpi.h>
+#include <linux/acpi_gpio.h>
 #include "platform_max17042.h"
 #include "platform_bq24192.h"
 
@@ -282,6 +285,11 @@ int mrfl_get_volt_max(void)
 	return DEFAULT_VMAX_LIM;
 }
 
+int byt_get_vsys_min(void)
+{
+	return DEFAULT_VMIN;
+}
+
 static bool is_mapped;
 static void __iomem *smip;
 int get_smip_plat_config(int offset)
@@ -357,7 +365,17 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 		pdata->get_vmin_threshold = mrfl_get_vsys_min;
 		pdata->get_vmax_threshold = mrfl_get_volt_max;
 		pdata->reset_chip = true;
+	} else if (intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		pdata->battery_status = smb347_get_charging_status;
+		pdata->get_vmin_threshold = byt_get_vsys_min;
+		pdata->reset_chip = true;
+		pdata->temp_min_lim = 0;
+		pdata->temp_max_lim = 55;
+		pdata->volt_min_lim = 3400;
+		pdata->volt_max_lim = 4350;
 	}
+
 	pdata->reset_i2c_lines = max17042_i2c_reset_workaround;
 }
 
@@ -410,7 +428,21 @@ static void init_platform_params(struct max17042_platform_data *pdata)
 			pdata->file_sys_storage_enabled = 1;
 			pdata->soc_intr_mode_enabled = true;
 		}
+	} else if (intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		char byt_t_ffrd8_batt_str[] = "INTN0001";
+		pdata->enable_current_sense = true;
+		pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+		pdata->file_sys_storage_enabled = 1;
+		pdata->soc_intr_mode_enabled = true;
+		snprintf(pdata->battid, (BATTID_LEN + 1),
+					"%s", byt_t_ffrd8_batt_str);
+		snprintf(pdata->model_name, (MODEL_NAME_LEN + 1),
+					"%s", pdata->battid);
+		snprintf(pdata->serial_num, (SERIAL_NUM_LEN + 1), "%s",
+				pdata->battid + MODEL_NAME_LEN);
 	}
+
 	pdata->is_init_done = 0;
 }
 
@@ -456,6 +488,13 @@ void *max17042_platform_data(void *info)
 	int intr = get_gpio_by_name("max_fg_alert");
 
 	i2c_info->irq = intr + INTEL_MID_IRQ_OFFSET;
+
+	if (intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		intr = acpi_get_gpio("\\_SB.GPO2", 0x12);
+		intr =  149; /* GPIO_S5_18  = SUS0_18. SUS0_0 = 130 */
+		i2c_info->irq = gpio_to_irq(intr);
+	}
 
 	init_tgain_toff(&platform_data);
 	init_callbacks(&platform_data);
