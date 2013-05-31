@@ -4569,9 +4569,6 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	int timeout = 100;
 	bool idle;
 	u32 reg;
-	/* FIXME: currently only use subdev[0] in single stream mode */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 
 	dev_dbg(isp->dev, "%s\n", __func__);
 
@@ -4579,7 +4576,7 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	if (isp->isp_timeout)
 		goto done;
 
-	if (!atomisp_users(isp_subdev))
+	if (!atomisp_dev_users(isp))
 		goto done;
 
 	idle = sh_css_hrt_system_is_idle();

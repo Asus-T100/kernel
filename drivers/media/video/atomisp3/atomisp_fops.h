@@ -37,9 +37,11 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 			   enum ia_css_pipe_id css_pipe_id);
 
-int atomisp_init_struct(struct atomisp_device *isp);
+int atomisp_dev_init_struct(struct atomisp_device *isp);
+int atomisp_subdev_init_struct(struct atomisp_sub_device *isp_subdev);
 
-unsigned int atomisp_users(struct atomisp_sub_device *isp_subdev);
+unsigned int atomisp_subdev_users(struct atomisp_sub_device *isp_subdev);
+unsigned int atomisp_dev_users(struct atomisp_device *isp);
 
 /*
  * Memory help functions for image frame and private parameters
