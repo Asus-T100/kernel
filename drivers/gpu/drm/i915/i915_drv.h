@@ -1631,7 +1631,7 @@ extern inline bool intel_gmbus_is_port_valid(unsigned port)
 	return (port >= GMBUS_PORT_SSC && port <= GMBUS_PORT_DPD);
 }
 
-void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv, int clock);
+void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv);
 extern struct i2c_adapter *intel_gmbus_get_adapter(
 		struct drm_i915_private *dev_priv, unsigned port);
 extern void intel_gmbus_set_speed(struct i2c_adapter *adapter, int speed);
