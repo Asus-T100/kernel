@@ -850,4 +850,10 @@ config INTEL_BYT_EC
 	help
 	  This driver provides the interface to access Intel Baytrail EC.
 
+config INTEL_BYT_M_BTN
+	tristate "Intel Baytrail-M Key Buttons driver"
+	depends on INTEL_BYT_EC
+	help
+	  This driver provides the interface to access Intel Baytrail-M Key Buttons.
+
 endif # X86_PLATFORM_DEVICES

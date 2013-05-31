@@ -44,6 +44,14 @@
 #define BYT_EC_SCI_AON_ESC		0xD3	/* SCI from AON Escape button */
 #define BYT_EC_SCI_AON_GESC		0xD4	/* SCI from AON Global Escape button */
 
+/* Button Event */
+#define BYT_EC_SCI_VOLUMEUP_BTN		0x80	/* SCI from vol up button */
+#define BYT_EC_SCI_VOLUMEDOWN_BTN	0x81	/* SCI from vol down button */
+#define BYT_EC_SCI_HOME_BTN		0x85	/* SCI from home button */
+#define BYT_EC_SCI_POWER_BTN		0x86	/* SCI from power button */
+
+#define BYT_EC_BUTTON_STATUS		0xC9
+
 /* EC commands */
 enum byt_ec_commands {
 	BYT_EC_ACPI_ENABLE = 0xAA,
