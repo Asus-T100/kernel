@@ -99,8 +99,8 @@ config MDFD_DUAL_MIPI
 
 config SUPPORT_HDMI
         bool "SUPPORT_HDMI"
-        depends on DRM_MDFLD || DRM_CTP
-        default n
+        depends on DRM_MDFLD || DRM_CTP || DRM_I915
+        default y
         help
           Choose this option to support HDMI.
 

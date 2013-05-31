@@ -581,8 +581,9 @@
 /* HDMI AUDIO INTERRUPT TYPE */
 #define I915_LPE_AUDIO_HDMI_STATUS_A			0x65064
 #define I915_LPE_AUDIO_HDMI_STATUS_B			0x65864
-#define I915_LPE_PIPE_B_INTERRUPT			(1<<21)
-#define I915_LPE_PIPE_A_INTERRUPT			(1<<20)
+/* Discrepancy in Display HAS, bit definitions are reversed */
+#define I915_LPE_PIPE_A_INTERRUPT			(1<<21)
+#define I915_LPE_PIPE_B_INTERRUPT			(1<<20)
 #define I915_HDMI_AUDIO_UNDERRUN			(1UL<<31)
 #define I915_HDMI_AUDIO_BUFFER_DONE			(1UL<<29)
 #define I915_HDMI_AUDIO_UNDERRUN_ENABLE			(1UL<<15)
@@ -1576,6 +1577,10 @@
 #define _BCLRPAT_B	0x61020
 #define _VSYNCSHIFT_B	0x61028
 
+/* CSC Control Register */
+#define	_PIPEACSC	0x600b0
+#define	_PIPEBCSC	0x610b0
+#define	PIPECONF_CSC_ENABLE	(1<<15)
 
 #define HTOTAL(pipe) _PIPE(pipe, _HTOTAL_A, _HTOTAL_B)
 #define HBLANK(pipe) _PIPE(pipe, _HBLANK_A, _HBLANK_B)

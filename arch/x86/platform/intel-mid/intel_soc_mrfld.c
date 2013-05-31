@@ -29,8 +29,7 @@ static int mrfld_pmu_init(void)
 
 
 	/* Put all unused LSS in D0i3 */
-	mid_pmu_cxt->os_sss[0] = (SSMSK(D0I3_MASK, PMU_PSH_LSS_00)	|
-				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_03)	|
+	mid_pmu_cxt->os_sss[0] = (SSMSK(D0I3_MASK, PMU_RESERVED_LSS_03)	|
 				SSMSK(D0I3_MASK, PMU_HSI_LSS_05)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_07)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_12)	|
@@ -82,6 +81,15 @@ static int mrfld_pmu_init(void)
 								sizeof(u32));
 	if (s0ix_counter[SYS_STATE_S0I3] == NULL)
 		goto err6;
+	/* Keep PSH LSS's 00, 33, 34 in D0i0 if PM is disabled */
+	if (!enable_s0ix && !enable_s3) {
+		mid_pmu_cxt->os_sss[2] &=
+				~SSMSK(D0I3_MASK, PMU_I2C8_LSS_33-32);
+		mid_pmu_cxt->os_sss[2] &=
+				~SSMSK(D0I3_MASK, PMU_I2C9_LSS_34-32);
+	} else {
+		mid_pmu_cxt->os_sss[0] |= SSMSK(D0I3_MASK, PMU_PSH_LSS_00);
+	}
 
 	return PMU_SUCCESS;
 
@@ -135,8 +143,7 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 {
 	/* Overwrite the pmu_config values that we get */
 	pmu_config->pmu2_states[0] =
-				(SSMSK(D0I3_MASK, PMU_PSH_LSS_00)	|
-				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_03)	|
+				(SSMSK(D0I3_MASK, PMU_RESERVED_LSS_03)	|
 				SSMSK(D0I3_MASK, PMU_HSI_LSS_05)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_07)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_12)	|
@@ -166,6 +173,16 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 
 	/* Excpet for LSS 35 keep all in D0i3 */
 	pmu_config->pmu2_states[2] &= ~SSMSK(D0I3_MASK, PMU_SSP4_LSS_35-32);
+
+	/* Keep PSH LSS's 00, 33, 34 in D0i0 if PM is disabled */
+	if (!enable_s0ix && !enable_s3) {
+		pmu_config->pmu2_states[2] &=
+				~SSMSK(D0I3_MASK, PMU_I2C8_LSS_33-32);
+		pmu_config->pmu2_states[2] &=
+				~SSMSK(D0I3_MASK, PMU_I2C9_LSS_34-32);
+	} else {
+		pmu_config->pmu2_states[0] |= SSMSK(D0I3_MASK, PMU_PSH_LSS_00);
+	}
 }
 
 /*

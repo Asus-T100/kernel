@@ -838,16 +838,16 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct psb_video_ctx *pos = NULL;
 	struct psb_video_ctx *n = NULL;
 	struct psb_video_ctx *msvdx_ctx = NULL;
+	if (dev_priv == NULL)
+		return -EINVAL;
+	msvdx_priv = dev_priv->msvdx_private;
+
 #if defined(MERRIFIELD)
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 #endif
 	int engine, po_correct;
 	int found = 0;
 	struct psb_context *context = NULL;
-
-	if (dev_priv == NULL)
-		return -EINVAL;
-	msvdx_priv = dev_priv->msvdx_private;
 
 #ifdef SUPPORT_VSP
 	vsp_priv = dev_priv->vsp_private;
@@ -868,11 +868,12 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (arg->engine == PSB_ENGINE_DECODE) {
 		if (msvdx_priv->fw_loaded_by_punit)
 			psb_msvdx_check_reset_fw(dev);
+#ifndef MERRIFIELD
 		if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND)) {
 			ret = -EBUSY;
 			goto out_err0;
 		}
-
+#endif
 		ret = mutex_lock_interruptible(&msvdx_priv->msvdx_mutex);
 		if (unlikely(ret != 0))
 			goto out_err0;
@@ -899,7 +900,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 #endif
 	} else if (arg->engine == VSP_ENGINE_VPP) {
 #ifdef SUPPORT_VSP
-		if (!ospm_power_using_video_begin(OSPM_VIDEO_VPP_ISLAND)) {
+		if (power_island_get(OSPM_VIDEO_VPP_ISLAND) == false) {
 			ret = -EBUSY;
 			goto out_err0;
 		}
@@ -1080,10 +1081,10 @@ out_err1:
 #endif
 out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
-
+#ifndef MERRIFIELD
 	if (arg->engine == PSB_ENGINE_DECODE)
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
-
+#endif
 #ifndef CONFIG_DRM_VXD_BYT
 #ifndef MERRIFIELD
 	if (arg->engine == LNC_ENGINE_ENCODE)
@@ -1093,7 +1094,7 @@ out_err0:
 
 #ifdef SUPPORT_VSP
 	if (arg->engine == VSP_ENGINE_VPP)
-		ospm_power_using_video_end(OSPM_VIDEO_VPP_ISLAND);
+		power_island_put(OSPM_VIDEO_VPP_ISLAND);
 #endif
 	return ret;
 }

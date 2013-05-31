@@ -104,7 +104,7 @@ void ospm_vsp_init(struct drm_device *dev,
 
 	p_island->p_funcs->power_up = vsp_power_up;
 	p_island->p_funcs->power_down = vsp_power_down;
-	p_island->p_dependency = NULL;
+	p_island->p_dependency = get_island_ptr(NC_PM_SSS_GFX_SLC);
 }
 
 /***********************************************************
@@ -145,8 +145,10 @@ static bool ved_power_down(struct drm_device *dev,
 	/* Need to implement force_off */
 	PSB_DEBUG_PM("powering down ved\n");
 
+	/*
 	if (psb_check_msvdx_idle(dev))
 		return false;
+	*/
 
 	psb_msvdx_save_context(dev);
 
@@ -171,7 +173,7 @@ void ospm_ved_init(struct drm_device *dev,
 
 	p_island->p_funcs->power_up = ved_power_up;
 	p_island->p_funcs->power_down = ved_power_down;
-	p_island->p_dependency = NULL;
+	p_island->p_dependency = get_island_ptr(NC_PM_SSS_GFX_SLC);
 }
 
 /***********************************************************
@@ -258,5 +260,7 @@ void ospm_vec_init(struct drm_device *dev,
 
 	p_island->p_funcs->power_up = vec_power_up;
 	p_island->p_funcs->power_down = vec_power_down;
-	p_island->p_dependency = NULL;
+	p_island->p_dependency = get_island_ptr(NC_PM_SSS_GFX_SLC);
 }
+
+

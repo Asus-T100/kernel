@@ -601,11 +601,6 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 		return -EINVAL;
 	}
 
-	if (trip == LEVEL_ALERT2 && trip_temp < 55000) {
-		dev_err(&tzd->device, "Tcrit should be more than 55C\n");
-		return -EINVAL;
-	}
-
 	mutex_lock(&thrm_update_lock);
 
 	ret = temp_to_adc(td_info->is_direct, (int)trip_temp, &adc_val);

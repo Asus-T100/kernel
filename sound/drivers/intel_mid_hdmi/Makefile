@@ -6,7 +6,11 @@ EXTRA_CFLAGS += -Idrivers/staging/intel_media/common \
 ifdef CONFIG_DRM_MRFLD
 ccflags-y += -Idrivers/staging/mrfl/drv
 else
+ifdef CONFIG_DRM_I915
+ccflags-y += -Idrivers/gpu/drm/i915
+else
 ccflags-y += -Idrivers/staging/mrst/drv
+endif
 endif
 
 obj-$(CONFIG_SUPPORT_HDMI)	+= intel_mid_had.o

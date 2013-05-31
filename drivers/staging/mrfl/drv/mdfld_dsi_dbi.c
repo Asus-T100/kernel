@@ -419,6 +419,9 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	u32 power_island = 0;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dbi_dsr_info *dsr_info;
+	struct mdfld_dsi_dbi_output **dbi_outputs;
+	struct mdfld_dsi_dbi_output *dbi_output;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -462,6 +465,13 @@ reset_recovery:
 			goto power_on_err;
 		}
 	}
+
+	/* Issue "write_mem_start" DSI command during power on. */
+	dsr_info = dev_priv->dbi_dsr_info;
+	dbi_outputs = dsr_info->dbi_outputs;
+	dbi_output = dsi_config->pipe ? dbi_outputs[1] : dbi_outputs[0];
+
+	intel_dsi_dbi_update_fb(dbi_output);
 
 	/**
 	 * Different panel may have different ways to have

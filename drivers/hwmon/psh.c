@@ -43,6 +43,7 @@
 #include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
+#include <linux/intel_mid_pm.h>
 #include "psh_ia_common.h"
 
 #ifdef VPROG2_SENSOR
@@ -168,6 +169,8 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto pci_err;
 	}
 	*/
+	if (enable_s0ix || enable_s3)
+		return -1;
 	plt_priv = kzalloc(sizeof(*plt_priv), GFP_KERNEL);
 	if (!plt_priv) {
 		dev_err(&pdev->dev, "can not allocate plt_priv\n");
@@ -201,10 +204,11 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto irq_err;
 	}
 
+#if 0
 	/* just put this dev into suspend status always, since this is fake */
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
-
+#endif
 	return 0;
 
 irq_err:

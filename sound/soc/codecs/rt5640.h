@@ -148,6 +148,7 @@
 /* Index of Codec Private Register definition */
 #define RT5640_BIAS_CUR1			0x12
 #define RT5640_BIAS_CUR3			0x14
+#define RT5640_BIAS_CUR4			0x15
 #define RT5640_CLSD_INT_REG1			0x1c
 #define RT5640_CHPUMP_INT_REG1			0x24
 #define RT5640_MAMP_INT_REG2			0x37
@@ -2071,6 +2072,8 @@ enum {
 
 int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert);
 int rt5640_button_detect(struct snd_soc_codec *codec);
+int rt5640_check_interrupt_event(struct snd_soc_codec *codec);
+bool get_jd_status(struct snd_soc_codec *codec);
 
 /* System Clock Source */
 enum {
@@ -2116,6 +2119,14 @@ enum {
 	RT5640_DMIC2,
 };
 
+enum {
+	RT5640_J_IN_EVENT, /* Jack insert */
+	RT5640_J_OUT_EVENT, /* Jack evulse */
+	RT5640_BP_EVENT, /* Button Press */
+	RT5640_BR_EVENT, /* Button Release */
+	RT5640_UN_EVENT, /* Unknown */
+};
+
 struct rt5640_pll_code {
 	bool m_bp; /* Indicates bypass m code or not. */
 	int m_code;
@@ -2142,6 +2153,9 @@ struct rt5640_priv {
 	int dsp_sw; /* expected parameter setting */
 	bool dsp_play_pass;
 	bool dsp_rec_pass;
+
+	bool jd_status; /* true if jack inserted */
+	bool bp_status; /* true if butten pressed */
 };
 
 #endif /* __RT5640_H__ */

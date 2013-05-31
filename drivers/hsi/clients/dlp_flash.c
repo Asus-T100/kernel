@@ -324,6 +324,9 @@ static int dlp_flash_dev_open(struct inode *inode, struct file *filp)
 	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
 				DLP_CH_STATE_OPENED);
 
+	/* claim & setup HSI port */
+	dlp_hsi_port_claim();
+
 	/* Push RX PDUs */
 	for (ret = DLP_FLASH_NB_RX_MSG; ret; ret--)
 		dlp_flash_push_rx_pdu(ch_ctx);
@@ -338,6 +341,12 @@ out:
 static int dlp_flash_dev_close(struct inode *inode, struct file *filp)
 {
 	struct dlp_channel *ch_ctx = filp->private_data;
+
+	/* flush everything */
+	hsi_flush(dlp_drv.client);
+
+	/* Release the hsi controller */
+	dlp_hsi_port_unclaim();
 
 	/* Set the open flag */
 	dlp_flash_set_opened(ch_ctx, 0);

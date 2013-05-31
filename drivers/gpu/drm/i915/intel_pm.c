@@ -30,6 +30,8 @@
 #include "intel_drv.h"
 #include "../../../platform/x86/intel_ips.h"
 #include <linux/module.h>
+/* HDMI Audio OSPM handling */
+#include <psb_powermgmt.h>
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	#include <linux/earlysuspend.h>
@@ -3983,6 +3985,18 @@ void intel_s0ix_init(struct drm_device *dev)
 }
 #endif
 
+/* Dummy Function for HDMI Audio Power management.
+ * Will be updated once S0iX code is integrated */
+bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
+{
+	return 1;
+}
+
+void ospm_power_using_hw_end(int hw_island)
+{
+
+}
+
 /* Set up chip specific power management-related functions */
 void intel_init_pm(struct drm_device *dev)
 {
@@ -4417,16 +4431,13 @@ void vlv_force_wake_put(struct drm_i915_private *dev_priv,
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 
 	if (FORCEWAKE_RENDER & fw_engine) {
-
 		if (--dev_priv->fw_rendercount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_RENDER);
-
 	}
 
 	if (FORCEWAKE_MEDIA & fw_engine) {
 		if (--dev_priv->fw_mediacount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_MEDIA);
-
 	}
 
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
@@ -4632,6 +4643,8 @@ void vlv_rs_setstate(struct drm_device *dev,
 	} else {
 		/* Forcewake all engines first */
 		vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
+
+		dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
 
 		regdata &= ~(1 << 28);
 		regdata &= ~(1 << 24);

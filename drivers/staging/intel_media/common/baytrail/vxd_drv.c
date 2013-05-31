@@ -49,6 +49,7 @@ static void vxd_power_post_init(struct drm_device *dev);
 module_param_named(trap_pagefaults, drm_psb_trap_pagefaults, int, 0600);
 
 int drm_msvdx_pmpolicy = PSB_PMPOLICY_POWERDOWN;
+int drm_msvdx_bottom_half = PSB_BOTTOM_HALF_WQ;
 module_param_named(msvdx_pmpolicy, drm_msvdx_pmpolicy, int, 0600);
 MODULE_PARM_DESC(msvdx_pmpolicy,
 		"control d0i3 of msvdx "

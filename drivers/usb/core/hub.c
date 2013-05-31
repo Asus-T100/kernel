@@ -2607,8 +2607,13 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 {
 	struct usb_hub		*hub = hdev_to_hub(udev->parent);
 	int			port1 = udev->portnum;
-	struct port_wakeup	*pwakeup = hub->port_wakeup[port1-1];
+	struct port_wakeup	*pwakeup = NULL;
 	int			status;
+
+	if (!hub) {
+		dev_err(&udev->dev, "hub data struct is NULL\n");
+		return -ENODEV;
+	}
 
 	/* enable remote wakeup when appropriate; this lets the device
 	 * wake up the upstream hub (including maybe the root hub).
@@ -2654,6 +2659,7 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 	/* Hold port wakeup mutex before set PORT_SUSPEND
 	 * if device may generate remote wakeup
 	 */
+	pwakeup = hub->port_wakeup[port1-1];
 	if (udev->do_remote_wakeup && pwakeup)
 			mutex_lock(&pwakeup->wakeup_mutex);
 

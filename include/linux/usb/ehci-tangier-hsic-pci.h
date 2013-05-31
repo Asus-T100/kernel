@@ -25,11 +25,11 @@
 #define PMU_HW_PEN0 0x108
 #define PMU_HW_PEN1 0x10C
 
-#define HSIC_L1_AUTOSUSPEND                     0
-#define HSIC_L1_INACTIVITYDURATION              500
-#define HSIC_L2_AUTOSUSPEND                     0
-#define HSIC_L2_INACTIVITYDURATION              500
-#define HSIC_REMOTEWAKEUP                       0
+#define HSIC_L1_AUTOSUSPEND                     1
+#define HSIC_L1_INACTIVITYDURATION              1500
+#define HSIC_L2_AUTOSUSPEND                     1
+#define HSIC_L2_INACTIVITYDURATION              1500
+#define HSIC_REMOTEWAKEUP                       1
 
 struct hsic_tangier_priv {
 	struct delayed_work  hsic_aux;

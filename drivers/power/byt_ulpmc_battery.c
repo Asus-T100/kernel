@@ -769,7 +769,7 @@ static int ulpmc_set_charger_property(struct power_supply *psy,
 {
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, chrg);
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&chip->lock);
 
@@ -806,6 +806,7 @@ static int ulpmc_set_charger_property(struct power_supply *psy,
 		break;
 	default:
 		ret = -EINVAL;
+		goto set_prop_err;
 	}
 
 	/* return 0 on success */
@@ -944,6 +945,7 @@ static irqreturn_t ulpmc_thread_handler(int id, void *dev)
 
 	dump_registers(chip);
 	power_supply_changed(&chip->bat);
+	power_supply_changed(&chip->chrg);
 
 	pm_runtime_put_sync(&chip->client->dev);
 	return IRQ_HANDLED;

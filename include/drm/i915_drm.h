@@ -48,6 +48,24 @@ extern bool i915_gpu_turbo_disable(void);
 				 * of chars for next/prev indices */
 #define I915_LOG_MIN_TEX_REGION_SIZE 14
 
+#define MAX_CSC_COEFFICIENTS 9
+struct drm_intel_csc_params {
+	float   m_CSCCoeff[MAX_CSC_COEFFICIENTS];
+};
+
+union CSC_COEFFICIENT_WG {
+	unsigned int  Value;
+	struct {
+	unsigned int Coeff_2:16; /* bit 0-15 */
+	unsigned int  Coeff_1:16; /* bits 16-32 */
+	};
+};
+
+struct CSC_Coeff {
+	unsigned int crtc_id;
+	union CSC_COEFFICIENT_WG VLV_CSC_Coeff[6];
+};
+
 typedef struct _drm_i915_init {
 	enum {
 		I915_INIT_DMA = 0x01,
@@ -212,6 +230,7 @@ typedef struct _drm_i915_sarea {
 #define DRM_I915_DISP_SCREEN_CONTROL	0x35
 #define DRM_I915_SET_RESERVED_REG_BIT_2	0x37
 #define DRM_I915_GEM_VMAP		0x38
+#define DRM_I915_SET_CSC                0x39
 
 #define DRM_IOCTL_I915_INIT		DRM_IOW( DRM_COMMAND_BASE + DRM_I915_INIT, drm_i915_init_t)
 #define DRM_IOCTL_I915_FLUSH		DRM_IO ( DRM_COMMAND_BASE + DRM_I915_FLUSH)
@@ -277,6 +296,9 @@ typedef struct _drm_i915_sarea {
 #define DRM_IOCTL_I915_GEM_VMAP		\
 			DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_GEM_VMAP, \
 			struct drm_i915_gem_vmap)
+#define DRM_IOCTL_I915_SET_CSC DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_SET_CSC, \
+		struct CSC_Coeff)
+
 /* Allow drivers to submit batchbuffers directly to hardware, relying
  * on the security mechanisms provided by hardware.
  */

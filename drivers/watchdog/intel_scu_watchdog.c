@@ -62,6 +62,7 @@
 #include <asm/apb_timer.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_mid_remoteproc.h>
+#include <asm/intel-mid.h>
 
 #include "intel_scu_watchdog.h"
 
@@ -73,7 +74,7 @@
 #define CONFIG_DEBUG_WATCHDOG
 
 /* Defines */
-#define IPC_SET_WATCHDOG_TIMER	0xF8
+#define IPC_SET_WATCHDOG_TIMER  0xF8
 #define IPC_SET_SUB_LOAD_THRES  0x00
 #define IPC_SET_SUB_DISABLE     0x01
 #define IPC_SET_SUB_KEEPALIVE   0x02
@@ -88,7 +89,7 @@
 #define STRING_COLD_BOOT "COLD_BOOT"
 
 #ifdef CONFIG_DEBUG_FS
-#define SECURITY_WATCHDOG_ADDR	    0x40102FF4
+#define SECURITY_WATCHDOG_ADDR  0x40102FF4
 #define STRING_NONE "NONE"
 #endif
 
@@ -250,7 +251,7 @@ static int watchdog_set_timeouts(int timer_threshold, int warning_pretimeout,
 	ret = rpmsg_send_command(watchdog_instance,
 					IPC_SET_WATCHDOG_TIMER,
 					IPC_SET_SUB_LOAD_THRES,
-					ipc_wbuf, NULL, 12, 0);
+					(u8 *) ipc_wbuf, NULL, 12, 0);
 	if (ret)
 		pr_crit(PFX "Error Setting SCU Watchdog Timer: %x\n", ret);
 
@@ -1570,7 +1571,13 @@ static struct rpmsg_driver watchdog_rpmsg = {
 
 static int __init watchdog_rpmsg_init(void)
 {
-	return register_rpmsg_driver(&watchdog_rpmsg);
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL ||
+	    intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
+		return register_rpmsg_driver(&watchdog_rpmsg);
+	else {
+		pr_err(PFX "%s: watchdog driver: bad platform\n", __func__);
+		return -ENODEV;
+	}
 }
 
 #ifdef MODULE

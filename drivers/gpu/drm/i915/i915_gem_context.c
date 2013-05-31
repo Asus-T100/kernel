@@ -358,6 +358,7 @@ mi_set_context(struct intel_ring_buffer *ring,
 		intel_ring_emit(ring, MI_NOOP);
 
 	intel_ring_advance(ring);
+	i915_add_request_noflush(ring);
 
 	return ret;
 }

@@ -4691,25 +4691,35 @@ static int sep_wait_for_scu(struct sep_device *sep)
 {
 	u32 gpr3_contents;
 	u32 delay_count;
+	u32 chaabiaccessible;
 
 	gpr3_contents = 0;
 	delay_count = 0;
-	while ((gpr3_contents == 0) && (delay_count < SCU_DELAY_MAX)) {
+	chaabiaccessible = 0;
+
+	while ((gpr3_contents == 0) &&
+	       (chaabiaccessible == 0) &&
+	       (delay_count < SCU_DELAY_MAX)) {
 		gpr3_contents =
 			sep_read_reg(sep, HW_HOST_SEP_HOST_GPR3_REG_ADDR);
 		gpr3_contents &= SCU_BOOT_BIT_MASK;
-		if (gpr3_contents == 0) {
+
+		chaabiaccessible = readl(sep->chaabiAccessState);
+
+		if ((gpr3_contents == 0) && (chaabiaccessible == 0)) {
 			usleep_range(SCU_MIN_DELAY_ITERATION,
 				SCU_MAX_DELAY_ITERATION);
 			delay_count++;
 		}
 	}
-
+	dev_err(&sep->pdev->dev, "Chaabi status from SCU %x\n",
+		chaabiaccessible);
 	dev_dbg(&sep->pdev->dev, "iteration %d times\n",
 		delay_count);
 
-	if (gpr3_contents == 0) {
-		dev_err(&sep->pdev->dev, "scu boot bit not set at resume\n");
+	if ((gpr3_contents == 0) &&
+	    (chaabiaccessible == 0)) {
+		dev_err(&sep->pdev->dev, "chaabi boot status not set at resume\n");
 		BUG_ON(1);
 		return -EINVAL;
 	}
@@ -4757,6 +4767,15 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 			"can't kmalloc the sep_device structure\n");
 		error = -ENOMEM;
 		goto end_function_disable_device;
+	}
+
+	/* FIX ME: Do not use hardcoded value */
+	sep_dev->chaabiAccessState = ioremap(0xFFFFEFF0, 4);
+	if (!sep_dev->chaabiAccessState) {
+		dev_warn(&pdev->dev,
+			 "IO remap fails\n");
+		error = -ENODEV;
+		goto end_function_freemem;
 	}
 
 	/*
@@ -5032,6 +5051,8 @@ end_function_error:
 
 end_function_free_sep_dev:
 	pci_dev_put(sep_dev->pdev);
+	iounmap(sep_dev->chaabiAccessState);
+end_function_freemem:
 	kfree(sep_dev);
 	sep_dev = NULL;
 
@@ -5077,6 +5098,7 @@ static void sep_remove(struct pci_dev *pdev)
 		pm_runtime_get_noresume(&sep->pdev->dev);
 	}
 #endif
+	iounmap(sep_dev->chaabiAccessState);
 	pci_dev_put(sep_dev->pdev);
 	kfree(sep_dev);
 	sep_dev = NULL;

@@ -1020,11 +1020,11 @@ static int tangier_hsic_suspend_noirq(struct device *dev)
 		mutex_unlock(&hsic.hsic_mutex);
 		return 0;
 	}
-	mutex_unlock(&hsic.hsic_mutex);
 
 	dev_dbg(dev, "%s --->\n", __func__);
 	retval = usb_hcd_pci_pm_ops.suspend_noirq(dev);
 	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
+	mutex_unlock(&hsic.hsic_mutex);
 	return retval;
 }
 
@@ -1056,11 +1056,11 @@ static int tangier_hsic_resume_noirq(struct device *dev)
 		mutex_unlock(&hsic.hsic_mutex);
 		return 0;
 	}
-	mutex_unlock(&hsic.hsic_mutex);
 
 	dev_dbg(dev, "%s --->\n", __func__);
 	retval = usb_hcd_pci_pm_ops.resume_noirq(dev);
 	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
+	mutex_unlock(&hsic.hsic_mutex);
 	return retval;
 }
 

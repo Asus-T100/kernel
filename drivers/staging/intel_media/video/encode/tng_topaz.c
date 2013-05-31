@@ -350,7 +350,7 @@ int32_t dispatch_wb_message_polling(
 	}
 
 	*topaz_priv->topaz_sync_addr = sync_seq;
-
+	(topaz_priv->cur_context)->handle_sequence_needed = false;
 	psb_fence_handler(dev, LNC_ENGINE_ENCODE);
 
 	topaz_priv->topaz_busy = 1;
@@ -518,7 +518,7 @@ int32_t tng_wait_on_sync(
 	}
 
 	*topaz_priv->topaz_sync_addr = sync_seq;
-
+	(topaz_priv->cur_context)->handle_sequence_needed = false;
 	psb_fence_handler(dev, LNC_ENGINE_ENCODE);
 
 	topaz_priv->topaz_busy = 1;
@@ -536,6 +536,7 @@ bool tng_topaz_interrupt(void *pvData)
 	uint32_t crMultiCoreIntStat;
 	struct psb_video_ctx *video_ctx;
 	struct IMG_WRITEBACK_MSG *wb_msg;
+	unsigned long flags;
 
 	if (pvData == NULL) {
 		DRM_ERROR("Invalid params\n");
@@ -575,8 +576,15 @@ bool tng_topaz_interrupt(void *pvData)
 	topaz_priv->consumer = tng_get_consumer(dev);
 	topaz_priv->producer = tng_get_producer(dev);
 
-	video_ctx = topaz_priv->irq_context;
+	spin_lock_irqsave(&(topaz_priv->ctx_spinlock), flags);
+	/* Encode ctx has already been destroyed by user-space process */
+	if (NULL == topaz_priv->irq_context) {
+		PSB_DEBUG_TOPAZ("TOPAZ: ctx destroyed before ISR.\n");
+		spin_unlock_irqrestore(&(topaz_priv->ctx_spinlock), flags);
+		return true;
+	}
 
+	video_ctx = topaz_priv->irq_context;
 	wb_msg = (struct IMG_WRITEBACK_MSG *)
 		video_ctx->wb_addr[(topaz_priv->producer == 0) \
 			? 31 \
@@ -617,6 +625,8 @@ bool tng_topaz_interrupt(void *pvData)
 	}
 #endif
 	*topaz_priv->topaz_sync_addr = wb_msg->ui32WritebackVal;
+	video_ctx->handle_sequence_needed = false;
+	spin_unlock_irqrestore(&(topaz_priv->ctx_spinlock), flags);
 
 	PSB_DEBUG_TOPAZ("TOPAZ: Set seq %08x, " \
 		"dqueue cmd and schedule other work queue\n",
@@ -2123,6 +2133,7 @@ static int tng_setup_new_context(
 	video_ctx->codec = codec;
 	video_ctx->status = 0;
 	video_ctx->frame_count = 0;
+	video_ctx->handle_sequence_needed = false;
 
 	PSB_DEBUG_TOPAZ("TOPAZ: new context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(codec));
@@ -2350,9 +2361,7 @@ tng_topaz_send(
 	/* uint32_t m; */
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 	int32_t ret = 0;
-#ifdef MULTI_STREAM_TEST
 	struct psb_video_ctx *video_ctx;
-#endif
 
 	if (drm_topaz_pmpolicy == PSB_PMPOLICY_NOPM) {
 		if (!power_island_get_dummy(dev)) {
@@ -2366,6 +2375,7 @@ tng_topaz_send(
 		}
 	}
 
+	video_ctx = get_ctx_from_fp(dev, file_priv->filp);
 	topaz_priv->topaz_busy = 1;
 
 	PSB_DEBUG_TOPAZ("TOPAZ : send the command in the buffer " \
@@ -2479,6 +2489,11 @@ tng_topaz_send(
 			}
 			*/
 
+			if (video_ctx) {
+				video_ctx->cur_sequence = sync_seq;
+				video_ctx->handle_sequence_needed = true;
+			}
+
 			/* Write command to FIFO */
 			ret = mtx_write_FIFO(dev, cur_cmd_header,
 				*((uint32_t *)(command) + 1),
@@ -2546,7 +2561,6 @@ tng_topaz_send(
 			goto out;
 		}
 
-		video_ctx = get_ctx_from_fp(dev, file_priv->filp);
 		if (video_ctx == NULL) {
 			DRM_ERROR("Failed to get video contex from filp");
 			ret = -1;
@@ -2574,7 +2588,14 @@ int tng_topaz_remove_ctx(
 	struct psb_video_ctx *pos;
 	int32_t ret;
 	struct tng_topaz_cmd_queue *entry, *next;
+	unsigned long flags;
+
 	topaz_priv = dev_priv->topaz_private;
+
+	spin_lock_irqsave(&(topaz_priv->ctx_spinlock), flags);
+	if (video_ctx == topaz_priv->irq_context)
+		topaz_priv->irq_context = NULL;
+	spin_unlock_irqrestore(&(topaz_priv->ctx_spinlock), flags);
 
 	mutex_lock(&topaz_priv->topaz_mutex);
 
@@ -2639,6 +2660,13 @@ int tng_topaz_remove_ctx(
 	video_ctx->fw_data_dma_offset = 0;
 	video_ctx->status = 0;
 	video_ctx->codec = 0;
+
+	/* If shutdown before completion, need to handle the fence.*/
+	if (video_ctx->handle_sequence_needed) {
+		*topaz_priv->topaz_sync_addr = video_ctx->cur_sequence;
+		psb_fence_handler(dev_priv->dev, LNC_ENGINE_ENCODE);
+		video_ctx->handle_sequence_needed = false;
+	}
 
 	if (!list_empty(&topaz_priv->topaz_queue)) {
 		PSB_DEBUG_TOPAZ("TOPAZ: Flush all commands " \

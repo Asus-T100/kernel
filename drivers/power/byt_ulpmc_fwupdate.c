@@ -281,6 +281,10 @@ static int do_mass_erase(struct  ulpmc_fwu_info *fwu)
 	memset(res_buf, 0x0, RX_TX_BUFFER_LEN);
 	ret = fill_BSLCmd_packet(fwu, CMD_MASS_ERASE, 0, NULL, 0,
 						cmd_buf, &cmd_len);
+	if (ret < 0) {
+		dev_err(&fwu->pdev->dev, "bsl failed:%d\n", ret);
+		return ret;
+	}
 	msg.addr = fwu->client->addr;
 	msg.flags = 0;
 	msg.buf = cmd_buf;
@@ -314,6 +318,10 @@ static int check_password(struct  ulpmc_fwu_info *fwu)
 	memset(input_data, 0xFF, INPUT_DATA_LEN);
 	ret = fill_BSLCmd_packet(fwu, CMD_RX_PASSWORD, 0, input_data,
 					INPUT_DATA_LEN, cmd_buf, &cmd_len);
+	if (ret < 0) {
+		dev_err(&fwu->pdev->dev, "bsl failed:%d\n", ret);
+		return ret;
+	}
 	msg.addr = fwu->client->addr;
 	msg.flags = 0;
 	msg.buf = cmd_buf;
@@ -347,6 +355,10 @@ static int erase_segment(struct  ulpmc_fwu_info *fwu, u32 seg_offset)
 	memset(input_data, 0x0, INPUT_DATA_LEN);
 	ret = fill_BSLCmd_packet(fwu, CMD_ERASE_SEGMENT, seg_offset,
 				input_data, 0x2, cmd_buf, &cmd_len);
+	if (ret < 0) {
+		dev_err(&fwu->pdev->dev, "bsl failed:%d\n", ret);
+		return ret;
+	}
 	msg.addr = fwu->client->addr;
 	msg.flags = 0;
 	msg.buf = cmd_buf;
@@ -379,6 +391,10 @@ static int check_bsl_version(struct  ulpmc_fwu_info *fwu)
 	memset(res_buf, 0x0, RX_TX_BUFFER_LEN);
 	ret = fill_BSLCmd_packet(fwu, CMD_TX_BSL_VERSION, 0, NULL, 0,
 						cmd_buf, &cmd_len);
+	if (ret < 0) {
+		dev_err(&fwu->pdev->dev, "bsl failed:%d\n", ret);
+		return ret;
+	}
 	msg.addr = fwu->client->addr;
 	msg.flags = 0;
 	msg.buf = cmd_buf;
@@ -415,7 +431,7 @@ static int parse_udata(struct ulpmc_fwu_info *fwu,
 		addr_flag = false;
 
 	for (i = fcur_idx;
-		i < fdata_len, cur_datalen < TX_DATA_BUFFER_SIZE; i++) {
+		(i < fdata_len) && (cur_datalen < TX_DATA_BUFFER_SIZE); i++) {
 		if (file_buf[i] == '@') {
 			if (i != fcur_idx)
 				break;
@@ -491,6 +507,10 @@ static int ulpmc_SW_por_reset(struct ulpmc_fwu_info *fwu)
 
 	ret = fill_BSLCmd_packet(fwu, CMD_RX_DATA_BLOCK, dst_addr,
 				data, data_len, cmd_buf, &cmd_len);
+	if (ret < 0) {
+		dev_err(&fwu->pdev->dev, "bsl failed:%d\n", ret);
+		return ret;
+	}
 	msg.addr = fwu->client->addr;
 	msg.flags = 0;
 	msg.buf = cmd_buf;
@@ -537,6 +557,10 @@ static int updateFW(struct ulpmc_fwu_info *fwu, u8 *udata, u32 ulen)
 
 		ret = fill_BSLCmd_packet(fwu, CMD_RX_DATA_BLOCK, dst_addr,
 					data, data_len, cmd_buf, &cmd_len);
+		if (ret < 0) {
+			dev_err(&fwu->pdev->dev, "bsl failed:%d\n", ret);
+			return ret;
+		}
 
 		msg.addr = fwu->client->addr;
 		msg.flags = 0;
@@ -576,6 +600,10 @@ static int updateFW(struct ulpmc_fwu_info *fwu, u8 *udata, u32 ulen)
 
 		ret = fill_BSLCmd_packet(fwu, CMD_CRC_CHECK, dst_addr,
 					data, data_len, cmd_buf, &cmd_len);
+		if (ret < 0) {
+			dev_err(&fwu->pdev->dev, "bsl failed:%d\n", ret);
+			return ret;
+		}
 
 		msg.addr = fwu->client->addr;
 		msg.flags = 0;

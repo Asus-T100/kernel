@@ -153,7 +153,7 @@ int usb_set_transceiver(struct usb_phy *x)
 	x->class_dev = device_create(x->usb_otg_class, x->dev,
 			MKDEV(0, 0), NULL, "otg0");
 	if (IS_ERR(x->class_dev))
-		goto err2;
+		goto err1;
 
 	while ((attr = *attrs++)) {
 		err = device_create_file(x->class_dev, attr);
@@ -166,8 +166,6 @@ int usb_set_transceiver(struct usb_phy *x)
 	return 0;
 
 err1:
-	device_destroy(x->usb_otg_class, x->class_dev->devt);
-err2:
 	class_destroy(x->usb_otg_class);
 
 	return -EFAULT;

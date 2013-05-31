@@ -1942,10 +1942,11 @@ static void hsu_flush_rxfifo(struct uart_hsu_port *up)
 	unsigned int lsr, cnt;
 	if (up->hw_type == HSU_INTEL) {
 		cnt = serial_in(up, UART_FOR) & 0x7F;
-		dev_info(up->dev,
-			"Warning: %d bytes are received"
-			" in RX fifo after RTS active for %d us\n",
-			cnt, up->byte_delay);
+		if (cnt)
+			dev_info(up->dev,
+				"Warning: %d bytes are received"
+				" in RX fifo after RTS active for %d us\n",
+				cnt, up->byte_delay);
 		lsr = serial_in(up, UART_LSR);
 		if (lsr & UART_LSR_DR && cnt)
 			dev_info(up->dev,
@@ -2098,7 +2099,8 @@ static int serial_hsu_do_suspend(struct pci_dev *pdev)
 	if (cfg->preamble && cfg->hw_suspend_post)
 		cfg->hw_suspend_post(up->index);
 	enable_irq(phsu->dma_irq);
-	enable_irq(up->port.irq);
+	if (up->hw_type == HSU_DW)
+		enable_irq(up->port.irq);
 	return 0;
 err:
 	if (cfg->hw_set_rts)
@@ -2127,7 +2129,8 @@ static int serial_hsu_do_resume(struct pci_dev *pdev)
 
 	if (!test_and_clear_bit(flag_suspend, &up->flags))
 		return 0;
-	disable_irq(up->port.irq);
+	if (up->hw_type == HSU_DW)
+		disable_irq(up->port.irq);
 	if (cfg->hw_context_save)
 		hsu_regs_context(up, context_load);
 	if (cfg->hw_resume)
@@ -2423,7 +2426,8 @@ static int serial_port_setup(struct uart_hsu_port *up,
 
 	if (cfg->type == debug_port) {
 		serial_hsu_reg.cons = SERIAL_HSU_CONSOLE;
-		serial_hsu_reg.cons->index = index;
+		if (serial_hsu_reg.cons)
+			serial_hsu_reg.cons->index = index;
 		up->use_dma = 0;
 	} else
 		serial_hsu_reg.cons = NULL;
@@ -2581,11 +2585,22 @@ static void serial_hsu_port_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 
+static void serial_hsu_port_shutdown(struct pci_dev *pdev)
+{
+	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+
+	if (!up)
+		return;
+
+	uart_suspend_port(&serial_hsu_reg, &up->port);
+}
+
 static struct pci_driver hsu_port_pci_driver = {
 	.name =		"HSU serial",
 	.id_table =	hsuart_port_pci_ids,
 	.probe =	serial_hsu_port_probe,
 	.remove =	__devexit_p(serial_hsu_port_remove),
+	.shutdown =	serial_hsu_port_shutdown,
 /* Disable PM only when kgdb(poll mode uart) is enabled */
 #if defined(CONFIG_PM) && !defined(CONFIG_CONSOLE_POLL)
 	.driver = {

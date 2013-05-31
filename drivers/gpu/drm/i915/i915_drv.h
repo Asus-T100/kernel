@@ -1487,6 +1487,7 @@ int __must_check i915_gem_idle(struct drm_device *dev);
 int i915_add_request(struct intel_ring_buffer *ring,
 		     struct drm_file *file,
 		     struct drm_i915_gem_request *request);
+int i915_add_request_noflush(struct intel_ring_buffer *ring);
 int __must_check i915_wait_seqno(struct intel_ring_buffer *ring,
 				 uint32_t seqno);
 int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf);
@@ -1590,6 +1591,7 @@ void i915_debugfs_cleanup(struct drm_minor *minor);
 extern int i915_save_state(struct drm_device *dev);
 extern int i915_restore_state(struct drm_device *dev);
 extern void i915_pm_init(struct drm_device *dev);
+extern void i915_pm_deinit(struct drm_device *dev);
 
 /* i915_suspend.c */
 extern int i915_save_state(struct drm_device *dev);
@@ -1745,5 +1747,32 @@ __i915_write(64, q)
 
 #define POSTING_READ(reg)	(void)I915_READ_NOTRACE(reg)
 #define POSTING_READ16(reg)	(void)I915_READ16_NOTRACE(reg)
+
+/* runtime power management related */
+int i915_rpm_init(struct drm_device *dev);
+int i915_rpm_deinit(struct drm_device *dev);
+
+int i915_rpm_get_ring(struct intel_ring_buffer *ring);
+int i915_rpm_put_ring(struct intel_ring_buffer *ring);
+
+int i915_rpm_get_reg(struct drm_device *dev);
+int i915_rpm_put_reg(struct drm_device *dev);
+
+int i915_rpm_get_ioctl(struct drm_device *dev);
+int i915_rpm_put_ioctl(struct drm_device *dev);
+
+int i915_rpm_get_disp(struct drm_device *dev);
+int i915_rpm_put_disp(struct drm_device *dev);
+
+#ifdef CONFIG_DRM_VXD_BYT
+int i915_rpm_get_vxd(struct drm_device *dev);
+int i915_rpm_put_vxd(struct drm_device *dev);
+#endif
+
+bool i915_rpm_access_check(struct drm_device *dev);
+bool i915_is_device_active(struct drm_device *dev);
+bool i915_is_device_resuming(struct drm_device *dev);
+bool i915_is_device_suspended(struct drm_device *dev);
+bool i915_is_device_suspending(struct drm_device *dev);
 
 #endif

@@ -130,7 +130,7 @@ static int hmm_dynamic_pool_init(void **pool, unsigned int pool_size)
 	struct hmm_dynamic_pool_info *dypool_info;
 
 	if (pool_size == 0)
-		return -EINVAL;
+		return 0;
 
 	dypool_info = atomisp_kernel_malloc(
 					sizeof(struct hmm_dynamic_pool_info));

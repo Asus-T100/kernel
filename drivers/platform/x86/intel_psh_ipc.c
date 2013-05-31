@@ -22,6 +22,7 @@
 #include <asm/intel_psh_ipc.h>
 #include <asm/intel-mid.h>
 #include <linux/fs.h>
+#include <linux/intel_mid_pm.h>
 
 #define PSH_ERR(fmt, arg...)	dev_err(&ipc_ctrl.pdev->dev, fmt, ##arg)
 #define PSH_DBG(fmt, arg...)	dev_dbg(&ipc_ctrl.pdev->dev, fmt, ##arg)
@@ -464,6 +465,8 @@ static int psh_ipc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	int i, ret;
 	unsigned long start, len;
 
+	if (enable_s0ix || enable_s3)
+		return -1;
 	ipc_ctrl.pdev = pci_dev_get(pdev);
 	ret = pci_enable_device(pdev);
 	if (ret)
@@ -507,9 +510,10 @@ static int psh_ipc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	ipc_ctrl.initialized = 1;
 
+#if 0
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
-
+#endif
 	return 0;
 
 err3:

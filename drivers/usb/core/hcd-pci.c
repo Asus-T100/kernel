@@ -572,8 +572,6 @@ static int hcd_pci_runtime_suspend(struct device *dev)
 static int hcd_pci_runtime_resume(struct device *dev)
 {
 	int			retval;
-	struct pci_dev		*pci_dev = to_pci_dev(dev);
-	struct usb_hcd		*hcd = pci_get_drvdata(pci_dev);
 
 	powermac_set_asic(to_pci_dev(dev), 1);
 	retval = resume_common(dev, PM_EVENT_AUTO_RESUME);

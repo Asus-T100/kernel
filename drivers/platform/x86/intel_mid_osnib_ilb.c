@@ -107,11 +107,27 @@ static ssize_t fw_update_store(struct kobject *kobj,
 	return count;
 }
 
+static ssize_t clean_osnib_store(struct kobject *kobj,
+		struct kobj_attribute *attr,
+		const char *buf, size_t count)
+{
+	intel_mid_ilb_write_osnib_field(&osnib_buffer,
+			offsetof(struct cmos_osnib, fw_to_os.bf),
+			0);
+	intel_mid_ilb_write_osnib_checksum(&osnib_buffer);
+
+	return count;
+}
+
 static struct kobj_attribute fw_update_attribute =
 		__ATTR(fw_update, 0666, fw_update_show, fw_update_store);
 
+static struct kobj_attribute clean_osnib_attribute =
+		__ATTR(clean_osnib, 0200, NULL, clean_osnib_store);
+
 static struct attribute *attrs[] = {
 	&fw_update_attribute.attr,
+	&clean_osnib_attribute.attr,
 	NULL,
 };
 

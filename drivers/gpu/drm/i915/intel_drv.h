@@ -450,6 +450,8 @@ int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 extern void intel_wait_for_vblank(struct drm_device *dev, int pipe);
 extern void intel_wait_for_pipe_off(struct drm_device *dev, int pipe);
+extern int intel_enable_CSC(struct drm_device *dev, void *csc_params,
+		struct drm_file *file_priv);
 
 struct intel_load_detect_pipe {
 	struct drm_framebuffer *release_fb;

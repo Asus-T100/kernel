@@ -486,9 +486,8 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 	if (dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
 	/* Added for HDMI Audio */
-	error = i915_hdmi_audio_suspend(dev);
-	if (error)
-		return error;
+	/* TODO: display team to take care of error properly */
+	mid_hdmi_audio_suspend(dev);
 
 	error = dev_priv->pm.drm_freeze(dev);
 	if (error)
@@ -528,7 +527,8 @@ int i915_resume(struct drm_device *dev)
 
 	drm_kms_helper_poll_enable(dev);
 	/* Added for HDMI Audio */
-	i915_hdmi_audio_resume(dev);
+	mid_hdmi_audio_resume(dev);
+	DRM_DEBUG_DRIVER("Gfx Resumed\n");
 	return 0;
 }
 
@@ -827,18 +827,31 @@ static int i915_release(struct inode *inode, struct file *filp)
 
 	return ret;
 }
+#endif
 
 static long i915_ioctl(struct file *filp,
 	      unsigned int cmd, unsigned long arg)
 {
 	unsigned int nr = DRM_IOCTL_NR(cmd);
+	struct drm_file *file_priv = filp->private_data;
+	struct drm_device *dev;
+	dev = file_priv->minor->dev;
+
+
+#ifdef CONFIG_DRM_VXD_BYT
 	if ((nr >= DRM_COMMAND_VXD_BASE) &&
-		(nr < DRM_COMMAND_VXD_BASE + 0x20))
+			(nr < DRM_COMMAND_VXD_BASE + 0x20))
 		return vxd_ioctl(filp, cmd, arg);
 	else
-		return drm_ioctl(filp, cmd, arg);
-}
 #endif
+	{
+		int ret;
+		i915_rpm_get_ioctl(dev);
+		ret = drm_ioctl(filp, cmd, arg);
+		i915_rpm_put_ioctl(dev);
+		return ret;
+	}
+}
 
 static int i915_pm_suspend(struct device *dev)
 {
@@ -862,9 +875,8 @@ static int i915_pm_suspend(struct device *dev)
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
 	/* Added for HDMI Audio */
-	error = i915_hdmi_audio_suspend(drm_dev);
-	if (error)
-		return error;
+	/* TODO: display team to take care of error properly */
+	mid_hdmi_audio_suspend(drm_dev);
 
 	error = dev_priv->pm.drm_freeze(drm_dev);
 	if (error)
@@ -873,13 +885,15 @@ static int i915_pm_suspend(struct device *dev)
 	pci_disable_device(pdev);
 	pci_set_power_state(pdev, PCI_D3hot);
 
+	DRM_DEBUG_DRIVER("Gfx Suspended\n");
+
 	return 0;
 }
 
-static int i915_pm_shutdown(struct pci_dev *pdev)
+static void i915_pm_shutdown(struct pci_dev *pdev)
 {
 	struct device *dev = &pdev->dev;
-	return i915_pm_suspend(dev);
+	i915_pm_suspend(dev);
 }
 
 static int i915_pm_resume(struct device *dev)
@@ -947,6 +961,10 @@ static const struct dev_pm_ops i915_pm_ops = {
 	.thaw = i915_pm_thaw,
 	.poweroff = i915_pm_poweroff,
 	.restore = i915_pm_resume,
+#ifdef CONFIG_PM_RUNTIME
+	.runtime_suspend = i915_pm_suspend,
+	.runtime_resume = i915_pm_resume,
+#endif
 };
 
 static const struct vm_operations_struct i915_gem_vm_ops = {
@@ -964,11 +982,15 @@ static const struct file_operations i915_driver_fops = {
 	.release = drm_release,
 #endif
 
-#ifdef CONFIG_DRM_VXD_BYT
+#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 	.unlocked_ioctl = i915_ioctl,
-	.mmap = i915_mmap,
 #else
 	.unlocked_ioctl = drm_ioctl,
+#endif
+
+#ifdef CONFIG_DRM_VXD_BYT
+	.mmap = i915_mmap,
+#else
 	.mmap = drm_gem_mmap,
 #endif
 	.poll = drm_poll,

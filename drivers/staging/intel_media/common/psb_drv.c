@@ -102,6 +102,7 @@ int csc_number = 6;
 int dpst_level = 3;
 
 int drm_psb_msvdx_tiling = 1;
+int drm_msvdx_bottom_half;
 struct drm_device *g_drm_dev;
 EXPORT_SYMBOL(g_drm_dev);
 
@@ -156,6 +157,7 @@ module_param_named(vblank_sync, drm_psb_3D_vblank, int, 0600);
 module_param_named(smart_vsync, drm_psb_smart_vsync, int, 0600);
 module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
 module_param_named(msvdx_tiling_memory, drm_psb_msvdx_tiling, int, 0600);
+module_param_named(msvdx_bottom_half, drm_msvdx_bottom_half, int, 0600);
 module_param_named(psb_use_cases_control, drm_psb_use_cases_control, int, 0600);
 module_param_named(pm_history, drm_psb_dump_pm_history, int, 0600);
 module_param_array_named(gamma_adjust, gamma_setting, int, &gamma_number, 0600);

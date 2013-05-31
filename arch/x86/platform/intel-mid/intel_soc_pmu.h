@@ -404,6 +404,8 @@ extern struct platform_pmu_ops *pmu_ops;
 extern void platform_update_all_lss_states(struct pmu_ss_states *, int *);
 extern int set_extended_cstate_mode(const char *val, struct kernel_param *kp);
 extern int get_extended_cstate_mode(char *buffer, struct kernel_param *kp);
+extern int byt_pmu_nc_set_power_state(int islands, int state_type, int reg);
+extern int byt_pmu_nc_get_power_state(int islands, int reg);
 
 #ifdef LOG_PMU_EVENTS
 extern void pmu_log_pmu_irq(int status);
@@ -499,14 +501,6 @@ static inline void clear_d0ix_stats(void)
 static inline bool nc_device_state(void)
 {
 	return !mid_pmu_cxt->display_off || !mid_pmu_cxt->camera_off;
-}
-
-static inline int platform_is(u8 model)
-{
-	if (boot_cpu_data.x86_model == model)
-		return true;
-	else
-		return false;
 }
 
 #endif

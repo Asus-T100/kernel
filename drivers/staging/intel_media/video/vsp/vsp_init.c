@@ -574,6 +574,10 @@ void vsp_resume_function(struct drm_psb_private *dev_priv)
 	SET_MMU_PTD(pd_addr >> PAGE_TABLE_SHIFT);
 	SET_MMU_PTD(pd_addr >> PAGE_SHIFT);
 
+	/* enable irq */
+	psb_irq_preinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
+	psb_irq_postinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
+
 	/* restore the config regs */
 	CONFIG_REG_WRITE32(VSP_SETTING_ADDR_REG,
 			vsp_priv->saved_config_regs[VSP_SETTING_ADDR_REG]);

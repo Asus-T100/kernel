@@ -26,6 +26,8 @@ void *apds990x_platform_data(void *info)
 			.irf2   = 1638,
 			.df     = 52,
 			.ga     = 15728,
+			.incan  = 1638,
+			.min_ir = 8,
 		},
 		.pdrive         = 0,
 		.ppcount        = 1,
@@ -43,6 +45,15 @@ void *apds990x_platform_data(void *info)
 			platform_data.cf.ga = 1474;
 		else
 			platform_data.cf.ga = 11796;
+	} else if ((INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)) ||
+		   (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))) {
+		platform_data.cf.cf1    = 6539;
+		platform_data.cf.irf1   = 25202;
+		platform_data.cf.cf2    = 3390;
+		platform_data.cf.irf2   = 6112;
+		platform_data.cf.ga     = 11239;
+		platform_data.cf.incan  = 676;
+		platform_data.cf.min_ir = 4;
 	}
 
 	platform_data.gpio_number = get_gpio_by_name("AL-intr");

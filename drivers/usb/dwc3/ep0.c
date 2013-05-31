@@ -747,6 +747,9 @@ static void dwc3_ep0_complete_data(struct dwc3 *dwc,
 
 	dwc->ep0_next_event = DWC3_EP0_NRDY_STATUS;
 
+	if (list_empty(&ep0->request_list))
+		return;
+
 	r = next_request(&ep0->request_list);
 	ur = &r->request;
 
@@ -856,13 +859,6 @@ static void dwc3_ep0_xfer_complete(struct dwc3 *dwc,
 		WARN(true, "UNKNOWN ep0state %d\n", dwc->ep0state);
 	}
 }
-
-static void dwc3_ep0_do_control_setup(struct dwc3 *dwc,
-		const struct dwc3_event_depevt *event)
-{
-	dwc3_ep0_out_start(dwc);
-}
-
 
 static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
 		struct dwc3_ep *dep, struct dwc3_request *req)
@@ -998,6 +994,24 @@ static void dwc3_ep0_xfernotready(struct dwc3 *dwc,
 			dev_vdbg(dwc->dev, "Wrong direction for Data phase\n");
 			dwc3_ep0_stall_and_restart(dwc);
 			return;
+		}
+		/*
+		 * Per databook, if an XferNotready(Data) is received after
+		 * XferComplete(Data), one possible reason is host is trying
+		 * to complete data stage by moving a 0-length packet.
+		 *
+		 * REVISIT in case of other cases
+		 */
+		if (dwc->ep0_next_event == DWC3_EP0_NRDY_STATUS) {
+			u32		size = 0;
+			struct dwc3_ep *dep = dwc->eps[event->endpoint_number];
+
+			if (dep->number == 0)
+				size = dep->endpoint.maxpacket;
+
+			dwc3_ep0_start_trans(dwc, dep->number,
+				dwc->ctrl_req_addr, size,
+				DWC3_TRBCTL_CONTROL_DATA);
 		}
 		break;
 

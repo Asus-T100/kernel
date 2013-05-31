@@ -112,8 +112,6 @@ static struct usb_descriptor_header *hs_adb_descs[] = {
 	NULL,
 };
 
-static void adb_ready_callback(void);
-static void adb_closed_callback(void);
 #ifdef CONFIG_USB_GADGET_DWC3
 static struct usb_endpoint_descriptor adb_superspeed_in_desc = {
 	.bLength                = USB_DT_ENDPOINT_SIZE,
@@ -477,20 +475,12 @@ static int adb_open(struct inode *ip, struct file *fp)
 	/* clear the error latch */
 	_adb_dev->error = 0;
 
-#if 0
-	adb_ready_callback();
-#endif
-
 	return 0;
 }
 
 static int adb_release(struct inode *ip, struct file *fp)
 {
 	pr_info("adb_release\n");
-
-#if 0
-	adb_closed_callback();
-#endif
 
 	adb_unlock(&_adb_dev->open_excl);
 	return 0;

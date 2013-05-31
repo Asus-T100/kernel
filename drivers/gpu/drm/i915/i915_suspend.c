@@ -880,7 +880,10 @@ int i915_restore_state(struct drm_device *dev)
 	}
 
 	/* Cache mode state */
-	I915_WRITE(CACHE_MODE_0, dev_priv->saveCACHE_MODE_0 | 0xffff0000);
+	/*TODO: Check about this register conflicing with VLV_PCBR */
+	if (!IS_VALLEYVIEW(dev))
+		I915_WRITE(CACHE_MODE_0,
+			dev_priv->saveCACHE_MODE_0 | 0xffff0000);
 
 	/* Memory arbitration state */
 	I915_WRITE(MI_ARB_STATE, dev_priv->saveMI_ARB_STATE | 0xffff0000);
@@ -1251,4 +1254,10 @@ void i915_pm_init(struct drm_device *dev)
 		dev_priv->pm.drm_freeze = i915_drm_freeze;
 		dev_priv->pm.drm_thaw = i915_drm_thaw;
 	}
+	i915_rpm_init(dev);
+}
+
+void i915_pm_deinit(struct drm_device *dev)
+{
+	i915_rpm_deinit(dev);
 }

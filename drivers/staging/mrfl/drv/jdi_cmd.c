@@ -197,14 +197,14 @@ void jdi_cmd_controller_init(
 	hw_ctx->intr_en = 0xFFFFFFFF;
 	hw_ctx->hs_tx_timeout = 0xFFFFFF;
 	hw_ctx->lp_rx_timeout = 0xFFFFFF;
-	hw_ctx->turn_around_timeout = 0x14;
 	hw_ctx->device_reset_timer = 0xffff;
-	hw_ctx->high_low_switch_count = 0x20;
-	hw_ctx->clk_lane_switch_time_cnt = 0x20000E;
+	hw_ctx->turn_around_timeout = 0x1a;
+	hw_ctx->high_low_switch_count = 0x24;
+	hw_ctx->clk_lane_switch_time_cnt = 0x240010;
+	hw_ctx->lp_byteclk = 0x5;
+	hw_ctx->dphy_param = 0x25155b1e;
 	hw_ctx->eot_disable = 0x3;
 	hw_ctx->init_count = 0xf0;
-	hw_ctx->lp_byteclk = 0x4;
-	hw_ctx->dphy_param = 0x1B104315;
 	hw_ctx->dbi_bw_ctrl = 1390;
 	hw_ctx->hs_ls_dbi_enable = 0x0;
 	hw_ctx->dsi_func_prg = ((DBI_DATA_WIDTH_OPT2 << 13) |
@@ -382,6 +382,8 @@ static int jdi_cmd_power_off(
 		__func__, __LINE__);
 		goto power_off_err;
 	}
+	if (bias_en_gpio)
+		gpio_set_value_cansleep(bias_en_gpio, 0);
 	usleep_range(1000, 1500);
 	return 0;
 power_off_err:
@@ -492,6 +494,8 @@ int jdi_cmd_exit_deep_standby(
 {
 	PSB_DEBUG_ENTRY("\n");
 
+	if (bias_en_gpio)
+		gpio_set_value_cansleep(bias_en_gpio, 1);
 	_get_panel_reset_gpio();
 	gpio_direction_output(mipi_reset_gpio, 0);
 

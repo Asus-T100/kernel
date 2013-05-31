@@ -160,12 +160,11 @@ void dispmgr_nl_send_msg(struct dispmgr_command_hdr *cmd_hdr)
 static void nl_recv_msg(struct sk_buff *skb)
 {
 	struct nlmsghdr *nlh = NULL;
-	struct dispmgr_command_hdr cmd_hdr;
+	struct dispmgr_command_hdr cmd_hdr = {0, };
 	unsigned int hdr_size = sizeof(struct dispmgr_command_hdr);
 
 	if (skb == NULL) {
-		printk
-			("kdispmgr: received null command.\n");
+		DRM_ERROR("kdispmgr: received null command.\n");
 		return;
 	}
 

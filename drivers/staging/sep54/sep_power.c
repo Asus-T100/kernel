@@ -211,7 +211,6 @@ static void reset_desc_qs(void)
 static int process_hibernation_req(void)
 {
 	enum dx_sep_state sep_state;
-	struct sep_op_ctx op_ctx;
 	int rc;
 
 	sep_state = GET_SEP_STATE(power_control.drvdata);
@@ -219,7 +218,8 @@ static int process_hibernation_req(void)
 	if (sep_state == DX_SEP_STATE_OFF)
 		return 0;
 
-	if (sep_state != DX_SEP_STATE_DONE_FW_INIT) {
+	if (sep_state != DX_SEP_STATE_DONE_FW_INIT ||
+		!(is_desc_qs_active())) {
 		SEP_LOG_ERR("Requested hibernation while SeP state=0x%08X\n",
 			    sep_state);
 		return -EINVAL;
@@ -229,47 +229,30 @@ static int process_hibernation_req(void)
 		SEP_LOG_ERR("Failed moving queues to SLEEP state (%d)\n", rc);
 		return rc;
 	}
-	op_ctx_init(&op_ctx, NULL);
-	op_ctx.op_type = SEP_OP_SLEEP;
-	rc = desc_q_enqueue_sleep_req(power_control.drvdata->
-				      queue[0].desc_queue, /* Always on Q0 */
-				      &op_ctx);
-	if (unlikely(rc != 0)) {
-		SEP_LOG_ERR("Failed dispatching hibernation request (%d)\n",
-			    rc);
-	} else {
-		/* Wait for request descriptor to complete */
-		wait_for_completion(&op_ctx.ioctl_op_compl);
-		if (op_ctx.error_info != SEPSLP_MODE_REQ_RET_OK) {
-			SEP_LOG_ERR("SLEEP_REQ failed (0x%08X)\n",
-				    op_ctx.error_info);
-			if ((op_ctx.error_info == SEPSLP_MODE_REQ_EBUSY) ||
-			    (op_ctx.error_info == SEPSLP_MODE_REQ_EABORT))
-				/* SeP activity interrupted request */
-				rc = -EBUSY;
-			else	/* Unexpected error in SeP */
-				rc = -EIO;
-		}
-	}
-	if (likely(rc == 0)) {	/* Process state change */
-		sep_state = dx_sep_wait_for_state(DX_SEP_STATE_DONE_FW_INIT |
-					  DX_SEP_STATE_DONE_SLEEP_MODE,
-					  SEP_STATE_CHANGE_TIMEOUT_MSEC);
-		if (sep_state == DX_SEP_STATE_DONE_FW_INIT) {
-			SEP_LOG_ERR("Transition to SLEEP mode aborted.\n");
-			rc = -EBUSY;
-		} else if (sep_state != DX_SEP_STATE_DONE_SLEEP_MODE) {
-			if (sep_state == DX_SEP_STATE_PROC_SLEEP_MODE) {
-				SEP_LOG_ERR(
-					"Stuck in processing of SLEEP req.\n");
-				rc = -ETIME;
-			} else {
-				SEP_LOG_ERR(
-					"Unexpected SeP state after SLEEP request: 0x%08X\n",
-					sep_state);
-				rc = -EINVAL;
-			}
-		}
+	/* Write value SEP_SLEEP_ENABLE command to GPR7 to initialize
+	   sleep sequence */
+	WRITE_REGISTER(power_control.drvdata->cc_base +
+			DX_CC_REG_OFFSET(HOST, HOST_SEP_GPR7),
+			SEP_SLEEP_ENABLE);
+	/* Process state change */
+	sep_state = dx_sep_wait_for_state(DX_SEP_STATE_DONE_SLEEP_MODE,
+					SEP_STATE_CHANGE_TIMEOUT_MSEC);
+	switch (sep_state) {
+	case DX_SEP_STATE_DONE_SLEEP_MODE:
+		break;
+	case DX_SEP_STATE_DONE_FW_INIT:
+		SEP_LOG_ERR("Transition to SLEEP mode aborted.\n");
+		rc = -EBUSY;
+		break;
+	case DX_SEP_STATE_PROC_SLEEP_MODE:
+		SEP_LOG_ERR("Stuck in processing of SLEEP req.\n");
+		rc = -ETIME;
+		break;
+	default:
+		SEP_LOG_ERR(
+			"Unexpected SeP state after SLEEP request: 0x%08X\n",
+			sep_state);
+		rc = -EINVAL;
 	}
 	if (unlikely(rc != 0)) {
 		sep_state = GET_SEP_STATE(power_control.drvdata);
@@ -280,7 +263,6 @@ static int process_hibernation_req(void)
 	} else {
 		reset_desc_qs();
 	}
-	op_ctx_fini(&op_ctx);
 
 	return rc;
 }

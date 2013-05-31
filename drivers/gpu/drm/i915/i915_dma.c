@@ -398,6 +398,7 @@ static int i915_emit_cmds(struct drm_device * dev, int *buffer, int dwords)
 		OUT_RING(0);
 
 	ADVANCE_LP_RING();
+	i915_add_request_noflush(LP_RING(dev_priv));
 
 	return 0;
 }
@@ -439,6 +440,7 @@ i915_emit_box(struct drm_device *dev,
 		OUT_RING(0);
 	}
 	ADVANCE_LP_RING();
+	i915_add_request_noflush(LP_RING(dev_priv));
 
 	return 0;
 }
@@ -464,6 +466,7 @@ static void i915_emit_breadcrumb(struct drm_device *dev)
 		OUT_RING(dev_priv->counter);
 		OUT_RING(0);
 		ADVANCE_LP_RING();
+		i915_add_request_noflush(LP_RING(dev_priv));
 	}
 }
 
@@ -560,6 +563,7 @@ static int i915_dispatch_batchbuffer(struct drm_device * dev,
 	}
 
 	i915_emit_breadcrumb(dev);
+	i915_add_request_noflush(LP_RING(dev_priv));
 	return 0;
 }
 
@@ -613,6 +617,7 @@ static int i915_dispatch_flip(struct drm_device * dev)
 		ADVANCE_LP_RING();
 	}
 
+	i915_add_request_noflush(LP_RING(dev_priv));
 	master_priv->sarea_priv->pf_current_page = dev_priv->current_page;
 	return 0;
 }
@@ -788,6 +793,7 @@ static int i915_emit_irq(struct drm_device * dev)
 		OUT_RING(dev_priv->counter);
 		OUT_RING(MI_USER_INTERRUPT);
 		ADVANCE_LP_RING();
+		i915_add_request_noflush(LP_RING(dev_priv));
 	}
 
 	return dev_priv->counter;
@@ -1708,6 +1714,8 @@ int i915_driver_unload(struct drm_device *dev)
 	i915_gem_retire_requests(dev);
 	mutex_unlock(&dev->struct_mutex);
 
+	i915_pm_deinit(dev);
+
 	/* Cancel the retire work handler, which should be idle now. */
 	cancel_delayed_work_sync(&dev_priv->mm.retire_work);
 
@@ -1912,6 +1920,7 @@ struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_DISP_SCREEN_CONTROL, i915_disp_screen_control, \
 							DRM_AUTH|DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_GEM_VMAP, i915_gem_vmap_ioctl, DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_SET_CSC, intel_enable_CSC, DRM_UNLOCKED),
 };
 
 int i915_max_ioctl = DRM_ARRAY_SIZE(i915_ioctls);

@@ -618,18 +618,16 @@ static int msvdx_startup_init(struct drm_device *dev)
 	if (!msvdx_priv->mmu_recover_page)
 		goto err_exit;
 
-#ifdef PSB_MSVDX_SAVE_RESTORE_VEC
-	msvdx_priv->vec_local_mem_size = VEC_LOCAL_MEM_BYTE_SIZE;
-	if (!msvdx_priv->vec_local_mem_data) {
-		msvdx_priv->vec_local_mem_data =
-			kmalloc(msvdx_priv->vec_local_mem_size, GFP_KERNEL);
-		if (!msvdx_priv->vec_local_mem_data) {
-			DRM_ERROR("Allocate vec local mem data fail\n");
-			goto err_exit;
-		}
-		memset(msvdx_priv->vec_local_mem_data, 0, msvdx_priv->vec_local_mem_size);
-	}
+	tasklet_init(&msvdx_priv->msvdx_tasklet,
+			msvdx_powerdown_tasklet, (unsigned long)dev);
+
+#ifndef CONFIG_DRM_VXD_BYT
+	if (IS_MRFLD(dev))
+		drm_msvdx_bottom_half = PSB_BOTTOM_HALF_TQ;
+	else
 #endif
+		drm_msvdx_bottom_half = PSB_BOTTOM_HALF_WQ;
+
 	return 0;
 
 err_exit:
@@ -858,6 +856,13 @@ int psb_msvdx_init(struct drm_device *dev)
 		PSB_WMSVDX32(0x2008, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
 	}
 
+#ifndef CONFIG_DRM_VXD_BYT
+	if (IS_MRFLD(dev)) {
+		psb_irq_preinstall_islands(dev, OSPM_VIDEO_DEC_ISLAND);
+		psb_irq_postinstall_islands(dev, OSPM_VIDEO_DEC_ISLAND);
+	}
+#endif
+
 	psb_msvdx_clearirq(dev);
 	psb_msvdx_enableirq(dev);
 
@@ -970,6 +975,8 @@ int psb_msvdx_uninit(struct drm_device *dev)
 		kfree(msvdx_priv);
 		dev_priv->msvdx_private = NULL;
 	}
+
+	tasklet_kill(&msvdx_priv->msvdx_tasklet);
 
 	return 0;
 }

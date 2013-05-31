@@ -1960,11 +1960,12 @@ static int __devexit rmi4_remove(struct i2c_client *client)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 void rmi4_early_suspend(struct early_suspend *h)
 {
-	int retval;
+	int retval, i;
+	bool need_sync = false;
 	struct rmi4_data *pdata  = container_of(h, struct rmi4_data, es);
 	struct i2c_client *client = pdata->i2c_client;
 
-	dev_info(&client->dev, "Enter %s, touch counter=%d, key tounter=%d",
+	dev_info(&client->dev, "Enter %s, touch counter=%ld, key counter=%ld",
 			__func__, pdata->touch_counter, pdata->key_counter);
 	disable_irq(pdata->irq);
 	retval = rmi4_i2c_set_bits(pdata,
@@ -1974,21 +1975,8 @@ void rmi4_early_suspend(struct early_suspend *h)
 
 	if (pdata->regulator)
 		regulator_disable(pdata->regulator);
-	pdata->touch_counter = 0;
-	pdata->key_counter = 0;
-}
 
-void rmi4_late_resume(struct early_suspend *h)
-{
-	int retval, i;
-	bool need_sync = false;
-	struct rmi4_data *pdata  = container_of(h, struct rmi4_data, es);
-	struct i2c_client *client = pdata->i2c_client;
-	u8 intr_status[4];
-
-	dev_info(&client->dev, "Enter %s", __func__);
-
-	/* swipe all the previous touch points before resume */
+	/* swipe all the touch points before suspend */
 	for (i = 0; i < MAX_FINGERS; i++) {
 		if (pdata->finger_status[i] == F11_PRESENT) {
 			need_sync = true;
@@ -2000,6 +1988,19 @@ void rmi4_late_resume(struct early_suspend *h)
 	}
 	if (need_sync)
 		input_sync(pdata->input_ts_dev);
+
+	pdata->touch_counter = 0;
+	pdata->key_counter = 0;
+}
+
+void rmi4_late_resume(struct early_suspend *h)
+{
+	int retval;
+	struct rmi4_data *pdata  = container_of(h, struct rmi4_data, es);
+	struct i2c_client *client = pdata->i2c_client;
+	u8 intr_status[4];
+
+	dev_info(&client->dev, "Enter %s", __func__);
 
 	if (pdata->regulator) {
 		/*need wait to stable if regulator first output*/

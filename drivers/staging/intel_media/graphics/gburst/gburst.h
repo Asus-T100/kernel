@@ -74,6 +74,8 @@ int gburst_stats_active_counters_to_string(char *buf, int breq);
 
 int gburst_stats_shutdown(void);
 
+void gburst_stats_cleanup_gfx_load_data(void);
+
 #endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 
 #endif /* if !defined GBURST_H */

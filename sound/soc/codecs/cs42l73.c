@@ -30,6 +30,8 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
+#include <asm/intel-mid.h>
+#include <asm/platform_cs42l73.h>
 #include "cs42l73.h"
 
 /* spec mentions this delay=15msec.
@@ -49,6 +51,7 @@ struct  cs42l73_private {
 	u32 sysclk;
 	u8 mclksel;
 	u32 mclk;
+	int codec_rst;
 };
 
 static const struct reg_default cs42l73_reg_defaults[] = {
@@ -1462,6 +1465,16 @@ static int cs42l73_probe(struct snd_soc_codec *codec)
 
 static int cs42l73_remove(struct snd_soc_codec *codec)
 {
+	struct cs42l73_private *cs42l73;
+	/* put the codec in reset state */
+	if (cs42l73->codec_rst >= 0) {
+		gpio_set_value(cs42l73->codec_rst, 0);
+
+		/* As per the codec spec, after reset minimum 1ms
+		* power should available
+		*/
+		usleep_range(1000, 1100);
+	}
 	cs42l73_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	return 0;
 }
@@ -1496,6 +1509,7 @@ static __devinit int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 				       const struct i2c_device_id *id)
 {
 	struct cs42l73_private *cs42l73;
+	struct cs42l73_pdata *pdata = i2c_client->dev.platform_data;
 	int ret;
 	unsigned int devid = 0;
 	unsigned int reg;
@@ -1507,11 +1521,13 @@ static __devinit int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 		return -ENOMEM;
 	}
 
-	/* Workaround till it is fixed in IFWI/SCU.*/
-#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
-	/* FIXIT: Get the codec out of reset */
-	gpio_set_value(54, 1);
-#endif
+	if (pdata) {
+		cs42l73->codec_rst = pdata->codec_rst;
+		/* get codec out of reset*/
+		if (cs42l73->codec_rst >= 0)
+			gpio_set_value(cs42l73->codec_rst, 1);
+	}
+
 	i2c_set_clientdata(i2c_client, cs42l73);
 
 	cs42l73->regmap = regmap_init_i2c(i2c_client, &cs42l73_regmap);

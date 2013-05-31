@@ -2908,6 +2908,14 @@ static int gburst_suspend(struct gburst_pvt_s *gbprv)
 	if (gbprv->gbp_utilization_percentage > 0)
 		gbprv->gbp_utilization_percentage = 0;
 
+	/* Clear utilization check request to avoid extra calculation
+	on next freq change wakeup in case timer expires during suspend
+	sequence */
+	gbprv->gbp_thread_check_utilization = 0;
+
+	/* Clean up GFX load information storage from old and obsolete data */
+	gburst_stats_cleanup_gfx_load_data();
+
 	return 0;
 }
 

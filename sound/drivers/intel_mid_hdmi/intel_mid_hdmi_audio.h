@@ -35,7 +35,11 @@
 #include <sound/pcm.h>
 #include <otm_hdmi_eld.h>
 #include <android_hdmi.h>
+#ifdef CONFIG_DRM_I915
+#include <hdmi_audio_if.h>
+#else
 #include <mdfld_hdmi_audio_if.h>
+#endif
 
 #define HAD_DRIVER_VERSION	"0.01.003"
 #define HAD_MAX_DEVICES		1
@@ -130,27 +134,36 @@ enum num_aud_ch {
 	CH_SEVEN_EIGHT = 3
 };
 
-/*HDMI controller register offsets*/
-enum hdmi_ctrl_reg {
-	AUD_CONFIG		= 0x69000,
-	AUD_CH_STATUS_0		= 0x69008,
-	AUD_CH_STATUS_1		= 0x6900C,
-	AUD_HDMI_CTS		= 0x69010,
-	AUD_N_ENABLE		= 0x69014,
-	AUD_SAMPLE_RATE		= 0x69018,
-	AUD_BUF_CONFIG		= 0x69020,
-	AUD_BUF_CH_SWAP		= 0x69024,
-	AUD_BUF_A_ADDR		= 0x69040,
-	AUD_BUF_A_LENGTH	= 0x69044,
-	AUD_BUF_B_ADDR		= 0x69048,
-	AUD_BUF_B_LENGTH	= 0x6904c,
-	AUD_BUF_C_ADDR		= 0x69050,
-	AUD_BUF_C_LENGTH	= 0x69054,
-	AUD_BUF_D_ADDR		= 0x69058,
-	AUD_BUF_D_LENGTH	= 0x6905c,
-	AUD_CNTL_ST		= 0x69060,
-	AUD_HDMI_STATUS		= 0x69068,
-	AUD_HDMIW_INFOFR	= 0x69114,
+
+/* HDMI controller register offsets */
+enum hdmi_ctrl_reg_offset_v1 {
+	AUD_CONFIG		= 0x0,
+	AUD_CH_STATUS_0		= 0x08,
+	AUD_CH_STATUS_1		= 0x0C,
+	AUD_HDMI_CTS		= 0x10,
+	AUD_N_ENABLE		= 0x14,
+	AUD_SAMPLE_RATE		= 0x18,
+	AUD_BUF_CONFIG		= 0x20,
+	AUD_BUF_CH_SWAP		= 0x24,
+	AUD_BUF_A_ADDR		= 0x40,
+	AUD_BUF_A_LENGTH	= 0x44,
+	AUD_BUF_B_ADDR		= 0x48,
+	AUD_BUF_B_LENGTH	= 0x4c,
+	AUD_BUF_C_ADDR		= 0x50,
+	AUD_BUF_C_LENGTH	= 0x54,
+	AUD_BUF_D_ADDR		= 0x58,
+	AUD_BUF_D_LENGTH	= 0x5c,
+	AUD_CNTL_ST		= 0x60,
+	AUD_HDMI_STATUS		= 0x68,
+	AUD_HDMIW_INFOFR	= 0x114,
+};
+
+/* Delta changes in HDMI controller register offsets
+ * compare to v1 version */
+
+enum hdmi_ctrl_reg_offset_v2 {
+	AUD_HDMI_STATUS_v2	= 0x64,
+	AUD_HDMIW_INFOFR_v2	= 0x68,
 };
 
 /*
@@ -272,7 +285,7 @@ static struct channel_map_table map_tables[] = {
 	{} /* terminator */
 };
 /**
- * union aud_cfg - Audio configuration offset - 69000
+ * union aud_cfg - Audio configuration
  *
  * @cfg_regx: individual register bits
  * @cfg_regval: full register value
@@ -292,11 +305,27 @@ union aud_cfg {
 		u32 underrun:1;
 		u32 rsvd1:20;
 	} cfg_regx;
+	struct {
+		u32 aud_en:1;
+		u32 layout:1;
+		u32 fmt:2;
+		u32 num_ch:3;
+		u32 set:1;
+		u32 flat:1;
+		u32 val_bit:1;
+		u32 user_bit:1;
+		u32 underrun:1;
+		u32 packet_mode:1;
+		u32 left_align:1;
+		u32 bogus_sample:1;
+		u32 dp_modei:1;
+		u32 rsvd:16;
+	} cfg_regx_v2;
 	u32 cfg_regval;
 };
 
 /**
- * union aud_ch_status_0 - Audio Channel Status 0 Attributes offset - 0x69008
+ * union aud_ch_status_0 - Audio Channel Status 0 Attributes
  *
  * @status_0_regx:individual register bits
  * @status_0_regval:full register value
@@ -320,7 +349,7 @@ union aud_ch_status_0 {
 };
 
 /**
- * union aud_ch_status_1 - Audio Channel Status 1 Attributes offset - 0x6900c
+ * union aud_ch_status_1 - Audio Channel Status 1 Attributes
  *
  * @status_1_regx: individual register bits
  * @status_1_regval: full register value
@@ -336,7 +365,7 @@ union aud_ch_status_1 {
 };
 
 /**
- * union aud_hdmi_cts - CTS register offset -0x69010
+ * union aud_hdmi_cts - CTS register
  *
  * @cts_regx: individual register bits
  * @cts_regval: full register value
@@ -348,11 +377,16 @@ union aud_hdmi_cts {
 		u32 en_cts_prog:1;
 		u32 rsvd:11;
 	} cts_regx;
+	struct {
+		u32 cts_val:24;
+		u32 en_cts_prog:1;
+		u32 rsvd:7;
+	} cts_regx_v2;
 	u32 cts_regval;
 };
 
 /**
- * union aud_hdmi_n_enable - N register offset -0x69014
+ * union aud_hdmi_n_enable - N register
  *
  * @n_regx: individual register bits
  * @n_regval: full register value
@@ -364,11 +398,16 @@ union aud_hdmi_n_enable {
 		u32 en_n_prog:1;
 		u32 rsvd:11;
 	} n_regx;
+	struct {
+		u32 n_val:24;
+		u32 en_n_prog:1;
+		u32 rsvd:7;
+	} n_regx_v2;
 	u32 n_regval;
 };
 
 /**
- * union aud_buf_config -  Audio Buffer configurations offset -0x69020
+ * union aud_buf_config -  Audio Buffer configurations
  *
  * @buf_cfg_regx: individual register bits
  * @buf_cfgval: full register value
@@ -381,11 +420,18 @@ union aud_buf_config {
 		u32 aud_delay:8;
 		u32 rsvd1:8;
 	} buf_cfg_regx;
+	struct {
+		u32 audio_fifo_watermark:8;
+		u32 dma_fifo_watermark:3;
+		u32 rsvd0:5;
+		u32 aud_delay:8;
+		u32 rsvd1:8;
+	} buf_cfg_regx_v2;
 	u32 buf_cfgval;
 };
 
 /**
- * union aud_buf_ch_swap - Audio Sample Swapping offset - 0x69024
+ * union aud_buf_ch_swap - Audio Sample Swapping offset
  *
  * @buf_ch_swap_regx: individual register bits
  * @buf_ch_swap_val: full register value
@@ -439,7 +485,7 @@ union aud_buf_len {
 };
 
 /**
- * union aud_ctrl_st - Audio Control State Register offset 0x69060
+ * union aud_ctrl_st - Audio Control State Register offset
  *
  * @ctrl_regx: individual register bits
  * @ctrl_val: full register value
@@ -462,7 +508,7 @@ union aud_ctrl_st {
 };
 
 /**
- * union aud_info_frame1 - Audio HDMI Widget Data Island Packet offset 0x69114
+ * union aud_info_frame1 - Audio HDMI Widget Data Island Packet offset
  *
  * @fr1_regx: individual register bits
  * @fr1_val: full register value
@@ -589,7 +635,23 @@ struct snd_intelhad {
 	struct device *dev;
 	struct snd_kcontrol *kctl;
 	struct snd_pcm_chmap *chmap;
+	unsigned int	audio_reg_base;
+	bool		hw_silence;
+	struct had_ops	*ops;
 };
+
+struct had_ops {
+	int (*prog_n) (u32 aud_samp_freq, u32 *n_param,
+			struct snd_intelhad *intelhaddata);
+	void (*prog_cts) (u32 aud_samp_freq, u32 tmds, u32 n_param,
+			struct snd_intelhad *intelhaddata);
+	int (*audio_ctrl) (struct snd_pcm_substream *substream,
+				struct snd_intelhad *intelhaddata);
+	void (*prog_dip) (struct snd_pcm_substream *substream,
+				struct snd_intelhad *intelhaddata);
+	void (*handle_underrun) (struct snd_intelhad *intelhaddata);
+};
+
 
 int had_event_handler(enum had_event_type event_type, void *data);
 

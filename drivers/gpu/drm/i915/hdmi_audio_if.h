@@ -27,8 +27,8 @@
 #include <drm/drmP.h>
 
 /* HDMI AUDIO INTERRUPT TYPE */
-#define HDMI_AUDIO_UNDERRUN     (1UL<<31)
-#define HDMI_AUDIO_BUFFER_DONE  (1UL<<29)
+#define HDMI_AUDIO_UNDERRUN     (1UL<<0)
+#define HDMI_AUDIO_BUFFER_DONE  (1UL<<1)
 
 /* the monitor type HDMI or DVI */
 #define MONITOR_TYPE_HDMI 1
@@ -81,14 +81,14 @@ struct hdmi_audio_query_set_ops {
 			void *capabilties);
 };
 
-struct hdmi_audio_event {
+typedef struct hdmi_audio_event {
 	int type;
-};
+} hdmi_audio_event_t;
 
 struct snd_intel_had_interface {
 	const char *name;
-	int (*query) (void *had_data, struct hdmi_audio_event event);
-	int (*suspend) (void *had_data, struct hdmi_audio_event event);
+	int (*query) (void *had_data, hdmi_audio_event_t event);
+	int (*suspend) (void *had_data, hdmi_audio_event_t event);
 	int (*resume) (void *had_data);
 };
 
@@ -104,21 +104,22 @@ struct hdmi_audio_priv {
 
 extern void i915_hdmi_audio_init(struct hdmi_audio_priv *p_hdmi_priv);
 
-extern bool i915_hdmi_audio_is_busy(struct drm_device *dev);
-extern bool i915_hdmi_audio_suspend(struct drm_device *dev);
-extern void i915_hdmi_audio_resume(struct drm_device *dev);
-extern void i915_hdmi_audio_signal_event(struct drm_device *dev,
+extern bool mid_hdmi_audio_is_busy(struct drm_device *dev);
+extern bool mid_hdmi_audio_suspend(struct drm_device *dev);
+extern void mid_hdmi_audio_resume(struct drm_device *dev);
+extern void mid_hdmi_audio_signal_event(struct drm_device *dev,
 		enum had_event_type event);
 
 /* Added for HDMI Audio */
 extern void hdmi_get_eld(uint8_t *eld);
 extern int i915_enable_hdmi_audio_int(struct drm_device *dev);
 extern int i915_disable_hdmi_audio_int(struct drm_device *dev);
-extern int i915_hdmi_audio_setup(
+extern int mid_hdmi_audio_setup(
 	had_event_call_back audio_callbacks,
 	struct hdmi_audio_registers_ops *reg_ops,
 	struct hdmi_audio_query_set_ops *query_ops);
-extern int i915_hdmi_audio_register(
+extern int mid_hdmi_audio_register(
 	struct snd_intel_had_interface *driver,
 	void *had_data);
+
 #endif /* __HDMI_AUDIO_IF_H */

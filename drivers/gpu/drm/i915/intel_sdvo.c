@@ -1046,6 +1046,7 @@ static void intel_sdvo_mode_set(struct drm_encoder *encoder,
 	in_out.in0 = intel_sdvo->attached_output;
 	in_out.in1 = 0;
 
+	i915_rpm_get_reg(dev);
 	intel_sdvo_set_value(intel_sdvo,
 			     SDVO_CMD_SET_IN_OUT_MAP,
 			     &in_out, sizeof(in_out));
@@ -1067,7 +1068,7 @@ static void intel_sdvo_mode_set(struct drm_encoder *encoder,
 
 	/* Set the input timing to the screen. Assume always input 0. */
 	if (!intel_sdvo_set_target_input(intel_sdvo))
-		return;
+		goto out;
 
 	if (intel_sdvo->has_hdmi_monitor) {
 		intel_sdvo_set_encode(intel_sdvo, SDVO_ENCODE_HDMI);
@@ -1079,7 +1080,7 @@ static void intel_sdvo_mode_set(struct drm_encoder *encoder,
 
 	if (intel_sdvo->is_tv &&
 	    !intel_sdvo_set_tv_format(intel_sdvo))
-		return;
+		goto out;
 
 	/* We have tried to get input timing in mode_fixup, and filled into
 	 * adjusted_mode.
@@ -1096,7 +1097,7 @@ static void intel_sdvo_mode_set(struct drm_encoder *encoder,
 	case 4: rate = SDVO_CLOCK_RATE_MULT_4X; break;
 	}
 	if (!intel_sdvo_set_clock_rate_mult(intel_sdvo, rate))
-		return;
+		goto out;
 
 	/* Set the SDVO control regs. */
 	if (INTEL_INFO(dev)->gen >= 4) {
@@ -1140,6 +1141,8 @@ static void intel_sdvo_mode_set(struct drm_encoder *encoder,
 	    INTEL_INFO(dev)->gen < 5)
 		sdvox |= SDVO_STALL_SELECT;
 	intel_sdvo_write_sdvox(intel_sdvo, sdvox);
+out:
+	i915_rpm_put_reg(dev);
 }
 
 static void intel_sdvo_dpms(struct drm_encoder *encoder, int mode)
@@ -1150,6 +1153,7 @@ static void intel_sdvo_dpms(struct drm_encoder *encoder, int mode)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	u32 temp;
 
+	i915_rpm_get_reg(dev);
 	if (mode != DRM_MODE_DPMS_ON) {
 		intel_sdvo_set_active_outputs(intel_sdvo, 0);
 		if (0)
@@ -1186,6 +1190,7 @@ static void intel_sdvo_dpms(struct drm_encoder *encoder, int mode)
 			intel_sdvo_set_encoder_power_state(intel_sdvo, mode);
 		intel_sdvo_set_active_outputs(intel_sdvo, intel_sdvo->attached_output);
 	}
+	i915_rpm_put_reg(dev);
 	return;
 }
 

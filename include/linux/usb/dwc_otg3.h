@@ -399,7 +399,6 @@ struct dwc_otg2 {
 	/* Charger detection */
 	struct power_supply_cable_props charging_cap;
 	struct notifier_block nb;
-	struct delayed_work sdp_check_work;
 	struct intel_dwc_otg_pdata *otg_data;
 
 	/* pm request to prevent enter Cx state

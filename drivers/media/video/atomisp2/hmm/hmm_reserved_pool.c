@@ -131,7 +131,7 @@ static int hmm_reserved_pool_init(void **pool, unsigned int pool_size)
 	struct hmm_reserved_pool_info *repool_info;
 
 	if (pool_size == 0)
-		return -EINVAL;
+		return 0;
 
 	ret = hmm_reserved_pool_setup(&repool_info, pool_size);
 	if (ret) {

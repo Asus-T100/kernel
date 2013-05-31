@@ -710,6 +710,29 @@ EXPORT_SYMBOL(gburst_hw_perf_data_read_index_incr);
 
 
 /**
+ * gburst_hw_flush_buffer -- Empty perf counter data buffer
+ * from obsolete/old values.
+ */
+void gburst_hw_flush_buffer(void)
+{
+	SGXMKIF_HWPERF_CB *psHWPerfCB;
+
+	if (!gburst_hw_initialization_complete())
+		return -EINVAL;
+
+	psHWPerfCB = gburst_sgx_data.gsh_gburst_psHWPerfCB;
+
+#if (defined(GBURST_HW_PVRSCOPESERVICE_SUPPORT))
+	if (gburst_hw_local_read_ptr >= 0)
+		gburst_hw_local_read_ptr = psHWPerfCB->ui32Woff;
+	else
+#endif
+		psHWPerfCB->ui32Roff = psHWPerfCB->ui32Woff;
+}
+EXPORT_SYMBOL(gburst_hw_flush_buffer);
+
+
+/**
  * gburst_hw_init -- Attempt initialization.
  * Function return value:  1 if initialized, 0 if not.
  */

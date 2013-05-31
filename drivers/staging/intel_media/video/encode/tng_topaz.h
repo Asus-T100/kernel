@@ -222,6 +222,8 @@ struct tng_topaz_private {
 	uint32_t power_down_by_release;
 
 	struct ttm_object_file *tfile;
+
+	spinlock_t ctx_spinlock;
 };
 
 struct tng_topaz_cmd_header {

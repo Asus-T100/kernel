@@ -31,6 +31,12 @@
 #define INTEL_ATOM_MFLD 0x27
 #define INTEL_ATOM_CLV 0x35
 #define INTEL_ATOM_MRFLD 0x4a
+#define INTEL_ATOM_BYT 0x37
+
+static inline int platform_is(u8 model)
+{
+	return (boot_cpu_data.x86_model == model);
+}
 
 /* Register Type definitions */
 #define OSPM_REG_TYPE          0x0
@@ -86,6 +92,10 @@
 #define CSTATE_EXIT_LATENCY_S0i1 1040
 #define CSTATE_EXIT_LATENCY_S0i3 2800
 #endif
+#define BYT_S0I1_STATE         0x60
+#define BYT_S0I2_STATE         0x62
+#define BYT_LPMP3_STATE        0x62
+#define BYT_S0I3_STATE         0x64
 
 enum s3_parts {
 	PROC_FRZ,
@@ -141,6 +151,9 @@ enum s3_parts {
 #define S0I1_POWER_USAGE       50
 #define S0I3_POWER_USAGE       31
 
+extern unsigned int enable_s3;
+extern unsigned int enable_s0ix;
+
 extern void pmu_s0ix_demotion_stat(int req_state, int grant_state);
 extern unsigned int pmu_get_new_cstate(unsigned int cstate, int *index);
 extern int get_target_platform_state(unsigned long *eax);
@@ -177,13 +190,12 @@ extern bool mid_pmu_is_wake_source(u32 lss_number);
  * If CONFIG_ATOM_SOC_POWER is not defined
  * fall back to C6
  */
+
 #define MID_S0I1_STATE         C6_HINT
 #define MID_LPMP3_STATE        C6_HINT
 #define MID_S0I3_STATE         C6_HINT
 #define MID_S3_STATE           C6_HINT
 #define MID_FAST_ON_OFF_STATE  C6_HINT
-
-
 
 /* Power usage unknown if MID_POWER not defined */
 #define C0_POWER_USAGE         0
@@ -196,6 +208,7 @@ extern bool mid_pmu_is_wake_source(u32 lss_number);
 
 static inline int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type) { return 0; }
+static inline int pmu_nc_get_power_state(int island, int reg_type) { return 0; }
 
 static inline void pmu_set_s0ix_complete(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };

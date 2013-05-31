@@ -2026,7 +2026,6 @@ i915_write_rc6_status(struct file *filp,
 		  loff_t *ppos)
 {
 	struct drm_device *dev = filp->private_data;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	char buf[20];
 	int ret = 0, val = 0;
 
@@ -2081,6 +2080,66 @@ static int i915_forcewake_create(struct dentry *root, struct drm_minor *minor)
 
 	return drm_add_fake_info_node(minor, ent, &i915_forcewake_fops);
 }
+
+static ssize_t
+i915_rpm_debug_read(struct file *filp,
+		   char __user *ubuf,
+		   size_t max,
+		   loff_t *ppos)
+{
+	struct drm_device *dev = filp->private_data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+
+	if (!(IS_VALLEYVIEW(dev)))
+		return -ENODEV;
+
+	return 0;
+}
+
+static ssize_t
+i915_rpm_debug_write(struct file *filp,
+		  const char __user *ubuf,
+		  size_t cnt,
+		  loff_t *ppos)
+{
+	struct drm_device *dev = filp->private_data;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	char buf[20];
+	int val = 0;
+
+	if (!(IS_VALLEYVIEW(dev)))
+		return -ENODEV;
+
+	if (cnt > 0) {
+		if (cnt > sizeof(buf) - 1)
+			return -EINVAL;
+
+		if (copy_from_user(buf, ubuf, cnt))
+			return -EFAULT;
+		buf[cnt] = 0;
+
+		if (kstrtoul(buf, 0, &val))
+			return -EINVAL;
+	}
+
+	if (val < 0 || val > 1)
+		return -EINVAL;
+
+	if (val)
+		display_runtime_suspend(dev);
+	else
+		display_runtime_resume(dev);
+
+	return cnt;
+}
+
+static const struct file_operations i915_rpm_debug_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_rpm_debug_read,
+	.write = i915_rpm_debug_write,
+	.llseek = default_llseek,
+};
 
 static int i915_debugfs_create(struct dentry *root,
 			       struct drm_minor *minor,
@@ -2182,6 +2241,12 @@ int i915_debugfs_init(struct drm_minor *minor)
 	ret = i915_debugfs_create(minor->debugfs_root, minor,
 				  "i915_rc6_status",
 				  &i915_rc6_status_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
+				  "i915_rpm_debug",
+				  &i915_rpm_debug_fops);
 	if (ret)
 		return ret;
 

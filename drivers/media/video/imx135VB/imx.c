@@ -40,7 +40,7 @@
 #include "imx.h"
 
 static int
-imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
+imx_read_reg(struct i2c_client *client, u16 len, u16 reg, void *val, bool otpck)
 {
 	struct i2c_msg msg[2];
 	u16 data[IMX_SHORT_MAX] = { 0 };
@@ -72,13 +72,15 @@ imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 		goto error;
 	}
 
-	/* high byte comes first */
-	if (len == IMX_8BIT) {
-		*val = (u8)data[0];
+	if (otpck == 1) {
+		memcpy(val, data, len);
+		otpck = 0;
+	} else if (len == IMX_8BIT) {
+		*((u16 *)val) = (u8)data[0];
 	} else {
 		/* 16-bit access is default when len > 1 */
 		for (i = 0; i < (len >> 1); i++)
-			val[i] = be16_to_cpu(data[i]);
+			((u16 *)val)[i] = be16_to_cpu(data[i]);
 	}
 
 	return 0;
@@ -256,6 +258,78 @@ static int imx_write_reg_array(struct i2c_client *client,
 	return __imx_flush_reg_array(client, &ctrl);
 }
 
+static int imx_read_otp_reg_array(struct i2c_client *client, u16 size, u16 addr,
+				  u8 *buf)
+{
+	u16 index;
+	int ret;
+
+	for (index = 0; index + IMX_OTP_READ_ONETIME <= size;
+					index += IMX_OTP_READ_ONETIME) {
+		ret = imx_read_reg(client, IMX_OTP_READ_ONETIME, addr + index,
+					&buf[index], 1);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static int __imx_otp_read(struct v4l2_subdev *sd, u8 *buf)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret;
+	int i;
+
+	for (i = 0; i < IMX_OTP_PAGE_MAX; i++) {
+
+		/*set page NO.*/
+		ret = imx_write_reg(client, IMX_8BIT,
+			       IMX_OTP_PAGE_REG, i & 0xff);
+		if (ret) {
+			dev_err(&client->dev, "failed to prepare OTP page\n");
+			return ret;
+		}
+
+		/*set read mode*/
+		ret = imx_write_reg(client, IMX_8BIT,
+			       IMX_OTP_MODE_REG, IMX_OTP_MODE_READ);
+		if (ret) {
+			dev_err(&client->dev, "failed to set OTP reading mode page");
+			return ret;
+		}
+
+		/* Reading the OTP data array */
+		ret = imx_read_otp_reg_array(client, IMX_OTP_PAGE_SIZE,
+			IMX_OTP_START_ADDR, buf + i * IMX_OTP_PAGE_SIZE);
+		if (ret) {
+			dev_err(&client->dev, "failed to read OTP data\n");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static void *imx_otp_read(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u8 *buf;
+	int ret;
+
+	buf = devm_kzalloc(&client->dev, IMX_OTP_DATA_SIZE, GFP_KERNEL);
+	if (!buf)
+		return ERR_PTR(-ENOMEM);
+
+	ret = __imx_otp_read(sd, buf);
+
+	/* Driver has failed to find valid data */
+	if (ret) {
+		dev_err(&client->dev, "sensor found no valid OTP data\n");
+		return ERR_PTR(ret);
+	}
+
+	return buf;
+}
 static long __imx_set_exposure(struct v4l2_subdev *sd, unsigned int coarse_itg,
 			       unsigned int gain, unsigned int digitgain)
 
@@ -360,11 +434,11 @@ static long imx_s_exposure(struct v4l2_subdev *sd,
 	return imx_set_exposure(sd, exp, gain, digitgain);
 }
 
-/* FIXME -To be updated with real OTP reading */
 static int imx_g_priv_int_data(struct v4l2_subdev *sd,
 				   struct v4l2_private_int_data *priv)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct imx_device *dev = to_imx_sensor(sd);
 	u8 __user *to = priv->data;
 	u32 read_size = priv->size;
 	int ret;
@@ -373,11 +447,15 @@ static int imx_g_priv_int_data(struct v4l2_subdev *sd,
 	if (!read_size)
 		goto out;
 
+	if (IS_ERR(dev->otp_data)) {
+		dev_err(&client->dev, "OTP data not available");
+		return PTR_ERR(dev->otp_data);
+	}
 	/* Correct read_size value only if bigger than maximum */
-	if (read_size > sizeof(otpdata))
-		read_size = sizeof(otpdata);
+	if (read_size > IMX_OTP_DATA_SIZE)
+		read_size = IMX_OTP_DATA_SIZE;
 
-	ret = copy_to_user(to, otpdata, sizeof(otpdata));
+	ret = copy_to_user(to, dev->otp_data, read_size);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to copy OTP data to user\n",
 			 __func__);
@@ -385,7 +463,7 @@ static int imx_g_priv_int_data(struct v4l2_subdev *sd,
 	}
 out:
 	/* Return correct size */
-	priv->size = sizeof(otpdata);
+	priv->size = IMX_OTP_DATA_SIZE;
 
 	return 0;
 }
@@ -580,73 +658,73 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	}
 
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
-	ret = imx_read_reg(client, 1, IMX_VT_PIX_CLK_DIV, data);
+	ret = imx_read_reg(client, 1, IMX_VT_PIX_CLK_DIV, data, 0);
 	if (ret)
 		goto out;
 	vt_pix_clk_div = data[0] & IMX_MASK_5BIT;
-	ret = imx_read_reg(client, 1, IMX_VT_SYS_CLK_DIV, data);
+	ret = imx_read_reg(client, 1, IMX_VT_SYS_CLK_DIV, data, 0);
 	if (ret)
 		goto out;
 	vt_sys_clk_div = data[0] & IMX_MASK_2BIT;
-	ret = imx_read_reg(client, 1, IMX_PRE_PLL_CLK_DIV, data);
+	ret = imx_read_reg(client, 1, IMX_PRE_PLL_CLK_DIV, data, 0);
 	if (ret)
 		goto out;
 	pre_pll_clk_div = data[0] & IMX_MASK_4BIT;
-	ret = imx_read_reg(client, 2, IMX_PLL_MULTIPLIER, data);
+	ret = imx_read_reg(client, 2, IMX_PLL_MULTIPLIER, data, 0);
 	if (ret)
 		goto out;
 	pll_multiplier = data[0] & IMX_MASK_11BIT;
-	ret = imx_read_reg(client, 1, IMX_OP_PIX_DIV, data);
+	ret = imx_read_reg(client, 1, IMX_OP_PIX_DIV, data, 0);
 	if (ret)
 		goto out;
 	op_pix_clk_div = data[0] & IMX_MASK_5BIT;
-	ret = imx_read_reg(client, 1, IMX_OP_SYS_DIV, data);
+	ret = imx_read_reg(client, 1, IMX_OP_SYS_DIV, data, 0);
 	if (ret)
 		goto out;
 	op_sys_clk_div = data[0] & IMX_MASK_2BIT;
 
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
-	ret = imx_read_reg(client, 4, IMX_FRAME_LENGTH_LINES, data);
+	ret = imx_read_reg(client, 4, IMX_FRAME_LENGTH_LINES, data, 0);
 	if (ret)
 		return ret;
 	frame_length_lines = data[0];
 	line_length_pck = data[1];
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
-	ret = imx_read_reg(client, 2, IMX_COARSE_INTG_TIME_MIN, data);
+	ret = imx_read_reg(client, 2, IMX_COARSE_INTG_TIME_MIN, data, 0);
 	if (ret)
 		goto out;
 	coarse_integration_time_min = data[0];
-	ret = imx_read_reg(client, 2, IMX_COARSE_INTG_TIME_MAX, data);
+	ret = imx_read_reg(client, 2, IMX_COARSE_INTG_TIME_MAX, data, 0);
 	if (ret)
 		goto out;
 	coarse_integration_time_max_margin = data[0];
-	ret = imx_read_reg(client, 2, IMX_CROP_X_START, data);
+	ret = imx_read_reg(client, 2, IMX_CROP_X_START, data, 0);
 	if (ret)
 		goto out;
 	buf.crop_horizontal_start = data[0];
-	ret = imx_read_reg(client, 2, IMX_CROP_X_END, data);
+	ret = imx_read_reg(client, 2, IMX_CROP_X_END, data, 0);
 	if (ret)
 		goto out;
 	buf.crop_horizontal_end = data[0];
-	ret = imx_read_reg(client, 2, IMX_CROP_Y_START, data);
+	ret = imx_read_reg(client, 2, IMX_CROP_Y_START, data, 0);
 	if (ret)
 		goto out;
 	buf.crop_vertical_start = data[0];
-	ret = imx_read_reg(client, 2, IMX_CROP_Y_END, data);
+	ret = imx_read_reg(client, 2, IMX_CROP_Y_END, data, 0);
 	if (ret)
 		goto out;
 	buf.crop_vertical_end = data[0];
-	ret = imx_read_reg(client, 2, IMX_OUTPUT_WIDTH, data);
+	ret = imx_read_reg(client, 2, IMX_OUTPUT_WIDTH, data, 0);
 	if (ret)
 		goto out;
 	buf.output_width = data[0];
-	ret = imx_read_reg(client, 2, IMX_OUTPUT_HEIGHT, data);
+	ret = imx_read_reg(client, 2, IMX_OUTPUT_HEIGHT, data, 0);
 	if (ret)
 		goto out;
 	buf.output_height = data[0];
 
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
-	ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
+	ret = imx_read_reg(client, 1, IMX_READ_MODE, data, 0);
 	if (ret)
 		goto out;
 	read_mode = data[0] & IMX_MASK_2BIT;
@@ -675,12 +753,12 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	buf.frame_length_lines = frame_length_lines;
 	buf.read_mode = read_mode;
 
-	ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data);
+	ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data, 0);
 	if (ret)
 		return ret;
 	/* 1:binning enabled, 0:disabled */
 	if (data[0] == 1) {
-		ret = imx_read_reg(client, 1, IMX_BINNING_TYPE, data);
+		ret = imx_read_reg(client, 1, IMX_BINNING_TYPE, data, 0);
 		if (ret)
 			return ret;
 		buf.binning_factor_x = data[0] >> 4 & 0x0f;
@@ -706,7 +784,7 @@ static int imx_q_exposure(struct v4l2_subdev *sd, s32 *value)
 
 	/* the fine integration time is currently not calculated */
 	ret = imx_read_reg(client, IMX_16BIT,
-			       IMX_COARSE_INTEGRATION_TIME, &coarse);
+			       IMX_COARSE_INTEGRATION_TIME, &coarse, 0);
 	*value = coarse;
 
 	return ret;
@@ -729,8 +807,7 @@ static int imx_v_flip(struct v4l2_subdev *sd, s32 value)
 	ret = imx_write_reg_array(client, imx_param_hold);
 	if (ret)
 		return ret;
-	ret = imx_read_reg(client, IMX_8BIT,
-			IMX_IMG_ORIENTATION, &val);
+	ret = imx_read_reg(client, IMX_8BIT, IMX_IMG_ORIENTATION, &val, 0);
 	if (ret)
 		return ret;
 	if (value)
@@ -1177,14 +1254,12 @@ static int imx_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		return -ENODEV;
 
 	/* check sensor chip ID	 */
-	if (imx_read_reg(client, IMX_8BIT, IMX_SC_CMMN_CHIP_ID_H,
-			     &high)) {
+	if (imx_read_reg(client, IMX_8BIT, IMX_SC_CMMN_CHIP_ID_H, &high, 0)) {
 		v4l2_err(client, "sensor_id_high = 0x%x\n", high);
 		return -ENODEV;
 	}
 
-	if (imx_read_reg(client, IMX_8BIT, IMX_SC_CMMN_CHIP_ID_L,
-			     &low)) {
+	if (imx_read_reg(client, IMX_8BIT, IMX_SC_CMMN_CHIP_ID_L, &low, 0)) {
 		v4l2_err(client, "sensor_id_low = 0x%x\n", low);
 		return -ENODEV;
 	}
@@ -1334,7 +1409,8 @@ static int imx_s_config(struct v4l2_subdev *sd,
 
 	dev->sensor_id = sensor_id;
 	dev->sensor_revision = sensor_revision;
-
+	/* Read sensor's OTP data */
+	dev->otp_data = imx_otp_read(sd);
 	/* power off sensor */
 	ret = __imx_s_power(sd, 0);
 	mutex_unlock(&dev->input_lock);

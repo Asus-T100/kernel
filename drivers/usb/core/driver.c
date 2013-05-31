@@ -1664,8 +1664,6 @@ static int autosuspend_check(struct usb_device *udev)
 #ifdef CONFIG_USB_HCD_HSIC
 	if (pdev->device == 0x119D) {
 		udev->do_remote_wakeup = device_can_wakeup(&udev->dev);
-		dev_dbg(&udev->dev, "remote wakeup enable: %d\n",
-		udev->do_remote_wakeup);
 		return 0;
 	}
 #endif

@@ -255,22 +255,22 @@ static struct imx_reg const imx_STILL_5M_30fps[] = {
 	{IMX_8BIT, 0x0341, 0xC4},  /*	frame_length_lines[7:0]	*/
 	{IMX_8BIT, 0x0342, 0x0D},  /*	line_length_pck[15:8]	*/
 	{IMX_8BIT, 0x0343, 0x66},  /*	line_length_pck[7:0]	*/
-	{IMX_8BIT, 0x0344, 0x01},  /*	x_addr_start[15:8]	*/
-	{IMX_8BIT, 0x0345, 0x60},  /*	x_addr_start[7:0]	*/
-	{IMX_8BIT, 0x0346, 0x01},  /*	y_addr_start[15:8]	*/
-	{IMX_8BIT, 0x0347, 0x08},  /*	y_addr_start[7:0]	*/
-	{IMX_8BIT, 0x0348, 0x0B},  /*	x_addr_end[15:8]	*/
-	{IMX_8BIT, 0x0349, 0x70},  /*	x_addr_end[7:0]	*/
-	{IMX_8BIT, 0x034A, 0x08},  /*	y_addr_end[15:8]	*/
-	{IMX_8BIT, 0x034B, 0x98},  /*	y_addr_end[7:0]	*/
+	{IMX_8BIT, 0x0344, 0x00},  /*	x_addr_start[15:8]	*/
+	{IMX_8BIT, 0x0345, 0x00},  /*	x_addr_start[7:0]	*/
+	{IMX_8BIT, 0x0346, 0x00},  /*	y_addr_start[15:8]	*/
+	{IMX_8BIT, 0x0347, 0x00},  /*	y_addr_start[7:0]	*/
+	{IMX_8BIT, 0x0348, 0x0C},  /*	x_addr_end[15:8]	*/
+	{IMX_8BIT, 0x0349, 0xCF},  /*	x_addr_end[7:0]	*/
+	{IMX_8BIT, 0x034A, 0x09},  /*	y_addr_end[15:8]	*/
+	{IMX_8BIT, 0x034B, 0x9F},  /*	y_addr_end[7:0]	*/
 	{IMX_8BIT, 0x034C, 0x0A},  /*	x_output_size[15:8]	*/
 	{IMX_8BIT, 0x034D, 0x10},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x07},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x90},  /*	y_output_size[7:0]	*/
 	/* binning & scaling */
 	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
-	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
-	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
+	{IMX_8BIT, 0x0401, 0x02}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x14}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -313,14 +313,14 @@ static struct imx_reg const imx_STILL_5M_15fps[] = {
 	{IMX_8BIT, 0x0341, 0xB8},  /*	frame_length_lines[7:0]	*/
 	{IMX_8BIT, 0x0342, 0x16},  /*	line_length_pck[15:8]	*/
 	{IMX_8BIT, 0x0343, 0x44},  /*	line_length_pck[7:0]	*/
-	{IMX_8BIT, 0x0344, 0x01},  /*	x_addr_start[15:8]	*/
-	{IMX_8BIT, 0x0345, 0x60},  /*	x_addr_start[7:0]	*/
-	{IMX_8BIT, 0x0346, 0x01},  /*	y_addr_start[15:8]	*/
-	{IMX_8BIT, 0x0347, 0x08},  /*	y_addr_start[7:0]	*/
-	{IMX_8BIT, 0x0348, 0x0B},  /*	x_addr_end[15:8]	*/
-	{IMX_8BIT, 0x0349, 0x70},  /*	x_addr_end[7:0]	*/
-	{IMX_8BIT, 0x034A, 0x08},  /*	y_addr_end[15:8]	*/
-	{IMX_8BIT, 0x034B, 0x98},  /*	y_addr_end[7:0]	*/
+	{IMX_8BIT, 0x0344, 0x00},  /*	x_addr_start[15:8]	*/
+	{IMX_8BIT, 0x0345, 0x00},  /*	x_addr_start[7:0]	*/
+	{IMX_8BIT, 0x0346, 0x00},  /*	y_addr_start[15:8]	*/
+	{IMX_8BIT, 0x0347, 0x00},  /*	y_addr_start[7:0]	*/
+	{IMX_8BIT, 0x0348, 0x0C},  /*	x_addr_end[15:8]	*/
+	{IMX_8BIT, 0x0349, 0xCF},  /*	x_addr_end[7:0]	*/
+	{IMX_8BIT, 0x034A, 0x09},  /*	y_addr_end[15:8]	*/
+	{IMX_8BIT, 0x034B, 0x9F},  /*	y_addr_end[7:0]	*/
 	{IMX_8BIT, 0x034C, 0x0A},  /*	x_output_size[15:8]	*/
 	{IMX_8BIT, 0x034D, 0x10},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x07},  /*	y_output_size[15:8]	*/
@@ -328,7 +328,7 @@ static struct imx_reg const imx_STILL_5M_15fps[] = {
 	/* binning & scaling */
 	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
 	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
-	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
+	{IMX_8BIT, 0x0405, 0x14}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},

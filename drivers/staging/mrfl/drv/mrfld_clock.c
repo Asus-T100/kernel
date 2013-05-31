@@ -329,9 +329,15 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	 */
 	if (pipe != 1) {
 		if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
-			clock.p1 = 4;
-			clk_n = 1;
-			clock.m = 120;
+			if (get_panel_type(dev, pipe) == JDI_CMD) {
+				clock.p1 = 4;
+				clk_n = 1;
+				clock.m = 142;
+			} else {
+				clock.p1 = 4;
+				clk_n = 1;
+				clock.m = 120;
+			}
 		} else {
 			clock.p1 = 5;
 			clk_n = 1;

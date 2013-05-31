@@ -770,6 +770,9 @@ int set_enable_s3(const char *val, struct kernel_param *kp)
 	if (rv)
 		return rv;
 
+	if (unlikely((!pmu_initialized)))
+		return 0;
+
 	if (platform_is(INTEL_ATOM_MRFLD)) {
 		if (!enable_s3)
 			__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
@@ -792,6 +795,9 @@ int set_enable_s0ix(const char *val, struct kernel_param *kp)
 	int rv = param_set_int(val, kp);
 	if (rv)
 		return rv;
+
+	if (unlikely((!pmu_initialized)))
+		return 0;
 
 	if (platform_is(INTEL_ATOM_MRFLD)) {
 		if (!enable_s0ix) {
@@ -1100,6 +1106,9 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg)
 	int ret = 0;
 	int change;
 
+	if (platform_is(INTEL_ATOM_BYT))
+		return byt_pmu_nc_set_power_state(islands, state_type, reg);
+
 	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 
 	record = get_new_record_history();
@@ -1146,6 +1155,9 @@ int pmu_nc_get_power_state(int island, int reg_type)
 	unsigned long flags;
 	int i, lss;
 	int ret = -EINVAL;
+
+	if (platform_is(INTEL_ATOM_BYT))
+		return byt_pmu_nc_get_power_state(island, reg_type);
 
 	/*do nothing if platform is nether medfield or clv*/
 	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV))

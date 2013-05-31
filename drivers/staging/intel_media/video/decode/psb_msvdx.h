@@ -35,6 +35,7 @@
 #include "psb_msvdx_reg.h"
 
 extern int drm_msvdx_pmpolicy;
+extern int drm_msvdx_bottom_half;
 extern int drm_msvdx_delay;
 extern int hdmi_state;
 extern int drm_psb_msvdx_tiling;
@@ -213,12 +214,6 @@ struct msvdx_private {
 #endif
 	uint32_t msvdx_hw_busy;
 
-#ifdef PSB_MSVDX_SAVE_RESTORE_VEC
-	uint32_t *vec_local_mem_data;
-	uint32_t vec_local_mem_size;
-	uint32_t vec_local_mem_saved;
-#endif
-
 #ifdef CONFIG_VIDEO_MRFLD
 	uint32_t vec_ec_mem_data[4];
 	uint32_t vec_ec_mem_saved;
@@ -246,6 +241,7 @@ struct msvdx_private {
 
 	/* pm suspend wq */
 	struct delayed_work msvdx_suspend_wq;
+	struct tasklet_struct msvdx_tasklet;
 
 	/* protected by msvdx_mutex */
 	/* Current video context */
@@ -306,7 +302,8 @@ extern int psb_submit_video_cmdbuf(struct drm_device *dev,
 				   struct ttm_buffer_object *cmd_buffer,
 				   unsigned long cmd_offset,
 				   unsigned long cmd_size,
-				   struct ttm_fence_object *fence,
 				   struct psb_video_ctx *msvdx_ctx);
 
+void msvdx_powerdown_tasklet(unsigned long data);
+int psb_msvdx_dequeue_send(struct drm_device *dev);
 #endif

@@ -36,7 +36,7 @@
 #include "intel_drv.h"
 #include "i915_drm.h"
 #include "i915_drv.h"
-/*#include "i915_rpm.h"*/
+#include "hdmi_audio_if.h"
 #include "i915_trace.h"
 #include "drm_dp_helper.h"
 #include "drm_crtc_helper.h"
@@ -4906,6 +4906,49 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	return ret;
 }
 
+int intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct CSC_Coeff *wgCSCCoeff = data;
+	struct drm_mode_object *obj;
+	struct drm_crtc *crtc;
+	struct intel_crtc *intel_crtc;
+	u32 pipeconf;
+	int pipe;
+	u32 csc_reg;
+	int i = 0, j = 0;
+
+	obj = drm_mode_object_find(dev, wgCSCCoeff->crtc_id,
+			DRM_MODE_OBJECT_CRTC);
+	if (!obj) {
+		DRM_DEBUG_DRIVER("Unknown CRTC ID %d\n", wgCSCCoeff->crtc_id);
+			return -EINVAL;
+	}
+
+	crtc = obj_to_crtc(obj);
+	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
+	intel_crtc = to_intel_crtc(crtc);
+	pipe = intel_crtc->pipe;
+	DRM_DEBUG_DRIVER("pipe = %d\n", pipe);
+	pipeconf = I915_READ(PIPECONF(pipe));
+	pipeconf |= PIPECONF_CSC_ENABLE;
+
+	if (pipe == 0)
+		csc_reg = _PIPEACSC;
+	else if (pipe == 1)
+		csc_reg = _PIPEBCSC;
+
+	I915_WRITE(PIPECONF(pipe), pipeconf);
+	POSTING_READ(PIPECONF(pipe));
+
+	for (i = 0; i < 6; i++) {
+		I915_WRITE(csc_reg + j, wgCSCCoeff->VLV_CSC_Coeff[i].Value);
+		j = j + 0x4;
+	}
+
+	return 0;
+}
+
 /*
  * Initialize reference clocks when the driver loads
  */
@@ -7108,14 +7151,12 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 				intel_encoder_prepare(&intel_encoder->base);
 		}
 	}
-	int ret = i915_hdmi_audio_suspend(drm_dev);
+	int ret = mid_hdmi_audio_suspend(drm_dev);
 	if (ret != true)
 		DRM_ERROR("Error suspending HDMI audio\n");
 	dev_priv->s0ixstat = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
-#if 0
-	i915_rpm_put(drm_dev, RPM_AUTOSUSPEND);
-#endif
+	i915_rpm_put_disp(drm_dev);
 	return 0;
 }
 
@@ -7126,9 +7167,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	struct intel_crtc *intel_crtc;
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
-#if 0
-	i915_rpm_get(drm_dev, RPM_SYNC);
-#endif
+	i915_rpm_get_disp(drm_dev);
 	drm_kms_helper_poll_enable(drm_dev);
 	display_save_restore_hotplug(drm_dev, RESTOREHPD);
 	mutex_lock(&drm_dev->mode_config.mutex);
@@ -7142,7 +7181,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 			}
 		}
 	}
-	i915_hdmi_audio_resume(drm_dev);
+	mid_hdmi_audio_resume(drm_dev);
 	dev_priv->s0ixstat = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	return 0;
