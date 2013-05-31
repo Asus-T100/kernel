@@ -508,7 +508,7 @@ int intel_setup_gmbus(struct drm_device *dev)
 		/*
 		 * TODO: Need to program proper GMBUS frequency using cdclk
 		 */
-		intel_set_gmbus_frequency(dev_priv, 0);
+		intel_set_gmbus_frequency(dev_priv);
 	}
 
 	intel_i2c_reset(dev_priv->dev);
@@ -523,9 +523,61 @@ err:
 	return ret;
 }
 
-void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv, int clock)
+int sb_read32(struct drm_i915_private *dev_priv, u8 port_id,
+		u32 reg, u32 *val)
 {
-	I915_WRITE(GMBUSFREQ, clock);
+	unsigned long flags;
+	u32 cmd, devfn, opcode, port, be, bar;
+
+	bar = 0;
+	be = 0xf;
+	port = 0x4;
+	opcode = 6;
+	devfn = 0x00;
+
+	cmd = (devfn << 24) | (opcode << 16) |
+		(port << 8) | (be << 4) |
+		(bar << 1);
+
+	I915_WRITE(0x2108, reg);
+	I915_WRITE(0x2100, cmd);
+
+	*val = I915_READ(0x2104);
+	I915_WRITE(0x2104, 0);
+
+	return 0;
+}
+
+void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv)
+{
+	u32 cck_fuse, cd_clk_index, cd_clk;
+	int gmbus_clock;
+	u16  m_cd_clk_vco_800_tbl[] = {0, 800, 533, 400, 320, 267, 0, 200, 178,
+				160, 0, 133, 0, 0, 107, 100, 0, 89, 0,
+				80, 0, 0, 0, 67, 0, 0, 0, 0, 0, 53, 0, 50};
+	u16  m_cd_clk_vco_1600_tbl[] = {0, 1600, 1067, 800, 640, 533, 0, 400,
+				356, 320, 0, 267, 0, 0, 213, 200, 0, 178, 0,
+				160, 0, 0, 0, 133, 0, 0, 0, 0, 0, 107, 0, 100};
+	u16  m_cd_clk_vco_2000_tbl[] = {0, 2000, 1333, 1000, 800, 667, 0, 500,
+				444, 400, 0, 333, 0, 0, 267, 250, 0,  222, 0,
+				200, 0, 0, 0, 167, 0, 0, 0, 0, 0, 133, 0, 125};
+
+	/* print cdclock speed */
+	sb_read32(dev_priv, 0x12, 0x08, &cck_fuse);
+	cck_fuse = cck_fuse & 0x03;
+
+	/* Get the CD Clock Index */
+	cd_clk_index = I915_READ(CD_CZ_CLOCK_FREQ_REG);
+	cd_clk_index = (cd_clk_index & 0x1F0) >> 4;
+	if (cck_fuse == 0)
+		cd_clk = m_cd_clk_vco_800_tbl[cd_clk_index];
+	else if (cck_fuse == 1)
+		cd_clk = m_cd_clk_vco_1600_tbl[cd_clk_index];
+	else if (cck_fuse == 2)
+		cd_clk = m_cd_clk_vco_2000_tbl[cd_clk_index];
+
+	gmbus_clock = cd_clk * 100 / 102;
+	I915_WRITE(GMBUSFREQ, gmbus_clock);
 }
 
 struct i2c_adapter *intel_gmbus_get_adapter(struct drm_i915_private *dev_priv,
