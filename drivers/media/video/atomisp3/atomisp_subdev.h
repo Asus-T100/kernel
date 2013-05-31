@@ -258,6 +258,13 @@ struct atomisp_sub_device {
 	int input_curr;
 
 	unsigned int streaming; /* Hold both mutex and lock to change this */
+
+	/*
+	 * subdev index;
+	 * recored in resource(atomisp_input_subdev) to show which sub device
+	 * is using this resource
+	 */
+	int index;
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];

@@ -121,6 +121,12 @@ struct atomisp_input_subdev {
 	struct ia_css_morph_table *morph_table;
 	struct ia_css_shading_table *shading_table;
 	struct v4l2_frmsizeenum frame_size;
+
+	/*
+	 * To show this resource is used by
+	 * which stream, in ISP multiple stream mode
+	 */
+	int used_by;
 };
 
 struct atomisp_freq_scaling_rule {

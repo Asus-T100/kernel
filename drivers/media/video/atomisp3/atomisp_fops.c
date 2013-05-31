@@ -387,6 +387,8 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 
 int atomisp_dev_init_struct(struct atomisp_device *isp)
 {
+	int i;
+
 	if (isp == NULL)
 		return -EINVAL;
 
@@ -395,6 +397,8 @@ int atomisp_dev_init_struct(struct atomisp_device *isp)
 	isp->isp_fatal_error = false;
 	isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
+	for (i = 0; i < ATOM_ISP_MAX_INPUTS; i++)
+		isp->inputs[i].used_by = -1;
 	/*
 	 * For Merrifield, frequency is scalable.
 	 * After boot-up, the default frequency is 200MHz.
@@ -410,7 +414,7 @@ int atomisp_dev_init_struct(struct atomisp_device *isp)
 
 int atomisp_subdev_init_struct(struct atomisp_sub_device *isp_subdev)
 {
-	int i = 0;
+	unsigned int i = 0;
 
 	v4l2_ctrl_s_ctrl(isp_subdev->run_mode,
 			 ATOMISP_RUN_MODE_STILL_CAPTURE);
@@ -601,7 +605,6 @@ static int atomisp_release(struct file *file)
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct v4l2_requestbuffers req;
-	int ret = 0;
 	struct atomisp_sub_device *isp_subdev = atomisp_to_sub_device(pipe);
 
 	dev_dbg(isp->dev, "release device %s\n", vdev->name);
@@ -669,11 +672,6 @@ static int atomisp_release(struct file *file)
 	atomisp_free_3a_dvs_buffers(isp_subdev);
 	atomisp_free_internal_buffers(isp_subdev);
 
-	ret = v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
-				       core, s_power, 0);
-	if (ret)
-		dev_warn(isp->dev, "Failed to power-off sensor\n");
-
 	if (atomisp_dev_users(isp))
 		goto done;
 
@@ -683,6 +681,22 @@ static int atomisp_release(struct file *file)
 	ia_css_uninit();
 	hrt_isp_css_mm_clear();
 
+	/*
+	 * FIXME! Workaround due to HW limitation
+	 * Cameras are using shared V1.8 and V2.8 power pins. So we can not
+	 * power off one sensor when one stream is closed, while the other
+	 * stream is still using other camera sensors.
+	 * So power off all sensors in the finall unitialization step.
+	 *
+	 * Currently there don't have VRF(Voltage regulator framework) for
+	 * Merrifield/BTY, will add workaround in platform_camera.c for sensor
+	 * power control, and remove the WA when VRF is ready.
+	 *
+	 * The following WA in driver will not be in atomisp2, but first let
+	 * it at atomisp3 at present.
+	 */
+	v4l2_subdev_call(isp->inputs[0].camera, core, s_power, 0);
+	v4l2_subdev_call(isp->inputs[1].camera, core, s_power, 0);
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		dev_err(isp->dev, "Failed to power off device\n");

@@ -1046,6 +1046,7 @@ int atomisp_subdev_init(struct atomisp_device *isp)
 	for (i = 0; i < isp->num_of_streams; i++) {
 		isp_subdev = &isp->isp_subdev[i];
 		spin_lock_init(&isp_subdev->lock);
+		isp_subdev->index = i;
 		isp_subdev->isp = isp;
 		isp_subdev_init_params(isp_subdev);
 		ret = isp_subdev_init_entities(isp_subdev);
