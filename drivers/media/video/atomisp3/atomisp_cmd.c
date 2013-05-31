@@ -144,6 +144,15 @@ struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev)
 	    container_of(dev, struct atomisp_video_pipe, vdev);
 }
 
+/*
+ * get struct atomisp_sub_device from atomisp_video_pipe
+ */
+struct atomisp_sub_device *atomisp_to_sub_device(struct atomisp_video_pipe
+						 *atomisp_pipe)
+{
+	return atomisp_pipe->isp_subdev;
+}
+
 /* This is just a draft rules, should be tuned when sensor is ready*/
 static struct atomisp_freq_scaling_rule dfs_rules[] = {
 	{
@@ -3694,8 +3703,8 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
 	int ret;
-	/* FIXME: isp_subdev should be derived from pipe */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev =
+	    atomisp_to_sub_device(atomisp_to_video_pipe(vdev));
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_err(isp->dev, "Wrong v4l2 buf type\n");
@@ -3902,7 +3911,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 {
 	struct camera_mipi_info *mipi_info;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd = &isp->isp_subdev[0];
 	const struct atomisp_format_bridge *format;
 	struct v4l2_rect *isp_sink_crop;
 	enum ia_css_err (*configure_output)(struct atomisp_sub_device
@@ -3918,8 +3926,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 					      unsigned int height) =
 		configure_pp_input_nop;
 	int ret;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev =
+	    atomisp_to_sub_device(atomisp_to_video_pipe(vdev));
 
 	isp_sink_crop = atomisp_subdev_get_rect(
 		&isp_subdev->subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
@@ -3966,11 +3974,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		   atomisp_output_fmts[] in atomisp_v4l2.c */
 		vf_ffmt.code = 0x8001;
 
-		atomisp_subdev_set_selection(&asd->subdev, NULL,
+		atomisp_subdev_set_selection(&isp_subdev->subdev, NULL,
 					     V4L2_SUBDEV_FORMAT_ACTIVE,
 					     ATOMISP_SUBDEV_PAD_SOURCE_VF,
 					     V4L2_SEL_TGT_COMPOSE, 0, &vf_size);
-		atomisp_subdev_set_ffmt(&asd->subdev, NULL,
+		atomisp_subdev_set_ffmt(&isp_subdev->subdev, NULL,
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
 
@@ -4176,8 +4184,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_rect isp_sink_crop;
 	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret;
-	/* FIXME: isp_subdev should be derived from pipe */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = atomisp_to_sub_device(pipe);
 
 	dev_dbg(isp->dev, "setting resolution %ux%u on pad %u\n",
 		f->fmt.pix.width, f->fmt.pix.height, source_pad);
@@ -4443,8 +4450,7 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_mbus_framefmt ffmt = {0};
 	const struct atomisp_format_bridge *format_bridge;
 	int ret;
-	/* FIXME: isp_subdev should be get from pipe */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = atomisp_to_sub_device(pipe);
 
 	dev_dbg(isp->dev, "setting fmt %ux%u 0x%x for file inject\n",
 		f->fmt.pix.width, f->fmt.pix.height, f->fmt.pix.pixelformat);
