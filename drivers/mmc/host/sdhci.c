@@ -2058,8 +2058,11 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	 * tuning function has to be executed.
 	 */
 	if ((((ctrl & SDHCI_CTRL_UHS_MASK) == SDHCI_CTRL_UHS_SDR50) &&
-	    (host->flags & SDHCI_SDR50_NEEDS_TUNING)) ||
-	     (host->flags & SDHCI_HS200_NEEDS_TUNING))
+	    (host->flags & SDHCI_SDR50_NEEDS_TUNING) &&
+	    (mmc->ios.timing == MMC_TIMING_UHS_SDR50)) ||
+	     ((host->flags & SDHCI_HS200_NEEDS_TUNING) &&
+	      (mmc->ios.timing == MMC_TIMING_MMC_HS200 ||
+	       mmc->ios.timing == MMC_TIMING_UHS_SDR104)))
 		requires_tuning_nonuhs = true;
 
 	if (((ctrl & SDHCI_CTRL_UHS_MASK) == SDHCI_CTRL_UHS_SDR104) ||
@@ -2585,7 +2588,8 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		 */
 		/* Set the re-tuning expiration flag */
 		if ((host->version >= SDHCI_SPEC_300) && host->tuning_count &&
-		    (host->tuning_mode == SDHCI_TUNING_MODE_1)) {
+		    (host->tuning_mode == SDHCI_TUNING_MODE_1) &&
+		    mmc_tuning_timing(host->mmc)) {
 			host->mrq->cmd->retries++;
 			host->flags |= SDHCI_NEEDS_RETUNING;
 			pr_err("%s: encounter CRC error, needs tuning, retry %d\n",
@@ -3489,7 +3493,9 @@ int sdhci_suspend_host(struct sdhci_host *host)
 
 	/* Disable tuning since we are suspending */
 	has_tuning_timer = host->version >= SDHCI_SPEC_300 &&
-		host->tuning_count && host->tuning_mode == SDHCI_TUNING_MODE_1;
+		host->tuning_count &&
+		host->tuning_mode == SDHCI_TUNING_MODE_1 &&
+		mmc_tuning_timing(host->mmc);
 	if (has_tuning_timer) {
 		del_timer_sync(&host->tuning_timer);
 		host->flags &= ~SDHCI_NEEDS_RETUNING;
@@ -3583,7 +3589,8 @@ int sdhci_resume_host(struct sdhci_host *host)
 
 	/* Set the re-tuning expiration flag */
 	if ((host->version >= SDHCI_SPEC_300) && host->tuning_count &&
-	    (host->tuning_mode == SDHCI_TUNING_MODE_1))
+	    (host->tuning_mode == SDHCI_TUNING_MODE_1) &&
+	    mmc_tuning_timing(host->mmc))
 		host->flags |= SDHCI_NEEDS_RETUNING;
 
 	/* Card back in active state */
@@ -3628,7 +3635,8 @@ int sdhci_runtime_suspend_host(struct sdhci_host *host)
 	sdhci_do_acquire_ownership(host->mmc);
 	/* Disable tuning since we are suspending */
 	if (host->version >= SDHCI_SPEC_300 &&
-	    host->tuning_mode == SDHCI_TUNING_MODE_1) {
+	    host->tuning_mode == SDHCI_TUNING_MODE_1 &&
+	    mmc_tuning_timing(host->mmc)) {
 		del_timer_sync(&host->tuning_timer);
 		host->flags &= ~SDHCI_NEEDS_RETUNING;
 	}
@@ -3691,8 +3699,10 @@ int sdhci_runtime_resume_host(struct sdhci_host *host)
 
 	/* Set the re-tuning expiration flag */
 	if ((host->version >= SDHCI_SPEC_300) && host->tuning_count &&
-	    (host->tuning_mode == SDHCI_TUNING_MODE_1))
+	    (host->tuning_mode == SDHCI_TUNING_MODE_1) &&
+	    mmc_tuning_timing(host->mmc)) {
 		host->flags |= SDHCI_NEEDS_RETUNING;
+	}
 
 	spin_lock_irqsave(&host->lock, flags);
 
