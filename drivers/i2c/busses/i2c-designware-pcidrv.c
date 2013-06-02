@@ -90,6 +90,7 @@ struct dw_pci_controller {
 	u32 rx_fifo_depth;
 	u32 clk_khz;
 	int enable_stop;
+	int share_irq;
 	char *acpi_name;
 	int (*scl_cfg) (struct dw_i2c_dev *dev);
 	void (*reset)(struct dw_i2c_dev *dev);
@@ -340,6 +341,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.share_irq = 1,
 		.acpi_name = "\\_SB.I2C1"
 	},
 	[valleyview_1] = {
@@ -350,6 +352,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.share_irq = 1,
 		.acpi_name = "\\_SB.I2C2"
 	},
 	[valleyview_2] = {
@@ -360,6 +363,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.share_irq = 1,
 		.acpi_name = "\\_SB.I2C3"
 	},
 	[valleyview_3] = {
@@ -370,6 +374,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.share_irq = 1,
 	},
 	[valleyview_4] = {
 		.bus_num     = 5,
@@ -379,6 +384,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.share_irq = 1,
 		.acpi_name = "\\_SB.I2C5"
 	},
 	[valleyview_5] = {
@@ -389,6 +395,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.share_irq = 1,
 		.acpi_name = "\\_SB.I2C6"
 	},
 	[valleyview_6] = {
@@ -399,6 +406,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.share_irq = 1,
 		.acpi_name = "\\_SB.I2C7"
 	}
 };
@@ -804,6 +812,7 @@ const struct pci_device_id *id)
 	dev->speed_cfg = dev->master_cfg & DW_IC_SPEED_MASK;
 	dev->use_dyn_clk = 0;
 	dev->reset = controller->reset;
+	dev->share_irq = controller->share_irq;
 
 	pci_set_drvdata(pdev, dev);
 

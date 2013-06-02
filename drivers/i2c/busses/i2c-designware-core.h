@@ -221,6 +221,7 @@ struct dw_i2c_dev {
 	void			(*reset)(struct dw_i2c_dev *dev);
 	struct dw_pci_controller *controller;
 	int			enable_stop;
+	int			share_irq;
 	int			cmd_err;
 	struct i2c_msg		*msgs;
 	int			msgs_num;
