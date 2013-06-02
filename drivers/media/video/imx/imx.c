@@ -457,12 +457,18 @@ static int imx_set_exposure_gain(struct v4l2_subdev *sd, u16 coarse_itg,
 		goto out;
 	dev->coarse_itg = coarse_itg;
 
-	ret = __imx_update_gain(sd, gain);
+	if (dev->sensor_id == IMX135_ID)
+		ret = __imx_update_gain(sd, gain);
+	else
+		ret = __imx_update_gain(sd, dev->gain);
 	if (ret)
 		goto out;
 	dev->gain = gain;
 
-	ret = __imx_update_digital_gain(client, digitgain);
+	if (dev->sensor_id == IMX135_ID)
+		ret = __imx_update_digital_gain(client, digitgain);
+	else
+		ret = __imx_update_digital_gain(client, dev->digital_gain);
 	if (ret)
 		goto out;
 	dev->digital_gain = digitgain;
