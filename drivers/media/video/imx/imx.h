@@ -101,6 +101,7 @@
 #define IMX175_MERRFLD 0x175
 #define IMX175_VALLEYVIEW 0x176
 #define IMX135_SALTBAY 0x135
+#define IMX135_VICTORIABAY 0x136
 
 #define IMX_ID_DEFAULT	0x0000
 #define IMX175_CHIP_ID	0x0000
@@ -441,6 +442,18 @@ extern int dw9714_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
 extern int dw9714_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
 extern int dw9714_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
 
+extern int dw9719_vcm_power_up(struct v4l2_subdev *sd);
+extern int dw9719_vcm_power_down(struct v4l2_subdev *sd);
+extern int dw9719_vcm_init(struct v4l2_subdev *sd);
+
+extern int dw9719_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
+extern int dw9719_t_focus_abs(struct v4l2_subdev *sd, s32 value);
+extern int dw9719_t_focus_rel(struct v4l2_subdev *sd, s32 value);
+extern int dw9719_q_focus_status(struct v4l2_subdev *sd, s32 *value);
+extern int dw9719_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
+extern int dw9719_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
+extern int dw9719_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
+
 extern int vcm_power_up(struct v4l2_subdev *sd);
 extern int vcm_power_down(struct v4l2_subdev *sd);
 
@@ -480,6 +493,18 @@ struct imx_vcm imx_vcms[] = {
 		.q_focus_abs = ad5816g_q_focus_abs,
 		.t_vcm_slew = ad5816g_t_vcm_slew,
 		.t_vcm_timing = ad5816g_t_vcm_timing,
+	},
+	[IMX135_VICTORIABAY] = {
+		.power_up = dw9719_vcm_power_up,
+		.power_down = dw9719_vcm_power_down,
+		.init = dw9719_vcm_init,
+		.t_focus_vcm = dw9719_t_focus_vcm,
+		.t_focus_abs = dw9719_t_focus_abs,
+		.t_focus_rel = dw9719_t_focus_rel,
+		.q_focus_status = dw9719_q_focus_status,
+		.q_focus_abs = dw9719_q_focus_abs,
+		.t_vcm_slew = dw9719_t_vcm_slew,
+		.t_vcm_timing = dw9719_t_vcm_timing,
 	},
 	[IMX_ID_DEFAULT] = {
 		.power_up = vcm_power_up,
