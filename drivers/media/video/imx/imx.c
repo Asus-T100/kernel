@@ -260,55 +260,48 @@ static int imx_write_reg_array(struct i2c_client *client,
 	return __imx_flush_reg_array(client, &ctrl);
 }
 
-static long __imx_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
-				 int gain, int digitgain)
-
+static int __imx_update_exposure_timing(struct i2c_client *client, u16 exposure,
+			u16 llp, u16 fll)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct imx_device *dev = to_imx_sensor(sd);
-	struct imx_write_buffer digit_gain;
 	int ret;
 
-	/* imx sensor driver has a limitation that the exposure
-	 * should not exceed beyond VTS-4
-	 */
-	 if (coarse_itg > dev->lines_per_frame - 4)
-		coarse_itg = dev->lines_per_frame - 4;
+	/* Increase the VTS to match exposure + margin */
+	if (exposure > fll - IMX_INTEGRATION_TIME_MARGIN)
+		fll = exposure + IMX_INTEGRATION_TIME_MARGIN;
 
-	/* enable group hold */
-	if (dev->sensor_id == IMX135_ID) {
-			ret = imx_write_reg_array(client, imx_param_hold);
-		if (ret)
-			goto out;
+	ret = imx_write_reg(client, IMX_16BIT, IMX_LINE_LENGTH_PIXELS, llp);
+	if (ret)
+		return ret;
 
-		ret = imx_write_reg(client, IMX_16BIT,
-			IMX_COARSE_INTEGRATION_TIME, coarse_itg);
-		if (ret)
-			goto out_disable;
+	ret = imx_write_reg(client, IMX_16BIT, IMX_FRAME_LENGTH_LINES, fll);
+	if (ret)
+		return ret;
 
-		/* set global gain */
-		ret = imx_write_reg(client, IMX_8BIT,
-			IMX_GLOBAL_GAIN, gain);
-		if (ret)
-			goto out_disable;
+	return imx_write_reg(client, IMX_16BIT, IMX_COARSE_INTEGRATION_TIME,
+			exposure);
+}
 
-		/* set short analog gain */
-		ret = imx_write_reg(client, IMX_8BIT,
-				IMX_SHORT_AGC_GAIN, gain);
-		if (ret)
-			goto out_disable;
-	} else {
-		ret = imx_write_reg(client, IMX_16BIT,
-			IMX_COARSE_INTEGRATION_TIME, coarse_itg);
-		if (ret)
-			goto out;
+static int __imx_update_gain(struct v4l2_subdev *sd, u16 gain)
+{
+	struct imx_device *dev = to_imx_sensor(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret;
 
-		/* set global gain */
-		ret = imx_write_reg(client, IMX_8BIT,
-			IMX_GLOBAL_GAIN, dev->gain);
-		if (ret)
-			goto out;
-	}
+	/* set global gain */
+	ret = imx_write_reg(client, IMX_8BIT, IMX_GLOBAL_GAIN, gain);
+	if (ret)
+		return ret;
+
+	/* set short analog gain */
+	if (dev->sensor_id == IMX135_ID)
+		ret = imx_write_reg(client, IMX_8BIT, IMX_SHORT_AGC_GAIN, gain);
+
+	return ret;
+}
+
+static int __imx_update_digital_gain(struct i2c_client *client, u16 digitgain)
+{
+	struct imx_write_buffer digit_gain;
 
 	digit_gain.addr = cpu_to_be16(IMX_DGC_ADJ);
 	digit_gain.data[0] = (digitgain >> 8) & 0xFF;
@@ -319,42 +312,54 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 	digit_gain.data[5] = digitgain & 0xFF;
 	digit_gain.data[6] = (digitgain >> 8) & 0xFF;
 	digit_gain.data[7] = digitgain & 0xFF;
-	ret = imx_i2c_write(client, IMX_DGC_LEN, (u8 *)&digit_gain);
-	if (ret)
-		goto out_disable;
 
-	dev->gain       = gain;
-	dev->coarse_itg = coarse_itg;
-
-out_disable:
-	/* disable group hold */
-	if (dev->sensor_id == IMX135_ID)
-		ret = imx_write_reg_array(client, imx_param_update);
-out:
-	return ret;
+	return imx_i2c_write(client, IMX_DGC_LEN, (u8 *)&digit_gain);
 }
 
-static int imx_set_exposure(struct v4l2_subdev *sd, int exposure,
-	int gain, int digitgain)
+static int imx_set_exposure_gain(struct v4l2_subdev *sd, u16 coarse_itg,
+	u16 gain, u16 digitgain)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	int ret;
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret = 0;
+
+	/* Validate exposure:  cannot exceed VTS-4 where VTS is 16bit */
+	coarse_itg = clamp_t(u16, coarse_itg, 0, IMX_MAX_EXPOSURE_SUPPORTED);
+
+	/* Validate gain: must not exceed maximum 8bit value */
+	gain = clamp_t(u16, gain, 0, IMX_MAX_GLOBAL_GAIN_SUPPORTED);
+
+	/* Validate digital gain: must not exceed 12 bit value*/
+	digitgain = clamp_t(u16, digitgain, 0, IMX_MAX_DIGITAL_GAIN_SUPPORTED);
 
 	mutex_lock(&dev->input_lock);
-	ret = __imx_set_exposure(sd, exposure, gain, digitgain);
-	mutex_unlock(&dev->input_lock);
 
+	ret = __imx_update_exposure_timing(client, coarse_itg,
+			dev->pixels_per_line, dev->lines_per_frame);
+	if (ret)
+		goto out;
+	dev->coarse_itg = coarse_itg;
+
+	ret = __imx_update_gain(sd, gain);
+	if (ret)
+		goto out;
+	dev->gain = gain;
+
+	ret = __imx_update_digital_gain(client, digitgain);
+	if (ret)
+		goto out;
+	dev->digital_gain = digitgain;
+
+out:
+	mutex_unlock(&dev->input_lock);
 	return ret;
 }
 
 static long imx_s_exposure(struct v4l2_subdev *sd,
 			       struct atomisp_exposure *exposure)
 {
-	int exp = exposure->integration_time[0];
-	int gain = exposure->gain[0];
-	int digitgain = exposure->gain[1];
-
-	return imx_set_exposure(sd, exp, gain, digitgain);
+	return imx_set_exposure_gain(sd, exposure->integration_time[0],
+				exposure->gain[0], exposure->gain[1]);
 }
 
 /* FIXME -To be updated with real OTP reading */
@@ -1204,17 +1209,20 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		goto out;
 
-	ret = imx_write_reg_array(client, imx_param_update);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-
 	dev->fps = dev->curr_res_table[dev->fmt_idx].fps;
 	dev->pixels_per_line =
 			dev->curr_res_table[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame =
 			dev->curr_res_table[dev->fmt_idx].lines_per_frame;
+
+	ret = __imx_update_exposure_timing(client, dev->coarse_itg,
+			dev->pixels_per_line, dev->lines_per_frame);
+	if (ret)
+		goto out;
+
+	ret = imx_write_reg_array(client, imx_param_update);
+	if (ret)
+		goto out;
 
 	ret = imx_get_intg_factor(client, imx_info, imx_def_reg);
 
@@ -1411,8 +1419,6 @@ static int imx_s_config(struct v4l2_subdev *sd,
 	if (ret)
 		v4l2_err(client, "imx power-down err.\n");
 
-	dev->sensor_id = sensor_id;
-	dev->sensor_revision = sensor_revision;
 	return ret;
 
 fail_detect:

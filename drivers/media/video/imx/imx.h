@@ -88,6 +88,9 @@
 #define IMX_SHORT_AGC_GAIN		0x0233
 #define IMX_DGC_ADJ		0x020E
 #define IMX_DGC_LEN		10
+#define IMX_MAX_EXPOSURE_SUPPORTED 0xff0b
+#define IMX_MAX_GLOBAL_GAIN_SUPPORTED 0x00ff
+#define IMX_MAX_DIGITAL_GAIN_SUPPORTED 0x0fff
 
 /* Defines for register writes and register array processing */
 #define IMX_BYTE_MAX	30
@@ -129,6 +132,7 @@
 #define IMX_VCM_SLEW_TIME_MAX	0x1f
 
 #define IMX_BIN_FACTOR_MAX			4
+#define IMX_INTEGRATION_TIME_MARGIN	4
 /*
  * focal length bits definition:
  * bits 31-16: numerator, bits 15-0: denominator
@@ -336,6 +340,7 @@ struct imx_device {
 	u16 sensor_id;
 	u16 coarse_itg;
 	u16 fine_itg;
+	u16 digital_gain;
 	u16 gain;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
