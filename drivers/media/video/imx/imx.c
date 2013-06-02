@@ -522,16 +522,14 @@ out:
 
 static int __imx_init(struct v4l2_subdev *sd, u32 val)
 {
-
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct imx_device *dev = to_imx_sensor(sd);
-	/* restore settings */
 
 	if (dev->sensor_id == IMX_ID_DEFAULT)
 		return 0;
 
-	dev->curr_res_table = dev->mode_tables->res_still;
-	dev->entries_curr_table = dev->mode_tables->n_res_still;
+	dev->curr_res_table = dev->mode_tables->res_preview;
+	dev->entries_curr_table = dev->mode_tables->n_res_preview;
 
 	return imx_write_reg_array(client,
 			dev->mode_tables->init_settings);
@@ -838,8 +836,7 @@ static int imx_test_pattern(struct v4l2_subdev *sd, s32 value)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
-	return imx_write_reg(client, IMX_16BIT,
-			IMX_TEST_PATTERN_MODE, value);
+	return imx_write_reg(client, IMX_16BIT, IMX_TEST_PATTERN_MODE, value);
 }
 
 static int imx_v_flip(struct v4l2_subdev *sd, s32 value)
@@ -851,8 +848,7 @@ static int imx_v_flip(struct v4l2_subdev *sd, s32 value)
 	ret = imx_write_reg_array(client, imx_param_hold);
 	if (ret)
 		return ret;
-	ret = imx_read_reg(client, IMX_8BIT,
-			IMX_IMG_ORIENTATION, &val);
+	ret = imx_read_reg(client, IMX_8BIT, IMX_IMG_ORIENTATION, &val);
 	if (ret)
 		return ret;
 	if (value)
@@ -1209,7 +1205,7 @@ static int imx_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
  * res->width/height smaller than w/h wouldn't be considered.
  * Returns the value of gap or -1 if fail.
  */
-#define LARGEST_ALLOWED_RATIO_MISMATCH 800
+#define LARGEST_ALLOWED_RATIO_MISMATCH 600
 static int distance(struct imx_resolution const *res, u32 w, u32 h)
 {
 	unsigned int w_ratio = ((res->width << 13)/w);
