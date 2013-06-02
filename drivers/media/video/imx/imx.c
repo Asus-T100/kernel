@@ -397,11 +397,11 @@ static int __imx_init(struct v4l2_subdev *sd, u32 val)
 	if (dev->sensor_id == IMX_ID_DEFAULT)
 		return 0;
 
-	dev->curr_res_table = imx_sets[dev->sensor_id].res_still;
-	dev->entries_curr_table = imx_sets[dev->sensor_id].n_res_still;
+	dev->curr_res_table = dev->mode_tables->res_still;
+	dev->entries_curr_table = dev->mode_tables->n_res_still;
 
 	return imx_write_reg_array(client,
-			imx_sets[dev->sensor_id].init_settings);
+			dev->mode_tables->init_settings);
 }
 
 static int imx_init(struct v4l2_subdev *sd, u32 val)
@@ -507,12 +507,12 @@ static int __imx_s_power(struct v4l2_subdev *sd, int on)
 		imx_uninit(sd);
 		ret = power_down(sd);
 
-		r = imx_vcms[dev->sensor_id].power_down(sd);
+		r = dev->vcm_driver->power_down(sd);
 		if (ret == 0)
 			ret = r;
 		dev->power = 0;
 	} else {
-		ret = imx_vcms[dev->sensor_id].power_up(sd);
+		ret = dev->vcm_driver->power_up(sd);
 		if (ret)
 			return ret;
 		ret = power_up(sd);
@@ -776,60 +776,60 @@ static int imx_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
 int imx_vcm_power_up(struct v4l2_subdev *sd)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].power_up(sd);
+	return dev->vcm_driver->power_up(sd);
 }
 int imx_vcm_power_down(struct v4l2_subdev *sd)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].power_down(sd);
+	return dev->vcm_driver->power_down(sd);
 
 }
 int imx_vcm_init(struct v4l2_subdev *sd)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].init(sd);
+	return dev->vcm_driver->init(sd);
 
 }
 int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].t_focus_vcm(sd, val);
+	return dev->vcm_driver->t_focus_vcm(sd, val);
 
 }
 int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].t_focus_abs(sd, value);
+	return dev->vcm_driver->t_focus_abs(sd, value);
 
 }
 int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].t_focus_rel(sd, value);
+	return dev->vcm_driver->t_focus_rel(sd, value);
 
 }
 int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].q_focus_status(sd, value);
+	return dev->vcm_driver->q_focus_status(sd, value);
 
 }
 int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].q_focus_abs(sd, value);
+	return dev->vcm_driver->q_focus_abs(sd, value);
 
 }
 int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].t_vcm_slew(sd, value);
+	return dev->vcm_driver->t_vcm_slew(sd, value);
 
 }
 int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
-	return imx_vcms[dev->sensor_id].t_vcm_timing(sd, value);
+	return dev->vcm_driver->t_vcm_timing(sd, value);
 
 }
 
@@ -1260,11 +1260,8 @@ static int imx_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	if (*id == IMX175_ID) {
-		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-			*id = IMX175_ID0;
+	if (*id == IMX175_ID)
 		goto found;
-	}
 
 	/* check sensor chip ID	 */
 	if (imx_read_reg(client, IMX_16BIT, IMX135_CHIP_ID, id)) {
@@ -1501,17 +1498,16 @@ imx_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
-		dev->curr_res_table = imx_sets[dev->sensor_id].res_video;
-		dev->entries_curr_table = imx_sets[dev->sensor_id].n_res_video;
+		dev->curr_res_table = dev->mode_tables->res_video;
+		dev->entries_curr_table = dev->mode_tables->n_res_video;
 		break;
 	case CI_MODE_STILL_CAPTURE:
-		dev->curr_res_table = imx_sets[dev->sensor_id].res_still;
-		dev->entries_curr_table = imx_sets[dev->sensor_id].n_res_still;
+		dev->curr_res_table = dev->mode_tables->res_still;
+		dev->entries_curr_table = dev->mode_tables->n_res_still;
 		break;
 	default:
-		dev->curr_res_table = imx_sets[dev->sensor_id].res_preview;
-		dev->entries_curr_table =
-				imx_sets[dev->sensor_id].n_res_preview;
+		dev->curr_res_table = dev->mode_tables->res_preview;
+		dev->entries_curr_table = dev->mode_tables->n_res_preview;
 	}
 	mutex_unlock(&dev->input_lock);
 	return 0;
@@ -1629,6 +1625,30 @@ static int imx_remove(struct i2c_client *client)
 	return 0;
 }
 
+static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
+{
+	switch (sensor_id) {
+	case IMX175_ID:
+		if (intel_mid_identify_cpu() ==
+					INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+			dev->mode_tables = &imx_sets[IMX175_VALLEYVIEW];
+			dev->vcm_driver = &imx_vcms[IMX175_VALLEYVIEW];
+		} else {
+			dev->mode_tables = &imx_sets[IMX175_MERRFLD];
+			dev->vcm_driver = &imx_vcms[IMX175_MERRFLD];
+		}
+		break;
+	case IMX135_ID:
+		dev->mode_tables = &imx_sets[IMX135_SALTBAY];
+		dev->vcm_driver = &imx_vcms[IMX135_SALTBAY];
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return dev->vcm_driver->init(&dev->sd);
+}
+
 static int imx_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -1646,6 +1666,8 @@ static int imx_probe(struct i2c_client *client,
 
 	dev->fmt_idx = 0;
 	dev->sensor_id = IMX_ID_DEFAULT;
+	dev->vcm_driver = &imx_vcms[IMX_ID_DEFAULT];
+
 	v4l2_i2c_subdev_init(&(dev->sd), client, &imx_ops);
 
 	/*
@@ -1662,8 +1684,9 @@ static int imx_probe(struct i2c_client *client,
 			goto out_free;
 	}
 
-	ret = imx_vcms[dev->sensor_id].init(&dev->sd);
-	if (ret < 0)
+	/* Resolution settings depend on sensor type and platform */
+	ret = __update_imx_device_settings(dev, dev->sensor_id);
+	if (ret)
 		goto out_free;
 
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
