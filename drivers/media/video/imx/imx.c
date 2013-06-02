@@ -50,7 +50,8 @@ imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 	int err, i;
 
 	if (len > IMX_BYTE_MAX) {
-		v4l2_err(client, "%s error, invalid data length\n", __func__);
+		dev_err(&client->dev, "%s error, invalid data length\n",
+			__func__);
 		return -EINVAL;
 	}
 
@@ -85,6 +86,49 @@ imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 			val[i] = be16_to_cpu(data[i]);
 	}
 
+	return 0;
+
+error:
+	dev_err(&client->dev, "read from offset 0x%x error %d", reg, err);
+	return err;
+}
+
+static int
+imx_read_otp_data(struct i2c_client *client, u16 len, u16 reg, void *val)
+{
+	struct i2c_msg msg[2];
+	u16 data[IMX_SHORT_MAX] = { 0 };
+	int err;
+
+	if (len > IMX_BYTE_MAX) {
+		dev_err(&client->dev, "%s error, invalid data length\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	memset(msg, 0 , sizeof(msg));
+	memset(data, 0 , sizeof(data));
+
+	msg[0].addr = client->addr;
+	msg[0].flags = 0;
+	msg[0].len = I2C_MSG_LENGTH;
+	msg[0].buf = (u8 *)data;
+	/* high byte goes first */
+	data[0] = cpu_to_be16(reg);
+
+	msg[1].addr = client->addr;
+	msg[1].len = len;
+	msg[1].flags = I2C_M_RD;
+	msg[1].buf = (u8 *)data;
+
+	err = i2c_transfer(client->adapter, msg, 2);
+	if (err != 2) {
+		if (err >= 0)
+			err = -EIO;
+		goto error;
+	}
+
+	memcpy(val, data, len);
 	return 0;
 
 error:
@@ -260,6 +304,79 @@ static int imx_write_reg_array(struct i2c_client *client,
 	return __imx_flush_reg_array(client, &ctrl);
 }
 
+static int imx_read_otp_reg_array(struct i2c_client *client, u16 size, u16 addr,
+				  u8 *buf)
+{
+	u16 index;
+	int ret;
+
+	for (index = 0; index + IMX_OTP_READ_ONETIME <= size;
+					index += IMX_OTP_READ_ONETIME) {
+		ret = imx_read_otp_data(client, IMX_OTP_READ_ONETIME,
+					addr + index, &buf[index]);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static int __imx_otp_read(struct v4l2_subdev *sd, u8 *buf)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret;
+	int i;
+
+	for (i = 0; i < IMX_OTP_PAGE_MAX; i++) {
+
+		/*set page NO.*/
+		ret = imx_write_reg(client, IMX_8BIT,
+			       IMX_OTP_PAGE_REG, i & 0xff);
+		if (ret) {
+			dev_err(&client->dev, "failed to prepare OTP page\n");
+			return ret;
+		}
+
+		/*set read mode*/
+		ret = imx_write_reg(client, IMX_8BIT,
+			       IMX_OTP_MODE_REG, IMX_OTP_MODE_READ);
+		if (ret) {
+			dev_err(&client->dev, "failed to set OTP reading mode page");
+			return ret;
+		}
+
+		/* Reading the OTP data array */
+		ret = imx_read_otp_reg_array(client, IMX_OTP_PAGE_SIZE,
+			IMX_OTP_START_ADDR, buf + i * IMX_OTP_PAGE_SIZE);
+		if (ret) {
+			dev_err(&client->dev, "failed to read OTP data\n");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static void *imx_otp_read(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u8 *buf;
+	int ret;
+
+	buf = devm_kzalloc(&client->dev, IMX_OTP_DATA_SIZE, GFP_KERNEL);
+	if (!buf)
+		return ERR_PTR(-ENOMEM);
+
+	ret = __imx_otp_read(sd, buf);
+
+	/* Driver has failed to find valid data */
+	if (ret) {
+		dev_err(&client->dev, "sensor found no valid OTP data\n");
+		return ERR_PTR(ret);
+	}
+
+	return buf;
+}
+
 static int __imx_update_exposure_timing(struct i2c_client *client, u16 exposure,
 			u16 llp, u16 fll)
 {
@@ -367,6 +484,7 @@ static int imx_g_priv_int_data(struct v4l2_subdev *sd,
 				   struct v4l2_private_int_data *priv)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct imx_device *dev = to_imx_sensor(sd);
 	u8 __user *to = priv->data;
 	u32 read_size = priv->size;
 	int ret;
@@ -375,11 +493,15 @@ static int imx_g_priv_int_data(struct v4l2_subdev *sd,
 	if (!read_size)
 		goto out;
 
+	if (IS_ERR(dev->otp_data)) {
+		dev_err(&client->dev, "OTP data not available");
+		return PTR_ERR(dev->otp_data);
+	}
 	/* Correct read_size value only if bigger than maximum */
-	if (read_size > sizeof(otpdata))
-		read_size = sizeof(otpdata);
+	if (read_size > IMX_OTP_DATA_SIZE)
+		read_size = IMX_OTP_DATA_SIZE;
 
-	ret = copy_to_user(to, otpdata, sizeof(otpdata));
+	ret = copy_to_user(to, dev->otp_data, read_size);
 	if (ret) {
 		dev_err(&client->dev, "%s: failed to copy OTP data to user\n",
 			 __func__);
@@ -387,7 +509,7 @@ static int imx_g_priv_int_data(struct v4l2_subdev *sd,
 	}
 out:
 	/* Return correct size */
-	priv->size = sizeof(otpdata);
+	priv->size = IMX_OTP_DATA_SIZE;
 
 	return 0;
 }
@@ -1413,6 +1535,10 @@ static int imx_s_config(struct v4l2_subdev *sd,
 
 	dev->sensor_id = sensor_id;
 	dev->sensor_revision = sensor_revision;
+
+	/* Read sensor's OTP data */
+	dev->otp_data = imx_otp_read(sd);
+
 	/* power off sensor */
 	ret = __imx_s_power(sd, 0);
 	mutex_unlock(&dev->input_lock);

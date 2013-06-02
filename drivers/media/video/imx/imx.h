@@ -93,10 +93,22 @@
 #define IMX_MAX_DIGITAL_GAIN_SUPPORTED 0x0fff
 
 /* Defines for register writes and register array processing */
-#define IMX_BYTE_MAX	30
+#define IMX_BYTE_MAX	32 /* change to 32 as needed by otpdata */
 #define IMX_SHORT_MAX	16
 #define I2C_RETRY_COUNT		5
 #define IMX_TOK_MASK	0xfff0
+
+/* Defines for OTP Data Registers */
+#define IMX_OTP_START_ADDR		0x3B04
+#define IMX_OTP_DATA_SIZE		1280
+#define IMX_OTP_PAGE_SIZE		64
+#define IMX_OTP_READY_REG		0x3B01
+#define IMX_OTP_PAGE_REG		0x3B02
+#define IMX_OTP_MODE_REG		0x3B00
+#define IMX_OTP_PAGE_MAX		20
+#define IMX_OTP_READY_REG_DONE		1
+#define IMX_OTP_READ_ONETIME		32
+#define IMX_OTP_MODE_READ		1
 
 #define MAX_FMTS 1
 
@@ -348,6 +360,7 @@ struct imx_device {
 	u8 res;
 	u8 type;
 	u8 sensor_revision;
+	u8 *otp_data;
 	struct imx_settings *mode_tables;
 	struct imx_vcm *vcm_driver;
 	const struct imx_resolution *curr_res_table;
