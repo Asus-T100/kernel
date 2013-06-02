@@ -327,6 +327,8 @@ struct imx_device {
 	u8 res;
 	u8 type;
 	u8 sensor_revision;
+	const struct imx_resolution *curr_res_table;
+	int entries_curr_table;
 };
 
 #define to_imx_sensor(x) container_of(x, struct imx_device, sd)

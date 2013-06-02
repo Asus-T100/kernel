@@ -41,8 +41,6 @@
 #include "imx.h"
 #include <asm/intel-mid.h>
 
-struct imx_resolution *imx_res;
-static int N_RES;
 
 static int
 imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
@@ -399,8 +397,8 @@ static int __imx_init(struct v4l2_subdev *sd, u32 val)
 	if (dev->sensor_id == IMX_ID_DEFAULT)
 		return 0;
 
-	imx_res = imx_sets[dev->sensor_id].res_still;
-	N_RES = imx_sets[dev->sensor_id].n_res_still;
+	dev->curr_res_table = imx_sets[dev->sensor_id].res_still;
+	dev->entries_curr_table = imx_sets[dev->sensor_id].n_res_still;
 
 	return imx_write_reg_array(client,
 			imx_sets[dev->sensor_id].init_settings);
@@ -678,10 +676,12 @@ static int imx_get_intg_factor(struct i2c_client *client,
 		return ret;
 	buf->output_height = data[0];
 
-	buf->binning_factor_x = imx_res[dev->fmt_idx].bin_factor_x ?
-					imx_res[dev->fmt_idx].bin_factor_x : 1;
-	buf->binning_factor_y = imx_res[dev->fmt_idx].bin_factor_y ?
-					imx_res[dev->fmt_idx].bin_factor_y : 1;
+	buf->binning_factor_x =
+		dev->curr_res_table[dev->fmt_idx].bin_factor_x ?
+			dev->curr_res_table[dev->fmt_idx].bin_factor_x : 1;
+	buf->binning_factor_y =
+		dev->curr_res_table[dev->fmt_idx].bin_factor_y ?
+			dev->curr_res_table[dev->fmt_idx].bin_factor_y : 1;
 
 	return 0;
 }
@@ -759,7 +759,7 @@ static int imx_g_bin_factor_x(struct v4l2_subdev *sd, s32 *val)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
 
-	*val = imx_res[dev->fmt_idx].bin_factor_x;
+	*val = dev->curr_res_table[dev->fmt_idx].bin_factor_x;
 
 	return 0;
 }
@@ -768,7 +768,7 @@ static int imx_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
 
-	*val = imx_res[dev->fmt_idx].bin_factor_y;
+	*val = dev->curr_res_table[dev->fmt_idx].bin_factor_y;
 
 	return 0;
 }
@@ -1078,7 +1078,7 @@ static int imx_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
  * Returns the value of gap or -1 if fail.
  */
 #define LARGEST_ALLOWED_RATIO_MISMATCH 800
-static int distance(struct imx_resolution *res, u32 w, u32 h)
+static int distance(struct imx_resolution const *res, u32 w, u32 h)
 {
 	unsigned int w_ratio = ((res->width << 13)/w);
 	unsigned int h_ratio;
@@ -1099,16 +1099,17 @@ static int distance(struct imx_resolution *res, u32 w, u32 h)
 }
 
 /* Return the nearest higher resolution index */
-static int nearest_resolution_index(int w, int h)
+static int nearest_resolution_index(struct v4l2_subdev *sd, int w, int h)
 {
 	int i;
 	int idx = -1;
 	int dist;
 	int min_dist = INT_MAX;
-	struct imx_resolution *tmp_res = NULL;
+	const struct imx_resolution *tmp_res = NULL;
+	struct imx_device *dev = to_imx_sensor(sd);
 
-	for (i = 0; i < N_RES; i++) {
-		tmp_res = &imx_res[i];
+	for (i = 0; i < dev->entries_curr_table; i++) {
+		tmp_res = &dev->curr_res_table[i];
 		dist = distance(tmp_res, w, h);
 		if (dist == -1)
 			continue;
@@ -1121,14 +1122,15 @@ static int nearest_resolution_index(int w, int h)
 	return idx;
 }
 
-static int get_resolution_index(int w, int h)
+static int get_resolution_index(struct v4l2_subdev *sd, int w, int h)
 {
 	int i;
+	struct imx_device *dev = to_imx_sensor(sd);
 
-	for (i = 0; i < N_RES; i++) {
-		if (w != imx_res[i].width)
+	for (i = 0; i < dev->entries_curr_table; i++) {
+		if (w != dev->curr_res_table[i].width)
 			continue;
-		if (h != imx_res[i].height)
+		if (h != dev->curr_res_table[i].height)
 			continue;
 		/* Found it */
 		return i;
@@ -1147,7 +1149,7 @@ static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 		fmt->width =  imx_max_res[dev->sensor_id].res_max_width;
 		fmt->height = imx_max_res[dev->sensor_id].res_max_width;
 	} else {
-		idx = nearest_resolution_index(fmt->width, fmt->height);
+		idx = nearest_resolution_index(sd, fmt->width, fmt->height);
 
 		/*
 		 * nearest_resolution_index() doesn't return smaller
@@ -1156,10 +1158,10 @@ static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 		 *  to highest possible resolution in this case.
 		 */
 		if (idx == -1)
-			idx = N_RES - 1;
+			idx = dev->entries_curr_table - 1;
 
-		fmt->width = imx_res[idx].width;
-		fmt->height = imx_res[idx].height;
+		fmt->width = dev->curr_res_table[idx].width;
+		fmt->height = dev->curr_res_table[idx].height;
 	}
 
 	fmt->code = V4L2_MBUS_FMT_SRGGB10_1X10;
@@ -1187,7 +1189,7 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 	}
 
 	mutex_lock(&dev->input_lock);
-	dev->fmt_idx = get_resolution_index(fmt->width, fmt->height);
+	dev->fmt_idx = get_resolution_index(sd, fmt->width, fmt->height);
 
 	/* Sanity check */
 	if (unlikely(dev->fmt_idx == -1)) {
@@ -1196,7 +1198,7 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	imx_def_reg = imx_res[dev->fmt_idx].regs;
+	imx_def_reg = dev->curr_res_table[dev->fmt_idx].regs;
 
 	ret = imx_write_reg_array(client, imx_def_reg);
 	if (ret) {
@@ -1210,9 +1212,11 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	dev->fps = imx_res[dev->fmt_idx].fps;
-	dev->pixels_per_line = imx_res[dev->fmt_idx].pixels_per_line;
-	dev->lines_per_frame = imx_res[dev->fmt_idx].lines_per_frame;
+	dev->fps = dev->curr_res_table[dev->fmt_idx].fps;
+	dev->pixels_per_line =
+			dev->curr_res_table[dev->fmt_idx].pixels_per_line;
+	dev->lines_per_frame =
+			dev->curr_res_table[dev->fmt_idx].lines_per_frame;
 	dev->coarse_itg = 0;
 	dev->fine_itg = 0;
 	dev->gain = 0;
@@ -1236,8 +1240,8 @@ static int imx_g_mbus_fmt(struct v4l2_subdev *sd,
 	if (!fmt)
 		return -EINVAL;
 
-	fmt->width = imx_res[dev->fmt_idx].width;
-	fmt->height = imx_res[dev->fmt_idx].height;
+	fmt->width = dev->curr_res_table[dev->fmt_idx].width;
+	fmt->height = dev->curr_res_table[dev->fmt_idx].height;
 	fmt->code = V4L2_MBUS_FMT_SRGGB10_1X10;
 
 	return 0;
@@ -1319,14 +1323,15 @@ static int imx_enum_framesizes(struct v4l2_subdev *sd,
 				   struct v4l2_frmsizeenum *fsize)
 {
 	unsigned int index = fsize->index;
+	struct imx_device *dev = to_imx_sensor(sd);
 
-	if (index >= N_RES)
+	if (index >= dev->entries_curr_table)
 		return -EINVAL;
 
 	fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
-	fsize->discrete.width = imx_res[index].width;
-	fsize->discrete.height = imx_res[index].height;
-	fsize->reserved[0] = imx_res[index].used;
+	fsize->discrete.width = dev->curr_res_table[index].width;
+	fsize->discrete.height = dev->curr_res_table[index].height;
+	fsize->reserved[0] = dev->curr_res_table[index].used;
 
 	return 0;
 }
@@ -1335,6 +1340,7 @@ static int imx_enum_frameintervals(struct v4l2_subdev *sd,
 				       struct v4l2_frmivalenum *fival)
 {
 	int i;
+	struct imx_device *dev = to_imx_sensor(sd);
 
 	/* since the isp will donwscale the resolution to the right size,
 	  * find the nearest one that will allow the isp to do so
@@ -1342,16 +1348,16 @@ static int imx_enum_frameintervals(struct v4l2_subdev *sd,
 	  * correctly by the requester, which is the atomisp driver in
 	  * this case.
 	  */
-	i = nearest_resolution_index(fival->width, fival->height);
+	i = nearest_resolution_index(sd, fival->width, fival->height);
 
 	if (i == -1)
 		return -EINVAL;
 
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
-	fival->width = imx_res[i].width;
-	fival->height = imx_res[i].height;
+	fival->width = dev->curr_res_table[i].width;
+	fival->height = dev->curr_res_table[i].height;
 	fival->discrete.numerator = 1;
-	fival->discrete.denominator = imx_res[i].fps;
+	fival->discrete.denominator = dev->curr_res_table[i].fps;
 
 	return 0;
 }
@@ -1433,14 +1439,15 @@ imx_enum_frame_size(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			struct v4l2_subdev_frame_size_enum *fse)
 {
 	int index = fse->index;
+	struct imx_device *dev = to_imx_sensor(sd);
 
-	if (index >= N_RES)
+	if (index >= dev->entries_curr_table)
 		return -EINVAL;
 
-	fse->min_width = imx_res[index].width;
-	fse->min_height = imx_res[index].height;
-	fse->max_width = imx_res[index].width;
-	fse->max_height = imx_res[index].height;
+	fse->min_width = dev->curr_res_table[index].width;
+	fse->min_height = dev->curr_res_table[index].height;
+	fse->max_width = dev->curr_res_table[index].width;
+	fse->max_height = dev->curr_res_table[index].height;
 
 	return 0;
 }
@@ -1494,16 +1501,17 @@ imx_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
-		imx_res = imx_sets[dev->sensor_id].res_video;
-		N_RES = imx_sets[dev->sensor_id].n_res_video;
+		dev->curr_res_table = imx_sets[dev->sensor_id].res_video;
+		dev->entries_curr_table = imx_sets[dev->sensor_id].n_res_video;
 		break;
 	case CI_MODE_STILL_CAPTURE:
-		imx_res = imx_sets[dev->sensor_id].res_still;
-		N_RES = imx_sets[dev->sensor_id].n_res_still;
+		dev->curr_res_table = imx_sets[dev->sensor_id].res_still;
+		dev->entries_curr_table = imx_sets[dev->sensor_id].n_res_still;
 		break;
 	default:
-		imx_res = imx_sets[dev->sensor_id].res_preview;
-		N_RES = imx_sets[dev->sensor_id].n_res_preview;
+		dev->curr_res_table = imx_sets[dev->sensor_id].res_preview;
+		dev->entries_curr_table =
+				imx_sets[dev->sensor_id].n_res_preview;
 	}
 	mutex_unlock(&dev->input_lock);
 	return 0;
@@ -1559,7 +1567,7 @@ static int imx_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
 	struct imx_device *dev = to_imx_sensor(sd);
 
 	mutex_lock(&dev->input_lock);
-	*frames = imx_res[dev->fmt_idx].skip_frames;
+	*frames = dev->curr_res_table[dev->fmt_idx].skip_frames;
 	mutex_unlock(&dev->input_lock);
 
 	return 0;
