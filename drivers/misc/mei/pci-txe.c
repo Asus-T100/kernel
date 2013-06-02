@@ -43,13 +43,9 @@
 #include "mei_dev.h"
 #include "hw-txe.h"
 
-/*
- *  mei driver strings
- */
-
-bool nopg = true;
+bool nopg;
 module_param_named(nopg, nopg, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(nopg, "don't use power gating (default = true)");
+MODULE_PARM_DESC(nopg, "don't enable power gating (default = false)");
 
 
 /* Currently this driver works as long as there is only a single AMT device. */
@@ -167,14 +163,17 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	mei_device = pdev;
 	pci_set_drvdata(pdev, dev);
 
-#ifdef CONFIG_PM_RUNTIME
-	pm_runtime_put_noidle(&pdev->dev);
-	pm_runtime_allow(&pdev->dev);
-	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
-	pm_runtime_mark_last_busy(&pdev->dev);
-	pm_runtime_use_autosuspend(&pdev->dev);
-#endif
 	mutex_unlock(&mei_mutex);
+
+	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
+	pm_runtime_use_autosuspend(&pdev->dev);
+
+	pm_runtime_mark_last_busy(&pdev->dev);
+
+	pm_runtime_put_noidle(&pdev->dev);
+
+	if (!nopg)
+		pm_runtime_allow(&pdev->dev);
 
 	return 0;
 
