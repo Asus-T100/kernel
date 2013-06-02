@@ -1640,6 +1640,13 @@ static int imx_probe(struct i2c_client *client,
 	dev->sensor_id = IMX_ID_DEFAULT;
 	v4l2_i2c_subdev_init(&(dev->sd), client, &imx_ops);
 
+	/*
+	 * sd->name is updated with sensor driver name by the v4l2.
+	 * change it to sensor name in this case.
+	 */
+	snprintf(dev->sd.name, sizeof(dev->sd.name), "%s %d-%04x",
+		client->name, i2c_adapter_id(client->adapter), client->addr);
+
 	if (client->dev.platform_data) {
 		ret = imx_s_config(&dev->sd, client->irq,
 				       client->dev.platform_data);
@@ -1651,10 +1658,6 @@ static int imx_probe(struct i2c_client *client,
 	if (ret < 0)
 		goto out_free;
 
-	if (dev->sensor_id == IMX135_ID)
-		snprintf(dev->sd.name, sizeof(dev->sd.name), "%s %d-%04x",
-		"imx135", i2c_adapter_id(client->adapter),
-		client->addr);
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
 	dev->format.code = V4L2_MBUS_FMT_SRGGB10_1X10;
@@ -1672,21 +1675,22 @@ out_free:
 	return ret;
 }
 
-static const struct i2c_device_id imx_id[] = {
-	{IMX_NAME, 0},
+static const struct i2c_device_id imx_ids[] = {
+	{IMX_NAME_175, IMX175_ID},
+	{IMX_NAME_135, IMX135_ID},
 	{}
 };
 
-MODULE_DEVICE_TABLE(i2c, imx_id);
+MODULE_DEVICE_TABLE(i2c, imx_ids);
 
 static struct i2c_driver imx_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
-		.name = IMX_NAME,
+		.name = IMX_DRIVER,
 	},
 	.probe = imx_probe,
 	.remove = __devexit_p(imx_remove),
-	.id_table = imx_id,
+	.id_table = imx_ids,
 };
 
 

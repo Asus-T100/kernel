@@ -91,7 +91,9 @@
 
 #define MAX_FMTS 1
 
-#define IMX_NAME	"imx175"
+#define IMX_DRIVER	"imx1x5"
+#define IMX_NAME_135	"imx135"
+#define IMX_NAME_175	"imx175"
 #define IMX175_ID	0x0175
 /* imx175 - use dw9714 vcm */
 #define IMX175_ID0	0x0176
