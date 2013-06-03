@@ -47,6 +47,8 @@
 #include "gp_device.h"
 #include "irq.h"
 
+#define MULTI_STREAM_NUM	2
+
 #define ATOMISP_PCI_DEVICE_SOC_MASK	0xfff8
 #define ATOMISP_PCI_DEVICE_SOC_MRFLD	0x1178
 #define ATOMISP_PCI_DEVICE_SOC_BYT	0x0f38

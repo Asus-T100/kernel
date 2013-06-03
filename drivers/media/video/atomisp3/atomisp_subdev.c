@@ -1038,7 +1038,7 @@ int atomisp_subdev_init(struct atomisp_device *isp)
 	/*
 	 * CSS2.0 supports multiple streams
 	 */
-	isp->num_of_streams = IS_ISP2400 ? 2 : 1;
+	isp->num_of_streams = IS_ISP2400 ? MULTI_STREAM_NUM : 1;
 	isp->isp_subdev = kzalloc(sizeof(struct atomisp_sub_device) *
 				  isp->num_of_streams, GFP_KERNEL);
 	if (!isp->isp_subdev)
