@@ -40,6 +40,8 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 int atomisp_dev_init_struct(struct atomisp_device *isp);
 int atomisp_subdev_init_struct(struct atomisp_sub_device *isp_subdev);
 
+int atomisp_subdev_streaming_count(struct atomisp_device *isp);
+
 unsigned int atomisp_subdev_users(struct atomisp_sub_device *isp_subdev);
 unsigned int atomisp_dev_users(struct atomisp_device *isp);
 

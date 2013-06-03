@@ -21,6 +21,7 @@
 
 #include "ia_css.h"
 #include "atomisp_internal.h"
+#include "atomisp_fops.h"
 #include "ia_css_types.h"
 
 #include <asm/intel-mid.h>
@@ -665,14 +666,24 @@ enum ia_css_err ia_css_start(struct atomisp_sub_device *isp_subdev,
 			goto stream_err;
 		}
 	}
-
-	if ((ret = ia_css_start_sp()) != IA_CSS_SUCCESS) {
-		v4l2_err(&atomisp_dev, "start sp error.\n");
-		goto start_err;
+	/*
+	 * SP can only be started one time
+	 * if atomisp_subdev_streaming_count() tell there aleady has some subdev
+	 * at streamming, then SP should already be started previously, so
+	 * need to skip start sp procedure
+	 */
+	if (atomisp_subdev_streaming_count(isp_subdev->isp)) {
+		dev_dbg(isp_subdev->isp->dev, "skip start sp.\n");
+	} else {
+		ret = ia_css_start_sp();
+		if (ret != IA_CSS_SUCCESS) {
+			dev_err(isp_subdev->isp->dev, "start sp error.\n");
+			goto start_err;
+		}
 	}
 	ret = ia_css_stream_start(isp_subdev->css2_basis.stream);
 	if (ret != IA_CSS_SUCCESS) {
-		v4l2_err(&atomisp_dev, "stream start error.\n");
+		dev_err(isp_subdev->isp->dev, "stream start error.\n");
 		goto start_err;
 	}
 
@@ -687,9 +698,11 @@ stream_err:
 	/* css 2.0 API limitation: ia_css_stop_sp() could be only called after
 	 * destroy all pipes
 	 * */
-	if (ia_css_isp_has_started())
+	if (atomisp_subdev_streaming_count(isp_subdev->isp)) {
+		dev_dbg(isp_subdev->isp->dev, "can not stop sp.\n");
+	} else if (ia_css_isp_has_started())
 		if (ia_css_stop_sp() != IA_CSS_SUCCESS)
-			v4l2_err(&atomisp_dev, "stop sp failed.\n");
+			dev_warn(isp_subdev->isp->dev, "stop sp failed.\n");
 pipe_err:
 	return ret;
 }
@@ -709,9 +722,17 @@ enum ia_css_err ia_css_stop(struct atomisp_sub_device *isp_subdev,
 		v4l2_err(&atomisp_dev, "destroy pipes failed.\n");
 		goto err;
 	}
-	if (ia_css_isp_has_started()) {
+	/*
+	 * SP can not be stopped if other streams are still running
+	 * if atomisp_subdev_streaming_count() tell there aleady has some subdev
+	 * at streamming, then SP can not be stopped, so
+	 * need to skip start sp procedure
+	 */
+	if (atomisp_subdev_streaming_count(isp_subdev->isp)) {
+		v4l2_info(&atomisp_dev, "skip stop sp.\n");
+	} else if (ia_css_isp_has_started()) {
 		if (ia_css_stop_sp() != IA_CSS_SUCCESS) {
-			v4l2_err(&atomisp_dev, "stop sp failed.\n");
+			dev_dbg(isp_subdev->isp->dev, "stop sp failed.\n");
 			goto err;
 		}
 	}

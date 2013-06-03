@@ -1661,6 +1661,10 @@ stopsensor:
 		isp_subdev->params.flash_state = ATOMISP_FLASH_IDLE;
 	}
 
+	/* if other streams are running, we should not power off isp */
+	if (atomisp_subdev_streaming_count(isp))
+		return 0;
+
 #ifdef PUNIT_CAMERA_BUSY
 	if (!IS_ISP2400 && isp->need_gfx_throttle) {
 		/* Free camera_busy bit */

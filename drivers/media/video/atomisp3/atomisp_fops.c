@@ -460,7 +460,19 @@ static void *my_kernel_malloc(size_t bytes, bool zero_mem)
 
 	return ptr;
 }
+/*
+ * Return the number of concurrent running streams.
+ */
+int atomisp_subdev_streaming_count(struct atomisp_device *isp)
+{
+	int i, sum;
 
+	for (i = 0, sum = 0; i < isp->num_of_streams; i++)
+		sum += isp->isp_subdev[i].streaming ==
+		    ATOMISP_DEVICE_STREAMING_ENABLED;
+
+	return sum;
+}
 /*
  * file operation functions
  */
