@@ -396,6 +396,13 @@ static void gen6_pm_rps_work(struct work_struct *work)
 
 	mutex_lock(&dev_priv->dev->struct_mutex);
 
+	/* Make sure we have current freq updated properly. Doing this
+	 * here becuase, on VLV, P-Unit doesnt garauntee that last requested
+	 * freq by driver is actually the current running frequency
+	 */
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		valleyview_update_cur_delay(dev_priv->dev);
+
 	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD) {
 		if (dev_priv->rps.cur_delay > dev_priv->rps.max_delay) {
 			I915_WRITE(GEN6_PMINTRMSK,

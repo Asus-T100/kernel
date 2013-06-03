@@ -897,7 +897,9 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 					&pval);
 		seq_printf(m, "Cur Gpu Freq _cur_delay_: %d\n",
 				pval >> 8);
-		seq_printf(m, "Up Threshold: %d\n",
+		seq_printf(m, "Last Requested Gpu Freq _requested_delay_: %d\n",
+				dev_priv->rps.requested_delay);
+		seq_printf(m, "Up Threshold: %ld\n",
 			atomic_read(&dev_priv->turbodebug.up_threshold));
 		seq_printf(m, "Down Threshold: %d\n",
 			atomic_read(&dev_priv->turbodebug.down_threshold));
@@ -2034,9 +2036,9 @@ i915_rps_enable_disable(struct drm_device *dev, long unsigned int val)
 	/* 1=> Enable Turbo, else disable. */
 
 	if (val == 1)
-		valleyview_enable_rps(dev);
+		vlv_turbo_initialize(dev);
 	else
-		valleyview_disable_rps(dev);
+		vlv_turbo_disable(dev);
 
 	mutex_unlock(&dev->struct_mutex);
 
