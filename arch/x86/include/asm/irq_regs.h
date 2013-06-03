@@ -22,6 +22,11 @@ static inline struct pt_regs *set_irq_regs(struct pt_regs *new_regs)
 {
 	struct pt_regs *old_regs;
 
+	if ((unsigned long)new_regs & 0x3) {
+		pr_emerg("Invalid irq_regs address: %p\n", new_regs);
+		BUG();
+	}
+
 	old_regs = get_irq_regs();
 	percpu_write(irq_regs, new_regs);
 
