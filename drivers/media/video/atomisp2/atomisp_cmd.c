@@ -3174,9 +3174,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (format->sh_fmt == CSS_FRAME_FORMAT_RAW) {
 			atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_RAW);
 			atomisp_css_enable_dz(isp, false);
-		} else {
-			atomisp_css_capture_set_mode(isp,
-						CSS_CAPTURE_MODE_PRIMARY);
 		}
 
 		if (!isp->isp_subdev.continuous_mode->val)
