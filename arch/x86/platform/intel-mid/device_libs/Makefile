@@ -112,7 +112,7 @@ obj-$(subst m,y,$(CONFIG_EXTCON_MID))					+= platform_extcon_mid.o
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
-obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
+obj-$(subst m,y,$(CONFIG_WIFI_PLATFORM_DATA))				+= platform_wifi.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
 obj-$(subst m,y,$(CONFIG_TI_ST_FORK))					+= platform_btwilink.o

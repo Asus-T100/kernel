@@ -1892,8 +1892,10 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	host->quirks2 = chip->quirks2;
 
 	/* Retrieve platform data if there is any */
-	if (pdata && (pdata->slotno == slotno))
+	if (pdata && (pdata->slotno == slotno)) {
+		pdata->pdev = pdev;
 		slot->data = pdata;
+	}
 
 	if (slot->data) {
 		if (slot->data->setup) {

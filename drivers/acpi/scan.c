@@ -36,6 +36,7 @@ static const struct acpi_device_id acpi_platform_device_ids[] = {
 
 	{ "PNP0D40" },
 	{ "BCM2E1A" },
+	{ "BCM43241" },
 	{ "LPE0F28", 0 },
 
 	/* Haswell LPSS devices */
