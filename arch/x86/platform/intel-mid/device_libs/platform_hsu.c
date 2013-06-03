@@ -508,7 +508,7 @@ static void hsu_port_enable(int port)
 		gpio_direction_input(info->rx_gpio);
 	}
 	if (info->tx_gpio) {
-		gpio_direction_output(info->tx_gpio, 0);
+		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
 
 	}
@@ -531,8 +531,8 @@ static void hsu_port_disable(int port)
 		gpio_direction_input(info->rx_gpio);
 	}
 	if (info->tx_gpio) {
+		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, LNW_GPIO);
-		gpio_direction_input(info->tx_gpio);
 	}
 	if (info->cts_gpio) {
 		lnw_gpio_set_alt(info->cts_gpio, LNW_GPIO);
@@ -576,7 +576,7 @@ void intel_mid_hsu_resume(int port, struct device *dev)
 		gpio_direction_input(info->rx_gpio);
 	}
 	if (info->tx_gpio) {
-		gpio_direction_output(info->tx_gpio, 0);
+		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
 
 	}
