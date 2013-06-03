@@ -36,6 +36,7 @@
 #include <media/v4l2-subdev.h>
 #include "imx175.h"
 #include "imx135.h"
+#include "imx135vb.h"
 
 #define I2C_MSG_LENGTH		0x2
 
@@ -49,6 +50,7 @@
 /*
  * imx System control registers
  */
+#define IMX_MASK_5BIT	0x1F
 #define IMX_MASK_4BIT	0xF
 #define IMX_MASK_2BIT	0x3
 #define IMX_MASK_11BIT	0x7FF
@@ -63,7 +65,11 @@
 #define IMX_OP_PIX_DIV			0x0309
 #define IMX_OP_SYS_DIV			0x030B
 #define IMX_FRAME_LENGTH_LINES		0x0340
-#define IMX_COARSE_INTG_TIME_MIN		0x1004
+#define IMX_LINE_LENGTH_PIXELS		0x0342
+#define IMX_COARSE_INTG_TIME_MIN	0x1004
+#define IMX_COARSE_INTG_TIME_MAX	0x1006
+#define IMX_BINNING_ENABLE		0x0390
+#define IMX_BINNING_TYPE		0x0391
 
 #define IMX_READ_MODE				0x0390
 
@@ -210,6 +216,15 @@ struct imx_settings imx_sets[] = {
 		.n_res_preview = ARRAY_SIZE(imx135_res_preview),
 		.n_res_still = ARRAY_SIZE(imx135_res_still),
 		.n_res_video = ARRAY_SIZE(imx135_res_video),
+	},
+	[IMX135_VICTORIABAY] = {
+		.init_settings = imx135vb_init_settings,
+		.res_preview = imx135vb_res_preview,
+		.res_still = imx135vb_res_still,
+		.res_video = imx135vb_res_video,
+		.n_res_preview = ARRAY_SIZE(imx135vb_res_preview),
+		.n_res_still = ARRAY_SIZE(imx135vb_res_still),
+		.n_res_video = ARRAY_SIZE(imx135vb_res_video),
 	},
 };
 

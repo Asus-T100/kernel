@@ -583,7 +583,8 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	ret = imx_read_reg(client, 1, IMX_VT_PIX_CLK_DIV, data);
 	if (ret)
 		return ret;
-	vt_pix_clk_div = data[0] & IMX_MASK_4BIT;
+	vt_pix_clk_div = data[0] & IMX_MASK_5BIT;
+
 	ret = imx_read_reg(client, 1, IMX_VT_SYS_CLK_DIV, data);
 	if (ret)
 		return ret;
@@ -599,7 +600,7 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	ret = imx_read_reg(client, 1, IMX_OP_PIX_DIV, data);
 	if (ret)
 		return ret;
-	op_pix_clk_div = data[0] & IMX_MASK_4BIT;
+	op_pix_clk_div = data[0] & IMX_MASK_5BIT;
 	ret = imx_read_reg(client, 1, IMX_OP_SYS_DIV, data);
 	if (ret)
 		return ret;
@@ -618,32 +619,6 @@ static int imx_get_intg_factor(struct i2c_client *client,
 		return ret;
 	coarse_integration_time_min = data[0];
 	coarse_integration_time_max_margin = data[1];
-
-	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
-	ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
-	if (ret)
-		return ret;
-	read_mode = data[0] & IMX_MASK_2BIT;
-
-	div = pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div;
-	if (div == 0)
-		return -EINVAL;
-	vt_pix_clk_freq_mhz = 2 * ext_clk_freq_hz / div;
-	vt_pix_clk_freq_mhz *= pll_multiplier;
-
-	dev->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
-
-	buf->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
-	buf->coarse_integration_time_min = coarse_integration_time_min;
-	buf->coarse_integration_time_max_margin =
-				coarse_integration_time_max_margin;
-
-	buf->fine_integration_time_min = IMX_FINE_INTG_TIME;
-	buf->fine_integration_time_max_margin = IMX_FINE_INTG_TIME;
-	buf->fine_integration_time_def = IMX_FINE_INTG_TIME;
-	buf->frame_length_lines = frame_length_lines;
-	buf->line_length_pck = line_length_pck;
-	buf->read_mode = read_mode;
 
 	/* Get the cropping and output resolution to ISP for this mode. */
 	ret =  imx_read_reg(client, 2, IMX_HORIZONTAL_START_H, data);
@@ -676,12 +651,47 @@ static int imx_get_intg_factor(struct i2c_client *client,
 		return ret;
 	buf->output_height = data[0];
 
-	buf->binning_factor_x =
-		dev->curr_res_table[dev->fmt_idx].bin_factor_x ?
-			dev->curr_res_table[dev->fmt_idx].bin_factor_x : 1;
-	buf->binning_factor_y =
-		dev->curr_res_table[dev->fmt_idx].bin_factor_y ?
-			dev->curr_res_table[dev->fmt_idx].bin_factor_y : 1;
+	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
+	ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
+	if (ret)
+		return ret;
+	read_mode = data[0] & IMX_MASK_2BIT;
+
+	div = pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div;
+	if (div == 0)
+		return -EINVAL;
+
+	vt_pix_clk_freq_mhz = 2 * ext_clk_freq_hz / div;
+	vt_pix_clk_freq_mhz *= pll_multiplier;
+
+	dev->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
+
+	buf->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
+	buf->coarse_integration_time_min = coarse_integration_time_min;
+	buf->coarse_integration_time_max_margin =
+				coarse_integration_time_max_margin;
+
+	buf->fine_integration_time_min = IMX_FINE_INTG_TIME;
+	buf->fine_integration_time_max_margin = IMX_FINE_INTG_TIME;
+	buf->fine_integration_time_def = IMX_FINE_INTG_TIME;
+	buf->frame_length_lines = frame_length_lines;
+	buf->line_length_pck = line_length_pck;
+	buf->read_mode = read_mode;
+
+	ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data);
+	if (ret)
+		return ret;
+	/* 1:binning enabled, 0:disabled */
+	if (data[0] == 1) {
+		ret = imx_read_reg(client, 1, IMX_BINNING_TYPE, data);
+		if (ret)
+			return ret;
+		buf->binning_factor_x = data[0] >> 4 & 0x0f;
+		buf->binning_factor_y = data[0] & 0xf;
+	} else {
+		buf->binning_factor_x = 1;
+		buf->binning_factor_y = 1;
+	}
 
 	return 0;
 }
@@ -1144,6 +1154,8 @@ static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 	struct imx_device *dev = to_imx_sensor(sd);
 	int idx = 0;
 
+	mutex_lock(&dev->input_lock);
+
 	if ((fmt->width > imx_max_res[dev->sensor_id].res_max_width)
 		|| (fmt->height > imx_max_res[dev->sensor_id].res_max_height)) {
 		fmt->width =  imx_max_res[dev->sensor_id].res_max_width;
@@ -1166,6 +1178,7 @@ static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 
 	fmt->code = V4L2_MBUS_FMT_SRGGB10_1X10;
 
+	mutex_unlock(&dev->input_lock);
 	return 0;
 }
 
@@ -1183,28 +1196,24 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 
 	ret = imx_try_mbus_fmt(sd, fmt);
-	if (ret) {
-		v4l2_err(sd, "try fmt fail\n");
+	if (ret)
 		return ret;
-	}
 
 	mutex_lock(&dev->input_lock);
+
 	dev->fmt_idx = get_resolution_index(sd, fmt->width, fmt->height);
 
 	/* Sanity check */
 	if (unlikely(dev->fmt_idx == -1)) {
-		mutex_unlock(&dev->input_lock);
-		v4l2_err(sd, "get resolution fail\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	imx_def_reg = dev->curr_res_table[dev->fmt_idx].regs;
 
 	ret = imx_write_reg_array(client, imx_def_reg);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
+	if (ret)
+		goto out;
 
 	ret = imx_write_reg_array(client, imx_param_update);
 	if (ret) {
@@ -1217,18 +1226,12 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 			dev->curr_res_table[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame =
 			dev->curr_res_table[dev->fmt_idx].lines_per_frame;
-	dev->coarse_itg = 0;
-	dev->fine_itg = 0;
-	dev->gain = 0;
 
 	ret = imx_get_intg_factor(client, imx_info, imx_def_reg);
-	mutex_unlock(&dev->input_lock);
-	if (ret) {
-		v4l2_err(sd, "failed to get integration_factor\n");
-		return -EINVAL;
-	}
 
-	return 0;
+out:
+	mutex_unlock(&dev->input_lock);
+	return ret;
 }
 
 
@@ -1383,6 +1386,16 @@ static int imx_s_config(struct v4l2_subdev *sd,
 	dev->platform_data = pdata;
 
 	mutex_lock(&dev->input_lock);
+
+	if (dev->platform_data->platform_init) {
+		ret = dev->platform_data->platform_init(client);
+		if (ret) {
+			mutex_unlock(&dev->input_lock);
+			dev_err(&client->dev, "imx platform init err\n");
+			return ret;
+		}
+	}
+
 	ret = __imx_s_power(sd, 1);
 	if (ret) {
 		v4l2_err(client, "imx power-up err.\n");
@@ -1401,6 +1414,8 @@ static int imx_s_config(struct v4l2_subdev *sd,
 		goto fail_detect;
 	}
 
+	dev->sensor_id = sensor_id;
+	dev->sensor_revision = sensor_revision;
 	/* power off sensor */
 	ret = __imx_s_power(sd, 0);
 	mutex_unlock(&dev->input_lock);
@@ -1618,6 +1633,10 @@ static int imx_remove(struct i2c_client *client)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx_device *dev = to_imx_sensor(sd);
 
+	if (dev->platform_data->platform_deinit)
+		dev->platform_data->platform_deinit();
+
+	media_entity_cleanup(&dev->sd.entity);
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);
 	kfree(dev);
@@ -1639,8 +1658,13 @@ static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
 		}
 		break;
 	case IMX135_ID:
-		dev->mode_tables = &imx_sets[IMX135_SALTBAY];
-		dev->vcm_driver = &imx_vcms[IMX135_SALTBAY];
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+			dev->mode_tables = &imx_sets[IMX135_VICTORIABAY];
+			dev->vcm_driver = &imx_vcms[IMX135_VICTORIABAY];
+		} else {
+			dev->mode_tables = &imx_sets[IMX135_SALTBAY];
+			dev->vcm_driver = &imx_vcms[IMX135_SALTBAY];
+		}
 		break;
 	default:
 		return -EINVAL;
