@@ -138,7 +138,45 @@ bool auo_get_hw_state(struct intel_dsi_device *dev)
 
 struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
 {
-	return NULL;
+	u32 hblank = 0x78;
+	u32 vblank = 0x0C;
+	u32 hsync_offset = 0x28;
+	u32 hsync_width  = 0x28;
+	u32 vsync_offset = 0x4;
+	u32 vsync_width  = 0x4;
+	struct drm_display_mode *mode = NULL;
+	struct drm_i915_private *dev_priv = dsi->dev_priv;
+
+	/* Allocate */
+	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
+	if (!mode) {
+		DRM_DEBUG_KMS("AUO Panel: No memory\n");
+		return NULL;
+	}
+
+	/* Hardcode 1920x1200*/
+	strcpy(mode->name, "1920x1200");
+	mode->hdisplay = 0x780;
+	mode->vdisplay = 0x4B0;
+	mode->vrefresh = 60;
+	mode->clock =  148350;
+
+	/* Calculate */
+	mode->hsync_start = mode->hdisplay + hsync_offset;
+	mode->hsync_end = mode->hdisplay + hsync_offset
+		+ hsync_width;
+	mode->htotal = mode->hdisplay + hblank;
+	mode->vsync_start = mode->vdisplay + vsync_offset;
+	mode->vsync_end = mode->vdisplay + vsync_offset
+		+ vsync_width;
+	mode->vtotal = mode->vdisplay + vblank;
+
+	/* Configure */
+	mode->flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC;
+	mode->type |= DRM_MODE_TYPE_PREFERRED;
+	mode->status = MODE_OK;
+
+	return mode;
 }
 
 void auo_dump_regs(struct intel_dsi_device *dsi) { }
