@@ -72,7 +72,7 @@ static int s5k8aay_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
-
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 #ifdef CONFIG_BOARD_CTP
 	int reg_err;
 #endif
@@ -82,7 +82,7 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 			camera_vemmc1_on = 1;
 			reg_err = regulator_enable(vemmc1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT "Failed to enable regulator vemmc1\n");
+				dev_err(&client->dev, "Failed to enable regulator vemmc1\n");
 				return reg_err;
 			}
 		}
@@ -94,7 +94,7 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 			camera_vprog1_on = 1;
 			reg_err = regulator_enable(vprog1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
+				dev_err(&client->dev, "Failed to enable regulator vprog1\n");
 				return reg_err;
 			}
 		}
@@ -126,7 +126,7 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 
 			reg_err = regulator_disable(vprog1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
+				dev_err(&client->dev, "Failed to disable regulator vprog1\n");
 				return reg_err;
 			}
 		}
@@ -135,7 +135,7 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 
 			reg_err = regulator_disable(vemmc1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT "Failed to disable regulator vemmc1\n");
+				dev_err(&client->dev, "Failed to disable regulator vemmc1\n");
 				return reg_err;
 			}
 		}
