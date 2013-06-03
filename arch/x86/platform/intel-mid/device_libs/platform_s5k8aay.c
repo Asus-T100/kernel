@@ -119,21 +119,23 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 #endif
 	} else {
 #ifdef CONFIG_BOARD_CTP
-		if (camera_vemmc1_on) {
-			camera_vemmc1_on = 0;
+		gpio_set_value(camera_power, 0);
 
-			reg_err = regulator_disable(vemmc1_reg);
-			if (reg_err) {
-				printk(KERN_ALERT "Failed to disable regulator vemmc1\n");
-				return reg_err;
-			}
-		}
 		if (camera_vprog1_on) {
 			camera_vprog1_on = 0;
 
 			reg_err = regulator_disable(vprog1_reg);
 			if (reg_err) {
 				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
+				return reg_err;
+			}
+		}
+		if (camera_vemmc1_on) {
+			camera_vemmc1_on = 0;
+
+			reg_err = regulator_disable(vemmc1_reg);
+			if (reg_err) {
+				printk(KERN_ALERT "Failed to disable regulator vemmc1\n");
 				return reg_err;
 			}
 		}

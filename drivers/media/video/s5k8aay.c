@@ -392,14 +392,14 @@ static int power_down(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
-	ret = dev->platform_data->flisclk_ctrl(sd, 0);
-	if (ret)
-		dev_err(&client->dev, "flisclk off failed\n");
-
 	/* gpio ctrl */
 	ret = dev->platform_data->gpio_ctrl(sd, 0);
 	if (ret)
 		dev_err(&client->dev, "gpio off failed\n");
+
+	ret = dev->platform_data->flisclk_ctrl(sd, 0);
+	if (ret)
+		dev_err(&client->dev, "flisclk off failed\n");
 
 	/* power control */
 	ret = dev->platform_data->power_ctrl(sd, 0);
