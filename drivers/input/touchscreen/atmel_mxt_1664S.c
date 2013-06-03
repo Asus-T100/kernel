@@ -27,7 +27,6 @@
 #include <linux/earlysuspend.h>
 #endif
 #include <asm/intel_vlv2.h>
-#include <linux/mfd/intel_mid_pmic.h>
 
 #define MXT_FORCE_BOOTLOADER	1
 #define BOOTLOADER_1664_1188	1
@@ -2307,8 +2306,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		goto err_free_mem;
 	}
 
-	intel_mid_pmic_writeb(0x3e, 0x37);
-	msleep(25);
 	error = mxt_initialize(data);
 	if (error)
 		goto err_remove_sysfs_group;
