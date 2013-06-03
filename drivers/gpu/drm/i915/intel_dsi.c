@@ -571,54 +571,15 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 {
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
-	struct drm_display_mode *mode;
+	struct drm_display_mode *mode = NULL;
 
-	u32 hblank;
-	u32 vblank;
-	u32 hsync_offset;
-	u32 hsync_width;
-	u32 vsync_offset;
-	u32 vsync_width;
-
-	DRM_DEBUG_KMS("\n");
-
-	hblank = 0x78;
-	vblank = 0x0C;
-	hsync_offset = 0x28;
-	hsync_width = 0x28;
-	vsync_offset = 0x4;
-	vsync_width = 0x4;
-
-	intel_dsi->panel_fixed_mode = kzalloc(sizeof(struct drm_display_mode),
-			GFP_KERNEL);
-	if (intel_dsi->panel_fixed_mode == NULL) {
+	/* Get the mode info from panel specific callback */
+	intel_dsi->panel_fixed_mode =
+		intel_dsi->dev.dev_ops->get_modes(&intel_dsi->dev);
+	if (!intel_dsi->panel_fixed_mode) {
 		DRM_ERROR("out of memory for fixed panel mode\n");
 		return 0;
 	}
-
-	strcpy(intel_dsi->panel_fixed_mode->name, "1920x1200");
-	intel_dsi->panel_fixed_mode->hdisplay = 0x780;
-	intel_dsi->panel_fixed_mode->vdisplay = 0x4B0;
-	intel_dsi->panel_fixed_mode->hsync_start =
-			intel_dsi->panel_fixed_mode->hdisplay + hsync_offset;
-	intel_dsi->panel_fixed_mode->hsync_end =
-			intel_dsi->panel_fixed_mode->hdisplay +
-			hsync_offset + hsync_width;
-	intel_dsi->panel_fixed_mode->htotal =
-			intel_dsi->panel_fixed_mode->hdisplay + hblank;
-	intel_dsi->panel_fixed_mode->vsync_start =
-			intel_dsi->panel_fixed_mode->vdisplay + vsync_offset;
-	intel_dsi->panel_fixed_mode->vsync_end =
-			intel_dsi->panel_fixed_mode->vdisplay +
-			vsync_offset + vsync_width;
-	intel_dsi->panel_fixed_mode->vtotal =
-			intel_dsi->panel_fixed_mode->vdisplay + vblank;
-
-	intel_dsi->panel_fixed_mode->vrefresh = 60;
-	intel_dsi->panel_fixed_mode->clock =  148350;
-	intel_dsi->panel_fixed_mode->flags =
-			DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC;
-	intel_dsi->panel_fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
 
 	mode = drm_mode_duplicate(connector->dev, intel_dsi->panel_fixed_mode);
 	if (!mode)
@@ -626,10 +587,11 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 
 	mode->status = MODE_OK;
 
+	/* Add this mode in probed mode list */
 	drm_mode_probed_add(connector, mode);
-	DRM_DEBUG_KMS("1\n");
+	DRM_DEBUG_KMS("Mode read done\n");
 
-	/* fill the panel info here for now */
+	/* Fill the panel info here */
 	intel_dsi->dev.dev_ops->get_info(0, connector);
 
 	return 1;
