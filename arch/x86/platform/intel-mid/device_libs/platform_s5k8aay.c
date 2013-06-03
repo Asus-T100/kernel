@@ -79,7 +79,6 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
 		if (!camera_vemmc1_on) {
-
 			camera_vemmc1_on = 1;
 			reg_err = regulator_enable(vemmc1_reg);
 			if (reg_err) {
@@ -87,8 +86,11 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 				return reg_err;
 			}
 		}
-		if (!camera_vprog1_on) {
 
+		/* Small waiting is needed between Vana and Vdig */
+		usleep_range(50, 50);
+
+		if (!camera_vprog1_on) {
 			camera_vprog1_on = 1;
 			reg_err = regulator_enable(vprog1_reg);
 			if (reg_err) {
