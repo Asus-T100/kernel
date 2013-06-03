@@ -1266,6 +1266,48 @@ static void assert_plane(struct drm_i915_private *dev_priv,
 #define assert_plane_enabled(d, p) assert_plane(d, p, true)
 #define assert_plane_disabled(d, p) assert_plane(d, p, false)
 
+bool is_plane_enabled(struct drm_i915_private *dev_priv,
+			enum plane plane)
+{
+	int reg;
+	u32 val;
+
+	reg = DSPCNTR(plane);
+	val = I915_READ(reg);
+	return val & DISPLAY_PLANE_ENABLE;
+}
+
+bool is_sprite_enabled(struct drm_i915_private *dev_priv,
+			enum pipe pipe, enum plane plane)
+{
+	int reg;
+	u32 val;
+
+	reg = SPCNTR(pipe, plane);
+	val = I915_READ(reg);
+	return val & SP_ENABLE;
+}
+
+bool is_cursor_enabled(struct drm_i915_private *dev_priv,
+			enum pipe pipe)
+{
+	int reg;
+	bool ret = false;
+	u32 val;
+
+	reg = CURCNTR(pipe);
+	val = I915_READ(reg);
+
+	/* check bit 5 of cursor control register.
+	if bit 5 is 1, then cursor enabled */
+	ret = val & CUR_MODE_SEL_BIT;
+	/* if bit 5 is 0, check if bit 2:0 are all zeroes */
+	if (false == ret)
+		ret = val & CUR_ENABLE;
+
+	return ret;
+}
+
 static void assert_planes_disabled(struct drm_i915_private *dev_priv,
 				   enum pipe pipe)
 {
@@ -3741,7 +3783,6 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	intel_crtc->active = true;
 	if (dev_priv->disp_pm_in_progress == true)
 		intel_crtc->disp_suspend_state = false;
-	intel_update_watermarks(dev);
 
 	if (!dev_priv->is_mipi)
 		intel_enable_pll(dev_priv, pipe);
@@ -3761,6 +3802,7 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 
 	intel_crtc_load_lut(crtc);
 	intel_update_fbc(dev);
+	intel_update_watermarks(dev);
 
 	/* Give the overlay scaler a chance to enable if it's on this pipe */
 	intel_crtc_dpms_overlay(intel_crtc, true);

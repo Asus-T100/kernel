@@ -2932,6 +2932,9 @@ EDP_PSR_SW_TIMER
 #define DDL_CURSORB_PRECISION_64	(1<<31)
 #define DDL_CURSORB_PRECISION_32	(0<<31)
 #define DDL_CURSORB_SHIFT		24
+#define DDL_SPRITEB_PRECISION_64	(1<<23)
+#define DDL_SPRITEB_PRECISION_32	(0<<23)
+#define DDL_SPRITEB_SHIFT		16
 #define DDL_PLANEB_PRECISION_64		(1<<7)
 #define DDL_PLANEB_PRECISION_32		(0<<7)
 
@@ -3111,6 +3114,8 @@ EDP_PSR_SW_TIMER
 #define   MCURSOR_PIPE_A	0x00
 #define   MCURSOR_PIPE_B	(1 << 28)
 #define   MCURSOR_GAMMA_ENABLE  (1 << 26)
+#define   CUR_MODE_SEL_BIT	(1 << 5)
+#define   CUR_ENABLE		7
 #define   _CURABASE		0x70084
 #define   _CURAPOS		0x70088
 #define   CURSOR_POS_MASK       0x007FF
@@ -3426,6 +3431,9 @@ EDP_PSR_SW_TIMER
 #define _SPBGAMC		0x722f4
 #define VLV_NUM_SPRITES		2
 #define _SPBLIVESURF		0x722AC
+
+#define _SPCCNTR		0x72380
+#define _SPDCNTR		0x72480
 
 #define SPCNTR(pipe, plane) _PIPE(pipe * 2 + plane, _SPACNTR, _SPBCNTR)
 #define SPLINOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPALINOFF, _SPBLINOFF)

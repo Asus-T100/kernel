@@ -1219,31 +1219,51 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 				     int *plane_prec_mult,
 				     int *plane_dl,
 				     int *cursor_prec_mult,
-				     int *cursor_dl)
+				     int *cursor_dl,
+				int *sprite_prec_mult, int *sprite_dl,
+				int sprite_pixel_size,
+				struct vlv_MA_component_enabled enable)
 {
 	struct drm_crtc *crtc;
 	int clock, pixel_size;
 	int entries;
+	bool latencyprogrammed = false;
 
 	crtc = intel_get_crtc_for_plane(dev, plane);
 	if (crtc->fb == NULL || !crtc->enabled)
 		return false;
 
 	clock = crtc->mode.clock;	/* VESA DOT Clock */
-	pixel_size = crtc->fb->bits_per_pixel / 8;	/* BPP */
 
-	entries = (clock / 1000) * pixel_size;
-	*plane_prec_mult = (entries > 256) ?
-		DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
-	*plane_dl = (64 * (*plane_prec_mult) * 4) / ((clock / 1000) *
+	if (enable.EnPlane) {
+		pixel_size = crtc->fb->bits_per_pixel / 8;	/* BPP */
+		entries = (clock / 1000) * pixel_size;
+		*plane_prec_mult = (entries > 256) ?
+			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
+		*plane_dl = (64 * (*plane_prec_mult) * 4) / ((clock / 1000) *
 						     pixel_size);
+		latencyprogrammed = true;
+	}
 
-	entries = (clock / 1000) * 4;	/* BPP is always 4 for cursor */
-	*cursor_prec_mult = (entries > 256) ?
-		DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
-	*cursor_dl = (64 * (*cursor_prec_mult) * 4) / ((clock / 1000) * 4);
+	if (enable.EnCursor) {
+		entries = (clock / 1000) * 4;	/* BPP is always 4 for cursor */
+		*cursor_prec_mult = (entries > 256) ?
+			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
+		*cursor_dl = (64 * (*cursor_prec_mult) * 4) / ((clock / 1000) *
+							4);
+		latencyprogrammed = true;
+	}
 
-	return true;
+	if (enable.EnSprite) {
+		entries = (clock / 1000) * sprite_pixel_size;
+		*sprite_prec_mult = (entries > 256) ?
+			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
+		*sprite_dl = (64 * (*sprite_prec_mult) * 4) / ((clock / 1000) *
+						sprite_pixel_size);
+		latencyprogrammed = true;
+	}
+
+	return latencyprogrammed;
 }
 
 /*
@@ -1257,39 +1277,63 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 static void vlv_update_drain_latency(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int planea_prec, planea_dl, planeb_prec, planeb_dl;
-	int spritea_prec;
-	int cursora_prec, cursora_dl, cursorb_prec, cursorb_dl;
-	int plane_prec_mult, cursor_prec_mult; /* Precision multiplier is
-							either 64 or 32 */
+	int planea_prec = 0, planea_dl = 0, planeb_prec = 0, planeb_dl = 0;
+	int cursora_prec = 0, cursora_dl = 0, cursorb_prec = 0, cursorb_dl = 0;
+	int plane_prec_mult = 0, cursor_prec_mult = 0;
+	/* Precision multiplier is either 64 or 32 */
+	struct vlv_MA_component_enabled enable;
+	u32 val;
+
+	/* compute & update drain latency only if plane enabled */
+
+	enable.EnPlane = is_plane_enabled(dev_priv, 0);
+	enable.EnCursor = is_cursor_enabled(dev_priv, 0);
+	enable.EnSprite = false;
 
 	/* For plane A, Cursor A */
-	if (vlv_compute_drain_latency(dev, 0, &plane_prec_mult, &planea_dl,
-				      &cursor_prec_mult, &cursora_dl)) {
-		cursora_prec = (cursor_prec_mult == DRAIN_LATENCY_PRECISION_32) ?
-			DDL_CURSORA_PRECISION_32 : DDL_CURSORA_PRECISION_64;
-		planea_prec = (plane_prec_mult == DRAIN_LATENCY_PRECISION_32) ?
-			DDL_PLANEA_PRECISION_32 : DDL_PLANEA_PRECISION_64;
-		spritea_prec = (plane_prec_mult == DRAIN_LATENCY_PRECISION_32) ?
-			DDL_SPRITEA_PRECISION_32 : DDL_SPRITEA_PRECISION_64;
+	if (vlv_compute_drain_latency(dev, 0, &plane_prec_mult,
+		&planea_dl, &cursor_prec_mult, &cursora_dl, NULL,
+		NULL, 0, enable)) {
+		cursora_prec = (cursor_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_CURSORA_PRECISION_32 :
+				DDL_CURSORA_PRECISION_64;
+		planea_prec = (plane_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_PLANEA_PRECISION_32 :
+				DDL_PLANEA_PRECISION_64;
 
-		I915_WRITE(VLV_DDL1, cursora_prec |
-			   (cursora_dl << DDL_CURSORA_SHIFT) |
-			   (spritea_prec | (planea_dl << DDL_SPRITEA_SHIFT)) |
-			   planea_prec | planea_dl);
+		val = I915_READ(VLV_DDL1);
+		I915_WRITE(VLV_DDL1, val | cursora_prec |
+			(cursora_dl << DDL_CURSORA_SHIFT) |
+			planea_prec | planea_dl);
+	} else {
+		I915_WRITE(VLV_DDL1, 0);
 	}
 
-	/* For plane B, Cursor B */
-	if (vlv_compute_drain_latency(dev, 1, &plane_prec_mult, &planeb_dl,
-				      &cursor_prec_mult, &cursorb_dl)) {
-		cursorb_prec = (cursor_prec_mult == DRAIN_LATENCY_PRECISION_32) ?
-			DDL_CURSORB_PRECISION_32 : DDL_CURSORB_PRECISION_64;
-		planeb_prec = (plane_prec_mult == DRAIN_LATENCY_PRECISION_32) ?
-			DDL_PLANEB_PRECISION_32 : DDL_PLANEB_PRECISION_64;
+	enable.EnPlane = is_plane_enabled(dev_priv, 1);
+	enable.EnCursor = is_cursor_enabled(dev_priv, 1);
+	enable.EnSprite = false;
 
-		I915_WRITE(VLV_DDL2, cursorb_prec |
-				(cursorb_dl << DDL_CURSORB_SHIFT) |
-				planeb_prec | planeb_dl);
+	/* For plane B, Cursor B */
+	if (vlv_compute_drain_latency(dev, 1, &plane_prec_mult,
+		&planeb_dl, &cursor_prec_mult, &cursorb_dl, NULL,
+		NULL, 0, enable)) {
+		cursorb_prec = (cursor_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_CURSORB_PRECISION_32 :
+				DDL_CURSORB_PRECISION_64;
+		planeb_prec = (plane_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_PLANEB_PRECISION_32 :
+				DDL_PLANEB_PRECISION_64;
+
+		val = I915_READ(VLV_DDL2);
+		I915_WRITE(VLV_DDL2, val | cursorb_prec |
+			(cursorb_dl << DDL_CURSORB_SHIFT) |
+			planeb_prec | planeb_dl);
+	} else {
+		I915_WRITE(VLV_DDL1, 0);
 	}
 }
 
@@ -2092,6 +2136,82 @@ static void valleyview_update_sprite_wm(struct drm_device *dev, int pipe,
 					int pixel_size)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	int sprite_prec = 0, sprite_dl = 0;
+	int sprite_prec_mult = 0;
+	struct vlv_MA_component_enabled enable;
+	u32 val;
+
+	/* Sprite A */
+	enable.EnSprite = is_sprite_enabled(dev_priv, 0, 0);
+
+	val = I915_READ(VLV_DDL1);
+	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
+		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
+		sprite_prec = (sprite_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_SPRITEA_PRECISION_32 :
+				DDL_SPRITEA_PRECISION_64;
+
+		I915_WRITE(VLV_DDL1, val |
+			(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+	} else {
+		I915_WRITE(VLV_DDL1, val &
+			(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+	}
+
+	/* Sprite B */
+	enable.EnSprite = is_sprite_enabled(dev_priv, 0, 1);
+
+	val = I915_READ(VLV_DDL1);
+	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
+		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
+		sprite_prec = (sprite_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_SPRITEB_PRECISION_32 :
+				DDL_SPRITEB_PRECISION_64;
+
+		I915_WRITE(VLV_DDL1, val |
+			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
+	}  else {
+		I915_WRITE(VLV_DDL1, val &
+			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
+	}
+
+	/* Sprite C */
+	enable.EnSprite = is_sprite_enabled(dev_priv, 1, 0);
+
+	val = I915_READ(VLV_DDL2);
+	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
+		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
+		sprite_prec = (sprite_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_SPRITEA_PRECISION_32 :
+				DDL_SPRITEA_PRECISION_64;
+
+		I915_WRITE(VLV_DDL2, val |
+			(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+	} else {
+		I915_WRITE(VLV_DDL2, val &
+		(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+	}
+
+	/* Sprite D */
+	enable.EnSprite = is_sprite_enabled(dev_priv, 1, 1);
+
+	val = I915_READ(VLV_DDL2);
+	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
+		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
+		sprite_prec = (sprite_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_SPRITEB_PRECISION_32 :
+				DDL_SPRITEB_PRECISION_64;
+
+		I915_WRITE(VLV_DDL2, val |
+			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
+	} else {
+		I915_WRITE(VLV_DDL2, val &
+			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
+	}
 
 	I915_WRITE(DSPFW4, (DSPFW4_SPRITEB_VAL << DSPFW4_SPRITEB_SHIFT) |
 			(DSPFW4_CURSORA_VAL << DSPFW4_CURSORA_SHIFT) |
