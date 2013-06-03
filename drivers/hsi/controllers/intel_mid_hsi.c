@@ -315,6 +315,7 @@ struct intel_xfer_ctx {
  * @wakeup_packet_log: Enable/Disable the dump of the wakeup packet
  * @resumed: Set to TRUE when the HSI driver exit the resume state
  * @use_oob_cawake: Set to true if intended to be used
+ * @hsi_wake_raised: Set to TRUE when interrupt fires on hsi_cawke gpio
  */
 struct intel_controller {
 	/* Devices and resources */
@@ -388,6 +389,7 @@ struct intel_controller {
 #endif
 	u16 wakeup_packet_log;
 	u16 resumed;
+	u16 hsi_wake_raised;
 
 	bool use_oob_cawake;
 };
@@ -893,7 +895,8 @@ static void unforce_disable_acready(struct intel_controller *intel_hsi)
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (unlikely((intel_hsi->rx_state == RX_SLEEPING) &&
 		     (!(intel_hsi->irq_cfg & ARASAN_IRQ_RX_WAKE)))) {
-		intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
+		if (!use_oob_cawake(intel_hsi))
+			intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
 		if (intel_hsi->suspend_state == DEVICE_READY)
 			hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 	}
@@ -2912,8 +2915,9 @@ static int hsi_mid_setup(struct hsi_client *cl)
 	int full_rx_sz, rx_sz, rx_en, rx_th;
 	unsigned int divisor, rx_timeout, data_timeout;
 	unsigned long flags;
-	u32 arb_cfg, sz_cfg, irq_cfg, err_cfg, clk_cfg, prg_cfg;
+	u32 arb_cfg, sz_cfg, err_cfg, clk_cfg, prg_cfg;
 	int i, dma_ch, err = 0;
+	u32 irq_cfg = 0;
 
 	/* Read the platform data to initialise the device */
 	pd = (struct hsi_mid_platform_data *)(cl->device.platform_data);
@@ -3026,6 +3030,7 @@ static int hsi_mid_setup(struct hsi_client *cl)
 	intel_hsi->prg_cfg |= prg_cfg;
 	intel_hsi->arb_cfg  = arb_cfg;
 	intel_hsi->sz_cfg   = sz_cfg;
+	intel_hsi->hsi_wake_raised = 0;
 
 	for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
 		intel_hsi->tx_fifo_sz[i]  = tx_fifo_sz[i];
@@ -3520,18 +3525,21 @@ static void hsi_isr_tasklet(unsigned long hsi)
 	u32 rx_mask	= ARASAN_IRQ_RX_THRESHOLD(0);
 	unsigned long flags;
 	int do_fwd = 0;
+	int hsi_wake_raised = 0;
 
 	/* Get a local copy of the current interrupt status */
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	irq_status = intel_hsi->irq_status;
 	err_status = intel_hsi->err_status;
 	dma_status = intel_hsi->dma_status;
+	hsi_wake_raised = intel_hsi->hsi_wake_raised;
 	intel_hsi->irq_status = 0;
 	intel_hsi->err_status = 0;
 	intel_hsi->dma_status = 0;
+	intel_hsi->hsi_wake_raised = 0;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	if (irq_status & ARASAN_IRQ_RX_WAKE) {
+	if ((irq_status & ARASAN_IRQ_RX_WAKE) || hsi_wake_raised) {
 		if (!intel_hsi->resumed)
 			intel_hsi->wakeup_packet_log = 1;
 		enable_acready(intel_hsi);
@@ -3683,6 +3691,9 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 		intel_hsi->irq_status |= ARASAN_IRQ_RX_WAKE;
 		goto exit_irq;
 	}
+
+	if (irq == intel_hsi->irq_wake)
+		intel_hsi->hsi_wake_raised = 1;
 
 	dma_status = 0;
 	err_status = 0;
