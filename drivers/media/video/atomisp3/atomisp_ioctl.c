@@ -479,13 +479,17 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 				uint16_t source_pad,
 				struct ia_css_frame_info *frame_info)
 {
+	enum ia_css_err ret;
 	struct ia_css_pipe_info info;
 	int pipe_index = atomisp_get_pipe_index(isp, source_pad);
 
 	if (pipe_index >= IA_CSS_PIPE_ID_NUM)
 		return -EINVAL;
 
-	ia_css_pipe_get_info(isp->css2_basis.pipes[pipe_index], &info);
+	ret = ia_css_pipe_get_info(isp->css2_basis.pipes[pipe_index], &info);
+	if (ret != IA_CSS_SUCCESS)
+		return -EINVAL;
+
 	switch (source_pad) {
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		*frame_info = info.output_info;
