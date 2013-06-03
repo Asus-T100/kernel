@@ -81,6 +81,12 @@ void psb_msvdx_check_reset_fw(struct drm_device *dev);
 void psb_powerdown_msvdx(struct work_struct *work);
 void psb_msvdx_flush_cmd_queue(struct drm_device *dev);
 
+#ifdef CONFIG_SLICE_HEADER_PARSING
+int psb_allocate_term_buf(struct drm_device *dev,
+			    struct ttm_buffer_object **term_buf,
+			    uint32_t *base_addr, unsigned long size);
+#endif
+int32_t msvdx_rendec_init_by_msg(struct drm_device *dev);
 
 /* psb_msvdx_fw.c */
 int32_t psb_msvdx_alloc_fw_bo(struct drm_psb_private *dev_priv);
@@ -118,6 +124,8 @@ int psb_setup_msvdx(struct drm_device *dev);
 
 #define RENDEC_A_SIZE	(4 * 1024 * 1024)
 #define RENDEC_B_SIZE	(1024 * 1024)
+
+#define TERMINATION_SIZE	48
 
 #define MSVDX_RESET_NEEDS_REUPLOAD_FW		(0x2)
 #define MSVDX_RESET_NEEDS_INIT_FW		(0x1)
@@ -251,6 +259,10 @@ struct msvdx_private {
 	uint32_t pm_gating_count;
 
 	struct page *mmu_recover_page;
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	struct ttm_buffer_object *term_buf;
+	uint32_t term_buf_addr;
+#endif
 };
 
 struct psb_msvdx_cmd_queue {

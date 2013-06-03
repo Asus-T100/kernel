@@ -87,6 +87,7 @@
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 int drm_psb_debug;
+int drm_decode_flag = 0x0;
 int drm_psb_enable_pr2_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
@@ -185,6 +186,9 @@ module_param_named(hdmi_state, hdmi_state, int, 0600);
 module_param_named(vblank_sync, drm_psb_3D_vblank, int, 0600);
 module_param_named(smart_vsync, drm_psb_smart_vsync, int, 0600);
 module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
+#ifdef CONFIG_SLICE_HEADER_PARSING
+module_param_named(decode_flag, drm_decode_flag, int, 0600);
+#endif
 
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly,
