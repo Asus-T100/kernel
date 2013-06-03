@@ -316,6 +316,7 @@ struct intel_xfer_ctx {
  * @resumed: Set to TRUE when the HSI driver exit the resume state
  * @use_oob_cawake: Set to true if intended to be used
  * @hsi_wake_raised: Set to TRUE when interrupt fires on hsi_cawke gpio
+ * @hsi_wake_disabled: Set to TRUE when interrupt of hsi_cawake gpio is disabled
  */
 struct intel_controller {
 	/* Devices and resources */
@@ -390,6 +391,7 @@ struct intel_controller {
 	u16 wakeup_packet_log;
 	u16 resumed;
 	u16 hsi_wake_raised;
+	u16 hsi_wake_disabled;
 
 	bool use_oob_cawake;
 };
@@ -869,6 +871,10 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	intel_hsi->irq_status	&= ~irq_clr;
 	intel_hsi->irq_cfg	&= ~irq_clr;
 	if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
+		if (use_oob_cawake(intel_hsi)) {
+			disable_irq(intel_hsi->irq_wake);
+			intel_hsi->hsi_wake_disabled = 1;
+		}
 		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 		iowrite32(irq_clr, ARASAN_REG(INT_STATUS));
 	}
@@ -897,6 +903,10 @@ static void unforce_disable_acready(struct intel_controller *intel_hsi)
 		     (!(intel_hsi->irq_cfg & ARASAN_IRQ_RX_WAKE)))) {
 		if (!use_oob_cawake(intel_hsi))
 			intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
+		else if (intel_hsi->hsi_wake_disabled) {
+			enable_irq(intel_hsi->irq_wake);
+			intel_hsi->hsi_wake_disabled = 0;
+		}
 		if (intel_hsi->suspend_state == DEVICE_READY)
 			hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 	}
@@ -2928,6 +2938,9 @@ static int hsi_mid_setup(struct hsi_client *cl)
 
 	/* Save the ACWAKE delay */
 	intel_hsi->acwake_delay = HSI_ACWAKE_DELAY;
+
+	/* Initialize hsi_wake disabling status */
+	intel_hsi->hsi_wake_disabled = 0;
 
 	/* Save the current TX speed */
 	intel_hsi->tx_speed = cl->tx_cfg.speed;
