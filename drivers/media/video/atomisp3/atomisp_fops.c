@@ -93,7 +93,7 @@ static int atomisp_buf_prepare(struct videobuf_queue *vq,
 int atomisp_q_video_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 			     struct atomisp_video_pipe *pipe,
 			     enum ia_css_buffer_type css_buf_type,
-			     enum ia_css_pipe_id css_pipe_id)
+			     enum ia_css_pipe_id css_pipe_id, bool streamoff)
 {
 	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
@@ -132,6 +132,14 @@ int atomisp_q_video_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 					__func__, err);
 			return -EINVAL;
 		}
+		/*
+		 * CSS2.0 Issue: after stream off, need to queue 1 buffer to CSS
+		 * to recover SP.
+		 * So if it is in stream off state, only need to queue 1 buffer
+		 */
+		if (streamoff)
+			return 0;
+
 		pipe->buffers_in_css++;
 		vb = NULL;
 	}
@@ -139,7 +147,7 @@ int atomisp_q_video_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 }
 
 int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *isp_subdev,
-			   enum ia_css_pipe_id css_pipe_id)
+			   enum ia_css_pipe_id css_pipe_id, bool streamoff)
 {
 	struct atomisp_s3a_buf *s3a_buf;
 	int pipe_index = 0;
@@ -164,13 +172,21 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 			return -EINVAL;
 		}
 		v4l2_dbg(5, dbg_level, &atomisp_dev, "q s3a buffer into css pipe[%d].\n", pipe_index);
+		/*
+		 * CSS2.0 Issue: after stream off, need to queue 1 buffer to CSS
+		 * to recover SP.
+		 * So if it is in stream off state, only need to queue 1 buffer
+		 */
+		if (streamoff)
+			return 0;
+
 		isp_subdev->s3a_bufs_in_css[css_pipe_id]++;
 	}
 	return 0;
 }
 
 int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *isp_subdev,
-			   enum ia_css_pipe_id css_pipe_id)
+			   enum ia_css_pipe_id css_pipe_id, bool streamoff)
 {
 	struct atomisp_dvs_buf *dvs_buf;
 
@@ -193,6 +209,14 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 			dev_err(isp_subdev->isp->dev, "failed to q dvs stat buffer\n");
 			return -EINVAL;
 		}
+		/*
+		 * CSS2.0 Issue: after stream off, need to queue 1 buffer to CSS
+		 * to recover SP.
+		 * So if it is in stream off state, only need to queue 1 buffer
+		 */
+		if (streamoff)
+			return 0;
+
 		isp_subdev->dis_bufs_in_css++;
 		dvs_buf = NULL;
 	}
@@ -211,7 +235,8 @@ static int atomisp_get_css_buf_type(struct atomisp_sub_device *isp_subdev,
 }
 
 /* queue all available buffers to css */
-int atomisp_qbuffers_to_css(struct atomisp_sub_device *isp_subdev)
+int atomisp_qbuffers_to_css(struct atomisp_sub_device *isp_subdev,
+			    bool streamoff)
 {
 	enum ia_css_buffer_type buf_type;
 	enum ia_css_pipe_id css_capture_pipe_id = IA_CSS_PIPE_ID_NUM;
@@ -252,14 +277,15 @@ int atomisp_qbuffers_to_css(struct atomisp_sub_device *isp_subdev)
 			isp_subdev,
 			atomisp_subdev_source_pad(&capture_pipe->vdev));
 		atomisp_q_video_buffers_to_css(isp_subdev, capture_pipe,
-					       buf_type, css_capture_pipe_id);
+					       buf_type, css_capture_pipe_id,
+					       streamoff);
 	}
 
 	if (vf_pipe) {
 		buf_type = atomisp_get_css_buf_type(
 			isp_subdev, atomisp_subdev_source_pad(&vf_pipe->vdev));
 		atomisp_q_video_buffers_to_css(isp_subdev, vf_pipe, buf_type,
-					 css_capture_pipe_id);
+					 css_capture_pipe_id, streamoff);
 	}
 
 	if (preview_pipe) {
@@ -267,20 +293,25 @@ int atomisp_qbuffers_to_css(struct atomisp_sub_device *isp_subdev)
 			isp_subdev,
 			atomisp_subdev_source_pad(&preview_pipe->vdev));
 		atomisp_q_video_buffers_to_css(isp_subdev, preview_pipe,
-					       buf_type, css_preview_pipe_id);
+					       buf_type, css_preview_pipe_id,
+					       streamoff);
 	}
 
 	if (isp_subdev->params.curr_grid_info.s3a_grid.enable) {
 		if (css_capture_pipe_id < IA_CSS_PIPE_ID_NUM)
 			atomisp_q_s3a_buffers_to_css(isp_subdev,
-						     css_capture_pipe_id);
-		if (css_preview_pipe_id < IA_CSS_PIPE_ID_NUM)
+						     css_capture_pipe_id,
+						     streamoff);
+		if (css_preview_pipe_id != css_capture_pipe_id &&
+		   css_preview_pipe_id < IA_CSS_PIPE_ID_NUM)
 			atomisp_q_s3a_buffers_to_css(isp_subdev,
-						     css_preview_pipe_id);
+						     css_preview_pipe_id,
+						     streamoff);
 	}
 
 	if (isp_subdev->params.curr_grid_info.dvs_grid.enable)
-		atomisp_q_dis_buffers_to_css(isp_subdev, css_capture_pipe_id);
+		atomisp_q_dis_buffers_to_css(isp_subdev, css_capture_pipe_id,
+					     streamoff);
 
 	return 0;
 }
@@ -447,6 +478,8 @@ int atomisp_subdev_init_struct(struct atomisp_sub_device *isp_subdev)
 	/* Add for channel */
 	if (isp_subdev->isp->inputs[0].camera)
 		isp_subdev->input_curr = 0;
+
+	init_completion(&isp_subdev->buf_done);
 
 	return 0;
 }

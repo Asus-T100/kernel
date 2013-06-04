@@ -650,6 +650,23 @@ void atomisp_clear_css_buffer_counters(struct atomisp_sub_device *isp_subdev)
 	isp_subdev->video_out_preview.buffers_in_css = 0;
 }
 
+/* return total number of buffers in css */
+static int __buffers_in_css(struct atomisp_sub_device *isp)
+{
+	unsigned int sum = 0;
+	unsigned int i;
+
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+		sum += isp->s3a_bufs_in_css[i];
+
+	sum += isp->dis_bufs_in_css;
+	sum += isp->video_out_capture.buffers_in_css;
+	sum += isp->video_out_vf.buffers_in_css;
+	sum += isp->video_out_preview.buffers_in_css;
+
+	return sum;
+}
+
 bool atomisp_buffers_queued(struct atomisp_sub_device *isp_subdev)
 {
 	return isp_subdev->video_out_capture.buffers_in_css ||
@@ -934,6 +951,23 @@ static void atomisp_buf_done(struct atomisp_sub_device *isp_subdev, int error,
 		default:
 			break;
 	}
+
+	/*
+	 * if state is stopping, we will:
+	 * 1: not requeue 3a/dis buffers to css
+	 * 2: put the vb to active queue, not return to user, which will be
+	 * used to queue to css after stream stop to recover sp, since sp will
+	 * get stuck if no buffer at queue
+	 */
+	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
+		if (vb) {
+			spin_lock_irqsave(&pipe->irq_lock, irqflags);
+			list_add_tail(&vb->queue, &pipe->activeq);
+			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
+		}
+		return;
+	}
+
 	if (vb) {
 		get_buf_timestamp(&vb->ts);
 		vb->field_count = atomic_read(&isp->sequence) << 1;
@@ -963,7 +997,7 @@ static void atomisp_buf_done(struct atomisp_sub_device *isp_subdev, int error,
 		return;
 	}
 	if (!error && q_buffers)
-		atomisp_qbuffers_to_css(isp_subdev);
+		atomisp_qbuffers_to_css(isp_subdev, false);
 }
 
 void atomisp_delayed_init_work(struct work_struct *work)
@@ -1476,6 +1510,20 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 					current_event.event.type);
 			break;
 		}
+	}
+
+	/*
+	 * css2.0 bug: no buffer flush mechanism for css buffer queue, but
+	 * need to ensure there is no buffer in css after stream off
+	 *
+	 * before calling ia_css_stream_stop(), we will wait all the buffers are
+	 * dequeued from css, then call ia_css_stream_destroy()
+	 */
+	for (i = 0; i < isp->num_of_streams; i++) {
+		isp_subdev = &isp->isp_subdev[i];
+		if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_STOPPING
+		    && !__buffers_in_css(isp_subdev))
+			complete(&isp_subdev->buf_done);
 	}
 
 	for (i = 0; i < isp->num_of_streams; i++) {

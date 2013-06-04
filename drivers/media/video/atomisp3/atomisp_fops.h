@@ -29,13 +29,13 @@
 int atomisp_q_video_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 			     struct atomisp_video_pipe *pipe,
 			     enum ia_css_buffer_type css_buf_type,
-			     enum ia_css_pipe_id css_pipe_id);
+			     enum ia_css_pipe_id css_pipe_id, bool streamoff);
 
 int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *isp_subdev,
-			   enum ia_css_pipe_id css_pipe_id);
+			   enum ia_css_pipe_id css_pipe_id, bool streamoff);
 
 int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *isp_subdev,
-			   enum ia_css_pipe_id css_pipe_id);
+			   enum ia_css_pipe_id css_pipe_id, bool streamoff);
 
 int atomisp_dev_init_struct(struct atomisp_device *isp);
 int atomisp_subdev_init_struct(struct atomisp_sub_device *isp_subdev);
@@ -56,7 +56,8 @@ int atomisp_qbuf_to_css(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_video_pipe *pipe,
 			struct videobuf_buffer *vb);
 
-int atomisp_qbuffers_to_css(struct atomisp_sub_device *isp_subdev);
+int atomisp_qbuffers_to_css(struct atomisp_sub_device *isp_subdev,
+			    bool streamoff);
 
 extern const struct v4l2_file_operations atomisp_fops;
 

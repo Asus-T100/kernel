@@ -265,6 +265,13 @@ struct atomisp_sub_device {
 	 * is using this resource
 	 */
 	int index;
+
+	/*
+	 * this is to notify all the buffers are dequeued from CSS.
+	 *
+	 * css2.0 bug: all the buffers needs to be dequeued after stream off
+	 */
+	struct completion buf_done;
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];

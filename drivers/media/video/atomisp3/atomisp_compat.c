@@ -26,6 +26,7 @@
 
 #include <asm/intel-mid.h>
 
+#include <linux/delay.h>
 enum frame_info_type {
 	VF_FRAME,
 	OUTPUT_FRAME,
@@ -298,6 +299,7 @@ static enum ia_css_err __destroy_stream(struct atomisp_sub_device *isp_subdev,
 	int i;
 	enum ia_css_err ret;
 	bool pipe_updated = false;
+	unsigned int streaming;
 
 	if (!isp_subdev->css2_basis.stream)
 		return IA_CSS_SUCCESS;
@@ -310,24 +312,103 @@ static enum ia_css_err __destroy_stream(struct atomisp_sub_device *isp_subdev,
 			}
 	}
 
-	if (force || pipe_updated) {
-		if (isp_subdev->css2_basis.stream_state ==
-		    CSS2_STREAM_STARTED) {
-			ret = ia_css_stream_stop(isp_subdev->css2_basis.stream);
-			if (ret != IA_CSS_SUCCESS) {
-				v4l2_err(&atomisp_dev,
-					 "stop stream failed.\n");
-				return ret;
-			}
-		}
-		ret = ia_css_stream_destroy(isp_subdev->css2_basis.stream);
+	if (!(force || pipe_updated))
+		return IA_CSS_SUCCESS;
+
+	streaming = atomisp_subdev_streaming_count(isp_subdev->isp);
+
+	if (isp_subdev->css2_basis.stream_state == CSS2_STREAM_STARTED
+	    && !streaming) { /* single stream mode */
+		ret = ia_css_stream_stop(isp_subdev->css2_basis.stream);
 		if (ret != IA_CSS_SUCCESS) {
 			v4l2_err(&atomisp_dev,
-				 "destroy stream failed.\n");
+				 "stop stream failed.\n");
 			return ret;
 		}
-		isp_subdev->css2_basis.stream = NULL;
+	} else if (isp_subdev->css2_basis.stream_state == CSS2_STREAM_STARTED
+	    && streaming) { /* multi stream mode */
+		unsigned int cnt;
+		/* CSS2.0 bug:
+		 * 1: it requires no buffer in css buffer queue after
+		 * stream stop
+		 * 2: it does not provide the buffer queue flush
+		 * machenism
+		 *
+		 * If there are multiple buffers in css at the time
+		 * calling ia_css_stream_stop, there will buffers
+		 * remaining in css, which will be dequeued next time
+		 * stream start, which will causes serious mm issue
+		 * since buffers are already invalid.
+		 *
+		 * So before calling ia_css_stream stop, we will wait
+		 * until all the buffers are dequeued from css.
+		 *
+		 * Note that there would have big pnp impact to wait
+		 * all the buffers dequeued from css, so we will only do
+		 * this in multiple stream mode, since in single
+		 * stream mode, no care on whether buffer remain in
+		 * css, as the css will be un-initialized after it.
+		 */
+		/*
+		 * check whether there is other stream in streaming
+		 * state. if so, we need to to dequeue all the buffers
+		 * in this stream, and also need to workaround to avoid
+		 * sp stuck.
+		 */
+		mutex_unlock(&isp_subdev->isp->mutex);
+		if (!wait_for_completion_timeout(&isp_subdev->buf_done,
+						 2 * HZ)) {
+			dev_warn(isp_subdev->isp->dev,
+				 "%s: wait buf clean timeout!.\n",
+				 __func__);
+		}
+		mutex_lock(&isp_subdev->isp->mutex);
+		ret = ia_css_stream_stop(isp_subdev->css2_basis.stream);
+		if (ret != IA_CSS_SUCCESS) {
+			v4l2_err(&atomisp_dev,
+				 "stop stream failed.\n");
+			return ret;
+		}
+		/*
+		 * There is another issue if there is no buffer
+		 * remaining in css after calling ia_css_stream_stop:
+		 * the SP will get stuck, because it is blocking on
+		 * the empty queue. So after calling
+		 * ia_css_stream_stop(), we will queue only 1 buffer
+		 * to css to recover sp, then wait for
+		 * ia_css_stream_has_stopped(). The css will process the
+		 * final buffer and exit gracefully.
+		 */
+		/* queue 1 buffer to css to recover sp */
+		atomisp_qbuffers_to_css(isp_subdev, true);
+		cnt = 50;
+		/*
+		 * wait for 1s for stream stop
+		 * In the worst case, like ULL mode, the fps will be very low
+		 * and need to wait ISP to finish procesing the frame
+		 */
+		while (--cnt) {
+			mutex_unlock(&isp_subdev->isp->mutex);
+			msleep(20);
+			mutex_lock(&isp_subdev->isp->mutex);
+			if (ia_css_stream_has_stopped(
+					isp_subdev->css2_basis.stream))
+				break;
+		}
+		if (!cnt)
+			dev_warn(isp_subdev->isp->dev,
+				 "%s: wait stream off timeout!.\n",
+				 __func__);
+
 	}
+
+	ret = ia_css_stream_destroy(isp_subdev->css2_basis.stream);
+	if (ret != IA_CSS_SUCCESS) {
+		v4l2_err(&atomisp_dev,
+			 "destroy stream failed.\n");
+		return ret;
+	}
+	isp_subdev->css2_basis.stream = NULL;
 
 	return IA_CSS_SUCCESS;
 }

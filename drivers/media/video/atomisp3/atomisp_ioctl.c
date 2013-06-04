@@ -1195,7 +1195,7 @@ done:
 
 	/* TODO: do this better, not best way to queue to css */
 	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
-		atomisp_qbuffers_to_css(isp_subdev);
+		atomisp_qbuffers_to_css(isp_subdev, false);
 
 		if (!timer_pending(&isp->wdt) &&
 		    atomisp_buffers_queued(isp_subdev))
@@ -1412,12 +1412,12 @@ static int atomisp_streamon(struct file *file, void *fh,
 				goto out;
 			}
 		}
-		atomisp_qbuffers_to_css(isp_subdev);
+		atomisp_qbuffers_to_css(isp_subdev, false);
 		goto out;
 	}
 
 	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
-		atomisp_qbuffers_to_css(isp_subdev);
+		atomisp_qbuffers_to_css(isp_subdev, false);
 		goto start_sensor;
 	}
 
@@ -1468,7 +1468,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	isp->sw_contex.invalid_frame = false;
 	isp_subdev->params.dvs_proj_data_valid = false;
 
-	atomisp_qbuffers_to_css(isp_subdev);
+	atomisp_qbuffers_to_css(isp_subdev, false);
 
 	/* Only start sensor when the last streaming instance started */
 	if (atomisp_streaming_count(isp_subdev) < sensor_start_stream)
@@ -1601,8 +1601,6 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		goto stopsensor;
 	}
 
-	atomisp_clear_css_buffer_counters(isp_subdev);
-
 	if (!isp->sw_contex.file_input)
 		ia_css_irq_enable(IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					false);
@@ -1617,6 +1615,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		v4l2_err(&atomisp_dev, "stop css failed, ret=%d.\n", ret);
 		return ret;
 	}
+
+	atomisp_clear_css_buffer_counters(isp_subdev);
 
 	/* cancel work queue*/
 	if (isp_subdev->video_out_capture.users) {
