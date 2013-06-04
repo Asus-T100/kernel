@@ -282,23 +282,12 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 	case HAD_SET_ENABLE_AUDIO_INT:
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
 			int_masks |= I915_HDMI_AUDIO_UNDERRUN_ENABLE;
-#if 0
-		/* ToDo: Check if any bit needs to be
-		 * set for buffer done
-		 */
-		if (*((u32 *)capabilties) & HDMI_AUDIO_BUFFER_DONE)
-			int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
-#endif
 		dev_priv->hdmi_audio_interrupt_mask |= int_masks;
 		i915_enable_hdmi_audio_int(dev);
 		break;
 	case HAD_SET_DISABLE_AUDIO_INT:
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
 			int_masks |= I915_HDMI_AUDIO_UNDERRUN_ENABLE;
-#if 0
-			if (*((u32 *)capabilties) & HDMI_AUDIO_BUFFER_DONE)
-				int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
-#endif
 		dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
 
 		if (dev_priv->hdmi_audio_interrupt_mask)
