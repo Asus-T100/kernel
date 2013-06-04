@@ -1817,19 +1817,20 @@ static int imx_probe(struct i2c_client *client,
 
 	v4l2_i2c_subdev_init(&(dev->sd), client, &imx_ops);
 
-	/*
-	 * sd->name is updated with sensor driver name by the v4l2.
-	 * change it to sensor name in this case.
-	 */
-	snprintf(dev->sd.name, sizeof(dev->sd.name), "%s %d-%04x",
-		client->name, i2c_adapter_id(client->adapter), client->addr);
-
 	if (client->dev.platform_data) {
 		ret = imx_s_config(&dev->sd, client->irq,
 				       client->dev.platform_data);
 		if (ret)
 			goto out_free;
 	}
+
+	/*
+	 * sd->name is updated with sensor driver name by the v4l2.
+	 * change it to sensor name in this case.
+	 */
+	snprintf(dev->sd.name, sizeof(dev->sd.name), "%s%x %d-%04x",
+		IMX_SUBDEV_PREFIX, dev->sensor_id,
+		i2c_adapter_id(client->adapter), client->addr);
 
 	/* Resolution settings depend on sensor type and platform */
 	ret = __update_imx_device_settings(dev, dev->sensor_id);

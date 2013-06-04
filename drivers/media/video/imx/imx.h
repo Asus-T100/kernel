@@ -112,6 +112,7 @@
 
 #define MAX_FMTS 1
 
+#define IMX_SUBDEV_PREFIX "imx"
 #define IMX_DRIVER	"imx1x5"
 #define IMX_NAME_135	"imx135"
 #define IMX_NAME_175	"imx175"
