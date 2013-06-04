@@ -151,6 +151,7 @@ static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 extern struct intel_dsi_dev_ops cmi_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_dsi_display_ops;
 extern struct intel_dsi_dev_ops panasonic_dsi_display_ops;
+extern struct intel_dsi_dev_ops b080xat_dsi_display_ops;
 
 /* internal functions */
 static void dsi_config(struct drm_encoder *encoder);
@@ -163,5 +164,6 @@ bool intel_dsi_init(struct drm_device *dev);
 #define	MIPI_DSI_CMI_PANEL_ID	0x01
 #define	MIPI_DSI_AUO_PANEL_ID	0x02
 #define	MIPI_DSI_PANASONIC_PANEL_ID		0x03
+#define	MIPI_DSI_B080XAT_PANEL_ID		0x04
 
 #endif /* _INTEL_DSI_H */
