@@ -185,12 +185,6 @@ static int panic_mode_emmc0_power_up(void *data)
 	return ret;
 }
 
-static int dummy_emmc0_power_up(void *data)
-{
-	pr_err("dummy_emmc0_power_up has been called!\n");
-	return 0;
-}
-
 /* MRFL platform data */
 static struct sdhci_pci_data mrfl_sdhci_pci_data[] = {
 	[EMMC0_INDEX] = {
