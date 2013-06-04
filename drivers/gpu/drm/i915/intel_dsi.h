@@ -69,6 +69,16 @@ struct intel_dsi_device {
 	u8 operation_mode;
 	u8 video_mode_type;
 	u32 pixel_format;
+	u32 port_bits;
+	u8 turn_arnd_val;
+	u16 rst_timer_val;
+	u16 hs_to_lp_count;
+	u16 lp_byte_clk;
+	u32 bw_timer;
+	u16 clk_lp_to_hs_count;
+	u16 clk_hs_to_lp_count;
+	u32 video_frmt_cfg_bits;
+	u32 dphy_reg;
 
 };
 
