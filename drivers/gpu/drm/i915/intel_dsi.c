@@ -123,6 +123,13 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.dev_ops = &panasonic_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
+	{
+		.panel_id = MIPI_DSI_B080XAT_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "b080xat-dsi-vid-mode-display",
+		.dev_ops = &b080xat_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
 };
 
 static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
@@ -406,6 +413,25 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	hsync = txbyteclkhs(hsync, bpp, lane_count);
 	hbp = txbyteclkhs(hbp, bpp, lane_count);
 
+	DRM_DEBUG_KMS("hactive = 0x%0x hfp = 0x%0x hsync = 0x%0x hbp = 0x%0x\n",
+				hactive, hfp, hsync, hbp);
+
+	/* FIXME: Find better way to do this */
+	/* For 7x10 panel we need to have BLLP added to active */
+	/* Trying to find optimal BLLP Multiplier */
+	/*	2.875 - Original multiplier, Works with flicker */
+	/*	2.000 - works but still some flicker */
+	/*	1.500 - Works, No Flicker */
+	/*	1.250 - Works, No Flicker */
+	/*	1.100 - Doesn't work */
+	/* FIXME: Acer Mango spec requires to run the DSI clock at 500 to
+	 * 560Mbps. Recomendation is to run at 513 Mbps. The addition dsi
+	 * clock is to be filled with NULL packets. Refer to acer panel
+	 * spec for more details.
+	 */
+	if (dev_priv->mipi.panel_id == MIPI_DSI_B080XAT_PANEL_ID)
+		hactive = (hactive * 10) / 8;
+
 	I915_WRITE(MIPI_HACTIVE_AREA_COUNT(pipe), hactive);
 	I915_WRITE(MIPI_HFP_COUNT(pipe), hfp);
 	I915_WRITE(MIPI_HSYNC_PADDING_COUNT(pipe), hsync);
@@ -454,6 +480,10 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	u32 val;
 
 	DRM_DEBUG_KMS("\n");
+
+	if (intel_dsi->dev.dev_ops->mode_set)
+		intel_dsi->dev.dev_ops->mode_set(&intel_dsi->dev,
+						mode, adjusted_mode);
 
 	/* Enable bandgap fix */
 	intel_cck_write32_bits(dev_priv, 0x6D, 0x00010000, 0x00030000);
@@ -726,7 +756,7 @@ bool intel_dsi_init(struct drm_device *dev)
 		/* check if panel id available from VBT */
 		if (!dev_priv->mipi.panel_id) {
 			/* default ASUS panel */
-			dev_priv->mipi.panel_id = MIPI_DSI_AUO_PANEL_ID;
+			dev_priv->mipi.panel_id = MIPI_DSI_PANASONIC_PANEL_ID;
 		}
 	} else
 		dev_priv->mipi.panel_id = i915_mipi_panel_id;
@@ -750,7 +780,11 @@ bool intel_dsi_init(struct drm_device *dev)
 		goto err;
 	}
 
-	intel_dsi->dsi_packet_format = dsi_24Bpp_packed;
+	if (intel_dsi->dev.pixel_format == VID_MODE_FORMAT_RGB666_LOOSE)
+		intel_dsi->dsi_packet_format = dsi_18Bpp_loosely_packed;
+	else
+		intel_dsi->dsi_packet_format = dsi_24Bpp_packed;
+
 	intel_dsi->channel = 0;
 
 	if (i == ARRAY_SIZE(intel_dsi_devices))
