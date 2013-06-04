@@ -23,6 +23,7 @@
 #include <linux/i2c.h>
 #include <linux/module.h>
 #include <linux/types.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <linux/atomisp_platform.h>
 
@@ -63,6 +64,22 @@ struct s5k8aay_resolution {
 
 #define S5K8AAY_R16_AHB_MSB_ADDR_PTR		0xfcfc
 
+#define S5K8AAY_FOCAL_LENGTH_NUM		167 /* 1.67mm */
+#define S5K8AAY_FOCAL_LENGTH_DEM		100
+#define S5K8AAY_F_NUMBER_NUM			26  /* 2.6 */
+#define S5K8AAY_F_NUMBER_DEM			10
+
+#define S5K8AAY_FOCAL_LENGTH	    ((S5K8AAY_FOCAL_LENGTH_NUM << 16) | \
+		S5K8AAY_FOCAL_LENGTH_DEM)
+
+#define S5K8AAY_F_NUMBER_ABSOLUTE   ((S5K8AAY_F_NUMBER_NUM << 16) | \
+		S5K8AAY_F_NUMBER_DEM)
+
+#define S5K8AAY_F_NUMBER_RANGE	    ((S5K8AAY_F_NUMBER_NUM << 24) | \
+		(S5K8AAY_F_NUMBER_DEM << 16) | \
+		(S5K8AAY_F_NUMBER_NUM << 8) | \
+		S5K8AAY_F_NUMBER_DEM)
+
 #define to_s5k8aay_sensor(_sd) container_of(_sd, struct s5k8aay_device, sd)
 
 struct s5k8aay_device {
@@ -74,6 +91,7 @@ struct s5k8aay_device {
 	struct mutex power_lock;
 	bool streaming;
 	int fmt_idx;
+	struct v4l2_ctrl_handler ctrl_handler;
 };
 
 /*
@@ -434,6 +452,14 @@ static int s5k8aay_s_power(struct v4l2_subdev *sd, int power)
 
 	mutex_lock(&dev->power_lock);
 	ret = __s5k8aay_s_power(sd, power);
+	if (ret)
+		goto out;
+
+	ret = v4l2_ctrl_handler_setup(&dev->ctrl_handler);
+	if (ret)
+		goto out;
+
+out:
 	mutex_unlock(&dev->power_lock);
 
 	return ret;
@@ -769,6 +795,7 @@ static const struct v4l2_subdev_video_ops s5k8aay_video_ops = {
 };
 
 static const struct v4l2_subdev_core_ops s5k8aay_core_ops = {
+	.g_ctrl = v4l2_subdev_g_ctrl,
 	.s_power = s5k8aay_s_power,
 };
 
@@ -786,10 +813,58 @@ static const struct v4l2_subdev_ops s5k8aay_ops = {
 	.sensor = &s5k8aay_sensor_ops,
 };
 
+static const struct v4l2_ctrl_config ctrls[] = {
+	{
+		.id = V4L2_CID_FOCAL_ABSOLUTE,
+		.name = "Focal length",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = S5K8AAY_FOCAL_LENGTH,
+		.step = 1,
+		.max = S5K8AAY_FOCAL_LENGTH,
+		.def = S5K8AAY_FOCAL_LENGTH,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.id = V4L2_CID_FNUMBER_ABSOLUTE,
+		.name = "F-number",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = S5K8AAY_F_NUMBER_ABSOLUTE,
+		.step = 1,
+		.max = S5K8AAY_F_NUMBER_ABSOLUTE,
+		.def = S5K8AAY_F_NUMBER_ABSOLUTE,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.id = V4L2_CID_FNUMBER_RANGE,
+		.name = "F-number range",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = S5K8AAY_F_NUMBER_RANGE,
+		.step = 1,
+		.max = S5K8AAY_F_NUMBER_RANGE,
+		.def = S5K8AAY_F_NUMBER_RANGE,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	},
+};
+
+static int s5k8aay_remove(struct i2c_client *client)
+{
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+
+	dev->platform_data->csi_cfg(sd, 0);
+	if (dev->platform_data->platform_deinit)
+		dev->platform_data->platform_deinit();
+	media_entity_cleanup(&dev->sd.entity);
+	v4l2_ctrl_handler_free(&dev->ctrl_handler);
+	v4l2_device_unregister_subdev(sd);
+	mutex_destroy(&dev->input_lock);
+	kfree(dev);
+	return 0;
+}
+
 static int s5k8aay_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct s5k8aay_device *dev;
+	unsigned int i;
 	int ret;
 
 	if (!client->dev.platform_data) {
@@ -829,21 +904,24 @@ static int s5k8aay_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	return 0;
-}
+	ret = v4l2_ctrl_handler_init(&dev->ctrl_handler, ARRAY_SIZE(ctrls));
+	if (ret) {
+		s5k8aay_remove(client);
+		return ret;
+	}
 
-static int s5k8aay_remove(struct i2c_client *client)
-{
-	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+	for (i = 0; i < ARRAY_SIZE(ctrls); i++)
+		v4l2_ctrl_new_custom(&dev->ctrl_handler, &ctrls[i], NULL);
 
-	dev->platform_data->csi_cfg(sd, 0);
-	if (dev->platform_data->platform_deinit)
-		dev->platform_data->platform_deinit();
-	media_entity_cleanup(&dev->sd.entity);
-	mutex_destroy(&dev->input_lock);
-	mutex_destroy(&dev->power_lock);
-	kfree(dev);
+	if (dev->ctrl_handler.error) {
+		s5k8aay_remove(client);
+		return dev->ctrl_handler.error;
+	}
+
+	/* Use same lock for controls as for everything else. */
+	dev->ctrl_handler.lock = &dev->input_lock;
+	dev->sd.ctrl_handler = &dev->ctrl_handler;
+
 	return 0;
 }
 
