@@ -116,6 +116,13 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.dev_ops = &auo_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
+	{
+		.panel_id = MIPI_DSI_PANASONIC_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "panasonic-dsi-vid-mode-display",
+		.dev_ops = &panasonic_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
 };
 
 static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
