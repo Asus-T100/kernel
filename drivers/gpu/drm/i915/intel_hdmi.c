@@ -262,6 +262,9 @@ static void vlv_write_infoframe(struct drm_encoder *encoder,
 		I915_WRITE(VLV_TVIDEO_DIP_DATA(intel_crtc->pipe), *data);
 		data++;
 	}
+	/* Write every possible data byte to force correct ECC calculation. */
+	for (; i < VIDEO_DIP_DATA_SIZE; i += 4)
+		I915_WRITE(VLV_TVIDEO_DIP_DATA(intel_crtc->pipe), 0);
 	mmiowb();
 
 	val |= g4x_infoframe_enable(frame);
