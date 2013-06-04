@@ -72,6 +72,16 @@ bool auo_init(struct intel_dsi_device *dsi)
 	dsi->operation_mode = DSI_VIDEO_MODE;
 	dsi->video_mode_type = DSI_VIDEO_NBURST_SPULSE;
 	dsi->pixel_format = VID_MODE_FORMAT_RGB888;
+	dsi->port_bits = 0;
+	dsi->turn_arnd_val = 0x14;
+	dsi->rst_timer_val = 0xffff;
+	dsi->hs_to_lp_count = 0x46;
+	dsi->lp_byte_clk = 1;
+	dsi->bw_timer = 0x820;
+	dsi->clk_lp_to_hs_count = 0xa;
+	dsi->clk_hs_to_lp_count = 0x14;
+	dsi->video_frmt_cfg_bits = 0;
+	dsi->dphy_reg = 0x3c1fc51f;
 
 	return true;
 }

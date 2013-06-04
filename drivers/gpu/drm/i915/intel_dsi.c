@@ -168,6 +168,7 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp);
 
 	temp = I915_READ(MIPI_PORT_CTRL(pipe));
+	temp = temp | intel_dsi->dev.port_bits;
 	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
 	POSTING_READ(MIPI_PORT_CTRL(pipe));
 
@@ -517,8 +518,10 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 			       bpp, intel_dsi->dev.lane_count));
 
 	I915_WRITE(MIPI_LP_RX_TIMEOUT(pipe), 0xffff);
-	I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(pipe), 0x14);
-	I915_WRITE(MIPI_DEVICE_RESET_TIMER(pipe), 0xffff);
+	I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(pipe),
+					intel_dsi->dev.turn_arnd_val);
+	I915_WRITE(MIPI_DEVICE_RESET_TIMER(pipe),
+					intel_dsi->dev.rst_timer_val);
 	/* in terms of low power clock */
 	I915_WRITE(MIPI_INIT_COUNT(pipe), 0x7d0);
 
@@ -527,26 +530,32 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	else
 		I915_WRITE(MIPI_EOT_DISABLE(pipe), 1);
 
-	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), 0x46);
-	I915_WRITE(MIPI_LP_BYTECLK(pipe), 1);
-	I915_WRITE(MIPI_DBI_BW_CTRL(pipe), 0x820);
+	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), \
+					intel_dsi->dev.hs_to_lp_count);
+	I915_WRITE(MIPI_LP_BYTECLK(pipe), intel_dsi->dev.lp_byte_clk);
+	I915_WRITE(MIPI_DBI_BW_CTRL(pipe), intel_dsi->dev.bw_timer);
 
 	I915_WRITE(MIPI_CLK_LANE_SWITCH_TIME_CNT(pipe),
-		   0xa << LP_HS_SSW_CNT_SHIFT |
-		   0x14 << HS_LP_PWR_SW_CNT_SHIFT);
+		((u32)intel_dsi->dev.clk_lp_to_hs_count
+		<< LP_HS_SSW_CNT_SHIFT) |
+		(intel_dsi->dev.clk_hs_to_lp_count << HS_LP_PWR_SW_CNT_SHIFT));
 
 	if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) && \
 			(intel_dsi->dev.video_mode_type ==
 					DSI_VIDEO_NBURST_SPULSE))
 		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				intel_dsi->dev.video_frmt_cfg_bits |
 				VIDEO_MODE_NON_BURST_WITH_SYNC_PULSE);
 	else if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) &&	\
 			(intel_dsi->dev.video_mode_type ==
 					DSI_VIDEO_NBURST_SEVENT))
 		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				intel_dsi->dev.video_frmt_cfg_bits |
 				VIDEO_MODE_NON_BURST_WITH_SYNC_EVENTS);
 	else
-		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe), VIDEO_MODE_BURST);
+		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				intel_dsi->dev.video_frmt_cfg_bits |
+				VIDEO_MODE_BURST);
 }
 
 static enum drm_connector_status
@@ -666,7 +675,7 @@ static void dsi_config(struct drm_encoder *encoder)
 	I915_WRITE(MIPI_INTR_EN(pipe), 0xffffffff);
 
 	/* why here, was elsewhere... also 2a, 0c, 60, 08 for values */
-	I915_WRITE(MIPI_DPHY_PARAM(pipe), 0x3c1fc51f);
+	I915_WRITE(MIPI_DPHY_PARAM(pipe), intel_dsi->dev.dphy_reg);
 }
 
 bool intel_dsi_init(struct drm_device *dev)
