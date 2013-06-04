@@ -43,6 +43,7 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  intel_opregion.o \
 	  cmi_dsi_display.o \
 	  auo_dsi_display.o \
+	  panasonic_dsi_display.o \
 	  dvo_ch7xxx.o \
 	  dvo_ch7017.o \
 	  dvo_ivch.o \
