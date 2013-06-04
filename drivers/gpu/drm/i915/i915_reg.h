@@ -1887,6 +1887,7 @@ EDP_PSR_SW_TIMER
 
 /* Video Data Island Packet control */
 #define VIDEO_DIP_DATA		0x61178
+#define   VIDEO_DIP_DATA_SIZE   32
 #define VIDEO_DIP_CTL		0x61170
 /* Pre HSW: */
 #define   VIDEO_DIP_ENABLE		(1 << 31)
