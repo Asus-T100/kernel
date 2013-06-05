@@ -289,8 +289,7 @@ static int write_target_freq_to_hw(struct atomisp_device *isp, int new_freq)
 }
 int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 {
-	/* FIXME: currently only use subdev[0] in single stream mode */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = NULL;
 	unsigned int new_freq;
 	struct atomisp_freq_scaling_rule curr_rules;
 	int i, ret;
@@ -301,6 +300,12 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 		return -EINVAL;
 	}
 
+	/* ISP will run at full speed in multi stream mode */
+	if (atomisp_subdev_streaming_count(isp) > 1) {
+		new_freq = ISP_FREQ_400MHZ;
+		goto done;
+	}
+
 	if (mode == ATOMISP_DFS_MODE_LOW) {
 		new_freq = ISP_FREQ_200MHZ;
 		goto done;
@@ -309,6 +314,20 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 	if (mode == ATOMISP_DFS_MODE_MAX) {
 		new_freq = ISP_FREQ_400MHZ;
 		goto done;
+	}
+
+	/* check which stream is enabled */
+	for (i = 0; i < isp->num_of_streams; i++)
+		if (isp->isp_subdev[i].streaming ==
+		    ATOMISP_DEVICE_STREAMING_ENABLED) {
+			isp_subdev = &isp->isp_subdev[i];
+			break;
+		}
+
+	if (!isp_subdev) {
+		dev_err(isp->dev,
+			"DFS auto mode can not be done due to no streaming.\n");
+		return -EINVAL;
 	}
 
 	fps = atomisp_get_sensor_fps(isp_subdev);
