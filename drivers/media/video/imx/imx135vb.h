@@ -1761,8 +1761,8 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.fps = 30,
 		.pixels_per_line = 5464,
 		.lines_per_frame = 2046,
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.used = 0,
 	},
 	{
@@ -1886,8 +1886,8 @@ struct imx_resolution imx135vb_res_still[] = {
 		.fps = 15,
 		.pixels_per_line = 9114,
 		.lines_per_frame = 2453,
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.used = 0,
 	},
 	{
