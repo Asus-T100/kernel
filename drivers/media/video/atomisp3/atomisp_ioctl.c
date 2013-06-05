@@ -1566,7 +1566,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		return 0;
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED
+	    || isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_STARTING) {
 		isp_subdev->streaming = ATOMISP_DEVICE_STREAMING_STOPPING;
 		first_streamoff = true;
 	}
@@ -1574,8 +1575,11 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 
 	if (first_streamoff) {
 		mutex_unlock(&isp->mutex);
-		del_timer_sync(&isp->wdt);
-		cancel_work_sync(&isp->wdt_work);
+		/* not disable watch dog if other streams still running */
+		if (!atomisp_subdev_streaming_count(isp_subdev->isp)) {
+			del_timer_sync(&isp->wdt);
+			cancel_work_sync(&isp->wdt_work);
+		}
 
 		/*
 		 * must stop sending pixels into GP_FIFO before stop

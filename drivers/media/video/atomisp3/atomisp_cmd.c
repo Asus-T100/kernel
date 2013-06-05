@@ -1017,9 +1017,9 @@ void atomisp_wdt_work(struct work_struct *work)
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  wdt_work);
 	char debug_context[64];
+	struct atomisp_sub_device *isp_subdev;
 	int ret = 0;
-	/* FIXME: currently only use subdev[0] in single stream mode */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	int i;
 
 
 	dev_err(isp->dev, "timeout %d of %d\n",
@@ -1027,18 +1027,24 @@ void atomisp_wdt_work(struct work_struct *work)
 		ATOMISP_ISP_MAX_TIMEOUT_COUNT);
 
 	mutex_lock(&isp->mutex);
-	if (isp_subdev->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (!atomisp_subdev_streaming_count(isp)) {
 		mutex_unlock(&isp->mutex);
 		return;
 	}
 
 	switch (atomic_inc_return(&isp->wdt_count)) {
 	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
-		atomisp_clear_css_buffer_counters(isp_subdev);
+		for (i = 0; i < isp->num_of_streams; i++) {
+			isp_subdev = &isp->isp_subdev[i];
+			if (isp_subdev->streaming ==
+			    ATOMISP_DEVICE_STREAMING_ENABLED) {
+				atomisp_clear_css_buffer_counters(isp_subdev);
+				atomisp_flush_bufs_and_wakeup(isp_subdev);
+			}
+		}
 
 		atomic_set(&isp->wdt_count, 0);
 
-		atomisp_flush_bufs_and_wakeup(isp_subdev);
 		isp->isp_fatal_error = true;
 
 		complete(&isp->init_done);
@@ -1047,26 +1053,45 @@ void atomisp_wdt_work(struct work_struct *work)
 	default:
 		sh_css_dump_sp_sw_debug_info();
 		sh_css_dump_debug_info(debug_context);
-		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
-			isp_subdev->video_out_capture.vdev.name,
-			isp_subdev->video_out_capture.buffers_in_css);
-		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
-			isp_subdev->video_out_vf.vdev.name,
-			isp_subdev->video_out_vf.buffers_in_css);
-		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
-			isp_subdev->video_out_preview.vdev.name,
-			isp_subdev->video_out_preview.buffers_in_css);
-		dev_err(isp->dev, "%s, s3a buffers in css preview pipe: %d\n",
-			__func__,
-			isp_subdev->s3a_bufs_in_css[IA_CSS_PIPE_ID_PREVIEW]);
-		dev_err(isp->dev, "%s, s3a buffers in css capture pipe: %d\n",
-			__func__,
-			isp_subdev->s3a_bufs_in_css[IA_CSS_PIPE_ID_CAPTURE]);
-		dev_err(isp->dev, "%s, s3a buffers in css video pipe: %d\n",
-			__func__,
-			isp_subdev->s3a_bufs_in_css[IA_CSS_PIPE_ID_VIDEO]);
-		dev_err(isp->dev, "%s, dis buffers in css: %d\n",
-			__func__, isp_subdev->dis_bufs_in_css);
+		for (i = 0; i < isp->num_of_streams; i++) {
+			isp_subdev = &isp->isp_subdev[i];
+			if (isp_subdev->streaming !=
+			    ATOMISP_DEVICE_STREAMING_ENABLED)
+				continue;
+			dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n",
+				__func__,
+				isp_subdev->video_out_capture.vdev.name,
+				isp_subdev->video_out_capture.
+				buffers_in_css);
+			dev_err(isp->dev,
+				"%s, vdev %s buffers in css: %d\n",
+				__func__,
+				isp_subdev->video_out_vf.vdev.name,
+				isp_subdev->video_out_vf.
+				buffers_in_css);
+			dev_err(isp->dev,
+				"%s, vdev %s buffers in css: %d\n",
+				__func__,
+				isp_subdev->video_out_preview.vdev.name,
+				isp_subdev->video_out_preview.
+				buffers_in_css);
+			dev_err(isp->dev,
+				"%s, s3a buffers in css preview pipe:%d\n",
+				__func__,
+				isp_subdev->
+				s3a_bufs_in_css[IA_CSS_PIPE_ID_PREVIEW]);
+			dev_err(isp->dev,
+				"%s, s3a buffers in css capture pipe:%d\n",
+				__func__, isp_subdev->
+				s3a_bufs_in_css[IA_CSS_PIPE_ID_CAPTURE]);
+			dev_err(isp->dev,
+				"%s, s3a buffers in css video pipe:%d\n",
+				__func__, isp_subdev->
+				s3a_bufs_in_css[IA_CSS_PIPE_ID_VIDEO]);
+			dev_err(isp->dev,
+				"%s, dis buffers in css: %d\n",
+				__func__, isp_subdev->dis_bufs_in_css);
+		}
 		/*sh_css_dump_sp_state();*/
 		/*sh_css_dump_isp_state();*/
 
@@ -1080,9 +1105,30 @@ void atomisp_wdt_work(struct work_struct *work)
 		complete(&isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
-		if (ia_css_stop(isp_subdev, true))
-			v4l2_warn(&atomisp_dev,
-				  "stop css failed, reset may be failed.\n");
+		for (i = 0; i < isp->num_of_streams; i++) {
+			isp_subdev = &isp->isp_subdev[i];
+			if (isp_subdev->streaming ==
+			    ATOMISP_DEVICE_STREAMING_ENABLED) {
+				isp_subdev->streaming =
+				    ATOMISP_DEVICE_STREAMING_STOPPING;
+
+				if (ia_css_stop(isp_subdev, true))
+					dev_warn(isp->dev,
+					"stop css failed, reset may be failed.\n");
+
+				/* stream off sensor */
+				ret = v4l2_subdev_call(
+					isp->inputs[isp_subdev->input_curr].
+					camera, video, s_stream, 0);
+				if (ret)
+					dev_warn(isp->dev,
+						 "can't stop streaming on sensor!\n");
+
+				atomisp_clear_css_buffer_counters(isp_subdev);
+				isp_subdev->streaming =
+				    ATOMISP_DEVICE_STREAMING_STARTING;
+			}
+		}
 
 		atomisp_acc_unload_extensions(isp);
 
@@ -1093,27 +1139,30 @@ void atomisp_wdt_work(struct work_struct *work)
 		 * TODO: do we need to reset any other interrupts,
 		 * i.e hrt_isp_css_irq_sw_1 or hrt_isp_css_irq_sw_2?
 		 */
-		/* stream off sensor */
-		ret = v4l2_subdev_call(
-			isp->inputs[isp_subdev->input_curr].camera, video,
-			s_stream, 0);
-		if (ret)
-			dev_warn(isp->dev,
-				 "can't stop streaming on sensor!\n");
 
 		/* reset ISP and restore its state */
 		isp->isp_timeout = true;
 		atomisp_reset(isp);
 		isp->isp_timeout = false;
 
-		atomisp_clear_css_buffer_counters(isp_subdev);
 		if (atomisp_acc_load_extensions(isp) < 0)
 			dev_err(isp->dev, "acc extension failed to reload\n");
 
-		if (ia_css_start(isp_subdev, true) != IA_CSS_SUCCESS)
-			v4l2_warn(&atomisp_dev,
-				  "re-start css failed, reset may be failed.\n");
+		for (i = 0; i < isp->num_of_streams; i++) {
+			isp_subdev = &isp->isp_subdev[i];
+			if (isp_subdev->streaming !=
+			    ATOMISP_DEVICE_STREAMING_STARTING)
+				continue;
 
+			if (ia_css_start(isp_subdev, true) !=
+			    IA_CSS_SUCCESS)
+				v4l2_warn(&atomisp_dev,
+				  "re-start css failed, reset may be"
+				  "failed.\n");
+			else
+				isp_subdev->streaming =
+				    ATOMISP_DEVICE_STREAMING_ENABLED;
+		}
 		if (!isp->sw_contex.file_input) {
 			ia_css_irq_enable(
 				IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
@@ -1129,27 +1178,41 @@ void atomisp_wdt_work(struct work_struct *work)
 				dev_dbg(isp->dev, "dfs failed!\n");
 		}
 
-		ret = v4l2_subdev_call(
-			isp->inputs[isp_subdev->input_curr].camera, video,
-			s_stream, 1);
-		if (ret)
-			dev_warn(isp->dev,
-				 "can't start streaming on sensor!\n");
+		for (i = 0; i < isp->num_of_streams; i++) {
+			isp_subdev = &isp->isp_subdev[i];
+			if (isp_subdev->streaming !=
+			    ATOMISP_DEVICE_STREAMING_ENABLED)
+				continue;
 
-		if (isp_subdev->continuous_mode->val &&
-		    isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
-		    isp->delayed_init == ATOMISP_DELAYED_INIT_NOT_QUEUED) {
-			INIT_COMPLETION(isp->init_done);
-			isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
-			queue_work(isp->delayed_init_workq,
-				   &isp->delayed_init_work);
+			ret = v4l2_subdev_call(
+				isp->inputs[isp_subdev->input_curr].
+				camera, video, s_stream, 1);
+			if (ret)
+				dev_warn(isp->dev,
+					 "can't start streaming on"
+					 "sensor!\n");
+			/*
+			 * FIXME!
+			 * only one stream on continous mode now
+			 */
+			if (isp_subdev->continuous_mode->val &&
+			    isp_subdev->run_mode->val !=
+			    ATOMISP_RUN_MODE_VIDEO &&
+			    isp->delayed_init ==
+			    ATOMISP_DELAYED_INIT_NOT_QUEUED) {
+				INIT_COMPLETION(isp->init_done);
+				isp->delayed_init =
+				    ATOMISP_DELAYED_INIT_QUEUED;
+				queue_work(isp->delayed_init_workq,
+					   &isp->delayed_init_work);
+			}
+			/*
+			 * dequeueing buffers is not needed. CSS will
+			 * recycle buffers that it has.
+			 */
+			atomisp_flush_bufs_and_wakeup(isp_subdev);
 		}
-		/*
-		 * dequeueing buffers is not needed. CSS will recycle
-		 * buffers that it has.
-		 */
-		atomisp_flush_bufs_and_wakeup(isp_subdev);
-		dev_err(isp->dev, "timeout recovery handling done\n");
+			dev_err(isp->dev, "timeout recovery handling done\n");
 	}
 
 	mutex_unlock(&isp->mutex);
