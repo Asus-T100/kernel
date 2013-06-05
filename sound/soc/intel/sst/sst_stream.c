@@ -184,6 +184,7 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	u32 len = 0;
 	struct stream_info *str_info;
 	unsigned long irq_flags;
+	int i, num_ch;
 
 	pr_debug("In %s\n", __func__);
 	BUG_ON(!params);
@@ -197,16 +198,28 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	alloc_param.ring_buf_info[0].size = str_params->aparams.ring_buf_info[0].size;
 	alloc_param.frag_size = str_params->aparams.frag_size;
 
-	/* FIXME: check if any channel_map changes required later */
 	memcpy(&alloc_param.codec_params, &str_params->sparams,
 			sizeof(struct snd_sst_stream_params));
+
+	/* fill channel map params for multichannel support.
+	 * Ideally channel map should be received from upper layers
+	 * for multichannel support.
+	 * Currently hardcoding as per FW reqm.
+	 */
+	num_ch = sst_get_num_channel(str_params);
+	for (i = 0; i < 8; i++) {
+		if (i < num_ch)
+			alloc_param.codec_params.uc.pcm_params.channel_map[i] = i;
+		else
+			alloc_param.codec_params.uc.pcm_params.channel_map[i] = 0xFF;
+	}
 
 	str_id = str_params->stream_id;
 	pipe_id = str_params->device_type;
 	task_id = str_params->task;
 	sst_drv_ctx->streams[str_id].pipe_id = pipe_id;
 	sst_drv_ctx->streams[str_id].task_id = task_id;
-	sst_drv_ctx->streams[str_id].num_ch = sst_get_num_channel(str_params);
+	sst_drv_ctx->streams[str_id].num_ch = num_ch;
 
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 	alloc_param.ts = (struct snd_sst_tstamp *) (sst_drv_ctx->mailbox_add +
