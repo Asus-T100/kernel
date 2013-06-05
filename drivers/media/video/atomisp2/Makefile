@@ -9,6 +9,16 @@ else
 	css_platform_folder = hive_isp_css_system
 endif
 
+ifeq ($(CONFIG_VIDEO_ATOMISP_CSS20), y)
+ifeq ($(CONFIG_ISP2400B0), y)
+	css_folder = css2400b0_v2
+	css_platform_folder = hive_isp_css_2400_system
+else
+	css_folder = css2400_v2
+	css_platform_folder = hive_isp_css_2400_system
+endif
+endif
+
 atomisp-objs := \
 		atomisp_ioctl.o \
 		atomisp_cmd.o \
@@ -28,8 +38,6 @@ atomisp-objs := \
 		hmm/hmm_vm.o \
 		hmm/hmm_reserved_pool.o \
 		hmm/hmm_dynamic_pool.o \
-		hrt/device_access.o \
-		hrt/memory_access.o \
 		hrt/hive_isp_css_mm_hrt.o
 
 atomisp-objs += \
@@ -45,7 +53,6 @@ atomisp-objs += \
 		$(css_folder)/sh_css_firmware.o \
 		$(css_folder)/sh_css_accelerate.o \
 		$(css_folder)/sh_css_refcount.o \
-		$(css_folder)/sh_css_pipeline.o \
 		$(css_folder)/sh_css_param_shading.o \
 		$(css_folder)/$(css_platform_folder)/host/gdc.o \
 		$(css_folder)/$(css_platform_folder)/host/irq.o \
@@ -70,12 +77,21 @@ atomisp-objs += $(css_folder)/$(css_platform_folder)/host/input_system.o
 endif
 
 ifeq ($(CONFIG_VIDEO_ATOMISP_CSS20), y)
-atomisp-objs += atomisp_compat_css20.o
-else
-atomisp-objs += atomisp_compat_css15.o
+atomisp-objs += atomisp_compat_css20.o \
+		$(css_folder)/input_system_init.o \
+		$(css_folder)/ia_css_memory_access.o \
+		$(css_folder)/ia_css_device_access.o \
+		$(css_folder)/sh_css_param_dvs.o
+
+else ifeq ($(CONFIG_VIDEO_ATOMISP_CSS15), y)
+atomisp-objs += hrt/device_access.o \
+		hrt/memory_access.o \
+		atomisp_compat_css15.o \
+		$(css_folder)/sh_css_pipeline.o
+
 endif
 
-obj-$(CONFIG_VIDEO_ATOMISP_CSS15) = atomisp.o
+obj-$(CONFIG_VIDEO_ATOMISP) = atomisp.o
 
 INCLUDES := -I$(srctree)/$(src)/include \
 	    -I$(srctree)/$(src)/ \
@@ -96,6 +112,13 @@ INCLUDES += -I$(src)/$(css_folder) \
 	    -I$(srctree)/$(src)/$(css_folder)/hive_isp_css_shared \
 	    -I$(srctree)/$(src)/$(css_folder)/hive_isp_css_shared/host
 
+ifeq ($(CONFIG_VIDEO_ATOMISP_CSS20), y)
+INCLUDES += -I$(srctree)/$(src)/$(css_folder)/hive_isp_css_kernel/pipeline \
+	    -I$(srctree)/$(src)/$(css_folder)/hive_isp_css_kernel/pipeline/host \
+	    -I$(srctree)/$(src)/$(css_folder)/hive_isp_css_kernel/csc \
+	    -I$(srctree)/$(src)/$(css_folder)/hive_isp_css_kernel/csc/host
+endif
+
 DEFINES := -DHRT_HW -DHRT_ISP_CSS_CUSTOM_HOST -DHRT_USE_VIR_ADDRS -DHRT_KERNEL -D__HOST__
 DEFINES += -DUSE_DYNAMIC_BIN
 DEFINES += -DISP_POWER_GATING
@@ -103,5 +126,12 @@ DEFINES += -DUSE_INTERRUPTS
 #DEFINES += -DUSE_SSSE3
 DEFINES += -DPUNIT_CAMERA_BUSY
 DEFINES += -DUSE_KMEM_CACHE
+ifeq ($(CONFIG_VIDEO_ATOMISP_CSS20), y)
+ifeq ($(CONFIG_ISP2400B0), y)
+DEFINES += -DSYSTEM_hive_isp_css_2400_system
+else
+DEFINES += -DSYSTEM_hive_isp_css_2400A0_system
+endif
+endif
 
 EXTRA_CFLAGS := $(INCLUDES) $(DEFINES) -fno-common -Werror
