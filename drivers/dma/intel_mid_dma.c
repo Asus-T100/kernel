@@ -32,7 +32,7 @@
 
 #include "dmaengine.h"
 
-#define MAX_CHAN	4 /*max ch across controllers*/
+#define MAX_CHAN	8 /*max ch across controllers*/
 #include "intel_mid_dma_regs.h"
 
 #define INTEL_MID_DMAC1_ID		0x0814
@@ -90,6 +90,20 @@ static int get_ch_index(int status, unsigned int base)
 			return i;
 	}
 	return -1;
+}
+
+static inline unsigned short get_dmac_id(struct middma_device *mid)
+{
+	 return mid->pdev->device;
+}
+
+static inline bool is_byt_dmac(struct middma_device *mid)
+{
+	if (get_dmac_id(mid) == INTEL_BYT_LPIO1_DMAC_ID
+		|| get_dmac_id(mid) == INTEL_BYT_LPIO2_DMAC_ID)
+		return true;
+	else
+		return false;
 }
 
 static void dump_dma_reg(struct dma_chan *chan)
@@ -874,7 +888,12 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 			}
 		} else {
 			cfg_hi.cfgx.protctl = 0x1; /*default value*/
-			cfg_hi.cfgx.src_per = cfg_hi.cfgx.dst_per =
+			/* Baytrail DMAC uses dynamic device instance */
+			if (is_byt_dmac(midc->dma))
+				cfg_hi.cfgx.src_per = cfg_hi.cfgx.dst_per =
+					mids->device_instance;
+			else
+				cfg_hi.cfgx.src_per = cfg_hi.cfgx.dst_per =
 					midc->ch_id - midc->dma->chan_base;
 		}
 	}
@@ -1525,8 +1544,11 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 {
 	struct middma_device *mid = data;
 	u32 tfr_status, err_status, block_status;
-	int call_tasklet = 0;
 	u32 isr;
+
+	/* On Baytrail, the DMAC is sharing IRQ with other devices */
+	if (is_byt_dmac(mid) && mid->state == SUSPENDED)
+		return IRQ_NONE;
 
 	/*DMA Interrupt*/
 	pr_debug("MDMA:Got an interrupt on irq %d\n", irq);
@@ -1540,26 +1562,24 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 	err_status = ioread32(mid->dma_base + STATUS_ERR);
 	block_status = ioread32(mid->dma_base + STATUS_BLOCK);
 
+	/* Common case if the IRQ is shared with other devices */
 	if (!tfr_status && !err_status && !block_status)
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 
 	pr_debug("MDMA: trf_Status %x, Mask %x\n", tfr_status, mid->intr_mask);
 	if (tfr_status) {
 		/*need to disable intr*/
 		iowrite32((tfr_status << INT_MASK_WE),
 						mid->dma_base + MASK_TFR);
-		call_tasklet = 1;
 	}
 	if (block_status) {
 		/*need to disable intr*/
 		iowrite32((block_status << INT_MASK_WE),
 						mid->dma_base + MASK_BLOCK);
-		call_tasklet = 1;
 	}
 	if (err_status) {
 		iowrite32((err_status << INT_MASK_WE),
 			  mid->dma_base + MASK_ERR);
-		call_tasklet = 1;
 	}
 	/* in mrlfd we need to clear the pisr bits to stop intr as well
 	 * so read the PISR register, see if we have pisr bits status and clear
@@ -1575,8 +1595,7 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 		}
 	}
 
-	if (call_tasklet)
-		tasklet_schedule(&mid->tasklet);
+	tasklet_schedule(&mid->tasklet);
 
 	return IRQ_HANDLED;
 }
@@ -1651,11 +1670,6 @@ static int mid_setup_dma(struct pci_dev *pdev)
 
 	INIT_LIST_HEAD(&dma->common.channels);
 	dma->pci_id = pdev->device;
-
-	/* FIXME: hack to not enable IRQ for LPIO DMAC */
-	if (dma->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
-	    dma->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
-		return 0;
 
 	if (dma->pimr_mask) {
 		dma->mask_reg = ioremap(dma->pimr_base, LNW_PERIPHRAL_MASK_SIZE);
@@ -1922,11 +1936,6 @@ int dma_suspend(struct device *dev)
 	struct middma_device *device = dev_get_drvdata(dev);
 	pr_debug("MDMA: dma_suspend called\n");
 
-	/* FIXME: hack to not enable IRQ for LPIO DMAC */
-	if (device->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
-	    device->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
-		return 0;
-
 	for (i = 0; i < device->max_chan; i++) {
 		if (device->ch[i].in_use)
 			return -EAGAIN;
@@ -1949,11 +1958,6 @@ int dma_resume(struct device *dev)
 	struct middma_device *device = dev_get_drvdata(dev);
 
 	pr_debug("MDMA: dma_resume called\n");
-	/* FIXME: hack to not enable IRQ for LPIO DMAC */
-	if (device->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
-	    device->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
-		return 0;
-
 	device->state = RUNNING;
 	iowrite32(REG_BIT0, device->dma_base + DMA_CFG);
 
@@ -2009,9 +2013,9 @@ static struct pci_device_id intel_mid_dma_ids[] = {
 					INFO(2, 6, 131071, 0xFF0000, 0xFF340018, 0, 0x10, &v2_dma_ops)},
 	/* Baytrauk Low Speed Peripheral DMA */
 	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO1_DMAC_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+			INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO2_DMAC_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+			INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_mid_dma_ids);
