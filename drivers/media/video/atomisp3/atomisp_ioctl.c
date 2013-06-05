@@ -2173,12 +2173,29 @@ static int atomisp_s_parm_file(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct atomisp_sub_device *isp_subdev =
+		atomisp_to_sub_device(atomisp_to_video_pipe(vdev));
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_OUTPUT) {
 		v4l2_err(&atomisp_dev,
 			    "unsupport v4l2 buf type for output\n");
 		return -EINVAL;
 	}
+
+	/*
+	 * only isp_subdev[0] support file injection function.
+	 *
+	 * This is to simplify the driver design, since there would be no
+	 * context passed to atomisp_file.c to state which subdev is using the
+	 * file injection.
+	 *
+	 * Just hardcode in atomisp_file.c that isp_subdev[0] is always used.
+	 *
+	 * also, we should not have the obscure UCs that for example, one
+	 * stream is in sensor mode, while the other is in file injection.
+	 */
+	if (isp_subdev->index != 0)
+		return 0;
 
 	mutex_lock(&isp->mutex);
 	isp->sw_contex.file_input = 1;
