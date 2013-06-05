@@ -438,13 +438,26 @@ void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev)
 static void atomisp_sof_event(struct atomisp_device *isp)
 {
 	struct v4l2_event event = {0};
-	/* FIXME: currently only use subdev[0] in single stream mode */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev;
+	int i;
+
+	/*
+	 * Disable SOF in multiple stream mode due to HW limitation.
+	 *
+	 * As we only have one MIPI Backend to generate SOF/EOF IRQs. In multi
+	 * stream mode, we can not differentiate which sensor generate the SOF
+	 */
+	if (atomisp_subdev_streaming_count(isp) != 1)
+		return;
 
 	event.type = V4L2_EVENT_FRAME_SYNC;
 	event.u.frame_sync.frame_sequence = atomic_read(&isp->sof_count);
 
-	v4l2_event_queue(isp_subdev->subdev.devnode, &event);
+	for (i = 0; i < isp->num_of_streams; i++) {
+		isp_subdev = &isp->isp_subdev[i];
+		if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED)
+			v4l2_event_queue(isp_subdev->subdev.devnode, &event);
+	}
 }
 
 static void atomisp_3a_stats_ready_event(struct atomisp_sub_device *isp_subdev)
@@ -1164,8 +1177,7 @@ void atomisp_wdt_work(struct work_struct *work)
 				    ATOMISP_DEVICE_STREAMING_ENABLED;
 		}
 		if (!isp->sw_contex.file_input) {
-			ia_css_irq_enable(
-				IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
+			atomisp_control_irq_sof(isp);
 
 			atomisp_set_term_en_count(isp);
 

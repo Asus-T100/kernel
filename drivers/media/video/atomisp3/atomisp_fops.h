@@ -42,6 +42,8 @@ int atomisp_subdev_init_struct(struct atomisp_sub_device *isp_subdev);
 
 int atomisp_subdev_streaming_count(struct atomisp_device *isp);
 
+void atomisp_control_irq_sof(struct atomisp_device *isp);
+
 unsigned int atomisp_subdev_users(struct atomisp_sub_device *isp_subdev);
 unsigned int atomisp_dev_users(struct atomisp_device *isp);
 

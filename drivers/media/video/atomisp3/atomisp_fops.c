@@ -506,6 +506,14 @@ int atomisp_subdev_streaming_count(struct atomisp_device *isp)
 
 	return sum;
 }
+/* SOF IRQ enable only in single stream mode */
+void atomisp_control_irq_sof(struct atomisp_device *isp)
+{
+	if (atomisp_subdev_streaming_count(isp) == 1)
+		ia_css_irq_enable(IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
+	else
+		ia_css_irq_enable(IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
+}
 /*
  * file operation functions
  */

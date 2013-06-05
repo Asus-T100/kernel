@@ -1483,8 +1483,7 @@ start_sensor:
 	}
 
 	if (!isp->sw_contex.file_input) {
-		ia_css_irq_enable(IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
-					true);
+		atomisp_control_irq_sof(isp);
 
 		atomisp_set_term_en_count(isp);
 
@@ -1606,8 +1605,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	}
 
 	if (!isp->sw_contex.file_input)
-		ia_css_irq_enable(IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
-					false);
+		atomisp_control_irq_sof(isp);
 
 	if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
 		cancel_work_sync(&isp->delayed_init_work);
