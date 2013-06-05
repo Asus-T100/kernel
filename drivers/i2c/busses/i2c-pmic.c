@@ -274,6 +274,8 @@ static int pmic_i2c_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_irq_request;
 
+	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
 	intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
 			PMIC_I2C_INTR_MASK);
 
