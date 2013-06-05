@@ -1346,6 +1346,26 @@ static int dac_ev(struct snd_soc_dapm_widget *w,
 	struct snd_soc_codec *codec = w->codec;
 	unsigned int mask = 1 << w->shift;
 
+	/* Don't propagate FIFO errors unless the DAC is running */
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		/* Clear FIFO error status */
+		snd_soc_update_bits(codec, WM8994_INTERRUPT_STATUS_2,
+				    WM8994_FIFOS_ERR_EINT_MASK,
+				    1 << WM8994_FIFOS_ERR_EINT_SHIFT);
+		/* Unmask FIFO error interrupts */
+		snd_soc_update_bits(codec, WM8994_INTERRUPT_STATUS_2_MASK,
+				    WM8994_IM_FIFOS_ERR_EINT_MASK,
+				    0 << WM8994_IM_FIFOS_ERR_EINT_SHIFT);
+		break;
+	case SND_SOC_DAPM_PRE_PMD:
+		/* Mask FIFO error interrupts */
+		snd_soc_update_bits(codec, WM8994_INTERRUPT_STATUS_2_MASK,
+				    WM8994_IM_FIFOS_ERR_EINT_MASK,
+				    1 << WM8994_IM_FIFOS_ERR_EINT_SHIFT);
+		break;
+	}
+
 	snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_5,
 			    mask, mask);
 	return 0;
@@ -1631,13 +1651,17 @@ SND_SOC_DAPM_MUX("Right Headphone Mux", SND_SOC_NOPM, 0, 0, &wm_hubs_hpr_mux),
 
 static const struct snd_soc_dapm_widget wm8994_dac_revd_widgets[] = {
 SND_SOC_DAPM_DAC_E("DAC2L", NULL, SND_SOC_NOPM, 3, 0,
-	dac_ev, SND_SOC_DAPM_PRE_PMU),
+	dac_ev, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
+	SND_SOC_DAPM_PRE_PMD),
 SND_SOC_DAPM_DAC_E("DAC2R", NULL, SND_SOC_NOPM, 2, 0,
-	dac_ev, SND_SOC_DAPM_PRE_PMU),
+	dac_ev, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
+	SND_SOC_DAPM_PRE_PMD),
 SND_SOC_DAPM_DAC_E("DAC1L", NULL, SND_SOC_NOPM, 1, 0,
-	dac_ev, SND_SOC_DAPM_PRE_PMU),
+	dac_ev, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
+	SND_SOC_DAPM_PRE_PMD),
 SND_SOC_DAPM_DAC_E("DAC1R", NULL, SND_SOC_NOPM, 0, 0,
-	dac_ev, SND_SOC_DAPM_PRE_PMU),
+	dac_ev, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
+	SND_SOC_DAPM_PRE_PMD),
 };
 
 static const struct snd_soc_dapm_widget wm8994_dac_widgets[] = {
@@ -4325,6 +4349,11 @@ static int wm8994_codec_probe(struct snd_soc_codec *codec)
 					ARRAY_SIZE(wm8958_intercon));
 		break;
 	}
+
+	/* Make sure FIFO errors are masked */
+	snd_soc_update_bits(codec, WM8994_INTERRUPT_STATUS_2_MASK,
+			    WM8994_IM_FIFOS_ERR_EINT_MASK,
+			    1 << WM8994_IM_FIFOS_ERR_EINT_MASK);
 
 	return 0;
 
