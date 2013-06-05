@@ -1464,11 +1464,6 @@ start_sensor:
 	/* stream on the sensor */
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 			       video, s_stream, 1);
-	if (ret) {
-		atomisp_reset(isp);
-		ret = -EINVAL;
-	}
-
 out:
 	mutex_unlock(&isp->mutex);
 	return ret;
