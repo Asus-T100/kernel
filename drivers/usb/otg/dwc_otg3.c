@@ -460,10 +460,13 @@ static int dwc_otg_get_chr_status(struct usb_phy *x, void *data)
 	return 0;
 }
 
-static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
+static int ulpi_read(struct usb_phy *phy, u32 reg)
 {
+	struct dwc_otg2 *otg = container_of(phy, struct dwc_otg2, phy);
 	u32 val32 = 0, count = 200;
+	u8 val;
 
+	reg &= 0xFF;
 
 	while (count) {
 		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSBSY)
@@ -495,11 +498,11 @@ static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
 
 	while (count) {
 		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSDONE) {
-			*val = otg_read(otg, GUSB2PHYACC0) & \
+			val = otg_read(otg, GUSB2PHYACC0) & \
 				   GUSB2PHYACC0_REGDATA_MASK;
 			otg_dbg(otg, "%s - reg 0x%x data 0x%x\n",\
-					__func__, reg, *val);
-			return 0;
+					__func__, reg, val);
+			return val;
 		}
 
 		count--;
@@ -520,10 +523,13 @@ static int dwc_otg_enable_vbus(struct dwc_otg2 *otg, int enable)
 	return ret;
 }
 
-static int ulpi_write(struct dwc_otg2 *otg, const u8 reg, const u8 val)
+static int ulpi_write(struct usb_phy *phy, u32 val, u32 reg)
 {
+	struct dwc_otg2 *otg = container_of(phy, struct dwc_otg2, phy);
 	u32 val32 = 0, count = 200;
 
+	val &= 0xFF;
+	reg &= 0xFF;
 
 	while (count) {
 		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSBSY)
@@ -560,7 +566,7 @@ static int ulpi_write(struct dwc_otg2 *otg, const u8 reg, const u8 val)
 		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSDONE) {
 			otg_dbg(otg, "%s - reg 0x%x data 0x%x write done\n",\
 					__func__, reg, val);
-			return val;
+			return 0;
 		}
 
 		count--;
@@ -571,6 +577,11 @@ static int ulpi_write(struct dwc_otg2 *otg, const u8 reg, const u8 val)
 	return -ETIMEDOUT;
 }
 
+static struct usb_phy_io_ops dwc_otg_io_ops = {
+	.read = ulpi_read,
+	.write = ulpi_write,
+};
+
 /* As we use SW mode to do charger detection, need to notify HW
  * the result SW get, charging port or not */
 static int dwc_otg_charger_hwdet(bool enable)
@@ -579,14 +590,14 @@ static int dwc_otg_charger_hwdet(bool enable)
 	int				retval;
 
 	if (enable) {
-		retval = ulpi_write(otg, TUSB1211_POWER_CONTROL_SET,
-				PWCTRL_HWDETECT);
+		retval = ulpi_write(&otg->phy, PWCTRL_HWDETECT,
+				TUSB1211_POWER_CONTROL_SET);
 		if (retval)
 			return retval;
 		otg_dbg(otg, "set HWDETECT\n");
 	} else {
-		retval = ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR,
-				PWCTRL_HWDETECT);
+		retval = ulpi_write(&otg->phy, PWCTRL_HWDETECT,
+				TUSB1211_POWER_CONTROL_CLR);
 		if (retval)
 			return retval;
 		otg_dbg(otg, "clear HWDETECT\n");
@@ -640,9 +651,8 @@ static enum power_supply_charger_cable_type aca_check(struct dwc_otg2 *otg)
 static enum power_supply_charger_cable_type
 		get_charger_type(struct dwc_otg2 *otg)
 {
-	u8 val, vdat_det, chgd_serx_dm;
+	int ret, val, vdat_det, chgd_serx_dm;
 	unsigned long timeout, interval;
-	int ret;
 	enum power_supply_charger_cable_type type =
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
@@ -656,8 +666,8 @@ static enum power_supply_charger_cable_type
 	/* Enable ACA:
 	 * Enable ACA & ID detection logic.
 	 */
-	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
-			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0, \
+	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL,
+			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0,
 			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0);
 	if (ret)
 		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
@@ -666,17 +676,18 @@ static enum power_supply_charger_cable_type
 	 * TermSel to 0, &
 	 * XcvrSel to 01 (enable FS xcvr)
 	 */
-	ulpi_write(otg, TUSB1211_FUNC_CTRL_SET, \
-			FUNCCTRL_OPMODE(1) | FUNCCTRL_XCVRSELECT(1));
-	ulpi_write(otg, TUSB1211_FUNC_CTRL_CLR, \
-			FUNCCTRL_OPMODE(2) | FUNCCTRL_XCVRSELECT(2) \
-			| FUNCCTRL_TERMSELECT);
+	ulpi_write(&otg->phy, FUNCCTRL_OPMODE(1) | FUNCCTRL_XCVRSELECT(1),
+			TUSB1211_FUNC_CTRL_SET);
+	ulpi_write(&otg->phy, FUNCCTRL_OPMODE(2) | FUNCCTRL_XCVRSELECT(2)
+			| FUNCCTRL_TERMSELECT, TUSB1211_FUNC_CTRL_CLR);
 
 	/*Enable SW control*/
-	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_SW_CONTROL);
+	ulpi_write(&otg->phy, PWCTRL_SW_CONTROL,
+			TUSB1211_POWER_CONTROL_SET);
 
 	/* Enable IDPSRC */
-	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_SET, VS3_CHGD_IDP_SRC_EN);
+	ulpi_write(&otg->phy, VS3_CHGD_IDP_SRC_EN,
+			TUSB1211_VENDOR_SPECIFIC3_SET);
 
 	/* Check DCD result, use same polling parameter */
 	timeout = jiffies + msecs_to_jiffies(DATACON_TIMEOUT);
@@ -691,8 +702,8 @@ static enum power_supply_charger_cable_type
 
 	while (!time_after(jiffies, timeout)) {
 		/* Read DP logic level. */
-		ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &val);
-		if (ret < 0) {
+		val = ulpi_read(&otg->phy, TUSB1211_VENDOR_SPECIFIC4);
+		if (val < 0) {
 			otg_err(otg, "ULPI read error! try again\n");
 			continue;
 		}
@@ -707,12 +718,13 @@ static enum power_supply_charger_cable_type
 	}
 
 	/* Disable DP pullup (Idp_src) */
-	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_CLR, VS3_CHGD_IDP_SRC_EN);
+	ulpi_write(&otg->phy, VS3_CHGD_IDP_SRC_EN,
+			TUSB1211_VENDOR_SPECIFIC3_CLR);
 
 	/* ID Check:
 	 * Check ID pin state.
 	 */
-	ret = intel_scu_ipc_ioread8(PMIC_USBIDSTS, &val);
+	ret = intel_scu_ipc_ioread8(PMIC_USBIDSTS, (u8 *) &val);
 	if (ret)
 		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
 	val &= USBIDSTS_ID_FLOAT_STS;
@@ -725,8 +737,8 @@ static enum power_supply_charger_cable_type
 	 * Read DP/DM logic level. Note: use DEBUG
 	 * because VS4 isn’t enabled in this situation.
      */
-	ret = ulpi_read(otg, TUSB1211_DEBUG, &val);
-	if (ret < 0)
+	val = ulpi_read(&otg->phy, TUSB1211_DEBUG);
+	if (val < 0)
 		otg_err(otg, "ULPI read error!\n");
 
 	val &= DEBUG_LINESTATE;
@@ -742,7 +754,7 @@ static enum power_supply_charger_cable_type
 	/* Pri Det Enable:
 	 * Enable VDPSRC.
 	 */
-	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
+	ulpi_write(&otg->phy, PWCTRL_DP_VSRC_EN, TUSB1211_POWER_CONTROL_SET);
 
 	/* Wait >106.1ms (40ms for BC
 	 * Tvdpsrc_on, 66.1ms for TI CHGD_SERX_DEB).
@@ -752,15 +764,15 @@ static enum power_supply_charger_cable_type
 	/* Pri Det Check:
 	 * Check if DM > VDATREF.
 	 */
-	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &vdat_det);
-	if (ret < 0)
+	vdat_det = ulpi_read(&otg->phy, TUSB1211_POWER_CONTROL);
+	if (vdat_det < 0)
 		otg_err(otg, "ULPI read error!\n");
 
 	vdat_det &= PWCTRL_VDAT_DET;
 
 	/* Check if DM<VLGC */
-	ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &chgd_serx_dm);
-	if (ret < 0)
+	chgd_serx_dm = ulpi_read(&otg->phy, TUSB1211_VENDOR_SPECIFIC4);
+	if (chgd_serx_dm < 0)
 		otg_err(otg, "ULPI read error!\n");
 
 	chgd_serx_dm &= VS4_CHGD_SERX_DM;
@@ -772,7 +784,7 @@ static enum power_supply_charger_cable_type
 		type = POWER_SUPPLY_CHARGER_TYPE_USB_SDP;
 
 	/* Disable VDPSRC. */
-	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
+	ulpi_write(&otg->phy,  PWCTRL_DP_VSRC_EN, TUSB1211_POWER_CONTROL_CLR);
 
 	/* If SDP, goto “Cleanup”.
 	 * Else, goto “Sec Det Enable”
@@ -786,10 +798,10 @@ static enum power_supply_charger_cable_type
 	usleep_range(1000, 1500);
 
 	/* Swap DP & DM */
-	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_CLR, VS1_DATAPOLARITY);
+	ulpi_write(&otg->phy, VS1_DATAPOLARITY, TUSB1211_VENDOR_SPECIFIC1_CLR);
 
 	/* Enable 'VDMSRC'. */
-	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
+	ulpi_write(&otg->phy, PWCTRL_DP_VSRC_EN, TUSB1211_POWER_CONTROL_SET);
 
 	/* Wait >73ms (40ms for BC Tvdmsrc_on, 33ms for TI TVDPSRC_DEB) */
 	msleep(80);
@@ -797,8 +809,8 @@ static enum power_supply_charger_cable_type
 	/* Sec Det Check:
 	 * Check if DP>VDATREF.
 	 */
-	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &val);
-	if (ret < 0)
+	val = ulpi_read(&otg->phy, TUSB1211_POWER_CONTROL);
+	if (val < 0)
 		otg_err(otg, "ULPI read error!\n");
 
 	val &= PWCTRL_VDAT_DET;
@@ -812,17 +824,18 @@ static enum power_supply_charger_cable_type
 		type = POWER_SUPPLY_CHARGER_TYPE_USB_DCP;
 
 	/* Disable VDMSRC. */
-	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
+	ulpi_write(&otg->phy, PWCTRL_DP_VSRC_EN, TUSB1211_POWER_CONTROL_CLR);
 
 	/* Swap DP & DM. */
-	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_SET, VS1_DATAPOLARITY);
+	ulpi_write(&otg->phy, VS1_DATAPOLARITY, TUSB1211_VENDOR_SPECIFIC1_SET);
 
 cleanup:
 
 	/* If DCP detected, assert VDPSRC. */
 	if (type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP)
-		ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, \
-				PWCTRL_SW_CONTROL | PWCTRL_DP_VSRC_EN);
+		ulpi_write(&otg->phy,  \
+				PWCTRL_SW_CONTROL | PWCTRL_DP_VSRC_EN,
+				TUSB1211_POWER_CONTROL_SET);
 
 	return type;
 }
@@ -1426,7 +1439,7 @@ static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 
 		/* Set 0x7f for better quality in eye diagram
 		 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
-		ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_SET, 0x7f);
+		ulpi_write(&otg->phy, 0x7f, TUSB1211_VENDOR_SPECIFIC1_SET);
 	} else {
 		ret = intel_scu_ipc_update_register(PMIC_VLDOCNT,
 				0x00, PMIC_VLDOCNT_VUSBPHYEN);
@@ -1810,6 +1823,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->phy.set_suspend	= dwc_otg2_set_suspend;
 	otg->phy.host_release   = dwc_otg2_received_host_release;
 	otg->phy.set_power	= dwc_otg_set_power;
+	otg->phy.io_ops	= &dwc_otg_io_ops;
 	otg->phy.get_chr_status	= dwc_otg_get_chr_status;
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
