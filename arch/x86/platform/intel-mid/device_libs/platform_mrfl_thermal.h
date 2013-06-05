@@ -20,6 +20,7 @@ extern void __init *mrfl_thermal_platform_data(void *)
 
 enum {
 	mrfl_thermal,
+	bdgb_thermal,
 };
 
 #endif
