@@ -1426,8 +1426,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 		isp->wdt_duration = ATOMISP_ISP_FILE_TIMEOUT_DURATION;
 	else
 		isp->wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
-	if (atomisp_buffers_queued(isp))
-		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
 	isp->params.dvs_proj_data_valid = false;
@@ -1464,6 +1462,8 @@ start_sensor:
 	/* stream on the sensor */
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 			       video, s_stream, 1);
+	if (atomisp_buffers_queued(isp))
+		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 out:
 	mutex_unlock(&isp->mutex);
 	return ret;
