@@ -583,7 +583,7 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 
 static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
-	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 7);
+	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	return 0;
 }
 
