@@ -165,6 +165,9 @@ static struct wm8994_pdata wm8958_merr_pdata = {
 	.ldo[0]	= { 0, &wm8994_ldo1_data }, /* set actual value at wm8994_platform_data() */
 	.ldo[1]	= { 0, &wm8994_ldo2_data },
 	.ldo_ena_always_driven = 1,
+
+	.mic_id_delay = 300, /*300ms delay*/
+	.micdet_delay = 500,
 };
 
 void __init *wm8994_platform_data(void *info)
