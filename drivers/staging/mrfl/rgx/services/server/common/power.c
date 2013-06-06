@@ -652,7 +652,9 @@ Exit:
 			Reprocess the devices' queues in case commands were blocked during
 			the power transition.
 		*/
+		PVRSRVPowerUnlock();
 		PVRSRVCheckStatus(IMG_NULL);
+		PVRSRVForcedPowerLock();
 	}
 
 	return eError;
@@ -710,14 +712,14 @@ PVRSRV_ERROR PVRSRVSetPowerStateKM(PVRSRV_SYS_POWER_STATE eNewSysPowerState, IMG
 
 ErrorExit:
 
-	PVRSRVPowerUnlock();
-
 	PVR_DPF((PVR_DBG_ERROR,
 			"PVRSRVSetPowerStateKM: Transition from %d to %d FAILED (%s), forced: %d",
 			psPVRSRVData->eCurrentPowerState, eNewSysPowerState, PVRSRVGetErrorStringKM(eError), bForced));
 
 	/* save the power state for the re-attempt */
 	psPVRSRVData->eFailedPowerState = eNewSysPowerState;
+
+	PVRSRVPowerUnlock();
 
 	return eError;
 }
