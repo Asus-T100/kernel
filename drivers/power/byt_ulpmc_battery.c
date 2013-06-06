@@ -63,9 +63,6 @@
 #define ULPMC_FG_REG_SOH		0x28 /* State Of Health */
 #define ULPMC_FG_REG_CYCT		0x2A /* Cycle count total */
 #define ULPMC_FG_REG_SOC		0x2C /* State Of Charge */
-#define ULPMC_FG_REG_SOH_V4		0x1C /* State Of Health */
-#define ULPMC_FG_REG_CYCT_V4		0x1E /* Cycle count total */
-#define ULPMC_FG_REG_SOC_V4		0x20 /* State Of Charge */
 
 /* capacity interrupt trigger delta in perc (8-bit) */
 #define ULPMC_SOC_INT_TRIG_REG		0x4C
@@ -546,14 +543,11 @@ batt_stat_report:
 	return ret;
 }
 
-static int ulpmc_get_capacity(struct ulpmc_chip_info *chip)
+static inline int ulpmc_get_capacity(struct ulpmc_chip_info *chip)
 {
 	int ret;
 
-	if (chip->pdata->version == BYTULPMCFGV3)
-		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC);
-	else
-		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC_V4);
+	ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC);
 
 	return ret;
 }
@@ -672,11 +666,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		val->intval = ret * 1000;
 		break;
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
-		if (chip->pdata->version == BYTULPMCFGV3)
-			ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_CYCT);
-		else
-			ret = ulpmc_read_reg16(chip->client,
-							ULPMC_FG_REG_CYCT_V4);
+		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_CYCT);
 		if (ret < 0)
 			goto i2c_read_err;
 		val->intval = ret;
