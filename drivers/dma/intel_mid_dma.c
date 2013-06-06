@@ -782,6 +782,24 @@ static int intel_mid_dma_device_control(struct dma_chan *chan,
 	if (cmd == DMA_SLAVE_CONFIG)
 		return dma_slave_control(chan, arg);
 
+	/*
+	 * Leverage the DMA_PAUSE/DMA_RESUME for tuntime PM managemnt.
+	 * DMA customer need make sure the channel is stopped before calling
+	 * the DMA_PAUSE here, and don't start DMA channel befor calling
+	 * DMA_RESUME.
+	 */
+	if (cmd == DMA_PAUSE) {
+		midc->in_use = 0;
+		pm_runtime_put(mid->dev);
+		return 0;
+	}
+
+	if (cmd == DMA_RESUME) {
+		midc->in_use = 1;
+		pm_runtime_get_sync(mid->dev);
+		return 0;
+	}
+
 	if (cmd != DMA_TERMINATE_ALL)
 		return -ENXIO;
 
