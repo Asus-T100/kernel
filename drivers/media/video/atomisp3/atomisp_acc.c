@@ -118,10 +118,14 @@ static int acc_stop_acceleration(struct atomisp_device *isp)
 		return -ENOENT;
 	}
 
+	/* Unlock the isp mutex taken in IOCTL handler before sleeping! */
+	mutex_unlock(&isp->mutex);
 	if (wait_for_completion_interruptible(&isp->acc.acc_done) != 0) {
-		dev_dbg(isp->dev, "<%s: completion interrupted\n", __func__);
+		dev_err(isp->dev, "<%s: completion interrupted\n", __func__);
+		mutex_lock(&isp->mutex);
 		return -ERESTARTSYS;
 	}
+	mutex_lock(&isp->mutex);
 	dev_dbg(isp->dev, "wait for acc pipeline done finished\n");
 
 	del_timer_sync(&isp->wdt);
