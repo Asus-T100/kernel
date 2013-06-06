@@ -39,6 +39,32 @@ static int dwc_host_setup(struct usb_hcd *hcd);
 static int xhci_release_host(struct usb_hcd *hcd);
 static struct platform_driver xhci_dwc_driver;
 
+static int if_usb_devices_connected(struct xhci_hcd *xhci)
+{
+	struct usb_device		*usb_dev;
+	int i, connected_devices = 0;
+
+	if (!xhci)
+		return -EINVAL;
+
+	usb_dev = xhci->main_hcd->self.root_hub;
+	for (i = 0; i < usb_dev->maxchild; ++i) {
+		if (usb_dev->children[i])
+			connected_devices++;
+	}
+
+	usb_dev = xhci->shared_hcd->self.root_hub;
+	for (i = 0; i < usb_dev->maxchild; ++i) {
+		if (usb_dev->children[i])
+			connected_devices++;
+	}
+
+	if (connected_devices)
+		return 1;
+
+	return 0;
+}
+
 static void set_phy_suspend_resume(struct usb_hcd *hcd, int on_off)
 {
 	/* Comment the actual PHY operations. This is not final hardware desgin.
@@ -655,6 +681,7 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 	hcd->rpm_resume = 0;
 
 	platform_set_drvdata(pdev, hcd);
+	pm_runtime_set_autosuspend_delay(hcd->self.controller, 100);
 	pm_runtime_enable(hcd->self.controller);
 
 	retval = device_create_file(hcd->self.controller, &dev_attr_disable_pm);
@@ -803,6 +830,16 @@ static int dwc_hcd_resume_common(struct device *dev)
 		return 0;
 	}
 
+	if (!if_usb_devices_connected(xhci)) {
+		struct dwc_otg2 *otg;
+		otg = container_of(usb_get_transceiver(), struct dwc_otg2, phy);
+		if (otg->reset_host) {
+			xhci_dbg(xhci, "Notify dwc-otg2 driver to re-initialize host driver\n");
+			otg->reset_host(otg);
+			return 0;
+		}
+	}
+
 	if (HCD_RH_RUNNING(hcd) ||
 			(hcd->shared_hcd &&
 			 HCD_RH_RUNNING(hcd->shared_hcd))) {
@@ -848,7 +885,7 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 		if (hcd->rpm_resume) {
 			struct device		*rpm_dev = hcd->self.controller;
 			hcd->rpm_resume = 0;
-			pm_runtime_put(rpm_dev);
+			pm_runtime_put_autosuspend(rpm_dev);
 		}
 	}
 	return retval;

@@ -42,6 +42,26 @@ static struct {
 
 };
 
+static int d3hot_wa_enabled(struct dwc_otg2 *otg)
+{
+	if (!otg || !otg->otg_data)
+		return 0;
+
+	return otg->otg_data->d3hot_wa;
+}
+
+static void enable_d3hot_wa(void)
+{
+	void __iomem *addr;
+	unsigned int val = 0;
+
+	addr = ioremap_nocache(APBFB_OTG3_MISC1, 4);
+	val = readl(addr);
+	val |= OTG3_MISC1_DO_D3COLD_RESUME;
+	writel(val, addr);
+	iounmap(addr);
+}
+
 static int is_hybridvp(struct dwc_otg2 *otg)
 {
 	if (!otg || !otg->otg_data)
@@ -1216,7 +1236,7 @@ stay_host:
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_A_DEV_SESS_END_DET_EVNT;
-	user_mask |= USER_A_BUS_DROP;
+	user_mask = USER_A_BUS_DROP | USER_RESET_HOST;
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	user_mask |= USER_ID_B_CHANGE_EVENT;
 #endif
@@ -1296,6 +1316,14 @@ stay_host:
 		return DWC_STATE_INIT;
 	}
 #endif
+
+	if (user_events & USER_RESET_HOST) {
+		otg_dbg(otg, "USER_RESET_HOST\n");
+		stop_host(otg);
+		reset_hw(otg);
+		start_host(otg);
+		goto stay_host;
+	}
 
 	/* Invalid state */
 	return DWC_STATE_INVALID;
@@ -1519,6 +1547,15 @@ static inline struct dwc_otg2 *xceiv_to_dwc_otg2(struct usb_otg *x)
 static int dwc_otg2_set_suspend(struct usb_phy *x, int suspend)
 {
 	return 0;
+}
+
+static void dwc_otg2_reset_host(struct dwc_otg2 *otg)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->user_events |= USER_RESET_HOST;
+	wakeup_main_thread(otg);
+	spin_unlock_irqrestore(&otg->lock, flags);
 }
 
 static int dwc_otg2_set_peripheral(struct usb_otg *x,
@@ -1777,6 +1814,10 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
+	if (d3hot_wa_enabled(otg)) {
+		otg->reset_host	= dwc_otg2_reset_host;
+		enable_d3hot_wa();
+	}
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
@@ -2039,6 +2080,12 @@ static int dwc_otg_runtime_resume(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
 	pci_set_power_state(pci_dev, PCI_D0);
+
+	/* From synopsys spec 12.2.11.
+	 * Software cannot access memory-mapped I/O space
+	 * for 10ms.
+	 */
+	mdelay(10);
 	pci_restore_state(pci_dev);
 	if (pci_enable_device(pci_dev) < 0) {
 		printk(KERN_ERR "dwc-otg3: pci_enable_device failed.\n");
@@ -2093,6 +2140,12 @@ static int dwc_otg_resume(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
 	pci_set_power_state(pci_dev, PCI_D0);
+
+	/* From synopsys spec 12.2.11.
+	 * Software cannot access memory-mapped I/O space
+	 * for 10ms.
+	 */
+	mdelay(10);
 	pci_restore_state(pci_dev);
 	if (pci_enable_device(pci_dev) < 0) {
 		printk(KERN_ERR "dwc-otg3: pci_enable_device failed.\n");
