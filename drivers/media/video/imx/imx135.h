@@ -3547,13 +3547,13 @@ struct imx_resolution imx135_res_preview[] = {
 		.skip_frames = 2,
 	},
 	{
-		.desc = "imx135_6M_25fps",
-		.regs = imx135_6M_25fps,
+		.desc = "imx135_6M_20fps",
+		.regs = imx135_6M_20fps,
 		.width = 3280	,
 		.height = 1852,
-		.fps = 25,
-		.pixels_per_line = 0x11DC, /* consistent with regs arrays */
-		.lines_per_frame = 0x0C1E, /* consistent with regs arrays */
+		.fps = 20,
+		.pixels_per_line = 0x1600, /* consistent with regs arrays */
+		.lines_per_frame = 0x0E00, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
