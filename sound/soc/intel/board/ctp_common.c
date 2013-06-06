@@ -726,6 +726,10 @@ static struct platform_device_id ctp_audio_ids[] = {
 		.name		= "ctp_ht_wm5102",
 		.driver_data	= (kernel_ulong_t)&ctp_ht_wm5102_ops,
 	},
+	{
+		.name		= "ctp_lt_wm8994",
+		.driver_data	= (kernel_ulong_t)&ctp_lt_wm8994_ops,
+	},
 	{ },
 };
 MODULE_DEVICE_TABLE(platform, ctp_audio_ids);

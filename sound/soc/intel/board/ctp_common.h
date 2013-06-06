@@ -53,6 +53,7 @@ extern struct snd_soc_machine_ops ctp_rhb_cs42l73_ops;
 extern struct snd_soc_machine_ops ctp_vb_cs42l73_ops;
 extern struct snd_soc_machine_ops merr_bb_cs42l73_ops;
 extern struct snd_soc_machine_ops ctp_ht_wm5102_ops;
+extern struct snd_soc_machine_ops ctp_lt_wm8994_ops;
 
 struct snd_soc_machine_ops {
 	int micsdet_debounce;

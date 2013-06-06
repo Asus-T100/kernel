@@ -82,6 +82,8 @@ config SND_CTP_MACHINE
 	depends on INTEL_SCU_IPC_UTIL && X86 && GPIO_LANGWELL
 	select SND_SOC_CS42L73
 	select SND_SOC_WM5102
+	select SND_SOC_WM8994
+	select MFD_CORE
 	select SND_SST_PLATFORM
 	select SND_SST_MACHINE
 	select SND_INTEL_SST
