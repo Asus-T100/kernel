@@ -2472,6 +2472,13 @@ PVRSRV_ERROR RGXUpdateHealthStatus(PVRSRV_DEVICE_NODE* psDevNode,
 	{
 		return PVRSRV_OK;
 	}
+
+	/* If RGX is not powered on, don't continue */
+	if (!PVRSRVIsDevicePowered(psDevNode->sDevId.ui32DeviceIndex)) {
+		PVR_DPF((PVR_DBG_WARNING,
+			"RGXGetDeviceHealthStatus: Device is powered off.\n"));
+		return PVRSRV_OK;
+	}
 	
 	/* If this is a quick update, then include the last current value... */
 	if (!bCheckAfterTimePassed)
