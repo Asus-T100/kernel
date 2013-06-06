@@ -22,6 +22,13 @@ static int __init ulpmc_i2c_init(void)
 	ulpmc_pdata.cc_lim1 = 1500;	/* 1500mA */
 	ulpmc_pdata.cc_lim2 = 1000;	/* 1000mA */
 	ulpmc_pdata.cc_lim3 = 500;	/* 500mA */
+	/*
+	 * In BYT FFRD10 we have two batteries with
+	 * each battery has an internal resistance (Rbatt)
+	 * of ~150mOhms. As the batteries are connected
+	 * in parallel effective Rbatt will become 75mOhms.
+	 */
+	ulpmc_pdata.rbatt = 75;		/* 75 mOhms */
 	snprintf(ulpmc_pdata.battid, BATTID_LEN, "INT-BYT");
 	snprintf(ulpmc_pdata.extcon_devname,
 			EXTCON_NAME_LEN, "fsa9285");

@@ -562,7 +562,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 					enum power_supply_property psp,
 					union power_supply_propval *val)
 {
-	int ret = 0, batt_volt;
+	int ret = 0, batt_volt, cur_avg;
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, bat);
 	mutex_lock(&chip->lock);
@@ -622,8 +622,18 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 				ret = batt_volt;
 				goto i2c_read_err;
 			}
+			cur_avg = ulpmc_read_reg16(chip->client,
+							ULPMC_FG_REG_AI);
+			if (cur_avg < 0) {
+				ret = cur_avg;
+				goto i2c_read_err;
+			}
+			cur_avg = ((int)adjust_sign_value(cur_avg));
+			/* compensate for the IR drop */
+			batt_volt = batt_volt - ((cur_avg *
+						chip->pdata->rbatt) / 1000);
 			/* set capacity to 0% in case crit batt threshold */
-			if (batt_volt < chip->pdata->volt_sh_min)
+			if ((batt_volt) < chip->pdata->volt_sh_min)
 				ret = 0;
 		}
 		val->intval = ret;
