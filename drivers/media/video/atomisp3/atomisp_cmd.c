@@ -3837,7 +3837,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			 * Enable only if resolution is equal or above 5M,
 			 * Always enable raw_binning on MRFLD.
 			 */
-			if (IS_MRFLD || width >= 2576 || height >= 1936) {
+			if (width >= 2576 || height >= 1936) {
 				ia_css_enable_raw_binning(isp, true);
 				ia_css_input_set_two_pixels_per_clock(isp, false);
 			}
