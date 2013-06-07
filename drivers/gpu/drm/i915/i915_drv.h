@@ -459,6 +459,9 @@ typedef struct drm_i915_private {
 	unsigned int fw_rendercount;
 	unsigned int fw_mediacount;
 
+	/** counter for user requests to disable/re-enable RC6 */
+	unsigned int rc6_user_disable_count;
+
 	/** gt_lock is also taken in irq contexts. */
 	struct spinlock gt_lock;
 
@@ -1467,6 +1470,9 @@ int i915_gem_leavevt_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv);
 int i915_gem_vmap_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
+int i915_perfmon_ioctl(struct drm_device *dev, void *data,
+			struct drm_file *file);
+int i915_perfmon_set_rc6(struct drm_device *dev, __u32 enable);
 int i915_gem_set_tiling(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 int i915_gem_get_tiling(struct drm_device *dev, void *data,

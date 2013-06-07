@@ -2551,9 +2551,14 @@ void gen6_disable_rps(struct drm_device *dev)
 
 int intel_enable_rc6(const struct drm_device *dev)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	/* Respect the kernel parameter if it is set */
 	if (i915_enable_rc6 >= 0)
 		return i915_enable_rc6;
+
+	if (dev_priv->rc6_user_disable_count > 0)
+		return 0;
 
 	if (INTEL_INFO(dev)->gen == 5) {
 		DRM_DEBUG_DRIVER("Ironlake: only RC6 available\n");
