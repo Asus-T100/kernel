@@ -191,6 +191,10 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
  */
 static bool mrfld_pmu_enter(int s0ix_state)
 {
+	mid_pmu_cxt->s0ix_entered = s0ix_state;
+	if (s0ix_state == MID_S3_STATE)
+		mid_pmu_cxt->pmu_current_state = SYS_STATE_S3;
+
 	return true;
 }
 
@@ -305,8 +309,18 @@ static int mrfld_nc_set_power_state(int islands, int state_type,
 	return ret;
 }
 
+void s0ix_complete(void)
+{
+	if (mid_pmu_cxt->s0ix_entered) {
+		log_wakeup_irq();
+		mid_pmu_cxt->pmu_current_state	=
+		mid_pmu_cxt->s0ix_entered	= 0;
+	}
+}
+
 struct platform_pmu_ops mrfld_pmu_ops = {
 	.init	 = mrfld_pmu_init,
 	.enter	 = mrfld_pmu_enter,
+	.set_s0ix_complete = s0ix_complete,
 	.nc_set_power_state = mrfld_nc_set_power_state,
 };
