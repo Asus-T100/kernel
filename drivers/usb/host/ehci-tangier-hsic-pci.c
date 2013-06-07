@@ -404,15 +404,14 @@ static void wakeup_work(struct work_struct *work)
 {
 	dev_dbg(&pci_dev->dev,
 		"%s---->\n", __func__);
+	mutex_lock(&hsic.hsic_mutex);
 	if (hsic.modem_dev == NULL) {
+		mutex_unlock(&hsic.hsic_mutex);
 		dev_dbg(&pci_dev->dev,
 			"%s---->Modem not created\n", __func__);
 		return -ENODEV;
 	}
 
-	mutex_lock(&hsic.hsic_mutex);
-	dev_dbg(&pci_dev->dev,
-		"%s---->Wakeup IRQ is disabled\n", __func__);
 	pm_runtime_get_sync(&hsic.modem_dev->dev);
 	usleep_range(500, 600);
 	pm_runtime_put_sync(&hsic.modem_dev->dev);
