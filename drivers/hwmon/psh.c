@@ -116,6 +116,9 @@ int do_setup_ddr(struct device *dev)
 	intel_scu_ipc_msic_vprog2(1);
 #endif
 	if (!request_firmware(&fw_entry, "psh.bin", dev)) {
+		if (!fw_entry)
+			return -ENOMEM;
+
 		pr_debug("psh fw size %d virt:0x%p\n",
 				fw_entry->size, fw_entry->data);
 		if (fw_entry->size > APP_IMR_SIZE) {
