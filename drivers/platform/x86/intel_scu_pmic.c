@@ -40,12 +40,6 @@
 #define IPC_WWBUF_SIZE    20
 #define IPC_RWBUF_SIZE    20
 
-#define IPCMSG_PCNTRL           0xFF
-
-#define IPC_CMD_PCNTRL_W      0
-#define IPC_CMD_PCNTRL_R      1
-#define IPC_CMD_PCNTRL_M      2
-
 static struct kobject *scu_pmic_kobj;
 static struct rpmsg_instance *pmic_instance;
 

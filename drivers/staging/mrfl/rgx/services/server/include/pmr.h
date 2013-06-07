@@ -695,6 +695,13 @@ extern IMG_VOID *
 PMRGetPrivateDataHack(const PMR *psPMR,
                       const PMR_IMPL_FUNCTAB *psFuncTab);
 
+extern PVRSRV_ERROR
+PMRZeroingPMR(PMR *psPMR,
+				IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize);
+
+PVRSRV_ERROR
+PMRDumpPageList(PMR *psReferencePMR,
+					IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize);
 
 extern PVRSRV_ERROR
 PMRWritePMPageList(/* Target PMR, offset, and length */
@@ -704,7 +711,8 @@ PMRWritePMPageList(/* Target PMR, offset, and length */
                    /* Referenced PMR, and "page" granularity */
                    PMR *psReferencePMR,
                    IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
-                   PMR_PAGELIST **ppsPageList);
+                   PMR_PAGELIST **ppsPageList,
+                   IMG_UINT64 *pui64CheckSum);
 
 /* Doesn't actually erase the page list - just releases the appropriate refcounts */
 extern PVRSRV_ERROR // should be IMG_VOID, surely

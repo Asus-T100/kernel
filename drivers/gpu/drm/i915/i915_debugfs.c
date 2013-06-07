@@ -861,6 +861,7 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 	struct drm_device *dev = node->minor->dev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	int ret;
+	u32 pval = 0;
 
 	if (IS_GEN5(dev)) {
 		u16 rgvswctl = I915_READ16(MEMSWCTL);
@@ -872,6 +873,22 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 			   MEMSTAT_VID_SHIFT);
 		seq_printf(m, "Current P-state: %d\n",
 			   (rgvstat & MEMSTAT_PSTATE_MASK) >> MEMSTAT_PSTATE_SHIFT);
+	} else if (IS_VALLEYVIEW(dev)) {
+		seq_printf(m, "Max Gpu Freq _max_delay_: %d\n",
+				dev_priv->rps.max_delay);
+		seq_printf(m, "Min Gpu Freq _min_delay_: %d\n",
+				dev_priv->rps.min_delay);
+		valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS,
+					&pval);
+		seq_printf(m, "Cur Gpu Freq _cur_delay_: %d\n",
+				pval >> 8);
+		seq_printf(m, "Up Threshold: %ld\n",
+			atomic_read(&dev_priv->turbodebug.up_threshold));
+		seq_printf(m, "Down Threshold: %ld\n",
+			atomic_read(&dev_priv->turbodebug.down_threshold));
+		seq_printf(m, "RP_UP: %d\nRP_DOWN:%d\n",
+				dev_priv->rps.rp_up_masked,
+					dev_priv->rps.rp_down_masked);
 	} else if (IS_GEN6(dev) || IS_GEN7(dev)) {
 		u32 gt_perf_status = I915_READ(GEN6_GT_PERF_STATUS);
 		u32 rp_state_limits = I915_READ(GEN6_RP_STATE_LIMITS);
@@ -1735,7 +1752,7 @@ i915_max_freq_write(struct file *filp,
 	char buf[20];
 	int val = 1, ret;
 
-	if (!(IS_GEN6(dev) || IS_GEN7(dev)))
+	if (!(IS_GEN6(dev) || IS_GEN7(dev) || IS_VALLEYVIEW(dev)))
 		return -ENODEV;
 
 	if (cnt > 0) {
@@ -1758,9 +1775,12 @@ i915_max_freq_write(struct file *filp,
 	/*
 	 * Turbo will still be enabled, but won't go above the set value.
 	 */
-	dev_priv->rps.max_delay = val / 50;
-
-	gen6_set_rps(dev, val / 50);
+	if (IS_VALLEYVIEW(dev)) {
+		valleyview_set_rps(dev, val);
+	} else {
+		dev_priv->rps.max_delay = val / 50;
+		gen6_set_rps(dev, val / 50);
+	}
 	mutex_unlock(&dev->struct_mutex);
 
 	return cnt;
@@ -1845,6 +1865,79 @@ static const struct file_operations i915_min_freq_fops = {
 	.open = simple_open,
 	.read = i915_min_freq_read,
 	.write = i915_min_freq_write,
+	.llseek = default_llseek,
+};
+
+static ssize_t
+i915_rps_init_read(struct file *filp, char __user *ubuf, size_t max,
+		   loff_t *ppos)
+{
+	struct drm_device *dev = filp->private_data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	char buf[] = "rps init read is not defined";
+	int len, ret;
+	u32 rval;
+
+	if (!(IS_VALLEYVIEW(dev)))
+		return -ENODEV;
+
+	if (len > sizeof(buf))
+		len = sizeof(buf);
+
+	rval = I915_READ(GEN6_RP_CONTROL);
+	len = snprintf(buf, sizeof(buf),
+		       "Turbo Enabled: %s\n", yesno(rval & GEN6_RP_ENABLE));
+	return simple_read_from_buffer(ubuf, max, ppos, buf, len);
+}
+
+static ssize_t
+i915_rps_init_write(struct file *filp, const char __user *ubuf, size_t cnt,
+		    loff_t *ppos)
+{
+	struct drm_device *dev = filp->private_data;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	char buf[20];
+	int val = 1, ret;
+
+	if (!(IS_VALLEYVIEW(dev)))
+		return -ENODEV;
+
+	if (cnt > 0) {
+		if (cnt > sizeof(buf) - 1)
+			return -EINVAL;
+
+		if (copy_from_user(buf, ubuf, cnt))
+			return -EFAULT;
+		buf[cnt] = 0;
+
+		ret = kstrtoul(buf, 0, &val);
+		if (ret)
+			return -EINVAL;
+	}
+
+	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	if (ret)
+		return ret;
+
+	/*
+	 * 1=> Enable Turbo, else disable.
+	 */
+
+	if (val == 1)
+		valleyview_enable_rps(dev);
+	else
+		valleyview_disable_rps(dev);
+
+	mutex_unlock(&dev->struct_mutex);
+
+	return cnt;
+}
+
+static const struct file_operations i915_rps_init_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_rps_init_read,
+	.write = i915_rps_init_write,
 	.llseek = default_llseek,
 };
 
@@ -2221,6 +2314,12 @@ int i915_debugfs_init(struct drm_minor *minor)
 		return ret;
 
 	ret = i915_debugfs_create(minor->debugfs_root, minor,
+				  "i915_rps_init",
+				  &i915_rps_init_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
 				  "i915_cache_sharing",
 				  &i915_cache_sharing_fops);
 	if (ret)
@@ -2266,6 +2365,8 @@ void i915_debugfs_cleanup(struct drm_minor *minor)
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_max_freq_fops,
 				 1, minor);
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_min_freq_fops,
+				 1, minor);
+	drm_debugfs_remove_files((struct drm_info_list *) &i915_rps_init_fops,
 				 1, minor);
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_cache_sharing_fops,
 				 1, minor);

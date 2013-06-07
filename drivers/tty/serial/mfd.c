@@ -2469,9 +2469,10 @@ static int serial_hsu_port_probe(struct pci_dev *pdev,
 	struct hsu_port_cfg *cfg;
 
 	dev_info(&pdev->dev,
-		"FUNC: %d driver: %ld addr:%x len:%x\n",
+		"FUNC: %d driver: %ld addr:%lx len:%lx\n",
 		PCI_FUNC(pdev->devfn), ent->driver_data,
-		pci_resource_start(pdev, 0), pci_resource_len(pdev, 0));
+		(unsigned long) pci_resource_start(pdev, 0),
+		(unsigned long) pci_resource_len(pdev, 0));
 
 	port = intel_mid_hsu_func_to_port(PCI_FUNC(pdev->devfn));
 	if (port == -1)
@@ -2616,9 +2617,10 @@ static int serial_hsu_dma_probe(struct pci_dev *pdev,
 	int i, ret;
 
 	dev_info(&pdev->dev,
-		"FUNC: %d driver: %ld addr:%x len:%x\n",
+		"FUNC: %d driver: %ld addr:%lx len:%lx\n",
 		PCI_FUNC(pdev->devfn), ent->driver_data,
-		pci_resource_start(pdev, 0), pci_resource_len(pdev, 0));
+		(unsigned long) pci_resource_start(pdev, 0),
+		(unsigned long) pci_resource_len(pdev, 0));
 
 	ret = pci_enable_device(pdev);
 	if (ret)

@@ -1458,7 +1458,7 @@ PMRPDumpLoadMem(PMR *psPMR,
 		else
 		{
 			/* Skip over invalid chunks */
-			uiNumBytes = ui32Remain;
+			uiNumBytes = MIN(ui32Remain, uiSize);
 		}
 
         uiLogicalOffset += uiNumBytes;
@@ -1536,12 +1536,15 @@ PMRWritePMPageList(/* Target PMR, offset, and length */
                    /* Referenced PMR, and "page" granularity */
                    PMR *psReferencePMR,
                    IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize,
-                   PMR_PAGELIST **ppsPageList)
+                   PMR_PAGELIST **ppsPageList,
+                   IMG_UINT64 *pui64CheckSum)
 {
     PVRSRV_ERROR eError;
     IMG_DEVMEM_SIZE_T uiWordSize;
     IMG_UINT32 uiNumPages;
     IMG_UINT32 uiPageIndex;
+    IMG_UINT32 ui32CheckSumXor = 0;
+    IMG_UINT32 ui32CheckSumAdd = 0;
     PMR_FLAGS_T uiFlags;
     PMR_PAGELIST *psPageList;
 #if defined(PDUMP)
@@ -1567,7 +1570,7 @@ PMRWritePMPageList(/* Target PMR, offset, and length */
 
     /* check we're being asked to write the same number of 4-byte units as there are pages */
     uiNumPages = (IMG_UINT32)(psReferencePMR->uiLogicalSize >> uiLog2PageSize);
-    
+
     if (uiNumPages << uiLog2PageSize != psReferencePMR->uiLogicalSize)
     {
 		/* Strictly speaking, it's possible to provoke this error in two ways:
@@ -1731,9 +1734,13 @@ PMRWritePMPageList(/* Target PMR, offset, and length */
             PVR_ASSERT(pvKernAddr != IMG_NULL);
         }
 
+        PVR_ASSERT(((sDevAddrPtr.uiAddr >> uiLog2PageSize) & 0xFFFFFFFF00000000ll) == 0);
+
         /* Write the physcial page index into the page list PMR */
         pui32DataPtr = (IMG_UINT32 *) (((IMG_CHAR *) pvKernAddr) + (uiPMROffset & (uiPageListPageSize - 1)));
         *pui32DataPtr = sDevAddrPtr.uiAddr >> uiLog2PageSize;
+        ui32CheckSumXor ^= sDevAddrPtr.uiAddr >> uiLog2PageSize;
+        ui32CheckSumAdd += sDevAddrPtr.uiAddr >> uiLog2PageSize;
         PVR_ASSERT(sDevAddrPtr.uiAddr != 0);
         PVR_ASSERT(sDevAddrPtr.uiAddr != sOldDevAddrPtr.uiAddr);
         sOldDevAddrPtr.uiAddr = sDevAddrPtr.uiAddr;
@@ -1744,6 +1751,8 @@ PMRWritePMPageList(/* Target PMR, offset, and length */
         }
 #endif
     }
+
+    *pui64CheckSum = ((IMG_UINT64)ui32CheckSumXor << 32) | ui32CheckSumAdd;
     *ppsPageList = psPageList;
     return PVRSRV_OK;
 
@@ -1772,6 +1781,167 @@ PMRUnwritePMPageList(PMR_PAGELIST *psPageList)
 	OSFreeMem(psPageList);
 
     return PVRSRV_OK;
+}
+
+PVRSRV_ERROR
+PMRZeroingPMR(PMR *psPMR,
+				IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize)
+{
+    IMG_UINT32 uiNumPages;
+    IMG_UINT32 uiPageIndex;
+    IMG_UINT32 ui32PageSize = 1 << uiLog2PageSize;
+    IMG_HANDLE hPrivData = IMG_NULL;
+    IMG_VOID *pvKernAddr = IMG_NULL;
+    PVRSRV_ERROR eError = PVRSRV_OK;
+    IMG_SIZE_T uiMapedSize;
+
+    PVR_ASSERT(psPMR);
+
+    /* Calculate number of pages in this PMR */
+	uiNumPages = (IMG_UINT32)(psPMR->uiLogicalSize >> uiLog2PageSize);
+
+	/* Verify the logical Size is a multiple or the physical page size */
+    if (uiNumPages << uiLog2PageSize != psPMR->uiLogicalSize)
+    {
+		PVR_DPF((PVR_DBG_ERROR, "PMRZeroingPMR: PMR is not a multiple of %u",ui32PageSize));
+        eError = PVRSRV_ERROR_PMR_NOT_PAGE_MULTIPLE;
+        goto MultiPage_Error;
+    }
+
+	if (_PMRIsSparse(psPMR))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "PMRZeroingPMR: PMR is sparse"));
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto Sparse_Error;
+	}
+
+	/* Scan through all pages of the PMR */
+    for (uiPageIndex = 0; uiPageIndex < uiNumPages; uiPageIndex++)
+    {
+        /* map the physical page (for a given PMR offset) into kernel space */
+        eError = PMRAcquireKernelMappingData(psPMR,
+        									 uiPageIndex << uiLog2PageSize,
+        									 ui32PageSize,
+                                             &pvKernAddr,
+                                             &uiMapedSize,
+                                             &hPrivData);
+        if (eError != PVRSRV_OK)
+        {
+    		PVR_DPF((PVR_DBG_ERROR, "PMRZeroingPMR: AcquireKernelMapping failed with error %u", eError));
+        	goto AcquireKernelMapping_Error;
+        }
+
+        /* ensure the mapped page size is the same as the physical page size */
+        if (uiMapedSize != ui32PageSize)
+        {
+    		PVR_DPF((PVR_DBG_ERROR, "PMRZeroingPMR: Physical Page size = 0x%08x, Size of Mapping = 0x%016llx",
+    								ui32PageSize,
+    								(IMG_UINT64)uiMapedSize));
+    		eError = PVRSRV_ERROR_INVALID_PARAMS;
+        	goto MappingSize_Error;
+        }
+
+        /* zeroing page content */
+        OSMemSet(pvKernAddr, 0, ui32PageSize);
+
+        /* release mapping */
+        PMRReleaseKernelMappingData(psPMR, hPrivData);
+
+    }
+
+    PVR_DPF((PVR_DBG_WARNING,"PMRZeroingPMR: Zeroing PMR %p done (num pages %u, page size %u)",
+    						psPMR,
+    						uiNumPages,
+    						ui32PageSize));
+
+    return PVRSRV_OK;
+
+
+    /* Error handling */
+
+MappingSize_Error:
+	PMRReleaseKernelMappingData(psPMR, hPrivData);
+
+AcquireKernelMapping_Error:
+Sparse_Error:
+MultiPage_Error:
+
+    PVR_ASSERT(eError != PVRSRV_OK);
+    return eError;
+}
+
+PVRSRV_ERROR
+PMRDumpPageList(PMR *psPMR,
+					IMG_DEVMEM_LOG2ALIGN_T uiLog2PageSize)
+{
+    IMG_DEV_PHYADDR sDevAddrPtr;
+    IMG_UINT32 uiNumPages;
+    IMG_UINT32 uiPageIndex;
+    IMG_BOOL bPageIsValid;
+    IMG_UINT32 ui32Col = 16;
+    IMG_UINT32 ui32SizePerCol = 11;
+    IMG_UINT32 ui32ByteCount = 0;
+    IMG_CHAR pszBuffer[ui32Col * ui32SizePerCol + 1];
+    PVRSRV_ERROR eError = PVRSRV_OK;
+
+    /* Get number of pages */
+	uiNumPages = (IMG_UINT32)(psPMR->uiLogicalSize >> uiLog2PageSize);
+
+	/* Verify the logical Size is a multiple or the physical page size */
+    if (uiNumPages << uiLog2PageSize != psPMR->uiLogicalSize)
+    {
+		PVR_DPF((PVR_DBG_ERROR, "PMRPrintPageList: PMR is not a multiple of %u", 1 << uiLog2PageSize));
+        eError = PVRSRV_ERROR_PMR_NOT_PAGE_MULTIPLE;
+        goto MultiPage_Error;
+    }
+
+	if (_PMRIsSparse(psPMR))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "PMRPrintPageList: PMR is sparse"));
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto Sparse_Error;
+	}
+
+	PVR_LOG(("    PMR %p, Number of pages %u, Log2PageSize %d", psPMR, uiNumPages, uiLog2PageSize));
+
+	/* Print the address of the physical pages */
+    for (uiPageIndex = 0; uiPageIndex < uiNumPages; uiPageIndex++)
+    {
+    	/* Get Device physical Address */
+        eError = PMR_DevPhysAddr(psPMR,
+                        uiPageIndex << uiLog2PageSize,
+                        &sDevAddrPtr,
+                        &bPageIsValid);
+        if (eError != PVRSRV_OK)
+        {
+    		PVR_DPF((PVR_DBG_ERROR, "PMRPrintPageList: PMR %p failed to get DevPhysAddr with error %u",
+    								psPMR,
+    								eError));
+        	goto DevPhysAddr_Error;
+        }
+
+        ui32ByteCount += OSSNPrintf(pszBuffer + ui32ByteCount, ui32SizePerCol + 1, "%08x ", (IMG_UINT32)(sDevAddrPtr.uiAddr >> uiLog2PageSize));
+        PVR_ASSERT(ui32ByteCount < ui32Col * ui32SizePerCol);
+
+		if (uiPageIndex % ui32Col == ui32Col -1)
+		{
+			PVR_LOG(("      Phys Page: %s", pszBuffer));
+			ui32ByteCount = 0;
+		}
+    }
+    if (ui32ByteCount > 0)
+    {
+		PVR_LOG(("      Phys Page: %s", pszBuffer));
+    }
+
+    return PVRSRV_OK;
+
+    /* Error handling */
+DevPhysAddr_Error:
+Sparse_Error:
+MultiPage_Error:
+    PVR_ASSERT(eError != PVRSRV_OK);
+    return eError;
 }
 
 PVRSRV_ERROR

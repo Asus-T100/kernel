@@ -215,21 +215,36 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 		if (what == SYS_HALT || what == SYS_POWER_OFF) {
 			pr_info("%s(): sys power off ...\n", __func__);
 			if (power_supply_is_system_supplied()) {
-				pr_warn("[SHTDWN] %s, Shutdown overload, "
-					"switching to COS because a charger is "
-					"plugged in\n", __func__);
-				pr_info("charger connected ...\n");
+				if ((intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_TANGIER) &&
+				get_force_shutdown_occured()) {
+					pr_warn("[SHTDWN] %s, charger connected and force shutdown occured",
+					    __func__);
+					pr_warn("[SHTDWN] %s, Executing COLD_OFF...\n",
+					    __func__);
+					ret = rpmsg_send_generic_simple_command(
+							    IPCMSG_COLD_OFF, 0);
+					if (ret)
+						pr_err("%s(): COLD_OFF ipc failed for force shutdown\n",
+							__func__);
+				} else {
+					pr_warn("[SHTDWN] %s, Shutdown overload switching to COS because a charger is plugged in\n",
+					    __func__);
+					pr_info("charger connected ...\n");
 #ifdef DEBUG
-				intel_scu_ipc_read_osnib_rr(&rbt_reason);
+					intel_scu_ipc_read_osnib_rr(
+						&rbt_reason);
 #endif
-				ret_ipc = intel_scu_ipc_write_osnib_rr(
-							SIGNED_COS_ATTR);
-				if (ret_ipc < 0)
-					pr_err("%s cannot write reboot reason in OSNIB\n",
-					       __func__);
+					ret_ipc = intel_scu_ipc_write_osnib_rr(
+						SIGNED_COS_ATTR);
+					if (ret_ipc < 0)
+						pr_err("%s cannot write reboot reason in OSNIB\n",
+							__func__);
 #ifdef DEBUG
-				intel_scu_ipc_read_osnib_rr(&rbt_reason);
+					intel_scu_ipc_read_osnib_rr(
+						&rbt_reason);
 #endif
+				}
 			} else {
 				pr_warn("[SHTDWN] %s, Shutdown without charger plugged in\n",
 					__func__);
@@ -242,6 +257,8 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 				 */
 				if (intel_mid_identify_cpu() ==
 					INTEL_MID_CPU_CHIP_TANGIER) {
+					pr_err("[SHTDWN] %s, executing COLD_OFF...\n",
+						__func__);
 					ret = rpmsg_send_generic_simple_command(
 						IPCMSG_COLD_OFF, 0);
 					if (ret)
@@ -313,6 +330,8 @@ MODULE_PARM_DESC(force_shutdown_occured,
 
 int get_force_shutdown_occured()
 {
+	pr_info("%s, force_shutdown_occured=%d\n",
+		__func__, force_shutdown_occured);
 	return force_shutdown_occured;
 }
 EXPORT_SYMBOL(get_force_shutdown_occured);

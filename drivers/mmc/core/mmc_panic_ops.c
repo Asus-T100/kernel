@@ -568,6 +568,8 @@ static int mmc_emergency_reinit_card(void)
 	if (mmc_card_highspeed(card)) {
 		if (max_dtr > card->ext_csd.hs_max_dtr)
 			max_dtr = card->ext_csd.hs_max_dtr;
+		if (max_dtr > MMC_HIGH_52_MAX_DTR)
+			max_dtr = MMC_HIGH_52_MAX_DTR;
 	} else if (max_dtr > card->csd.max_dtr) {
 		max_dtr = card->csd.max_dtr;
 	}

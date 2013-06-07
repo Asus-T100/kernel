@@ -28,6 +28,13 @@
 #ifndef __INTEL_MID_HSI_H__
 #define __INTEL_MID_HSI_H__
 
+#define HSI_PNW_PCI_DEVICE_ID	0x833   /* PCI id for Penwell HSI */
+#define HSI_CLV_PCI_DEVICE_ID	0x902   /* PCI id for Cloverview HSI */
+#define HSI_TNG_PCI_DEVICE_ID	0x1197  /* PCI id for Tangier HSI */
+
+#define HSI_PNW_MASTER_DMA_ID	0x834   /* PCI id for Penwell DWAHB dma */
+#define HSI_CLV_MASTER_DMA_ID	0x903   /* PCI id for Cloverview DWAHB dma */
+
 #define HSI_MID_MAX_CHANNELS	8
 
 /**
@@ -65,6 +72,11 @@ struct hsi_mid_platform_data {
 	int	gpio_mdm_pwr_on;
 	int	gpio_mdm_rst_bbn;
 	int	gpio_fcdp_rb;
+};
+
+struct hsi_mid_pci_platform_data {
+	int gpio_wake;
+	bool use_oob_cawake;
 };
 
 #endif /* __INTEL_MID_HSI_H__ */

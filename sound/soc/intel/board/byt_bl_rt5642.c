@@ -451,6 +451,15 @@ static int snd_byt_mc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void snd_byt_mc_shutdown(struct platform_device *pdev)
+{
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
+	struct byt_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
+
+	pr_debug("In %s\n", __func__);
+	snd_soc_jack_free_gpios(&drv->jack, 1, &hs_gpio);
+}
+
 const struct dev_pm_ops snd_byt_mc_pm_ops = {
 	.prepare = snd_byt_prepare,
 	.complete = snd_byt_complete,
@@ -472,6 +481,7 @@ static struct platform_driver snd_byt_mc_driver = {
 	},
 	.probe = snd_byt_mc_probe,
 	.remove = snd_byt_mc_remove,
+	.shutdown = snd_byt_mc_shutdown,
 };
 
 static int __init snd_byt_driver_init(void)

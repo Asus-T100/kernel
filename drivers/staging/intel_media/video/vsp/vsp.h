@@ -79,6 +79,8 @@
 #define VSP_CONFIG_REG_SDRAM_BASE 0x1A0000
 #define VSP_CONFIG_REG_START 0x8
 
+/* #define VP8_ENC_DEBUG 1 */
+
 static const unsigned int vsp_processor_base[] = {
 				SP0_SP_REG_BASE,
 				SP1_SP_REG_BASE,
@@ -253,12 +255,13 @@ struct vsp_private {
 
 	unsigned int fw_type;
 
+#ifdef VP8_ENC_DEBUG
 	/* save the address of vp8 cmd_buffer for now */
 	struct VssVp8encPictureParameterBuffer *vp8_encode_frame_cmd;
 
 	void *coded_buf;
 	struct ttm_bo_kmap_obj coded_buf_kmap;
-	uint32_t sequence;
+#endif
 };
 
 extern int vsp_init(struct drm_device *dev);

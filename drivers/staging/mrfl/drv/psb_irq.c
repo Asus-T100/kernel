@@ -64,6 +64,8 @@ static inline u32 psb_pipestat(int pipe)
 	if (pipe == 2)
 		return PIPECSTAT;
 	BUG();
+	/* This should be unreachable */
+	return 0;
 }
 
 static inline u32 mid_pipe_event(int pipe)
@@ -75,6 +77,8 @@ static inline u32 mid_pipe_event(int pipe)
 	if (pipe == 2)
 		return _MDFLD_PIPEC_EVENT_FLAG;
 	BUG();
+	/* This should be unreachable */
+	return 0;
 }
 
 static inline u32 mid_pipe_vsync(int pipe)
@@ -86,6 +90,8 @@ static inline u32 mid_pipe_vsync(int pipe)
 	if (pipe == 2)
 		return _MDFLD_PIPEC_VBLANK_FLAG;
 	BUG();
+	/* This should be unreachable */
+	return 0;
 }
 
 static inline u32 mid_pipeconf(int pipe)
@@ -97,6 +103,8 @@ static inline u32 mid_pipeconf(int pipe)
 	if (pipe == 2)
 		return PIPECCONF;
 	BUG();
+	/* This should be unreachable */
+	return 0;
 }
 
 void psb_enable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
@@ -276,7 +284,7 @@ void mdfld_vsync_event_work(struct work_struct *work)
 	/* TODO: to report vsync event to HWC. */
 	/*report vsync event*/
 	/* mdfld_vsync_event(dev, pipe); */
-	wake_up_interruptible(&dev_priv->vsync_queue);
+	DRM_WAKEUP(&dev_priv->vsync_queue);
 }
 
 void mdfld_te_handler_work(struct work_struct *work)

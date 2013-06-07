@@ -2614,6 +2614,11 @@ irqreturn_t sep_interrupt(int irq, void *dev_id)
 	struct sep_drvdata *drvdata =
 	    (struct sep_drvdata *)dev_get_drvdata((struct device *)dev_id);
 
+	if (drvdata->sep_suspended) {
+		WARN(1, "sep_interrupt rise in suspend!");
+		return IRQ_HANDLED;
+	}
+
 	return sep_interrupt_process(drvdata);
 }
 #endif
@@ -4708,6 +4713,8 @@ static int sep_runtime_suspend(struct device *dev)
 	int count = 0;
 	u32 val;
 	struct pci_dev *pdev = to_pci_dev(dev);
+	struct sep_drvdata *drvdata =
+	    (struct sep_drvdata *)dev_get_drvdata(dev);
 
 	ret = dx_sep_power_state_set(DX_SEP_POWER_HIBERNATED);
 	if (ret) {
@@ -4729,24 +4736,38 @@ static int sep_runtime_suspend(struct device *dev)
 		return -EBUSY;
 	}
 
+	disable_irq(pdev->irq);
+	drvdata->sep_suspended = 1;
+
 	return ret;
 }
 
 static int sep_runtime_resume(struct device *dev)
 {
 	int ret;
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct sep_drvdata *drvdata =
+	    (struct sep_drvdata *)dev_get_drvdata(dev);
 
+	drvdata->sep_suspended = 0;
+	enable_irq(pdev->irq);
 	ret = dx_sep_power_state_set(DX_SEP_POWER_ACTIVE);
-	if (ret)
-		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
+	WARN(ret, "%s failed! ret = %d\n", __func__, ret);
 
-	return ret;
+	/*
+	 * sep device might return to ACTIVE in time.
+	 * As sep device is not stable, we choose return 0
+	 * in case it blocks s3.
+	 */
+	return 0;
 }
 
 static int sep_suspend(struct device *dev)
 {
-	int ret = 0;
 	struct pci_dev *pdev = to_pci_dev(dev);
+	struct sep_drvdata *drvdata =
+	    (struct sep_drvdata *)dev_get_drvdata(dev);
+	int ret = 0;
 	int count = 0;
 	u32 val;
 
@@ -4765,10 +4786,14 @@ static int sep_suspend(struct device *dev)
 		count++;
 	}
 	if (count >= SEP_TIMEOUT) {
-		dev_err(&pdev->dev,
+		dev_err(dev,
 			"SEP: timed out waiting for chaabi_powerdown_en\n");
-		return -EBUSY;
+		WARN_ON(1);
+		/*Let's continue to suspend as chaabi is not stable*/
 	}
+
+	disable_irq(pdev->irq);
+	drvdata->sep_suspended = 1;
 
 	pci_save_state(pdev);
 	pci_disable_device(pdev);
@@ -4781,6 +4806,8 @@ static int sep_resume(struct device *dev)
 {
 	int ret = 0;
 	struct pci_dev *pdev = to_pci_dev(dev);
+	struct sep_drvdata *drvdata =
+	    (struct sep_drvdata *)dev_get_drvdata(dev);
 
 	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
@@ -4790,11 +4817,18 @@ static int sep_resume(struct device *dev)
 		return ret;
 	}
 
-	ret = dx_sep_power_state_set(DX_SEP_POWER_ACTIVE);
-	if (ret)
-		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
+	drvdata->sep_suspended = 0;
+	enable_irq(pdev->irq);
 
-	return ret;
+	ret = dx_sep_power_state_set(DX_SEP_POWER_ACTIVE);
+	WARN(ret, "%s failed! ret = %d\n", __func__, ret);
+
+	/*
+	 * sep device might return to ACTIVE in time.
+	 * As sep device is not stable, we choose return 0
+	 * in case it blocks s3.
+	 */
+	return 0;
 }
 
 static const struct dev_pm_ops sep_pm_ops = {

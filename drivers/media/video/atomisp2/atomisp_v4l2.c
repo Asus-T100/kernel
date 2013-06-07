@@ -25,6 +25,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/pm_qos.h>
 #include <linux/timer.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
 
 #include <asm/intel-mid.h>
@@ -259,7 +260,7 @@ static int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 		 * which has bugs(like sighting:4567697 and 4567699) and
 		 * will be removed in B0
 		 */
-		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
+		atomisp_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
 
 	} else {
 		pci_write_config_dword(dev, MFLD_PCI_PMCS,
@@ -920,6 +921,8 @@ load_firmware(struct atomisp_device *isp)
 	 */
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		fw_path = ISP2400B0_FW_PATH;
+	else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		fw_path = ISP2400_FW_PATH;
 
 	rc = request_firmware(&fw, fw_path, isp->dev);
 	if (rc) {
@@ -1001,8 +1004,11 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	spin_lock_init(&isp->lock);
 	init_completion(&isp->init_done);
 
-	/* FIXME: Add config option for CSS 2.0 */
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	isp->media_dev.driver_version = ATOMISP_CSS_VERSION_20;
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	isp->media_dev.driver_version = ATOMISP_CSS_VERSION_15;
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 	switch (id->device & ATOMISP_PCI_DEVICE_SOC_MASK) {
 	case ATOMISP_PCI_DEVICE_SOC_MRFLD:
@@ -1094,7 +1100,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		 * bugs(like sighting:4567697 and 4567699) and will be removed
 		 * in B0
 		 */
-		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
+		atomisp_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
 	}
 
 	err = atomisp_initialize_modules(isp);

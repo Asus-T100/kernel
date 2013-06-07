@@ -922,8 +922,11 @@ static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 	if (int_reg & CHRGRIRQ1_SUSBIDDET_MASK) {
 			if (mask)
 				dev_info(chc.dev, "USB ID Detected. Notifying OTG driver\n");
-			else
+			else {
+				if (wake_lock_active(&chc.wakelock))
+					wake_unlock(&chc.wakelock);
 				dev_info(chc.dev, "USB ID Removed. Notifying OTG driver\n");
+			}
 			atomic_notifier_call_chain(&chc.otg->notifier,
 				USB_EVENT_ID, &mask);
 	}
@@ -931,8 +934,11 @@ static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 	if (int_reg & CHRGRIRQ1_SVBUSDET_MASK) {
 		if (mask)
 			dev_info(chc.dev, "USB VBUS Detected. Notifying OTG driver\n");
-		else
+		else {
+			if (wake_lock_active(&chc.wakelock))
+				wake_unlock(&chc.wakelock);
 			dev_info(chc.dev, "USB VBUS Removed. Notifying OTG driver\n");
+		}
 		atomic_notifier_call_chain(&chc.otg->notifier,
 			USB_EVENT_VBUS, &mask);
 	}
@@ -972,6 +978,7 @@ static irqreturn_t pmic_isr(int irq, void *data)
 	u16 pmic_intr;
 	u8 chgrirq0_int;
 	u8 chgrirq1_int;
+	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK | CHRGRIRQ1_SUSBIDDET_MASK);
 
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	chgrirq0_int = (u8)pmic_intr;
@@ -979,6 +986,9 @@ static irqreturn_t pmic_isr(int irq, void *data)
 
 	if (!chgrirq1_int && !(chgrirq0_int & PMIC_CHRGR_INT0_MASK))
 		return IRQ_NONE;
+
+	if ((chgrirq1_int & mask) && (!wake_lock_active(&chc.wakelock)))
+		wake_lock(&chc.wakelock);
 
 	dev_dbg(chc.dev, "%s", __func__);
 
@@ -1271,6 +1281,7 @@ static int pmic_check_initial_events(void)
 {
 	struct pmic_event *evt;
 	int ret;
+	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK | CHRGRIRQ1_SUSBIDDET_MASK);
 
 	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
 	if (evt == NULL) {
@@ -1291,6 +1302,10 @@ static int pmic_check_initial_events(void)
 		mutex_unlock(&chc.evt_queue_lock);
 		schedule_work(&chc.evt_work);
 	}
+
+	if ((evt->chgrirq1_stat & mask) && !wake_lock_active(&chc.wakelock))
+		wake_lock(&chc.wakelock);
+
 	pmic_bat_zone_changed();
 
 	return ret;
@@ -1393,6 +1408,7 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	INIT_WORK(&chc.evt_work, pmic_event_worker);
 	INIT_LIST_HEAD(&chc.evt_queue);
 	mutex_init(&chc.evt_queue_lock);
+	wake_lock_init(&chc.wakelock, WAKE_LOCK_SUSPEND, "pmic_wakelock");
 
 	/* register interrupt */
 	retval = request_threaded_irq(chc.irq, pmic_isr,
@@ -1477,6 +1493,7 @@ static int pmic_chrgr_remove(struct platform_device *pdev)
 
 	if (chc) {
 		pmic_chrgr_do_exit_ops(chc);
+		wake_lock_destroy(&chc->wakelock);
 		free_irq(chc->irq, chc);
 		iounmap(chc->pmic_intr_iomap);
 		kfree(chc->sfi_bcprof);

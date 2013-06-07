@@ -1097,7 +1097,7 @@ static int operate_on_msr(unsigned long ptr_data)
 }
 
 static long matrix_ioctl(struct file
-			 *filp, unsigned long request, unsigned long ptr_data)
+			 *filp, unsigned int request, unsigned long ptr_data)
 {
 	switch (request) {
 	case IOCTL_VERSION_INFO:

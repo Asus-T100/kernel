@@ -61,7 +61,6 @@ static const char driver_name[] = "rtc_mrst";
 
 #define	RTC_IRQMASK	(RTC_PF | RTC_AF)
 
-#define IPCMSG_GET_HOBBASE 0xE5
 #define OSHOB_ALARM_OFFSET 0x68
 #define OSHOB_DAYW_OFFSET  0x00
 #define OSHOB_DAYM_OFFSET  0x01
@@ -498,7 +497,7 @@ vrtc_mrst_do_probe(struct device *dev, struct resource *iomem, int rtc_irq)
 	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
 	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
 		retval = rpmsg_send_command(vrtc_mrst_instance,
-				IPCMSG_GET_HOBBASE, 0, NULL, &oshob_base, 0, 1);
+				IPCMSG_GET_HOBADDR, 0, NULL, &oshob_base, 0, 1);
 		if (retval < 0) {
 			dev_dbg(dev,
 				"Unable to get OSHOB base address, err %d\n",

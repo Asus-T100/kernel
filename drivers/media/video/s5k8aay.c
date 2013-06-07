@@ -42,6 +42,7 @@ struct s5k8aay_resolution {
 	u8 *desc;
 	unsigned int width;
 	unsigned int height;
+	unsigned int skip_frames;
 	const struct s5k8aay_reg *regs;
 	const struct s5k8aay_reg *clock_regs;
 };
@@ -83,6 +84,7 @@ static const struct s5k8aay_resolution const s5k8aay_res_modes[] = {
 		.desc = "s5k8aay_1056x864",
 		.width = 1056,
 		.height = 864,
+		.skip_frames = 3,
 		.regs = s5k8aay_regs_19_1056x864,
 		.clock_regs = s5k8aay_regs_10,
 	},
@@ -90,6 +92,7 @@ static const struct s5k8aay_resolution const s5k8aay_res_modes[] = {
 		.desc = "s5k8aay_1200x800",
 		.width = 1200,
 		.height = 800,
+		.skip_frames = 3,
 		.regs = s5k8aay_regs_19_1200x800,
 		.clock_regs = s5k8aay_regs_10,
 	},
@@ -97,6 +100,7 @@ static const struct s5k8aay_resolution const s5k8aay_res_modes[] = {
 		.desc = "s5k8aay_1280x720",
 		.width = 1280,
 		.height = 720,
+		.skip_frames = 3,
 		.regs = s5k8aay_regs_19_1280x720,
 		.clock_regs = s5k8aay_regs_10,
 	},
@@ -104,6 +108,7 @@ static const struct s5k8aay_resolution const s5k8aay_res_modes[] = {
 		.desc = "s5k8aay_1280x960",
 		.width = 1280,
 		.height = 960,
+		.skip_frames = 3,
 		.regs = s5k8aay_regs_19_1280x960,
 		.clock_regs = s5k8aay_regs_10_clock_1280x960,
 	}
@@ -738,6 +743,22 @@ s5k8aay_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	return 0;
 }
 
+static int s5k8aay_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	struct s5k8aay_device *snr = to_s5k8aay_sensor(sd);
+
+	mutex_lock(&snr->input_lock);
+	*frames = s5k8aay_res_modes[snr->fmt_idx].skip_frames;
+	mutex_unlock(&snr->input_lock);
+
+	return 0;
+}
+
+
+static const struct v4l2_subdev_sensor_ops s5k8aay_sensor_ops = {
+	.g_skip_frames = s5k8aay_g_skip_frames,
+};
+
 static const struct v4l2_subdev_video_ops s5k8aay_video_ops = {
 	.try_mbus_fmt = s5k8aay_try_mbus_fmt,
 	.s_mbus_fmt = s5k8aay_set_mbus_fmt,
@@ -761,6 +782,7 @@ static const struct v4l2_subdev_ops s5k8aay_ops = {
 	.core = &s5k8aay_core_ops,
 	.video = &s5k8aay_video_ops,
 	.pad = &s5k8aay_pad_ops,
+	.sensor = &s5k8aay_sensor_ops,
 };
 
 static int s5k8aay_probe(struct i2c_client *client,

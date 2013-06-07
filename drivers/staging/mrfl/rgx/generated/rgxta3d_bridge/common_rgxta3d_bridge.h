@@ -46,6 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define COMMON_RGXTA3D_BRIDGE_H
 
 #include "rgx_bridge.h"
+#include "sync_external.h"
 
 
 /* FIXME: need to create pvrbridge_common.h" */
@@ -81,7 +82,7 @@ typedef struct PVRSRV_BRIDGE_IN_RGXCREATEHWRTDATA_TAG
 	IMG_UINT32 ui32RenderTarget;
 	IMG_DEV_VIRTADDR sPMMlistDevVAddr;
 	IMG_DEV_VIRTADDR sVFPPageTableAddr;
-	IMG_UINT32 * pui32apsFreeLists;
+	IMG_HANDLE * phapsFreeLists;
 	IMG_UINT16 ui16MaxRTs;
 } PVRSRV_BRIDGE_IN_RGXCREATEHWRTDATA;
 
@@ -235,6 +236,7 @@ typedef struct PVRSRV_BRIDGE_IN_RGXCREATEFREELIST_TAG
 	IMG_UINT32 ui32ui32MaxFLPages;
 	IMG_UINT32 ui32ui32InitFLPages;
 	IMG_UINT32 ui32ui32GrowFLPages;
+	IMG_BOOL bbFreeListCheck;
 	IMG_DEV_VIRTADDR spsFreeListDevVAddr;
 	IMG_HANDLE hsFreeListPMR;
 	IMG_DEVMEM_OFFSET_T uiPMROffset;
@@ -244,7 +246,6 @@ typedef struct PVRSRV_BRIDGE_IN_RGXCREATEFREELIST_TAG
 /* Bridge out structure for RGXCreateFreeList */
 typedef struct PVRSRV_BRIDGE_OUT_RGXCREATEFREELIST_TAG
 {
-	IMG_UINT32 ui32sFreeListFWDevVAddr;
 	IMG_HANDLE hCleanupCookie;
 	PVRSRV_ERROR eError;
 } PVRSRV_BRIDGE_OUT_RGXCREATEFREELIST;
@@ -360,9 +361,30 @@ typedef struct PVRSRV_BRIDGE_IN_RGXKICKTA3D_TAG
 	IMG_BOOL bbLastTAInScene;
 	IMG_BOOL bbKickTA;
 	IMG_BOOL bbKick3D;
-	IMG_UINT32 ui32TAcCCBWoffUpdate;
-	IMG_UINT32 ui323DcCCBWoffUpdate;
+	IMG_PVOID pvTAcCCBWoffUpdate;
+	IMG_PVOID pv3DcCCBWoffUpdate;
+	IMG_HANDLE hTAcCCB;
+	IMG_HANDLE hTAcCCBCtl;
+	IMG_HANDLE h3DcCCB;
+	IMG_HANDLE h3DcCCBCtl;
+	IMG_UINT32 ui32NumTAServerSyncs;
+	PVRSRV_CLIENT_SYNC_PRIM_OP* * psTASyncOp;
+	IMG_HANDLE * phTASyncHandle;
+	IMG_UINT32 ui32Num3DServerSyncs;
+	PVRSRV_CLIENT_SYNC_PRIM_OP* * ps3DSyncOp;
+	IMG_HANDLE * ph3DSyncHandle;
+	IMG_UINT32 ui32TACmdSize;
+	IMG_BYTE * psTACmd;
+	IMG_UINT32 ui32TAFenceOffset;
+	IMG_UINT32 ui32TAUpdateOffset;
+	IMG_UINT32 ui323DCmdSize;
+	IMG_BYTE * ps3DCmd;
+	IMG_UINT32 ui323DFenceOffset;
+	IMG_UINT32 ui323DUpdateOffset;
+	IMG_UINT32 ui32NumFenceFds;
+	IMG_INT32 * pi32FenceFds;
 	IMG_BOOL bbPDumpContinuous;
+	IMG_HANDLE hCleanupCookie;
 } PVRSRV_BRIDGE_IN_RGXKICKTA3D;
 
 

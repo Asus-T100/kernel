@@ -59,6 +59,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		offsetof(RGXFWIF_INIT, sUSCExecBase),				\
 		offsetof(RGXFWIF_INIT, psKernelCCBCtl),				\
 		offsetof(RGXFWIF_INIT, psKernelCCB),				\
+		offsetof(RGXFWIF_INIT, psFirmwareCCBCtl),			\
+		offsetof(RGXFWIF_INIT, psFirmwareCCB),				\
 		offsetof(RGXFWIF_INIT, eDM),						\
 		offsetof(RGXFWIF_INIT, asSigBufCtl),				\
 		offsetof(RGXFWIF_INIT, psTraceBufCtl),				\

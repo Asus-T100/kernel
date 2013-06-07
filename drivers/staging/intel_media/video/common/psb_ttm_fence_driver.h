@@ -52,8 +52,6 @@
  * @pending_flush: Fence types currently needing a flush.
  * @waiting_types: Fence types that are currently waited for.
  * @fence_queue: Queue of waiters on fences belonging to this fence class.
- * @highest_waiting_sequence: Sequence number of the fence with highest
- * sequence number and that is waited for.
  * @latest_queued_sequence: Sequence number of the fence latest queued
  * on the ring.
  */
@@ -80,7 +78,6 @@ struct ttm_fence_class_manager {
 	uint32_t pending_flush;
 	uint32_t waiting_types;
 	wait_queue_head_t fence_queue;
-	uint32_t highest_waiting_sequence;
 	uint32_t latest_queued_sequence;
 };
 

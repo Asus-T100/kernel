@@ -19,7 +19,8 @@ extern void __init *msic_thermal_platform_data(void *info)
 enum {
 	mfld_thermal,
 	ctp_thermal,
-	lex_thermal
+	lex_thermal,
+	vb_thermal,
 };
 
 #endif

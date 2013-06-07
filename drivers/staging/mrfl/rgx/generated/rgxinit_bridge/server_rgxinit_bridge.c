@@ -225,6 +225,7 @@ PVRSRVBridgeRGXInitDevPart2(IMG_UINT32 ui32BridgeID,
 					psDbgScriptInt,
 					psDeinitScriptInt,
 					psRGXInitDevPart2IN->ui32KernelCatBase,
+					psRGXInitDevPart2IN->ui32DeviceFlags,
 					psRGXInitDevPart2IN->ui32RGXActivePMConf);
 
 

@@ -21,13 +21,15 @@
  *
  */
 
-
-#include <sh_css.h>
 #include <host/mmu_local.h>
 
 #include "mmu/isp_mmu.h"
 #include "memory_access/memory_access.h"
 #include "atomisp_compat.h"
+
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+#include <sh_css.h>
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 /*
  * include SH header file here
  */
@@ -52,7 +54,7 @@ static int sh_set_pd_base(struct isp_mmu *mmu,
 			  phys_addr_t phys)
 {
 	/*mmgr_set_base_address(HOST_ADDRESS(u32)phys);*/
-	sh_css_mmu_set_page_table_base_index(HOST_ADDRESS(u32)phys);
+	atomisp_css_mmu_set_page_table_base_index(HOST_ADDRESS(u32)phys);
 	return 0;
 }
 

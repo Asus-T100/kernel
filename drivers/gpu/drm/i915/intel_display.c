@@ -1336,6 +1336,56 @@ static void assert_planes_disabled(struct drm_i915_private *dev_priv,
 	}
 }
 
+static void disable_sprites(struct drm_i915_private *dev_priv,
+					enum pipe pipe)
+{
+	int reg, i;
+	u32 val;
+
+	if (!IS_VALLEYVIEW(dev_priv->dev))
+		return;
+
+	/* num_planes is 2 for valleyview, sprtsuspendstat is 2 */
+	/* Need to check both planes against the pipe */
+	for (i = 0; i < dev_priv->num_plane; i++) {
+		reg = SPCNTR(pipe, i);
+		val = I915_READ(reg);
+		if (val & SP_ENABLE) {
+			DRM_DEBUG_DRIVER("Sprite is enabled,disable\n");
+			if (dev_priv->disp_pm_in_progress == true) {
+				I915_WRITE(reg, (val & ~SP_ENABLE));
+				dev_priv->sprtsuspendstat[i] = true;
+			}
+		}
+	}
+}
+
+static void enable_sprites(struct drm_i915_private *dev_priv,
+					enum pipe pipe)
+{
+	int reg, i;
+	u32 val;
+
+	if (!IS_VALLEYVIEW(dev_priv->dev))
+		return;
+
+	/* Need to check both planes against the pipe */
+	for (i = 0; i < dev_priv->num_plane; i++) {
+		reg = SPCNTR(pipe, i);
+		val = I915_READ(reg);
+		if (val & SP_ENABLE)
+			DRM_DEBUG_DRIVER("Sprite is already enabled\n");
+		else
+			if ((dev_priv->disp_pm_in_progress == true) &&
+				(dev_priv->sprtsuspendstat[i] == true)) {
+				I915_WRITE(reg, (val | SP_ENABLE));
+				dev_priv->sprtsuspendstat[i] = false;
+			}
+		DRM_DEBUG_DRIVER("Enable Sprites sprite reg %x has value %x\n",
+				reg, I915_READ(reg));
+	}
+}
+
 static void assert_sprites_disabled(struct drm_i915_private *dev_priv,
 				    enum pipe pipe)
 {
@@ -1842,6 +1892,10 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 
 	I915_WRITE(reg, val | PIPECONF_ENABLE);
 	intel_wait_for_vblank(dev_priv->dev, pipe);
+	if (dev_priv->disp_pm_in_progress == true) {
+		DRM_DEBUG_DRIVER("Enable the sprites if disabled\n");
+		enable_sprites(dev_priv, pipe);
+	}
 }
 
 /**
@@ -1862,6 +1916,10 @@ static void intel_disable_pipe(struct drm_i915_private *dev_priv,
 	int reg;
 	u32 val;
 
+	if (dev_priv->disp_pm_in_progress == true) {
+		DRM_DEBUG_DRIVER("Disable the sprites if enabled\n");
+		disable_sprites(dev_priv, pipe);
+	}
 	/*
 	 * Make sure planes won't keep trying to pump pixels to us,
 	 * or we might hang the display.
@@ -2003,7 +2061,7 @@ intel_pin_and_fence_fb_obj(struct drm_device *dev,
 			   struct intel_ring_buffer *pipelined)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 alignment;
+	u32 alignment = 0;
 	int ret;
 
 	switch (obj->tiling_mode) {
@@ -3598,8 +3656,8 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 		return;
 
 	intel_crtc->active = true;
-	if (dev_priv->s0ixstat == true)
-		intel_crtc->s0ix_suspend_state = false;
+	if (dev_priv->disp_pm_in_progress == true)
+		intel_crtc->disp_suspend_state = false;
 	intel_update_watermarks(dev);
 
 	intel_enable_pll(dev_priv, pipe);
@@ -3640,8 +3698,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	intel_disable_pll(dev_priv, pipe);
 
 	intel_crtc->active = false;
-	if (dev_priv->s0ixstat == true)
-		intel_crtc->s0ix_suspend_state = true;
+	if (dev_priv->disp_pm_in_progress == true)
+		intel_crtc->disp_suspend_state = true;
 	intel_update_fbc(dev);
 	intel_update_watermarks(dev);
 
@@ -7141,11 +7199,11 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	drm_kms_helper_poll_disable(drm_dev);
 	display_save_restore_hotplug(drm_dev, SAVEHPD);
 	display_disable_wq(drm_dev);
-	dev_priv->s0ixstat = true;
 	mutex_lock(&drm_dev->mode_config.mutex);
+	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-		if (intel_crtc->s0ix_suspend_state == false) {
+		if (intel_crtc->disp_suspend_state == false) {
 			i9xx_crtc_disable(crtc);
 			for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder)
 				intel_encoder_prepare(&intel_encoder->base);
@@ -7154,7 +7212,7 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	int ret = mid_hdmi_audio_suspend(drm_dev);
 	if (ret != true)
 		DRM_ERROR("Error suspending HDMI audio\n");
-	dev_priv->s0ixstat = false;
+	dev_priv->disp_pm_in_progress = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	i915_rpm_put_disp(drm_dev);
 	return 0;
@@ -7171,10 +7229,10 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	drm_kms_helper_poll_enable(drm_dev);
 	display_save_restore_hotplug(drm_dev, RESTOREHPD);
 	mutex_lock(&drm_dev->mode_config.mutex);
-	dev_priv->s0ixstat = true;
+	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		intel_crtc = to_intel_crtc(crtc);
-		if (intel_crtc->s0ix_suspend_state == true) {
+		if (intel_crtc->disp_suspend_state == true) {
 			i9xx_crtc_enable(crtc);
 			for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
 				intel_encoder_commit(&intel_encoder->base);
@@ -7182,7 +7240,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 		}
 	}
 	mid_hdmi_audio_resume(drm_dev);
-	dev_priv->s0ixstat = false;
+	dev_priv->disp_pm_in_progress = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	return 0;
 }
@@ -7221,8 +7279,10 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 
 	intel_crtc_reset(&intel_crtc->base);
 	intel_crtc->active = true; /* force the pipe off on setup_init_config */
-	dev_priv->s0ixstat = false; /* Keep the s0ixstat false initially */
-	intel_crtc->s0ix_suspend_state = false;
+	dev_priv->disp_pm_in_progress = false;
+	dev_priv->sprtsuspendstat[0] = false;
+	dev_priv->sprtsuspendstat[1] = false;
+	intel_crtc->disp_suspend_state = false;
 	intel_crtc->bpp = 24; /* default for pre-Ironlake */
 
 	if (HAS_PCH_SPLIT(dev)) {

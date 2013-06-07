@@ -53,6 +53,10 @@ void DCCBFlipSprite(struct drm_device *dev,
 void DCCBFlipPrimary(struct drm_device *dev,
 			struct intel_dc_primary_ctx *ctx);
 void DCCBUpdateDbiPanel(struct drm_device *dev);
+int DCCBOverlayEnable(struct drm_device *dev, u32 ctx,
+			int index, int enabled);
+int DCCBSpriteEnable(struct drm_device *dev, u32 ctx,
+			int index, int enabled);
 void DCCBFlipDSRCb(struct drm_device *dev);
 void DCCBUnblankDisplay(struct drm_device *dev);
 int DCCBgttMapMemory(struct drm_device *dev,
@@ -66,5 +70,6 @@ bool DCChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 			int pipe);
 u32 DCCBGetPipeCount(void);
 bool DCCBIsSuspended(struct drm_device *dev);
+int DCCBIsPipeActive(struct drm_device *dev, int pipe);
 
 #endif				/* __DC_CALLBACKS_H__ */

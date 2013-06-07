@@ -224,7 +224,7 @@ static int ulpmc_write_reg16(struct i2c_client *client, u8 reg, u16 value)
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
 		ret = i2c_smbus_write_word_data(client, reg, value);
-		if (ret == -EAGAIN || ret == -ETIMEDOUT)
+		if (ret < 0)
 			continue;
 		else
 			break;
@@ -242,7 +242,7 @@ static int ulpmc_read_reg16(struct i2c_client *client, u8 reg)
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
 		ret = i2c_smbus_read_word_data(client, reg);
-		if (ret == -EAGAIN || ret == -ETIMEDOUT)
+		if (ret < 0)
 			continue;
 		else
 			break;
@@ -260,7 +260,7 @@ static int ulpmc_write_reg8(struct i2c_client *client, u8 reg, u8 value)
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
 		ret = i2c_smbus_write_byte_data(client, reg, value);
-		if (ret == -EAGAIN || ret == -ETIMEDOUT)
+		if (ret < 0)
 			continue;
 		else
 			break;
@@ -278,7 +278,7 @@ static int ulpmc_read_reg8(struct i2c_client *client, u8 reg)
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
 		ret = i2c_smbus_read_byte_data(client, reg);
-		if (ret == -EAGAIN || ret == -ETIMEDOUT)
+		if (ret < 0)
 			continue;
 		else
 			break;
@@ -734,10 +734,13 @@ static int ulpmc_get_charger_property(struct power_supply *psy,
 			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
-		/* return error if charger is not present */
 		if (!chg_present) {
-			ret = -EINVAL;
-			goto i2c_read_err;
+			/*
+			 * set CHARGE_CURRENT as 0 when charger
+			 * is not present
+			 */
+			val->intval = 0;
+			break;
 		}
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BC_CHRG_CUR_CNTL_REG);
 		if (ret < 0)

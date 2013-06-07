@@ -1271,6 +1271,9 @@ static void intel_tv_find_better_format(struct drm_connector *connector)
 	const struct tv_mode *tv_mode = intel_tv_mode_find(intel_tv);
 	int i;
 
+	if (!tv_mode)
+		return;
+
 	if ((intel_tv->type == DRM_MODE_CONNECTOR_Component) ==
 		tv_mode->component_only)
 		return;
@@ -1350,6 +1353,9 @@ intel_tv_chose_preferred_modes(struct drm_connector *connector,
 	struct intel_tv *intel_tv = intel_attached_tv(connector);
 	const struct tv_mode *tv_mode = intel_tv_mode_find(intel_tv);
 
+	if (!tv_mode)
+		return;
+
 	if (tv_mode->nbr_end < 480 && mode_ptr->vdisplay == 480)
 		mode_ptr->type |= DRM_MODE_TYPE_PREFERRED;
 	else if (tv_mode->nbr_end > 480) {
@@ -1376,6 +1382,9 @@ intel_tv_get_modes(struct drm_connector *connector)
 	const struct tv_mode *tv_mode = intel_tv_mode_find(intel_tv);
 	int j, count = 0;
 	u64 tmp;
+
+	if (!tv_mode)
+		return count;
 
 	for (j = 0; j < ARRAY_SIZE(input_res_table);
 	     j++) {

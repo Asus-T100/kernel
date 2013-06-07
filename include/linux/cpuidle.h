@@ -17,7 +17,12 @@
 #include <linux/completion.h>
 #include <linux/hrtimer.h>
 
+#ifdef CONFIG_ATOM_SOC_POWER
+#define CPUIDLE_STATE_MAX	10
+#else
 #define CPUIDLE_STATE_MAX	8
+#endif
+
 #define CPUIDLE_NAME_LEN	16
 #define CPUIDLE_DESC_LEN	32
 

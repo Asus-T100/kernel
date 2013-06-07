@@ -41,19 +41,16 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 	struct drm_device *dev = dsi_config->dev;
 
 	PSB_DEBUG_ENTRY("esd\n");
-	if (IS_MRFLD(dev) &&
-		(is_panel_vid_or_cmd(dev) !=
-				MDFLD_DSI_ENCODER_DBI)) {
-		ret = mdfld_dsi_get_power_mode(dsi_config,
-				(u8 *) &data,
-				MDFLD_DSI_HS_TRANSMISSION);
-		/**
-		 * if FIFO is not empty, need do ESD, ret equals -EIO means
-		 * FIFO is abnormal.
-		 */
-		if ((ret == -EIO) || ((ret == 1) && ((data & 0x14) != 0x14)))
-			return true;
-	}
+
+	ret = mdfld_dsi_get_power_mode(dsi_config,
+			(u8 *) &data,
+			MDFLD_DSI_HS_TRANSMISSION);
+	/**
+	 * if FIFO is not empty, need do ESD, ret equals -EIO means
+	 * FIFO is abnormal.
+	 */
+	if ((ret == -EIO) || ((ret == 1) && ((data & 0x14) != 0x14)))
+		return true;
 
 	return false;
 }

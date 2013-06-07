@@ -143,6 +143,12 @@ typedef enum _PVRSVR_DEVICE_STATE_
 	PVRSVR_DEVICE_STATE_DEINIT,
 } PVRSVR_DEVICE_STATE;
 
+typedef enum _PVRSRV_DEVICE_HEALTH_
+{
+	PVRSRV_DEVICE_HEALTH_STATUS_OK = 0,
+	PVRSRV_DEVICE_HEALTH_STATUS_DEAD
+} PVRSRV_DEVICE_HEALTH_STATUS;
+
 #define PRVSRV_DEVICE_FLAGS_LMA		(1 << 0)
 
 typedef struct _PVRSRV_DEVICE_NODE_
@@ -151,7 +157,7 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	IMG_UINT32					ui32RefCount;
 
 	PVRSVR_DEVICE_STATE			eDevState;
-
+	PVRSRV_DEVICE_HEALTH_STATUS eHealthStatus;
 
 	/* device specific MMU attributes */
     MMU_DEVICEATTRIBS      *psMMUDevAttrs;
@@ -194,11 +200,8 @@ typedef struct _PVRSRV_DEVICE_NODE_
 
 	IMG_VOID (*pfnDumpDebugInfo)(struct _PVRSRV_DEVICE_NODE_ *psDevNode);
 
-	PVRSRV_ERROR (*pfnZSBufferSyncPrimUpdate)(struct _PVRSRV_DEVICE_NODE_ *psDevNode,
-										PVRSRV_CLIENT_SYNC_PRIM *psZSBufferPopulateSyncPrim,
-										PVRSRV_CLIENT_SYNC_PRIM *psZSBufferUnPopulateSyncPrim,
-										PVRSRV_CLIENT_SYNC_PRIM *psGrowSyncPrim,
-										PVRSRV_CLIENT_SYNC_PRIM *psShrinkSyncPrim);
+	PVRSRV_ERROR (*pfnUpdateHealthStatus)(struct _PVRSRV_DEVICE_NODE_ *psDevNode,
+	                                      IMG_BOOL bIsTimerPoll);
 
 	PVRSRV_DEVICE_CONFIG	*psDevConfig;
 
@@ -244,21 +247,8 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	PVRSRV_CLIENT_SYNC_PRIM *psSyncPrimPreKick;
 	IMG_UINT32				ui32SyncPrimPreKickRefCount;
 
-	POS_LOCK 				hLockZSBuffer;
-	DLLIST_NODE				sDeferredAllocHead;			/*!< List of Allocations that are deferred */
-	POS_LOCK 				hLockFreeList;
-	DLLIST_NODE				sFreeListHead;				/*!< List of Allocations that are deferred */
-
-	/* If we do 10 deferred memory allocations per second, then the ID would warp around after 13 years */
-	IMG_UINT32				ui32DeferredAllocCurrID;	/*!< ID assigned to the next deferred devmem allocation */
-	IMG_UINT32				ui32FreelistCurrID;			/*!< ID assigned to the next freelist */
-
-	PVRSRV_CLIENT_SYNC_PRIM *psZSBufferPopulateSyncPrim; 	/*!< Feedback SyncPrim to request ZS Buffer backing */
-	PVRSRV_CLIENT_SYNC_PRIM *psZSBufferUnPopulateSyncPrim; 	/*!< Feedback SyncPrim to release ZS Buffer backing */
-	PVRSRV_CLIENT_SYNC_PRIM *psGrowSyncPrim; 	/*!< Feedback SyncPrim for grow */
-	PVRSRV_CLIENT_SYNC_PRIM *psShrinkSyncPrim; 	/*!< Feedback SyncPrim for shrink */
-
 	IMG_HANDLE				hCmdCompNotify;
+	IMG_HANDLE				hDbgReqNotify;
 
 #if defined(PDUMP)
 	/* 	device-level callback which is called when pdump.exe starts.

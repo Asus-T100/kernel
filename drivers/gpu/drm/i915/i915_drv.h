@@ -468,7 +468,8 @@ typedef struct drm_i915_private {
 	u32 pipestat[2];
 	u32 irq_mask;
 	u32 hotplugstat;
-	bool s0ixstat;
+	bool disp_pm_in_progress;
+	bool sprtsuspendstat[2];
 	u32 gt_irq_mask;
 	u32 pch_irq_mask;
 
@@ -863,14 +864,21 @@ typedef struct drm_i915_private {
 		u8 cur_delay;
 		u8 min_delay;
 		u8 max_delay;
-	} rps;
 
+		u8 rp_up_masked;
+		u8 rp_down_masked;
+	} rps;
 
 	u8 cur_delay;
 	u8 min_delay;
 	u8 max_delay;
 	u8 fmax;
 	u8 fstart;
+
+	struct {
+		atomic_t up_threshold;
+		atomic_t down_threshold;
+	} turbodebug;
 
 	u64 last_count1;
 	unsigned long last_time1;
@@ -1280,6 +1288,8 @@ extern int i915_enable_rc6 __read_mostly;
 extern int i915_enable_fbc __read_mostly;
 extern bool i915_enable_hangcheck __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
+extern int i915_enable_turbo __read_mostly;
+extern int i915_psr_support __read_mostly;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
@@ -1656,9 +1666,12 @@ extern void intel_disable_fbc(struct drm_device *dev);
 extern bool ironlake_set_drps(struct drm_device *dev, u8 val);
 extern void ironlake_init_pch_refclk(struct drm_device *dev);
 extern void gen6_set_rps(struct drm_device *dev, u8 val);
+extern void valleyview_set_rps(struct drm_device *dev, u8 val);
 extern void intel_detect_pch(struct drm_device *dev);
 extern int intel_trans_dp_port_sel(struct drm_crtc *crtc);
 extern int intel_enable_rc6(const struct drm_device *dev);
+extern void valleyview_enable_rps(struct drm_device *dev);
+extern void valleyview_disable_rps(struct drm_device *dev);
 
 extern bool i915_semaphore_is_enabled(struct drm_device *dev);
 int i915_reg_read_ioctl(struct drm_device *dev, void *data,
@@ -1686,6 +1699,10 @@ extern void intel_display_print_error_state(struct seq_file *m,
 void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv, int fw_engine);
 void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv, int fw_engine);
 int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
+int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val);
+int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val);
+int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
+				u8 addr, u32 *val);
 
 u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
 void intel_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);

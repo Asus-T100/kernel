@@ -55,14 +55,6 @@
 
 #define HSI_MPU_IRQ_NAME	"HSI_CONTROLLER_IRQ"
 
-#define HSI_PNW_PCI_DEVICE_ID	0x833   /* PCI id for Penwell HSI */
-#define HSI_PNW_MASTER_DMA_ID	0x834   /* PCI id for Penwell DWAHB dma */
-
-#define HSI_CLV_PCI_DEVICE_ID	0x902   /* PCI id for Cloverview HSI */
-#define HSI_CLV_MASTER_DMA_ID	0x903   /* PCI id for Cloverview DWAHB dma */
-
-#define HSI_TNG_PCI_DEVICE_ID	0x1197  /* PCI id for Tangier HSI */
-
 #define HSI_RESETDONE_TIMEOUT	10	/* 10 ms */
 #define HSI_RESETDONE_RETRIES	20	/* => max 200 ms waiting for reset */
 #define HSI_BASE_FREQUENCY	200000	/* in KHz */
@@ -322,6 +314,9 @@ struct intel_xfer_ctx {
  * @dir: debugfs HSI root directory
  * @wakeup_packet_log: Enable/Disable the dump of the wakeup packet
  * @resumed: Set to TRUE when the HSI driver exit the resume state
+ * @use_oob_cawake: Set to true if intended to be used
+ * @hsi_wake_raised: Set to TRUE when interrupt fires on hsi_cawke gpio
+ * @hsi_wake_disabled: Set to TRUE when interrupt of hsi_cawake gpio is disabled
  */
 struct intel_controller {
 	/* Devices and resources */
@@ -395,6 +390,10 @@ struct intel_controller {
 #endif
 	u16 wakeup_packet_log;
 	u16 resumed;
+	u16 hsi_wake_raised;
+	u16 hsi_wake_disabled;
+
+	bool use_oob_cawake;
 };
 
 /* Disable the following to deactivate the runtime power management
@@ -425,6 +424,11 @@ module_param(wakeup_packet_len, uint, 0644);
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
+
+static inline bool use_oob_cawake(struct intel_controller *intel_hsi)
+{
+	return intel_hsi->use_oob_cawake;
+}
 
 /* This function will:
  *   - Dump the msg data if the msg was received when
@@ -724,7 +728,7 @@ static void rx_idle_poll(unsigned long param)
 		mod_timer(&intel_hsi->rx_idle_poll,
 			  jiffies + IDLE_POLL_JIFFIES);
 	} else {
-		if (!use_oob_cawake())
+		if (!use_oob_cawake(intel_hsi))
 			intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
 		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 		intel_hsi->rx_state = RX_CAN_SLEEP;
@@ -756,7 +760,7 @@ static int has_enabled_acready(struct intel_controller *intel_hsi)
 	do_wakeup = (intel_hsi->rx_state == RX_SLEEPING);
 
 	intel_hsi->prg_cfg |= ARASAN_RX_ENABLE;
-	if (!use_oob_cawake())
+	if (!use_oob_cawake(intel_hsi))
 		intel_hsi->irq_cfg &= ~ARASAN_IRQ_RX_WAKE;
 	intel_hsi->irq_cfg |= ARASAN_IRQ_RX_SLEEP(version);
 
@@ -860,13 +864,17 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	 * The CAWAKE event interrupt shall be re-enabled whenever the
 	 * RX fifo is no longer empty */
 	del_timer(&intel_hsi->rx_idle_poll);
-	if (use_oob_cawake())
+	if (use_oob_cawake(intel_hsi))
 		irq_clr = ARASAN_IRQ_RX_SLEEP(version);
 	else
 		irq_clr = ARASAN_IRQ_RX_WAKE | ARASAN_IRQ_RX_SLEEP(version);
 	intel_hsi->irq_status	&= ~irq_clr;
 	intel_hsi->irq_cfg	&= ~irq_clr;
 	if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
+		if (use_oob_cawake(intel_hsi)) {
+			disable_irq(intel_hsi->irq_wake);
+			intel_hsi->hsi_wake_disabled = 1;
+		}
 		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 		iowrite32(irq_clr, ARASAN_REG(INT_STATUS));
 	}
@@ -893,7 +901,12 @@ static void unforce_disable_acready(struct intel_controller *intel_hsi)
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (unlikely((intel_hsi->rx_state == RX_SLEEPING) &&
 		     (!(intel_hsi->irq_cfg & ARASAN_IRQ_RX_WAKE)))) {
-		intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
+		if (!use_oob_cawake(intel_hsi))
+			intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
+		else if (intel_hsi->hsi_wake_disabled) {
+			enable_irq(intel_hsi->irq_wake);
+			intel_hsi->hsi_wake_disabled = 0;
+		}
 		if (intel_hsi->suspend_state == DEVICE_READY)
 			hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 	}
@@ -1554,7 +1567,7 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 
 	/* Disable the interrupt line */
 	disable_irq(intel_hsi->irq);
-	if (use_oob_cawake())
+	if (use_oob_cawake(intel_hsi))
 		disable_irq(intel_hsi->irq_wake);
 
 	/* Disable (and flush) all tasklets */
@@ -1624,7 +1637,7 @@ exit_clean_reset:
 
 	/* Do not forget to re-enable the interrupt */
 	enable_irq(intel_hsi->irq);
-	if (use_oob_cawake())
+	if (use_oob_cawake(intel_hsi))
 		enable_irq(intel_hsi->irq_wake);
 }
 
@@ -2510,6 +2523,9 @@ static u32 hsi_timeout(struct intel_controller *intel_hsi, u32 timeout_reg)
 	u32				*buf;
 	u32				 timeout_clr, timeout_mask;
 	unsigned long			 flags;
+	int msg_status;
+	unsigned int msg_actual_len;
+
 
 	timeout_clr = 0;
 
@@ -2541,15 +2557,19 @@ hsi_pio_timeout_try:
 			goto hsi_pio_timeout_done;
 		}
 
+		msg_status = msg->status;
+		msg_actual_len = msg->actual_len;
+		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
+
 		timeout_clr |= timeout_mask;
 
 		while ((ioread32(ARASAN_REG(HSI_STATUS)) &
 			ARASAN_RX_NOT_EMPTY(i)) &&
-		       (msg->status == HSI_STATUS_PROCEEDING)) {
+		       (msg_status == HSI_STATUS_PROCEEDING)) {
 			if (likely(pio_ctx->blk->length > 0)) {
 				buf = sg_virt(pio_ctx->blk) + pio_ctx->offset*4;
 				*buf = ioread32(ARASAN_CHN_REG(RX_DATA, i));
-				msg->actual_len += HSI_FRAMES_TO_BYTES(1);
+				msg_actual_len += HSI_FRAMES_TO_BYTES(1);
 				pio_ctx->offset += 1;
 			}
 
@@ -2559,9 +2579,13 @@ hsi_pio_timeout_try:
 					pio_ctx->blk = sg_next(pio_ctx->blk);
 					pio_ctx->offset = 0;
 				} else
-					msg->status = HSI_STATUS_COMPLETED;
+					msg_status = HSI_STATUS_COMPLETED;
 			}
 		}
+
+		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
+		msg->status = msg_status;
+		msg->actual_len = msg_actual_len;
 
 		if (msg->status == HSI_STATUS_COMPLETED) {
 hsi_pio_timeout_done:
@@ -2693,22 +2717,19 @@ static int hsi_mid_async(struct hsi_msg *msg)
 			return err;
 	}
 
-	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	if (unlikely((*queue_busy) & QUEUE_BUSY(hsi_ch))) {
 		if (dma_ch >= 0)
 			dma_unmap_sg(intel_hsi->pdev, msg->sgt.sgl, nents, dir);
-		err = -EBUSY;
+		return -EBUSY;
 	} else {
 		msg->status = HSI_STATUS_QUEUED;
+		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 		list_add_tail(&msg->link, queue);
-		err = 0;
-	}
-	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
-
-	if (!err)
+		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 		hsi_transfer(intel_hsi, is_tx, hsi_ch, dma_ch);
+		return 0;
+	}
 
-	return err;
 }
 
 /**
@@ -2904,8 +2925,9 @@ static int hsi_mid_setup(struct hsi_client *cl)
 	int full_rx_sz, rx_sz, rx_en, rx_th;
 	unsigned int divisor, rx_timeout, data_timeout;
 	unsigned long flags;
-	u32 arb_cfg, sz_cfg, irq_cfg, err_cfg, clk_cfg, prg_cfg;
+	u32 arb_cfg, sz_cfg, err_cfg, clk_cfg, prg_cfg;
 	int i, dma_ch, err = 0;
+	u32 irq_cfg = 0;
 
 	/* Read the platform data to initialise the device */
 	pd = (struct hsi_mid_platform_data *)(cl->device.platform_data);
@@ -2916,6 +2938,9 @@ static int hsi_mid_setup(struct hsi_client *cl)
 
 	/* Save the ACWAKE delay */
 	intel_hsi->acwake_delay = HSI_ACWAKE_DELAY;
+
+	/* Initialize hsi_wake disabling status */
+	intel_hsi->hsi_wake_disabled = 0;
 
 	/* Save the current TX speed */
 	intel_hsi->tx_speed = cl->tx_cfg.speed;
@@ -2935,7 +2960,7 @@ static int hsi_mid_setup(struct hsi_client *cl)
 			  ARASAN_TX_MODE(cl->tx_cfg.mode) |
 			  ARASAN_RX_FLOW(cl->rx_cfg.flow) |
 			  ARASAN_RX_MODE(cl->rx_cfg.mode);
-	if (!use_oob_cawake())
+	if (!use_oob_cawake(intel_hsi))
 		irq_cfg		= ARASAN_IRQ_RX_WAKE;
 	err_cfg		= ARASAN_IRQ_BREAK | ARASAN_IRQ_RX_ERROR;
 
@@ -3018,6 +3043,7 @@ static int hsi_mid_setup(struct hsi_client *cl)
 	intel_hsi->prg_cfg |= prg_cfg;
 	intel_hsi->arb_cfg  = arb_cfg;
 	intel_hsi->sz_cfg   = sz_cfg;
+	intel_hsi->hsi_wake_raised = 0;
 
 	for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
 		intel_hsi->tx_fifo_sz[i]  = tx_fifo_sz[i];
@@ -3215,6 +3241,8 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 	u32 *buf;
 	u32 avail, blk_len, sz;
 	unsigned long flags;
+	int msg_status;
+	unsigned int msg_actual_len;
 
 	queue = (is_tx) ?
 		&intel_hsi->tx_queue[ch] : &intel_hsi->rx_queue[ch];
@@ -3226,14 +3254,18 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 	}
 	msg = list_first_entry(queue, struct hsi_msg, link);
 	if (unlikely(!msg->sgt.nents)) {
-		msg->actual_len = 0;
+		msg_actual_len = 0;
 		goto hsi_pio_xfer_done;
 	}
+
+	msg_status = msg->status;
+	msg_actual_len = msg->actual_len;
+	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
 	pio_ctx = (is_tx) ?
 		&intel_hsi->tx_ctx[ch].pio : &intel_hsi->rx_ctx[ch].pio;
 
-	if (msg->status == HSI_STATUS_PROCEEDING) {
+	if (msg_status == HSI_STATUS_PROCEEDING) {
 		if (is_tx) {
 			avail = intel_hsi->tx_fifo_th[ch];
 			fifo = ARASAN_CHN_REG(TX_DATA, ch);
@@ -3246,7 +3278,7 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 			buf = sg_virt(pio_ctx->blk) + (pio_ctx->offset*4);
 			blk_len = HSI_BYTES_TO_FRAMES(pio_ctx->blk->length);
 			sz = min(avail, blk_len - pio_ctx->offset);
-			msg->actual_len += HSI_FRAMES_TO_BYTES(sz);
+			msg_actual_len += HSI_FRAMES_TO_BYTES(sz);
 			avail -= sz;
 			pio_ctx->offset += sz;
 			for (; sz > 0; sz--) {
@@ -3259,8 +3291,11 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 
 			if (pio_ctx->offset >= blk_len) {
 				pio_ctx->offset = 0;
-				if (sg_is_last(pio_ctx->blk))
+				if (sg_is_last(pio_ctx->blk)) {
+					spin_lock_irqsave(&intel_hsi->sw_lock,
+							flags);
 					goto hsi_pio_xfer_done;
+				}
 				pio_ctx->blk = sg_next(pio_ctx->blk);
 			}
 		}
@@ -3269,13 +3304,17 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 	if ((pio_ctx->offset < HSI_BYTES_TO_FRAMES(pio_ctx->blk->length)) ||
 	    ((is_tx) &&
 	     (!(ioread32(ARASAN_REG(HSI_STATUS)) & ARASAN_TX_EMPTY(ch))))) {
+		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
+		msg->actual_len = msg_actual_len;
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 		return (is_tx) ?
 			ARASAN_IRQ_TX_THRESHOLD(ch) :
 			ARASAN_IRQ_RX_THRESHOLD(ch);
 	}
 
+	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 hsi_pio_xfer_done:
+	msg->actual_len = msg_actual_len;
 	msg->status = HSI_STATUS_COMPLETED;
 	list_del(&msg->link);
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
@@ -3499,18 +3538,21 @@ static void hsi_isr_tasklet(unsigned long hsi)
 	u32 rx_mask	= ARASAN_IRQ_RX_THRESHOLD(0);
 	unsigned long flags;
 	int do_fwd = 0;
+	int hsi_wake_raised = 0;
 
 	/* Get a local copy of the current interrupt status */
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	irq_status = intel_hsi->irq_status;
 	err_status = intel_hsi->err_status;
 	dma_status = intel_hsi->dma_status;
+	hsi_wake_raised = intel_hsi->hsi_wake_raised;
 	intel_hsi->irq_status = 0;
 	intel_hsi->err_status = 0;
 	intel_hsi->dma_status = 0;
+	intel_hsi->hsi_wake_raised = 0;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	if (irq_status & ARASAN_IRQ_RX_WAKE) {
+	if ((irq_status & ARASAN_IRQ_RX_WAKE) || hsi_wake_raised) {
 		if (!intel_hsi->resumed)
 			intel_hsi->wakeup_packet_log = 1;
 		enable_acready(intel_hsi);
@@ -3663,6 +3705,9 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 		goto exit_irq;
 	}
 
+	if (irq == intel_hsi->irq_wake)
+		intel_hsi->hsi_wake_raised = 1;
+
 	dma_status = 0;
 	err_status = 0;
 	irq_status = ioread32(ARASAN_REG(INT_STATUS));
@@ -3672,7 +3717,7 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 	if (irq_status & ARASAN_IRQ_DMA(version))
 		dma_status = ioread32(ARASAN_REG_V2(ctrl, DMA_INT_STATUS));
 
-	if (use_oob_cawake())
+	if (use_oob_cawake(intel_hsi))
 		irq_disable = irq_status &
 			(ARASAN_IRQ_RX_SLEEP(version)|
 			 ARASAN_IRQ_ANY_RX_THRESHOLD |
@@ -3895,7 +3940,8 @@ static void hsi_unmap_resources(struct intel_controller *intel_hsi,
  *
  * Returns success or an error code if the controller IRQ cannot be requested.
  */
-static int hsi_controller_init(struct intel_controller *intel_hsi)
+static int hsi_controller_init(struct intel_controller *intel_hsi,
+	struct hsi_mid_pci_platform_data *pdata)
 {
 	unsigned int ch;
 	int err = 0;
@@ -3923,8 +3969,8 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 	tasklet_init(&intel_hsi->fwd_tasklet, hsi_fwd_tasklet,
 		     (unsigned long) intel_hsi);
 
-	if (use_oob_cawake()) {
-		intel_hsi->gpio_wake = get_gpio_by_name("hsi_cawake");
+	if (use_oob_cawake(intel_hsi)) {
+		intel_hsi->gpio_wake = pdata->gpio_wake;
 		gpio_request_one(intel_hsi->gpio_wake, GPIOF_IN, DRVNAME);
 		intel_hsi->irq_wake = gpio_to_irq(intel_hsi->gpio_wake);
 	}
@@ -3947,7 +3993,7 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 		goto out_err;
 	}
 
-	if (use_oob_cawake()) {
+	if (use_oob_cawake(intel_hsi)) {
 		err = request_irq(intel_hsi->irq_wake, hsi_isr,
 				IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND,
 				DRVNAME, intel_hsi);
@@ -3983,7 +4029,7 @@ static void hsi_controller_exit(struct intel_controller *intel_hsi)
 	/* Free the interrupt */
 	free_irq(intel_hsi->irq, intel_hsi);
 
-	if (use_oob_cawake()) {
+	if (use_oob_cawake(intel_hsi)) {
 		free_irq(intel_hsi->irq_wake, intel_hsi);
 		gpio_free(intel_hsi->gpio_wake);
 	}
@@ -4145,6 +4191,7 @@ static int hsi_add_controller(struct hsi_controller *hsi,
 				     struct pci_dev *pdev)
 {
 	struct intel_controller *intel_hsi;
+	struct hsi_mid_pci_platform_data *pdata = pdev->dev.platform_data;
 	int err;
 
 	intel_hsi = kzalloc(sizeof(*intel_hsi), GFP_KERNEL);
@@ -4162,6 +4209,7 @@ static int hsi_add_controller(struct hsi_controller *hsi,
 	intel_hsi->dev = &hsi->device;
 	intel_hsi->irq = pdev->irq;
 	intel_hsi->resumed = 1;
+	intel_hsi->use_oob_cawake = pdata->use_oob_cawake;
 
 	err = pci_enable_device(pdev);
 	if (err) {
@@ -4174,7 +4222,7 @@ static int hsi_add_controller(struct hsi_controller *hsi,
 		goto fail_map_resources;
 
 	hsi_ports_init(hsi, intel_hsi);
-	err = hsi_controller_init(intel_hsi);
+	err = hsi_controller_init(intel_hsi, pdata);
 	if (err < 0)
 		goto fail_controller_init;
 

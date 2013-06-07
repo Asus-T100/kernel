@@ -21,20 +21,49 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
+#include <linux/wakelock.h>
+#include <linux/rpmsg.h>
+#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
+#include <asm/intel_mid_rpmsg.h>
+#include <asm/intel_mid_remoteproc.h>
+
+/* Wake lock to prevent platform from going to
+	S3 when USBDET interrupt Trigger */
+static struct wake_lock wakelock;
 
 #define DRIVER_NAME "pmic_charger"
+#define MSIC_SPWRSRCINT 0x192
+#define MSIC_SUSBDET_MASK_BIT	0x2
+
+static irqreturn_t pmic_charger_thread_handler(int irq, void *devid)
+{
+	int retval = 0;
+	uint8_t spwrsrcint;
+	struct device *dev = (struct device *)devid;
+
+	retval = intel_scu_ipc_ioread8(MSIC_SPWRSRCINT, &spwrsrcint);
+	if (retval) {
+		dev_err(dev, "IPC Failed to read %d\n", retval);
+		return retval;
+	}
+
+	if ((spwrsrcint & MSIC_SUSBDET_MASK_BIT) == 0) {
+		if (wake_lock_active(&wakelock))
+			wake_unlock(&wakelock);
+	}
+
+	dev_info(dev, "pmic charger interrupt: %d\n", irq);
+
+	return IRQ_HANDLED;
+}
 
 static irqreturn_t pmic_charger_irq_handler(int irq, void *devid)
 {
-	struct device *dev = (struct device *)devid;
+	if (!wake_lock_active(&wakelock))
+		wake_lock(&wakelock);
 
-	/*
-	 * This hanlder is used for USB_DET handling, just for waking up
-	 * the system and do nothing.
-	 */
-	dev_dbg(dev, "IRQ Handled for pmic charger interrupt: %d\n", irq);
-
-	return IRQ_HANDLED;
+	return IRQ_WAKE_THREAD;
 }
 
 static int __devinit pmic_charger_probe(struct platform_device *pdev)
@@ -43,8 +72,13 @@ static int __devinit pmic_charger_probe(struct platform_device *pdev)
 	int irq = platform_get_irq(pdev, 0);
 	int ret;
 
+	/* Initialize the wakelock */
+	wake_lock_init(&wakelock, WAKE_LOCK_SUSPEND, "pmic_charger_wakelock");
+
 	/* Register a handler for USBDET interrupt */
-	ret = request_irq(irq, pmic_charger_irq_handler, IRQF_TRIGGER_FALLING,
+	ret = request_threaded_irq(irq, pmic_charger_irq_handler,
+			pmic_charger_thread_handler,
+			IRQF_TRIGGER_FALLING | IRQF_NO_SUSPEND,
 			"pmic_usbdet_interrupt", dev);
 	if (ret) {
 		dev_info(dev, "register USBDET IRQ with error %d\n", ret);
@@ -60,16 +94,36 @@ static int __devexit pmic_charger_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	int irq = platform_get_irq(pdev, 0);
-
+	wake_lock_destroy(&wakelock);
 	free_irq(irq, dev);
 
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int pmic_charger_suspend(struct device *dev)
+{
+	dev_dbg(dev, "pmic charger suspend\n");
+	return 0;
+}
+
+static int pmic_charger_resume(struct device *dev)
+{
+	dev_dbg(dev, "pmic charger resume\n");
+	return 0;
+}
+#endif
+
+static const struct dev_pm_ops pmic_charger_pm_ops = {
+	.suspend                = pmic_charger_suspend,
+	.resume                 = pmic_charger_resume,
+};
+
 static struct platform_driver pmic_charger_driver = {
 	.driver = {
 		.name		= DRIVER_NAME,
 		.owner		= THIS_MODULE,
+		.pm		= &pmic_charger_pm_ops,
 	},
 	.probe		= pmic_charger_probe,
 	.remove = __devexit_p(pmic_charger_remove),
@@ -80,13 +134,72 @@ static int __init pmic_charger_module_init(void)
 	return platform_driver_register(&pmic_charger_driver);
 }
 
-static void __exit pmic_charger_module_exit(void)
+static void pmic_charger_module_exit(void)
 {
 	platform_driver_unregister(&pmic_charger_driver);
 }
 
-module_init(pmic_charger_module_init);
-module_exit(pmic_charger_module_exit);
+/* RPMSG related functionality */
+static int pmic_charger_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	int ret = 0;
+
+	if (rpdev == NULL) {
+		pr_err("rpmsg channel not created\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	dev_info(&rpdev->dev, "Probed pmic_charger rpmsg device\n");
+
+	ret = pmic_charger_module_init();
+
+out:
+	return ret;
+}
+
+static void pmic_charger_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	pmic_charger_module_exit();
+	dev_info(&rpdev->dev, "Removed pmic_charger rpmsg device\n");
+}
+
+static void pmic_charger_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+					int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+		       data, len,  true);
+}
+
+static struct rpmsg_device_id pmic_charger_rpmsg_id_table[] = {
+	{ .name	= "rpmsg_pmic_charger" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, pmic_charger_rpmsg_id_table);
+
+static struct rpmsg_driver pmic_charger_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.drv.owner	= THIS_MODULE,
+	.id_table	= pmic_charger_rpmsg_id_table,
+	.probe		= pmic_charger_rpmsg_probe,
+	.callback	= pmic_charger_rpmsg_cb,
+	.remove		= pmic_charger_rpmsg_remove,
+};
+
+static int __init pmic_charger_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&pmic_charger_rpmsg);
+}
+
+static void __exit pmic_charger_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&pmic_charger_rpmsg);
+}
+
+module_init(pmic_charger_rpmsg_init);
+module_exit(pmic_charger_rpmsg_exit);
 
 MODULE_AUTHOR("Dongsheng Zhang <dongsheng.zhang@intel.com>");
 MODULE_AUTHOR("Rapaka, Naveen <naveen.rapaka@intel.com>");

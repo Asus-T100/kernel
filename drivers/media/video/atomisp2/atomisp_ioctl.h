@@ -24,7 +24,11 @@
 #ifndef	__ATOMISP_IOCTL_H__
 #define	__ATOMISP_IOCTL_H__
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 #include <sh_css.h>
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 struct atomisp_device;
 struct atomisp_video_pipe;
@@ -45,7 +49,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 int atomisp_reqbufs(struct file *file, void *fh,
 			struct v4l2_requestbuffers *req);
 
-enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
+enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
 
 void atomisp_videobuf_free_buf(struct videobuf_buffer *vb);
 

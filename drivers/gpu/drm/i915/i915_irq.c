@@ -399,12 +399,40 @@ static void gen6_pm_rps_work(struct work_struct *work)
 
 	mutex_lock(&dev_priv->dev->struct_mutex);
 
-	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD)
-		new_delay = dev_priv->rps.cur_delay + 1;
-	else
-		new_delay = dev_priv->rps.cur_delay - 1;
+	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD) {
+		if (dev_priv->rps.cur_delay > dev_priv->rps.max_delay) {
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) | 1 << 5);
+			dev_priv->rps.rp_up_masked = 1;
+			new_delay = dev_priv->rps.cur_delay;
+		} else {
+			new_delay = dev_priv->rps.cur_delay + 1;
+		}
+		if (dev_priv->rps.rp_down_masked) {
+			I915_WRITE(GEN6_PMINTRMSK, 0);
+			dev_priv->rps.rp_down_masked = 0;
+		}
+		atomic_inc(&dev_priv->turbodebug.up_threshold);
+	} else {
+		if (dev_priv->rps.cur_delay <= dev_priv->rps.min_delay) {
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) | 1 << 4);
+			dev_priv->rps.rp_down_masked = 1;
+			new_delay = dev_priv->rps.cur_delay;
+		} else {
+			new_delay = dev_priv->rps.cur_delay - 1;
+		}
+		if (dev_priv->rps.rp_up_masked) {
+			I915_WRITE(GEN6_PMINTRMSK, 0);
+			dev_priv->rps.rp_up_masked = 0;
+		}
+		atomic_inc(&dev_priv->turbodebug.down_threshold);
+	}
 
-	gen6_set_rps(dev_priv->dev, new_delay);
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		valleyview_set_rps(dev_priv->dev, new_delay);
+	else
+		gen6_set_rps(dev_priv->dev, new_delay);
 
 	mutex_unlock(&dev_priv->dev->struct_mutex);
 }
@@ -545,7 +573,7 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 	irqreturn_t ret = IRQ_NONE;
 	unsigned long irqflags;
 	int pipe;
-	u32 pipe_stats[I915_MAX_PIPES];
+	u32 pipe_stats[I915_MAX_PIPES] = {0};
 	bool blc_event;
 	int lpe_stream;
 
@@ -2189,7 +2217,7 @@ static irqreturn_t i8xx_irq_handler(DRM_IRQ_ARGS)
 	struct drm_device *dev = (struct drm_device *) arg;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	u16 iir, new_iir;
-	u32 pipe_stats[2];
+	u32 pipe_stats[2] = {0};
 	unsigned long irqflags;
 	int irq_received;
 	int pipe;
@@ -2366,7 +2394,7 @@ static irqreturn_t i915_irq_handler(DRM_IRQ_ARGS)
 {
 	struct drm_device *dev = (struct drm_device *) arg;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
-	u32 iir, new_iir, pipe_stats[I915_MAX_PIPES];
+	u32 iir, new_iir, pipe_stats[I915_MAX_PIPES] = {0};
 	unsigned long irqflags;
 	u32 flip_mask =
 		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
@@ -2605,7 +2633,7 @@ static irqreturn_t i965_irq_handler(DRM_IRQ_ARGS)
 	struct drm_device *dev = (struct drm_device *) arg;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	u32 iir, new_iir;
-	u32 pipe_stats[I915_MAX_PIPES];
+	u32 pipe_stats[I915_MAX_PIPES] = {0};
 	unsigned long irqflags;
 	int irq_received;
 	int ret = IRQ_NONE, pipe;

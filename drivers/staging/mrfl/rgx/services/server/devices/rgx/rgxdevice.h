@@ -53,6 +53,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "cache_external.h"
 #include "device.h"
 
+/*!
+ ******************************************************************************
+ * Device state flags
+ *****************************************************************************/
+#define RGXKM_DEVICE_STATE_ZERO_FREELIST		(0x1 << 0)		/*!< Zeroing the physical pages of reconstructed freelists */
+
+
 
 typedef struct _PVRSRV_STUB_PBDESC_ PVRSRV_STUB_PBDESC;
 
@@ -66,6 +73,8 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	IMG_UINT8				ui8VersionMinor;
 	IMG_UINT32				ui32CoreConfig;
 	IMG_UINT32				ui32CoreFlags;
+
+	IMG_BOOL                bFirmwareInitialised;
 
 	/* Kernel mode linear address of device registers */
 	IMG_PVOID				pvRegsBaseKM;
@@ -92,10 +101,17 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_VOID				*pvDeviceMemoryHeap;
 	
+	/* Kernel CCBs */
 	DEVMEM_MEMDESC			*apsKernelCCBCtlMemDesc[RGXFWIF_DM_MAX];	/*!< memdesc for kernel CCB control */
-	RGXFWIF_KCCB_CTL		*apsKernelCCBCtl[RGXFWIF_DM_MAX];			/*!< kernel CCB control kernel mapping */
+	RGXFWIF_CCB_CTL			*apsKernelCCBCtl[RGXFWIF_DM_MAX];			/*!< kernel CCB control kernel mapping */
 	DEVMEM_MEMDESC			*apsKernelCCBMemDesc[RGXFWIF_DM_MAX];		/*!< memdesc for kernel CCB */
 	IMG_UINT8				*apsKernelCCB[RGXFWIF_DM_MAX];				/*!< kernel CCB kernel mapping */
+
+	/* Firmware CCBs */
+	DEVMEM_MEMDESC			*apsFirmwareCCBCtlMemDesc[RGXFWIF_DM_MAX];	/*!< memdesc for Firmware CCB control */
+	RGXFWIF_CCB_CTL			*apsFirmwareCCBCtl[RGXFWIF_DM_MAX];			/*!< kernel CCB control Firmware mapping */
+	DEVMEM_MEMDESC			*apsFirmwareCCBMemDesc[RGXFWIF_DM_MAX];		/*!< memdesc for Firmware CCB */
+	IMG_UINT8				*apsFirmwareCCB[RGXFWIF_DM_MAX];				/*!< kernel CCB Firmware mapping */
 
 	/*
 		if we don't preallocate the pagetables we must 
@@ -112,6 +128,9 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	DEVMEM_MEMDESC			*psRGXFWIfTraceBufCtlMemDesc;
 	RGXFWIF_TRACEBUF		*psRGXFWIfTraceBuf;
+
+	DEVMEM_MEMDESC			*psRGXFWIfHWRInfoBufCtlMemDesc;
+	RGXFWIF_HWRINFOBUF		*psRGXFWIfHWRInfoBuf;
 
 	DEVMEM_MEMDESC			*psRGXFWIfInitMemDesc;
 
@@ -152,6 +171,23 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	PVRSRV_CLIENT_SYNC_PRIM *psPowSyncPrim;
 
 	IMG_VOID (*pfnActivePowerCheck) (PVRSRV_DEVICE_NODE *psDeviceNode);
+
+	IMG_UINT32 				ui32DeviceFlags;	/*!< Flags to track general device state  */
+
+	/* Poll data for detecting firmware fatal errors */
+	IMG_UINT32  aui32CrLastPollAddr[RGXFW_THREAD_NUM];
+	IMG_UINT32  aui32CrLastPollCounter[RGXFW_THREAD_NUM];
+	IMG_UINT32  ui32KCCBLastROff[RGXFWIF_DM_MAX];
+	IMG_UINT32  ui32LastGEOTimeouts;
+	
+	/* If we do 10 deferred memory allocations per second, then the ID would warp around after 13 years */
+	IMG_UINT32				ui32ZSBufferCurrID;	/*!< ID assigned to the next deferred devmem allocation */
+	IMG_UINT32				ui32FreelistCurrID;	/*!< ID assigned to the next freelist */
+
+	POS_LOCK 				hLockZSBuffer;		/*!< Lock to protect simultaneous access to ZSBuffers */
+	DLLIST_NODE				sZSBufferHead;		/*!< List of on-demand ZSBuffers */
+	POS_LOCK 				hLockFreeList;		/*!< Lock to protect simultaneous access to Freelists */
+	DLLIST_NODE				sFreeListHead;		/*!< List of growable Freelists */
 
 } PVRSRV_RGXDEV_INFO;
 

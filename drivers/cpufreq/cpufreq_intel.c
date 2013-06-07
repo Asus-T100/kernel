@@ -1394,6 +1394,10 @@ static int __init cpufreq_intel_init(void)
 		pcpu->cpu_timer = &pcpu->idle_driven_timer;
 	}
 
+	spin_lock_init(&up_cpumask_lock);
+	spin_lock_init(&down_cpumask_lock);
+	mutex_init(&set_speed_lock);
+
 	up_task = kthread_create(cpufreq_intel_up_task, NULL,
 				 "kintel_up");
 	if (IS_ERR(up_task))
@@ -1412,15 +1416,13 @@ static int __init cpufreq_intel_init(void)
 	INIT_WORK(&freq_scale_down_work,
 		  cpufreq_intel_freq_down);
 
-	spin_lock_init(&up_cpumask_lock);
-	spin_lock_init(&down_cpumask_lock);
-	mutex_init(&set_speed_lock);
-
 	idle_notifier_register(&cpufreq_intel_idle_nb);
 	INIT_WORK(&inputopen.inputopen_work, cpufreq_intel_input_open);
+	wake_up_process(up_task);
 	return cpufreq_register_governor(&cpufreq_gov_intel);
 
 err_freeuptask:
+	kthread_stop(up_task);
 	put_task_struct(up_task);
 	return -ENOMEM;
 }

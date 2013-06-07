@@ -823,9 +823,11 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	 * If the sprite is completely covering the primary plane,
 	 * we can disable the primary and save power.
 	 */
-	if ((crtc_x == 0) && (crtc_y == 0) &&
-	    (crtc_w == primary_w) && (crtc_h == primary_h))
-		disable_primary = true;
+	if (!IS_VALLEYVIEW(dev)) {
+		if ((crtc_x == 0) && (crtc_y == 0) &&
+		(crtc_w == primary_w) && (crtc_h == primary_h))
+			disable_primary = true;
+	}
 
 	mutex_lock(&dev->struct_mutex);
 
@@ -839,14 +841,18 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	 * Be sure to re-enable the primary before the sprite is no longer
 	 * covering it fully.
 	 */
-	if (!disable_primary)
-		intel_enable_primary(crtc);
+	if (!IS_VALLEYVIEW(dev)) {
+		if (!disable_primary)
+			intel_enable_primary(crtc);
+	}
 
 	intel_plane->update_plane(plane, fb, obj, crtc_x, crtc_y,
 				  crtc_w, crtc_h, x, y, src_w, src_h);
 
-	if (disable_primary)
-		intel_disable_primary(crtc);
+	if (!IS_VALLEYVIEW(dev)) {
+		if (disable_primary)
+			intel_disable_primary(crtc);
+	}
 
 	/* Unpin old obj after new one is active to avoid ugliness */
 	if (old_obj) {
@@ -1051,7 +1057,6 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 			intel_plane->disable_plane = vlv_disable_plane;
 			intel_plane->update_colorkey = vlv_update_colorkey;
 			intel_plane->get_colorkey = vlv_get_colorkey;
-
 			plane_formats = vlv_plane_formats;
 			num_plane_formats = ARRAY_SIZE(vlv_plane_formats);
 		} else {

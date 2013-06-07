@@ -30,15 +30,18 @@
 
 #include <media/videobuf-core.h>
 
+#include "atomisp_compat.h"
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 #include <sh_css.h>
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 extern int dbg_level;
 extern int mipicsi_flag;
 extern int pad_w;
 extern int pad_h;
-
-extern int atomisp_pci_vendor;
-extern int atomisp_pci_device;
 
 #define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
 #define CSS_DTRACE_VERBOSITY_TIMEOUT	9	/* Verbosity on ISP timeout */
@@ -53,7 +56,7 @@ struct atomisp_format_bridge {
 	unsigned int pixelformat;
 	unsigned int depth;
 	enum v4l2_mbus_pixelcode mbus_code;
-	enum sh_css_frame_format sh_fmt;
+	enum atomisp_css_frame_format sh_fmt;
 	unsigned char description[32];	/* the same as struct v4l2_fmtdesc */
 };
 

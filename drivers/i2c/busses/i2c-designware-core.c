@@ -613,7 +613,10 @@ irqreturn_t i2c_dw_isr(int this_irq, void *dev_id)
 #ifdef CONFIG_PM_RUNTIME
 	if (dev->dev->power.runtime_status != RPM_ACTIVE) {
 		pm_runtime_put_autosuspend(dev->dev);
-		return IRQ_NONE;
+		if (dev->share_irq)
+			return IRQ_NONE;
+		else
+			return IRQ_HANDLED;
 	}
 #endif
 	enabled = dw_readl(dev, DW_IC_ENABLE);
@@ -622,7 +625,10 @@ irqreturn_t i2c_dw_isr(int this_irq, void *dev_id)
 		dev->adapter.name, enabled, stat);
 	if (!enabled || !(stat & ~DW_IC_INTR_ACTIVITY)) {
 		pm_runtime_put_autosuspend(dev->dev);
-		return IRQ_NONE;
+		if (dev->share_irq)
+			return IRQ_NONE;
+		else
+			return IRQ_HANDLED;
 	}
 
 	stat = i2c_dw_read_clear_intrbits(dev);

@@ -593,7 +593,7 @@ static void get_pci_lss_info(struct pci_dev *pdev)
 	/* get the index for the copying of ss info */
 	index = get_pci_to_pmu_index(pdev);
 
-	if (index == PMU_FAILED)
+	if ((index == PMU_FAILED) || (index >= MAX_DEVICES))
 		return;
 
 	/* initialize gfx subsystem info */

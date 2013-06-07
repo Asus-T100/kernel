@@ -33,7 +33,7 @@
 #define __page_align(size)	(((size) + (PAGE_SIZE-1)) & (~(PAGE_SIZE-1)))
 
 static unsigned init_done;
-static void hrt_isp_css_mm_init(void)
+void hrt_isp_css_mm_init(void)
 {
 	hmm_init();
 	init_done = 1;

@@ -71,7 +71,7 @@
 #define INPUT_SRC_VINDPM_MASK                  (0xF << 3)
 #define INPUT_SRC_LOW_VBAT_LIMIT               3600
 #define INPUT_SRC_MID_VBAT_LIMIT               4000
-#define INPUT_SRC_HIG_VBAT_LIMIT               4200
+#define INPUT_SRC_HIG_VBAT_LIMIT               4350
 
 /* D0, D1, D2 represent the input current limit */
 #define INPUT_SRC_CUR_LMT0		0x0	/* 100mA */
@@ -664,7 +664,10 @@ int bq24192_get_battery_health(void)
 		(temp > BATT_TEMP_MAX_DEF))
 		return POWER_SUPPLY_HEALTH_OVERHEAT;
 
-	/* Check if battery OVP condition occured */
+	/* Check if battery OVP condition occured. Reading the register
+	value two times to get reliable reg value, recommended by vendor*/
+	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	msleep(22);
 	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
 	if (ret < 0) {
 		dev_warn(&chip->client->dev,
@@ -765,6 +768,13 @@ static int bq24192_enable_hw_term(struct bq24192_chip *chip, bool hw_term_en)
 	int ret = 0;
 
 	dev_info(&chip->client->dev, "%s\n", __func__);
+
+	/* Read the timer control register */
+	ret = bq24192_read_reg(chip->client, BQ24192_CHRG_TIMER_EXP_CNTL_REG);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev, "TIMER CTRL reg read failed\n");
+		return ret;
+	}
 
 	/*
 	 * Enable the HW termination. When disabled the HW termination, battery
@@ -1106,7 +1116,6 @@ static inline int bq24192_enable_charging(
 		/* Cancel the charger task worker now */
 		cancel_delayed_work_sync(&chip->chrg_task_wrkr);
 	}
-	power_supply_changed(&chip->usb);
 	return ret;
 }
 
@@ -1396,7 +1405,7 @@ static irqreturn_t bq24192_irq_isr(int irq, void *devid)
 	struct bq24192_chip *chip = (struct bq24192_chip *)devid;
 
 	/**TODO: This hanlder will be used for charger Interrupts */
-	dev_info(&chip->client->dev,
+	dev_dbg(&chip->client->dev,
 		"IRQ Handled for charger interrupt: %d\n", irq);
 
 	return IRQ_WAKE_THREAD;
@@ -1416,7 +1425,7 @@ static irqreturn_t bq24192_irq_thread(int irq, void *devid)
 	 * source of the interrupt
 	 */
 	reg_status = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
-	if (reg_status)
+	if (reg_status < 0)
 		dev_err(&chip->client->dev, "STATUS register read failed:\n");
 
 	reg_status &= SYSTEM_STAT_CHRG_DONE;
@@ -1431,7 +1440,7 @@ static irqreturn_t bq24192_irq_thread(int irq, void *devid)
 	}
 
 	reg_fault = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
-	if (reg_fault)
+	if (reg_fault < 0)
 		dev_err(&chip->client->dev, "FAULT register read failed:\n");
 
 	if (reg_fault & FAULT_STAT_WDT_TMR_EXP) {
@@ -1711,7 +1720,7 @@ static int bq24192_probe(struct i2c_client *client,
 		} else {
 			ret = request_threaded_irq(chip->irq,
 					bq24192_irq_isr, bq24192_irq_thread,
-					0, "BQ24192", chip);
+					IRQF_TRIGGER_FALLING, "BQ24192", chip);
 			if (ret) {
 				dev_warn(&bq24192_client->dev,
 					"failed to register irq for pin %d\n",

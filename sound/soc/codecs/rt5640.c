@@ -646,7 +646,6 @@ EXPORT_SYMBOL(rt5640_check_interrupt_event);
 
 bool get_jd_status(struct snd_soc_codec *codec)
 {
-	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	bool status;
 
 	if (snd_soc_read(codec, RT5640_INT_IRQ_ST) & 0x0010)
@@ -1953,58 +1952,17 @@ static int rt5640_index_sync_event(struct snd_soc_dapm_widget *w,
 static int rt5640_dac1_event(struct snd_soc_dapm_widget *w,
 			     struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = w->codec;
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMD:
 #ifdef USE_EQ
-		rt5640_update_eqmode(codec, NORMAL);
+		rt5640_update_eqmode(w->codec, NORMAL);
 #endif
 		break;
 	default:
 		return 0;
 	}
 
-	return 0;
-}
-
-static int rt5640_post_event(struct snd_soc_dapm_widget *w,
-			     struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = w->codec;
-
-	pr_debug("%s\n", __func__);
-	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
-		pr_debug("SND_SOC_DAPM_POST_PMU\n");
-#ifdef USE_ASRC
-		snd_soc_write(codec, RT5640_ASRC_1, 0x9a00);
-		snd_soc_write(codec, RT5640_ASRC_2, 0xf800);
-#endif
-		break;
-	default:
-		return 0;
-	}
-	return 0;
-}
-
-static int rt5640_pre_event(struct snd_soc_dapm_widget *w,
-			    struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = w->codec;
-
-	pr_debug("%s\n", __func__);
-	switch (event) {
-	case SND_SOC_DAPM_PRE_PMD:
-		pr_debug("SND_SOC_DAPM_PRE_PMD\n");
-#ifdef USE_ASRC
-		snd_soc_write(codec, RT5640_ASRC_1, 0x0);
-		snd_soc_write(codec, RT5640_ASRC_2, 0x0);
-#endif
-		break;
-	default:
-		return 0;
-	}
 	return 0;
 }
 
@@ -3162,7 +3120,7 @@ static ssize_t rt5640_index_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(index_reg, 0444, rt5640_index_show, rt5640_index_store);
+static DEVICE_ATTR(index_reg, 0400, rt5640_index_show, rt5640_index_store);
 
 static ssize_t rt5640_codec_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
@@ -3236,7 +3194,7 @@ static ssize_t rt5640_codec_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(codec_reg, 0666, rt5640_codec_show, rt5640_codec_store);
+static DEVICE_ATTR(codec_reg, 0600, rt5640_codec_show, rt5640_codec_store);
 
 static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 				 enum snd_soc_bias_level level)
@@ -3307,6 +3265,7 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 static int rt5640_probe(struct snd_soc_codec *codec)
 {
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	struct rt56xx_ops *ioctl_ops;
 	int ret;
 
 	pr_info("Codec driver version %s\n", VERSION);
@@ -3369,7 +3328,7 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 
 #ifdef RTK_IOCTL
 #if IS_ENABLED(CONFIG_SND_HWDEP)
-	struct rt56xx_ops *ioctl_ops = rt56xx_get_ioctl_ops();
+	ioctl_ops = rt56xx_get_ioctl_ops();
 	ioctl_ops->index_write = rt5640_index_write;
 	ioctl_ops->index_read = rt5640_index_read;
 	ioctl_ops->index_update_bits = rt5640_index_update_bits;
@@ -3398,6 +3357,11 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 static int rt5640_remove(struct snd_soc_codec *codec)
 {
 	rt5640_set_bias_level(codec, SND_SOC_BIAS_OFF);
+#if IS_ENABLED(CONFIG_SND_SOC_RT5642)
+	rt5640_dsp_remove(codec);
+#endif
+	device_remove_file(codec->dev, &dev_attr_index_reg);
+	device_remove_file(codec->dev, &dev_attr_codec_reg);
 	return 0;
 }
 

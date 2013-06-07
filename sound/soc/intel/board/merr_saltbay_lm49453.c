@@ -584,6 +584,15 @@ static int snd_mrfld_mc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void snd_mrfld_mc_shutdown(struct platform_device *pdev)
+{
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
+	struct mrfld_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
+
+	pr_debug("In %s\n", __func__);
+	snd_soc_jack_free_gpios(&drv->jack, ARRAY_SIZE(hs_gpio), hs_gpio);
+}
+
 const struct dev_pm_ops snd_mrfld_mc_pm_ops = {
 	.prepare = snd_mrfld_prepare,
 	.complete = snd_mrfld_complete,
@@ -598,6 +607,7 @@ static struct platform_driver snd_mrfld_mc_driver = {
 	},
 	.probe = snd_mrfld_mc_probe,
 	.remove = snd_mrfld_mc_remove,
+	.shutdown = snd_mrfld_mc_shutdown,
 };
 
 static int snd_mrfld_driver_init(void)

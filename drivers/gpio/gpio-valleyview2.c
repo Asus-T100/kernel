@@ -129,8 +129,6 @@ static struct gpio_bank_pnp vlv_banks_pnp[] = {
 		.ngpio = VV_NGPIO_SUS,
 		.to_pad = sus_gpio_to_pad,
 	},
-	{
-	},
 };
 
 struct vlv_gpio {
@@ -175,13 +173,18 @@ void lnw_gpio_set_alt(int gpio, int alt)
 	void __iomem *reg;
 	int value;
 	u32 offset;
+	int i;
+	int nbanks = sizeof(vlv_banks_pnp) / sizeof(struct gpio_bank_pnp);
 
-	for (bank = vlv_banks_pnp; bank; bank++)
-		if (gpio >= bank->gpio_base && gpio < bank->ngpio) {
+	for (i = 0; i < nbanks; i++) {
+		bank = vlv_banks_pnp + i;
+		if (gpio >= bank->gpio_base &&
+			gpio < (bank->gpio_base + bank->ngpio)) {
 			vg = bank->vg;
 			offset = gpio - bank->gpio_base;
 			break;
 		}
+	}
 	if (!vg) {
 		pr_info("vlv_gpio: can not find pin %d\n", gpio);
 		return;
@@ -418,6 +421,7 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	int ret = 0;
 	int gpio_base, irq_base;
 	char path[GPIO_PATH_MAX];
+	int nbanks = sizeof(vlv_banks_pnp) / sizeof(struct gpio_bank_pnp);
 
 	vg = devm_kzalloc(dev, sizeof(struct vlv_gpio), GFP_KERNEL);
 	if (!vg) {
@@ -426,7 +430,8 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	}
 	vg->pdev = pdev;
 
-	for (bank = vlv_banks_pnp; bank; bank++) {
+	for (i = 0; i < nbanks; i++) {
+		bank = vlv_banks_pnp + i;
 		if (!strcmp(pdev->name, bank->name)) {
 			vg->chip.ngpio = bank->ngpio;
 			vg->gpio_to_pad = bank->to_pad;

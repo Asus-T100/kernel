@@ -1,4 +1,4 @@
-CFLAGS_platform_clv_regulator.o			:= -Werror
+CFLAGS_platform_regulator.o			:= -Werror
 
 # IPC Devices
 obj-y									+= platform_byt_audio.o
@@ -12,7 +12,7 @@ obj-y									+= platform_msic_ocd.o
 obj-y									+= platform_tc35876x.o
 obj-y									+= platform_ctp_audio.o
 obj-y									+= platform_sst_audio.o
-obj-y									+= platform_clv_regulator.o
+obj-y									+= platform_regulator.o
 obj-y									+= pci/
 obj-$(subst m,y,$(CONFIG_MSIC_GPADC))					+= platform_msic_adc.o
 obj-$(subst m,y,$(CONFIG_BATTERY_INTEL_MDF))				+= platform_msic_battery.o
@@ -21,6 +21,7 @@ obj-$(subst m,y,$(CONFIG_GPIO_INTEL_PMIC))				+= platform_pmic_gpio.o
 obj-$(subst m,y,$(CONFIG_MID_PWM))                                      += platform_mid_pwm.o
 obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
 obj-$(subst m,y,$(CONFIG_SENSORS_THERMAL_MRFLD))			+= platform_mrfl_thermal.o
+obj-$(subst m,y,$(CONFIG_INTEL_BYT_THERMAL))				+= platform_byt_thermal.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MID_VDD))				+= platform_msic_vdd.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MRFL_OCD))				+= platform_mrfl_ocd.o
 obj-$(subst m,y,$(CONFIG_PMIC_CCSM))                                    += platform_mrfl_pmic.o

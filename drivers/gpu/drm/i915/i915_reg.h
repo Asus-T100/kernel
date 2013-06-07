@@ -4435,6 +4435,17 @@ EDP_PSR_SW_TIMER
 #define GEN6_RC6pp_THRESHOLD			0xA0C0
 #define GEN6_PMINTRMSK				0xA168
 
+#define VLV_GTICZPMW				0x1300a4
+
+#define VLV_PUNIT_RPS_FUSE6			0x1C
+#define VLV_PUNIT_RPS_FUSE11			0x30
+#define VLV_PUNIT_RPS_FUSE12			0x34
+#define VLV_IOSFB_RPS_OVERRIDE			0x04
+
+#define VLV_OVERRIDE_MSR_REG			1
+#define VLV_ENABLE_TDP_SHARE_WITH_SOC		(1 << 1)
+#define VLV_CPU_GPU_BIAS_VAL_87_12		(6 << 2)
+
 #define GEN6_PMISR				0x44020
 #define GEN6_PMIMR				0x44024 /* rps_lock */
 #define GEN6_PMIIR				0x44028
@@ -4489,6 +4500,20 @@ EDP_PSR_SW_TIMER
 #define CCU_iCLK0_REG				0x0100
 #define   iCLK0_STEPSIZE_SHIFT			9
 #define   iCLK0_BENDSTEPSIZE			(0xF<<9)
+
+#define   IOSF_PORT_PUNIT			0x4
+#define   IOSF_PORT_FUSE			0x11
+
+#define PUNIT_REG_GPU_LFM			0xd3
+#define PUNIT_REG_GPU_FREQ_REQ			0xd4
+#define PUNIT_REG_GPU_FREQ_STS			0xd8
+#define PUNIT_REG_MEDIA_TURBO_FREQ_REQ		0xdc
+
+#define PUNIT_OPCODE_REG_READ			6
+#define PUNIT_OPCODE_REG_WRITE			7
+
+#define PUNIT_FUSE_BUS2				0xf6 /* bits 47:40 */
+#define PUNIT_FUSE_BUS1				0xf5 /* bits 55:48 */
 
 #define GEN6_GT_CORE_STATUS		0x138060
 #define   GEN6_CORE_CPD_STATE_MASK	(7<<4)

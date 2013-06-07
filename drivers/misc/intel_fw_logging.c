@@ -182,6 +182,37 @@ static char *agent_names[] = {
 	"SCSF_TOCP_TA"
 };
 
+static bool disable_scu_tracing;
+static int set_disable_scu_tracing(const char *val,
+				   const struct kernel_param *kp)
+{
+	int err;
+	bool saved_value;
+
+	saved_value = kp->arg;
+
+	err = param_set_bool(val, kp);
+	if (err || kp->arg == saved_value)
+		return err;
+
+	if (disable_scu_tracing)
+		disable_irq(irq);
+	else
+		enable_irq(irq);
+
+	return 0;
+}
+
+static struct kernel_param_ops disable_scu_tracing_ops = {
+	.set = set_disable_scu_tracing,
+	.get = param_get_bool,
+};
+module_param_cb(disable_scu_tracing, &disable_scu_tracing_ops,
+		&disable_scu_tracing,  S_IRUSR | S_IWUSR);
+MODULE_PARM_DESC(disable_scu_tracing,
+		"Disable scu tracing"
+		 "Set to 1 to prevent SCU tracing messages in dmesg");
+
 static irqreturn_t fw_logging_irq_thread(int irq, void *ignored)
 {
 	char *trace, *end, prefix[20];
@@ -777,6 +808,10 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 		pr_err("Requesting irq failed");
 		goto err2;
 	}
+
+	if (!disable_scu_tracing)
+		enable_irq(irq);
+
 	return err;
 err2:
 	atomic_notifier_chain_unregister(&panic_notifier_list,

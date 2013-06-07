@@ -200,6 +200,11 @@ mrfld_find_best_PLL(struct drm_device *dev, int pipe, int target, int refclk,
 	const struct mrst_limit_t *limit = mrfld_limit(dev, pipe);
 	int err = target;
 
+	if (!limit) {
+		DRM_ERROR("limit is NULL\n");
+		return false;
+	}
+
 	memset(best_clock, 0, sizeof(*best_clock));
 
 	PSB_DEBUG_ENTRY

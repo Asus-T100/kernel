@@ -32,6 +32,8 @@
 #include <linux/platform_device.h>
 
 #include <linux/mfd/intel_mid_pmic.h>
+
+#include <asm/intel_mid_thermal.h>
 #include <asm/intel_crystalcove_gpadc.h>
 
 #include "../staging/iio/consumer.h"
@@ -75,6 +77,14 @@
 /* Default Alert threshold 85 C */
 #define DEFAULT_MAX_TEMP	85
 #define MIN_CRIT_TEMP		55
+
+/*
+ * Default Hysteresis value: 15 corresponds to 3C.
+ * Why 15? : Hysteresis value is 4 bits wide. This is
+ * the maximum possible value that can be supported.
+ * Can be changed at run-time through Sysfs interface
+ */
+#define DEFAULT_HYST		15
 
 #define NUM_ALERT_LEVELS	3
 #define ALERT_RW_MASK		0x07
@@ -149,9 +159,8 @@ static const int adc_code[2][TABLE_LENGTH] = {
 static DEFINE_MUTEX(thrm_update_lock);
 
 struct thermal_device_info {
+	struct intel_mid_thermal_sensor *sensor;
 	int sensor_index;
-	/* If 'direct', no table lookup is required */
-	bool is_direct;
 };
 
 struct thermal_data {
@@ -159,12 +168,15 @@ struct thermal_data {
 	struct iio_channel *iio_chan;
 	struct work_struct thermal_work;
 	struct mutex thrm_irq_lock;
-	struct thermal_zone_device *tzd[PMIC_THERMAL_SENSORS];
-	unsigned int irq;
+	struct thermal_zone_device **tzd;
 	/* Caching information */
 	bool is_initialized;
 	unsigned long last_updated;
 	int cached_vals[PMIC_THERMAL_SENSORS];
+	/* Details obtained from platform data */
+	int num_sensors;
+	unsigned int irq;
+	struct intel_mid_thermal_sensor *sensors;
 };
 static struct thermal_data *tdata;
 
@@ -407,6 +419,28 @@ static int temp_to_adc(int direct, int temp, int *adc_val)
 }
 
 /**
+ * set_hyst_val - sets the given 'val' as the 'hysteresis'
+ * @alert_reg_h: The 'high' register address
+ * @hyst:        Hysteresis value (in ADC codes) to be programmed
+ *
+ * Not protected. Calling function should handle synchronization.
+ * Can sleep
+ */
+static int set_hyst_val(int alert_reg_h, int hyst)
+{
+	int ret;
+
+	ret = intel_mid_pmic_readb(alert_reg_h);
+	if (ret < 0)
+		return ret;
+
+	/* Set bits [2:5] to value of hyst */
+	ret = (ret & 0xC3) | (hyst << 2);
+
+	return intel_mid_pmic_writeb(alert_reg_h, ret);
+}
+
+/**
  * set_alert_temp - sets the given 'adc_val' to the 'alert_reg'
  * @alert_reg_l: The 'low' register address
  * @adc_val:     ADC value to be programmed
@@ -423,16 +457,6 @@ static int set_alert_temp(int alert_reg_l, int adc_val, int level)
 	 * The alert register stores B[1:8] of val and the HW
 	 * while comparing prefixes and suffixes this value with
 	 * a 0; i.e B[0] and B[9] are 0.
-	 */
-	if (level == LEVEL_ALERT2) {
-		adc_val = (adc_val & 0x1FF) >> 1;
-		return intel_mid_pmic_writeb(alert_reg_l, adc_val);
-	}
-
-	/*
-	 * The alert register stores B[1:8] of val and the HW
-	 * while comparing prefixes and suffixes this value with
-	 * a 0.
 	 */
 	if (level == LEVEL_ALERT2) {
 		adc_val = (adc_val & 0x1FF) >> 1;
@@ -515,6 +539,13 @@ static int program_tmax(struct device *dev)
 						val, level);
 			if (ret < 0)
 				goto exit_err;
+			/* Set default Hysteresis for Alerts 0,1 only */
+			if (level == LEVEL_ALERT2)
+				continue;
+			ret = set_hyst_val(alert_regs_l[level][i] - 1,
+					DEFAULT_HYST);
+			if (ret < 0)
+				goto exit_err;
 		}
 	}
 
@@ -536,21 +567,13 @@ static ssize_t store_trip_hyst(struct thermal_zone_device *tzd,
 	 * Alert level 2 does not support hysteresis; and (for
 	 * other levels) the hysteresis value is 4 bits wide.
 	 */
-	if (trip == LEVEL_ALERT2 || hyst > 15)
+	if (trip == LEVEL_ALERT2 || hyst > DEFAULT_HYST)
 		return -EINVAL;
 
 	mutex_lock(&thrm_update_lock);
 
-	ret = intel_mid_pmic_readb(alert_reg);
-	if (ret < 0)
-		goto exit;
+	ret = set_hyst_val(alert_reg, hyst);
 
-	/* Set bits [2:5] to value of hyst */
-	ret = (ret & 0xC3) | (hyst << 2);
-
-	ret = intel_mid_pmic_writeb(alert_reg, ret);
-
-exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
 }
@@ -588,7 +611,7 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	struct thermal_device_info *td_info = tzd->devdata;
 	int alert_reg_l = alert_regs_l[trip][td_info->sensor_index];
 
-	if (trip_temp < 1000) {
+	if (trip_temp != 0 && trip_temp < 1000) {
 		dev_err(&tzd->device, "Temperature should be in mC\n");
 		return -EINVAL;
 	}
@@ -603,7 +626,7 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 
 	mutex_lock(&thrm_update_lock);
 
-	ret = temp_to_adc(td_info->is_direct, (int)trip_temp, &adc_val);
+	ret = temp_to_adc(td_info->sensor->direct, (int)trip_temp, &adc_val);
 	if (ret)
 		goto exit;
 
@@ -626,7 +649,7 @@ static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
 	if (adc_val < 0)
 		goto exit;
 
-	ret = adc_to_temp(td_info->is_direct, adc_val, trip_temp);
+	ret = adc_to_temp(td_info->sensor->direct, adc_val, trip_temp);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -686,7 +709,16 @@ static int update_temp(struct thermal_zone_device *tzd, long *temp)
 		tdata->is_initialized = true;
 	}
 
-	return adc_to_temp(td_info->is_direct, tdata->cached_vals[indx], temp);
+	ret = adc_to_temp(td_info->sensor->direct,
+				tdata->cached_vals[indx], temp);
+	if (ret)
+		return ret;
+
+	if (td_info->sensor->temp_correlation) {
+		ret = td_info->sensor->temp_correlation(td_info->sensor,
+							*temp, temp);
+	}
+	return ret;
 }
 
 static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
@@ -738,7 +770,8 @@ exit:
 	return ret;
 }
 
-static struct thermal_device_info *initialize_sensor(int index)
+static struct thermal_device_info *initialize_sensor(int index,
+				struct intel_mid_thermal_sensor *sensor)
 {
 	struct thermal_device_info *td_info =
 		kzalloc(sizeof(struct thermal_device_info), GFP_KERNEL);
@@ -746,10 +779,8 @@ static struct thermal_device_info *initialize_sensor(int index)
 	if (!td_info)
 		return NULL;
 
+	td_info->sensor = sensor;
 	td_info->sensor_index = index;
-
-	if (index == PMIC_DIE_SENSOR)
-		td_info->is_direct = true;
 
 	return td_info;
 }
@@ -902,6 +933,44 @@ exit:
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_DEBUG_THERMAL
+static int read_slope(struct thermal_zone_device *tzd, long *slope)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	*slope = td_info->sensor->slope;
+
+	return 0;
+}
+
+static int update_slope(struct thermal_zone_device *tzd, long slope)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	td_info->sensor->slope = slope;
+
+	return 0;
+}
+
+static int read_intercept(struct thermal_zone_device *tzd, long *intercept)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	*intercept = td_info->sensor->intercept;
+
+	return 0;
+}
+
+static int update_intercept(struct thermal_zone_device *tzd, long intercept)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	td_info->sensor->intercept = intercept;
+
+	return 0;
+}
+#endif
+
 static struct thermal_zone_device_ops tzd_ops = {
 	.get_temp = show_temp,
 	.get_trip_type = show_trip_type,
@@ -909,13 +978,24 @@ static struct thermal_zone_device_ops tzd_ops = {
 	.set_trip_temp = store_trip_temp,
 	.get_trip_hyst = show_trip_hyst,
 	.set_trip_hyst = store_trip_hyst,
+#ifdef CONFIG_DEBUG_THERMAL
+	.get_slope = read_slope,
+	.set_slope = update_slope,
+	.get_intercept = read_intercept,
+	.set_intercept = update_intercept,
+#endif
 };
 
 static int byt_thermal_probe(struct platform_device *pdev)
 {
-	int ret, i;
-	static char *name[PMIC_THERMAL_SENSORS] = {
-			"SYSTHERM0", "SYSTHERM1", "SYSTHERM2", "PMICDIE" };
+	int i, size, ret;
+	struct intel_mid_thermal_platform_data *pdata;
+
+	pdata = pdev->dev.platform_data;
+	if (!pdata) {
+		dev_err(&pdev->dev, "Unable to fetch platform data\n");
+		return -EINVAL;
+	}
 
 	tdata = kzalloc(sizeof(struct thermal_data), GFP_KERNEL);
 	if (!tdata) {
@@ -924,15 +1004,25 @@ static int byt_thermal_probe(struct platform_device *pdev)
 	}
 
 	tdata->pdev = pdev;
+	tdata->num_sensors = pdata->num_sensors;
+	tdata->sensors = pdata->sensors;
 	tdata->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, tdata);
 	mutex_init(&tdata->thrm_irq_lock);
+
+	size = sizeof(struct thermal_zone_device *) * tdata->num_sensors;
+	tdata->tzd = kzalloc(size, GFP_KERNEL);
+	if (!tdata->tzd) {
+		dev_err(&pdev->dev, "kzalloc failed\n");
+		ret = -ENOMEM;
+		goto exit_free;
+	}
 
 	/* Program a default _max value for each sensor */
 	ret = program_tmax(&pdev->dev);
 	if (ret) {
 		dev_err(&pdev->dev, "Programming _max failed:%d\n", ret);
-		goto exit_free;
+		goto exit_tzd;
 	}
 
 	/* Register with IIO to sample temperature values */
@@ -940,7 +1030,7 @@ static int byt_thermal_probe(struct platform_device *pdev)
 	if (tdata->iio_chan == NULL) {
 		dev_err(&pdev->dev, "tdata->iio_chan is null\n");
 		ret = -EINVAL;
-		goto exit_free;
+		goto exit_tzd;
 	}
 
 	/* Check whether we got all the four channels */
@@ -952,16 +1042,18 @@ static int byt_thermal_probe(struct platform_device *pdev)
 	}
 
 	/* Register each sensor with the generic thermal framework */
-	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
-		tdata->tzd[i] = thermal_zone_device_register(name[i],
-					NUM_ALERT_LEVELS, ALERT_RW_MASK,
-					initialize_sensor(i), &tzd_ops,
-					0, 0, 0, 0);
+	for (i = 0; i < tdata->num_sensors; i++) {
+		tdata->tzd[i] = thermal_zone_device_register(
+				tdata->sensors[i].name,
+				NUM_ALERT_LEVELS, ALERT_RW_MASK,
+				initialize_sensor(i, &tdata->sensors[i]),
+				&tzd_ops,
+				0, 0, 0, 0);
 		if (IS_ERR(tdata->tzd[i])) {
 			ret = PTR_ERR(tdata->tzd[i]);
 			dev_err(&pdev->dev,
 				"registering thermal sensor %s failed: %d\n",
-				name[i], ret);
+				tdata->sensors[i].name, ret);
 			goto exit_reg;
 		}
 	}
@@ -995,6 +1087,8 @@ exit_reg:
 		thermal_zone_device_unregister(tdata->tzd[i]);
 exit_iio:
 	iio_st_channel_release_all(tdata->iio_chan);
+exit_tzd:
+	kfree(tdata->tzd);
 exit_free:
 	mutex_destroy(&tdata->thrm_irq_lock);
 	kfree(tdata);
@@ -1021,12 +1115,13 @@ static int byt_thermal_remove(struct platform_device *pdev)
 	if (!tdata)
 		return 0;
 
-	for (i = 0; i < PMIC_THERMAL_SENSORS; i++)
+	for (i = 0; i < tdata->num_sensors; i++)
 		thermal_zone_device_unregister(tdata->tzd[i]);
 
 	iio_st_channel_release_all(tdata->iio_chan);
 	free_irq(tdata->irq, tdata);
 	mutex_destroy(&tdata->thrm_irq_lock);
+	kfree(tdata->tzd);
 	kfree(tdata);
 
 	remove_ccove_thermal_debugfs();

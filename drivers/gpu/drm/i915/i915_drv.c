@@ -121,6 +121,17 @@ module_param_named(i915_enable_ppgtt, i915_enable_ppgtt, int, 0600);
 MODULE_PARM_DESC(i915_enable_ppgtt,
 		"Enable PPGTT (default: true)");
 
+int i915_enable_turbo __read_mostly = 1;
+module_param_named(i915_enable_turbo, i915_enable_turbo, int, 0600);
+MODULE_PARM_DESC(i915_enable_turbo,
+		"Enable VLV Turbo (default: true)");
+
+int i915_psr_support __read_mostly = 1;
+module_param_named(psr_support, i915_psr_support, int, 0400);
+MODULE_PARM_DESC(psr_support,
+		"Specify PSR support parameter "
+		"1 = supported [default], 0 = not supported");
+
 static struct drm_driver driver;
 extern int intel_agp_enabled;
 
@@ -1179,6 +1190,11 @@ static bool IS_DISPLAYREG(u32 reg)
 	if (reg == GEN6_GDRST)
 		return false;
 
+	/* For BIOS RPS Init Registers  */
+	if (reg >= 0xA000 &&
+	    reg <= 0xAB00)
+		return false;
+
 	switch (reg) {
 	case _3D_CHICKEN3:
 	case IVB_CHICKEN3:
@@ -1208,6 +1224,9 @@ static bool IS_DISPLAYREG(u32 reg)
 	case VLV_MEDIA_FORCE_WAKE_STATUS_REG:
 	case VLV_DISPLAY_RENDER_RESPONSE_REG:
 	case VLV_RC_COUNTER_ENABLE_REG:
+	case GTFIFODBG:
+	case GEN7_MISCCPCTL:
+	case VLV_GTICZPMW:
 		return false;
 	default:
 		break;

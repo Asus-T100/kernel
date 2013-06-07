@@ -1283,4 +1283,8 @@ gamma settings.
 #define VHDMI_OFF           0x24
 #define VHDMI_ON            0xa4
 
+/* GUNIT BUS FIFO register */
+#define G_HP_CONTROL 0x20f8
+#define HP_REQUESTORS_STATUS_OVERRIDE_MODE (1 << 1)
+
 #endif

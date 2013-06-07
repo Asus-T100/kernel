@@ -1183,6 +1183,36 @@ static int intel_sst_runtime_idle(struct device *dev)
 
 }
 
+/**
+* sst_shutdown - PCI shutdown function
+*
+* @pci:        PCI device structure
+*
+* This function is called by OS when a device is shutdown/reboot
+*
+*/
+static void sst_shutdown(struct pci_dev *pci)
+{
+	pr_debug(" %s called\n", __func__);
+	disable_irq_nosync(pci->irq);
+}
+
+/**
+* sst_acpi_shutdown - platform shutdown function
+*
+* @pci:        Platform device structure
+*
+* This function is called by OS when a device is shutdown/reboot
+*
+*/
+static void sst_acpi_shutdown(struct platform_device *pdev)
+{
+	int irq = platform_get_irq(pdev, 0);
+
+	pr_debug(" %s called\n", __func__);
+	disable_irq_nosync(irq);
+}
+
 static const struct dev_pm_ops intel_sst_pm = {
 	.suspend = intel_sst_runtime_suspend,
 	.resume = intel_sst_runtime_resume,
@@ -1268,6 +1298,7 @@ static struct pci_driver driver = {
 	.id_table = intel_sst_ids,
 	.probe = intel_sst_probe,
 	.remove = __devexit_p(intel_sst_remove),
+	.shutdown = sst_shutdown,
 #ifdef CONFIG_PM
 	.driver = {
 		.pm = &intel_sst_pm,
@@ -1284,6 +1315,7 @@ static struct platform_driver sst_acpi_driver = {
 	},
 	.probe	= sst_acpi_probe,
 	.remove	= __devexit_p(sst_acpi_remove),
+	.shutdown = sst_acpi_shutdown,
 };
 
 

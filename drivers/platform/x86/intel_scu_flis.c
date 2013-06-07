@@ -97,14 +97,14 @@ EXPORT_SYMBOL(intel_scu_ipc_read_shim);
 
 int intel_scu_ipc_update_shim(u32 data, u32 mask, u32 flis_addr, u32 offset)
 {
-	u32 tmp;
+	u32 tmp = 0;
 	int ret;
 
 	ret = intel_scu_ipc_read_shim(&tmp, flis_addr, offset);
 	if (ret) {
 		pr_err("read shim failed, addr = 0x%x, off = 0x%x\n",
 			flis_addr, offset);
-		goto end;
+		return ret;
 	}
 
 	tmp &= ~mask;
@@ -114,12 +114,10 @@ int intel_scu_ipc_update_shim(u32 data, u32 mask, u32 flis_addr, u32 offset)
 	if (ret) {
 		pr_err("write shim failed, addr = 0x%x, off = 0x%x\n",
 			flis_addr, offset);
-		goto end;
+		return ret;
 	}
 
 	return 0;
-end:
-	return ret;
 }
 EXPORT_SYMBOL(intel_scu_ipc_update_shim);
 
@@ -203,7 +201,8 @@ EXPORT_SYMBOL_GPL(config_pin_flis);
 
 int get_pin_flis(enum pinname_t name, enum flis_param_t param, u8 *val)
 {
-	u32 flis_addr, off, data;
+	u32 flis_addr, off;
+	u32 data = 0;
 	int ret;
 	int pos;
 	u8 mask;
@@ -245,7 +244,7 @@ int get_pin_flis(enum pinname_t name, enum flis_param_t param, u8 *val)
 	if (ret) {
 		pr_err("read shim failed, addr = 0x%x, off = 0x%x\n",
 			flis_addr, off);
-		goto end;
+		return ret;
 	}
 
 	*val = (data >> pos) & mask;
@@ -253,9 +252,6 @@ int get_pin_flis(enum pinname_t name, enum flis_param_t param, u8 *val)
 	pr_debug("read: data = 0x%x, val = 0x%x\n", data, *val);
 
 	return 0;
-
-end:
-	return ret;
 }
 EXPORT_SYMBOL_GPL(get_pin_flis);
 

@@ -44,7 +44,7 @@ void *edlp_fast_platform_data(void *data)
 			.hsi_id = 0,
 			.port = 0,
 			.archdata = NULL,
-			.tx_cfg.speed = 200000,	/* tx clock, kHz */
+			.tx_cfg.speed = 100000,	/* tx clock, kHz */
 			.tx_cfg.channels = 8,
 			.tx_cfg.mode = HSI_MODE_FRAME,
 			.tx_cfg.arb_mode = HSI_ARB_RR,

@@ -67,8 +67,8 @@ struct psb_framebuffer {
 typedef enum intel_dc_plane_types {
 	DC_UNKNOWN_PLANE = 0,
 	DC_SPRITE_PLANE = 1,
-	DC_PRIMARY_PLANE,
 	DC_OVERLAY_PLANE,
+	DC_PRIMARY_PLANE,
 } DC_MRFLD_PLANE_TYPE;
 
 #define SPRITE_UPDATE_SURFACE			(0x00000001UL)
@@ -132,5 +132,8 @@ typedef struct intel_dc_plane_ctx {
 } DC_MRFLD_SURF_CUSTOM;
 
 void DCUnAttachPipe(uint32_t uiPipe);
+int DC_MRFLD_Enable_Plane(int type, int index, uint32_t ctx);
+int DC_MRFLD_Disable_Plane(int type, int index, uint32_t ctx);
+
 
 #endif				/* __DC_INTERFACE_H__ */

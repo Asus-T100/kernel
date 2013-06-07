@@ -81,7 +81,6 @@ enum {
     RESMAN_TYPE_PMR,
     RESMAN_TYPE_PMR_EXPORT,
 	RESMAN_TYPE_PMR_PAGELIST,						/*!< Device Memory page list Resource */
-    RESMAN_TYPE_SERVER_EXPORTCOOKIE,
 	RESMAN_TYPE_DEVICEMEM2_CONTEXT,					/*!< Device Memory Context Resource */
 	RESMAN_TYPE_DEVICEMEM2_HEAP,					/*!< Device Memory Heap Resource */
     RESMAN_TYPE_DEVICEMEM2_RESERVATION,             /*!< Device Memory Reservation Resource */

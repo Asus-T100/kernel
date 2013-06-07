@@ -119,6 +119,23 @@ static struct mfd_cell crystal_cove_data[] = {
 	{NULL, },
 };
 
+int intel_mid_pmic_set_pdata(const char *name, void *data, int len)
+{
+	int i;
+	struct mfd_cell *cell;
+
+	for (i = 0; i < ARRAY_SIZE(crystal_cove_data); i++) {
+		cell = &crystal_cove_data[i];
+		if (!strcmp(cell->name, name)) {
+			cell->platform_data = data;
+			cell->pdata_size = len;
+			return 0;
+		}
+	}
+	return -EINVAL;
+}
+EXPORT_SYMBOL(intel_mid_pmic_set_pdata);
+
 static struct intel_mid_pmic intel_mid_pmic;
 static struct intel_mid_pmic *pmic = &intel_mid_pmic;
 

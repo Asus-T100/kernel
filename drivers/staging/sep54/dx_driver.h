@@ -206,6 +206,7 @@ struct sep_drvdata {
 	unsigned long sep_backup_buf_size;
 	void *sep_backup_buf;
 #endif
+	int sep_suspended;
 	struct dma_pool *spad_buf_pool;
 	unsigned long mlli_table_size;
 	void *llimgr;

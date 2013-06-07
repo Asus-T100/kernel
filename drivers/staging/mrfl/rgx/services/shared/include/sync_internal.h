@@ -61,10 +61,10 @@ typedef struct _SYNC_PRIM_CONTEXT_
 	SYNC_BRIDGE_HANDLE			hBridge;						/*!< Bridge handle */
 	IMG_HANDLE					hDeviceNode;					/*!< The device we're operating on */
 	IMG_CHAR					azName[SYNC_PRIM_NAME_SIZE];	/*!< Name of the RA */
-	RA_ARENA					*psRA;							/*!< RA context */
-	struct _SYNC_PRIM_BLOCK_	*psSyncBlock;					/*!< Block allocation */
+	RA_ARENA					*psSubAllocRA;					/*!< RA context */
+	IMG_CHAR					azSpanName[SYNC_PRIM_NAME_SIZE];/*!< Name of the span RA */
+	RA_ARENA					*psSpanRA;						/*!< RA used for span management of SubAllocRA */
 	IMG_UINT32					ui32RefCount;					/*!< Refcount for this context */
-	DLLIST_NODE					sListNode;						/*!< Listnode for per-process context list */
 	POS_LOCK					hLock;							/*!< Lock for this context */
 } SYNC_PRIM_CONTEXT;
 
@@ -76,6 +76,8 @@ typedef struct _SYNC_PRIM_BLOCK_
 	IMG_UINT32			ui32FirmwareAddr;		/*!< Firmware address */
 	DEVMEM_MEMDESC		*hMemDesc;				/*!< Host mapping handle */
 	IMG_UINT32			*pui32LinAddr;			/*!< User CPU mapping */
+	IMG_UINT64			uiSpanBase;				/*!< Base of this import in the span RA */
+	DLLIST_NODE			sListNode;				/*!< Listnide for the sync block list */
 } SYNC_PRIM_BLOCK;
 
 typedef enum _SYNC_PRIM_TYPE_
@@ -88,7 +90,7 @@ typedef enum _SYNC_PRIM_TYPE_
 typedef struct _SYNC_PRIM_LOCAL_
 {
 	SYNC_PRIM_BLOCK			*psSyncBlock;	/*!< Synchronisation block this primitive is allocated on */
-	IMG_UINT32				ui32Index;		/*!< Index into Synchronisation block */
+	IMG_UINT64				uiSpanAddr;		/*!< Span address of the sync */
 } SYNC_PRIM_LOCAL;
 
 typedef struct _SYNC_PRIM_SERVER_

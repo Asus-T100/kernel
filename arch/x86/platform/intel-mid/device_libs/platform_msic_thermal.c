@@ -62,6 +62,53 @@ static struct intel_mid_thermal_sensor ctp_sensors[] = {
 
 };
 
+/* VB sensor list */
+static struct intel_mid_thermal_sensor vb_sensors[] = {
+	{
+		.name = SKIN0_NAME,
+		.index = 0,
+		.slope = 631,
+		.intercept = 10445,
+		.adc_channel = 0x05 | CH_NEED_VREF | CH_NEED_VCALIB,
+		.temp_correlation = skin0_temp_correlation,
+		.direct = false,
+	},
+	{
+		.name = SKIN1_NAME,
+		.index = 1,
+		.slope = 454,
+		.intercept = 15574,
+		.adc_channel = 0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
+		.temp_correlation = skin0_temp_correlation,
+		.direct = false,
+	},
+	{
+		.name = MSIC_DIE_NAME,
+		.index = 2,
+		.slope = 884,
+		.intercept = 588640,
+		.adc_channel = 0x03 | CH_NEED_VCALIB,
+		.direct = true,
+	},
+	{
+		.name = BPTHERM_NAME,
+		.index = 3,
+		.slope = 1000,
+		.intercept = 0,
+		.adc_channel = 0x09 | CH_NEED_VREF | CH_NEED_VCALIB,
+		.temp_correlation = bptherm_temp_correlation,
+		.direct = false,
+        },
+	{
+		.name = SYSTHERM2,
+		.index = 4,
+		.slope = 1000,
+		.intercept = 0,
+		.adc_channel = 0x06 | CH_NEED_VCALIB,
+		.direct = false,
+	},
+};
+
 /* mfld thermal sensor list */
 static struct intel_mid_thermal_sensor mfld_sensors[] = {
 	{
@@ -157,7 +204,11 @@ static struct intel_mid_thermal_platform_data pdata[] = {
 		.sensors = lex_sensors,
 		.soc_cooling = false,
 	},
-
+	[vb_thermal] = {
+		.num_sensors = 5,
+		.sensors = vb_sensors,
+		.soc_cooling = true,
+	},
 };
 
 void __init *msic_thermal_platform_data(void *info)
@@ -177,7 +228,10 @@ void __init *msic_thermal_platform_data(void *info)
 		return NULL;
 	}
 
-	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
+	if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))
+		pdev->dev.platform_data = &pdata[vb_thermal];
+	else if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
 			(INTEL_MID_BOARD(1, TABLET, CLVT)))
 		pdev->dev.platform_data = &pdata[ctp_thermal];
 	else if (INTEL_MID_BOARD(2, PHONE, MFLD, LEX, ENG) ||

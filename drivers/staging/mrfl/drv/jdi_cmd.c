@@ -209,8 +209,7 @@ void jdi_cmd_controller_init(
 	hw_ctx->hs_ls_dbi_enable = 0x0;
 	hw_ctx->dsi_func_prg = ((DBI_DATA_WIDTH_OPT2 << 13) |
 				dsi_config->lane_count);
-	hw_ctx->mipi = SEL_FLOPPED_HSTX |
-			PASS_FROM_SPHY_TO_AFE |
+	hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE |
 			BANDGAP_CHICKEN_BIT |
 			TE_TRIGGER_GPIO_PIN;
 	hw_ctx->video_mode_format = 0xf;

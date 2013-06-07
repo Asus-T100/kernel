@@ -59,7 +59,10 @@ int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
 		return 0;
 
 	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
-
+	if (!sender) {
+		DRM_ERROR("pkg sender is NULL\n");
+		return -EINVAL;
+	}
 	err = mdfld_dsi_check_fifo_empty(sender);
 	return err;
 }
@@ -86,8 +89,7 @@ void mdfld_dsi_dbi_exit_dsr(struct drm_device *dev,
 static
 void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 {
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
+	struct mdfld_dsi_pkg_sender *sender;
 	struct drm_device *dev = dbi_output->dev;
 	struct drm_crtc *crtc = dbi_output->base.base.crtc;
 	struct psb_intel_crtc *psb_crtc =
@@ -98,6 +100,12 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 	u32 pipeconf_reg = PIPEACONF;
 	u32 dsplinoff_reg = DSPALINOFF;
 	u32 dspsurf_reg = DSPASURF;
+
+	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
+	if (!sender) {
+		DRM_ERROR("pkg sender is NULL\n");
+		return;
+	}
 
 	/* if mode setting on-going, back off */
 
@@ -204,6 +212,10 @@ static int __dbi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
+	if (!sender) {
+		DRM_ERROR("pkg sender is NULL\n");
+		return -EINVAL;
+	}
 
 	ctx->device_ready = REG_READ(regs->device_ready_reg);
 
@@ -423,6 +435,11 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_dbi_output **dbi_outputs;
 	struct mdfld_dsi_dbi_output *dbi_output;
 
+	if (!sender) {
+		DRM_ERROR("pkg sender is NULL\n");
+		return -EINVAL;
+	}
+
 	PSB_DEBUG_ENTRY("\n");
 
 	if (!dsi_config)
@@ -436,6 +453,12 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 
 	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 		power_island |= OSPM_DISPLAY_MIO;
+
+	/*
+	 * FIXME: need to dynamically power un-gate DISPLAY C island for
+	 * Overlay C & Sprite D planes.
+	 */
+	power_island |= OSPM_DISPLAY_C;
 
 	if (!power_island_get(power_island))
 		return -EAGAIN;
@@ -557,6 +580,12 @@ power_off_err:
 	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
 		power_island |= OSPM_DISPLAY_MIO;
 
+	/*
+	 * FIXME: need to dynamically power gate DISPLAY C island for
+	 * Overlay C & Sprite D planes.
+	 */
+	power_island |= OSPM_DISPLAY_C;
+
 	if (!power_island_put(power_island))
 		return -EINVAL;
 
@@ -640,6 +669,11 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
 	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_encoder);
+	if (!dsi_connector) {
+		DRM_ERROR("dsi_connector is NULL\n");
+		return -EINVAL;
+	}
+
 	p_funcs = dbi_output->p_funcs;
 	dev = encoder->dev;
 	dev_priv = dev->dev_private;
@@ -763,6 +797,10 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	if (!dsi_config) {
+		DRM_ERROR("dsi_config is NULL\n");
+		return;
+	}
 	dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
@@ -1036,9 +1074,12 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_dbi_output *dbi_output = NULL;
 	struct panel_funcs *p_funcs  = NULL;
+	struct drm_device *dev;
 
 	dbi_output = dev_priv->dbi_output;
 	dsi_config = dev_priv->dsi_configs[0];
+	dev = dsi_config->dev;
+
 	if (!dsi_config || !dbi_output)
 		return;
 
@@ -1052,10 +1093,15 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	if (p_funcs) {
 		mutex_lock(&dsi_config->context_lock);
 
+		DRM_INFO("Starts ESD panel reset\n");
+
 		if (__dbi_panel_power_off(dsi_config, p_funcs)) {
 			mutex_unlock(&dsi_config->context_lock);
 			return;
 		}
+		if (get_panel_type(dev, 0) == JDI_CMD)
+			if (p_funcs && p_funcs->reset)
+				p_funcs->reset(dsi_config);
 
 		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
 			mutex_unlock(&dsi_config->context_lock);

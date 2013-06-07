@@ -23,8 +23,13 @@
 #define __ATOMISP_ACC_H__
 
 #include <linux/atomisp.h>
-#include "sh_css_types.h"
 #include "atomisp_internal.h"
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css_types.h"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
+#include "sh_css_types.h"
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 /*
  * Interface functions for AtomISP driver acceleration API implementation.
@@ -98,7 +103,7 @@ int atomisp_acc_wait(struct atomisp_device *isp,
 
 /*
  * Appends the loaded acceleration binary extensions to the
- * current ISP mode. Must be called just before sh_css_start().
+ * current ISP mode. Must be called just before atomisp_css_start().
  */
 int atomisp_acc_load_extensions(struct atomisp_device *isp);
 

@@ -49,14 +49,6 @@ enum vb_panel_type {
 	PANEL_CGS
 };
 
-/*
-#define NO_POWER_OFF
-#define NO_DCDC_POWER_OFF
-#define NO_DISPLAY_RESET
-#define ENABLE_PANEL_READ
-*/
-#define ENABLE_DEEP_SLEEP
-
 static u8 ls04x_mcap[] = { 0xb0, 0x00 };
 static u8 ls04x_mcap_cgs[] = { 0xb0, 0x04 };
 static u8 ls04x_device_code_read[] = { 0xbf };
@@ -194,7 +186,7 @@ static u8 ls04x_backlight_setting4_pwr_save[] = {
 	0xba, 0x0f, 0x18, 0x04,
 	0x40, 0x9f, 0x1f, 0xd7};
 static u8 ls04x_backlight_setting6_igzo[] = {
-	0xce, 0x00, 0x0f, 0x08,
+	0xce, 0x00, 0x04, 0x08,
 	0x01, 0x00, 0x00, 0x00};
 static u8 ls04x_power_setting_igzo[] = {
 	0xd0, 0x00, 0x10, 0x19,
@@ -275,7 +267,7 @@ static u8 ls04x_ledpwm_on[] = { 0x53, 0x2c };
 static u8 ls04x_cabc_on[] = { 0x55, 0x01 };
 static u8 ls04x_deep_standby[] = { 0xb1, 0x01 };
 
-static u8 ir2e69_power_on_seq[][2] = {
+static u8 ir2e69_power_on_seq_cabc[][2] = {
 	{0x03, 0x01},
 	{0,      20},
 	{0x27, 0xe8},
@@ -293,6 +285,26 @@ static u8 ir2e69_power_on_seq[][2] = {
 	{0xf1, 0x00},
 	{0xda, 0x30},
 	{0xd8, 0x00} };
+
+static u8 ir2e69_power_on_seq[][2] = {
+	{0x03, 0x01},
+	{0,      20},
+	{0x27, 0xe8},
+	{0x03, 0x83},
+	{0,      20},
+	{0x28, 0x40},
+	{0x2b, 0x01},
+	{0x05, 0x09},
+	{0x06, 0x01},
+	{0x25, 0x20},
+	{0x0a, 0x00},
+	{0x0b, 0x00},
+	{0xdc, 0x3b},
+	{0xee, 0x00},
+	{0xf1, 0x00},
+	{0xda, 0x30},
+	{0xd8, 0x00} };
+
 static u8 ir2e69_bias_on_seq[][2] = {
 	{0x28, 0x40},
 	{0,       1},
@@ -314,97 +326,9 @@ static struct i2c_board_info dcdc_board_info = {
 	I2C_BOARD_INFO("vb_cmd_ir2e69", I2C_ADDRESS)
 };
 
-static struct i2c_device_id ir2e69_idtable[] = {
-	{ "vb_cmd_ir2e69", 0 },
-	{ }
-};
-
-MODULE_DEVICE_TABLE(i2c, ir2e69_idtable);
-
 static struct i2c_client *i2c_client;
 
 static int mipi_reset_gpio = -1;
-
-static struct attribute *ir2e69_attributes[] = {
-	NULL
-};
-
-static struct attribute_group ir2e69_attribute_group = {
-	.name = "vb_cmd_ir2e69",
-	.attrs = ir2e69_attributes
-};
-
-static void ir2e69_reset();
-static void vb_cmd_power_on_reset();
-static void vb_cmd_panel_reset();
-
-static int ir2e69_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
-{
-	int res;
-
-	res = sysfs_create_group(&client->dev.kobj, &ir2e69_attribute_group);
-	if (res) {
-		dev_err(&client->dev, "creating sysfs entry failed\n");
-		goto sysfs_error;
-	}
-	dev_info(&client->dev, "chip found\n");
-
-	pm_runtime_set_active(&client->dev);
-	pm_runtime_enable(&client->dev);
-
-sysfs_error:
-	return res;
-}
-
-static int __devexit ir2e69_remove(struct i2c_client *client)
-{
-	pm_runtime_get_sync(&client->dev);
-	sysfs_remove_group(&client->dev.kobj, &ir2e69_attribute_group);
-	pm_runtime_disable(&client->dev);
-	pm_runtime_set_suspended(&client->dev);
-	pm_runtime_put_noidle(&client->dev);
-	return 0;
-}
-
-#ifdef CONFIG_PM
-static int ir2e69_suspend(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-	return 0;
-}
-
-static int ir2e69_resume(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-	return 0;
-}
-
-static const struct dev_pm_ops ir2e69_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(ir2e69_suspend, ir2e69_resume)
-};
-
-#define IR2E69_PM_OPS (&ir2e69_pm_ops)
-
-#else	/* CONFIG_PM */
-
-#define ir2e69_suspend NULL
-#define ir2e69_resume NULL
-#define IR2E69_PM_OPS NULL
-
-#endif	/* CONFIG_PM */
-
-static struct i2c_driver ir2e69_driver = {
-	.driver = {
-		.name	= "vb_cmd_ir2e69",
-		.owner	= THIS_MODULE,
-		.pm	= &ir2e69_pm_ops
-	},
-
-	.id_table	= ir2e69_idtable,
-	.probe		= ir2e69_probe,
-	.remove		= __devexit_p(ir2e69_remove),
-};
 
 static void ir2e69_set_gpio(int value)
 {
@@ -440,15 +364,6 @@ static void ir2e69_register(void)
 	gpio_direction_output(mipi_reset_gpio, 0);
 }
 
-static void ir2e69_unregister(void)
-{
-	if (i2c_client != NULL)
-		i2c_unregister_device(i2c_client);
-
-	if (mipi_reset_gpio != -1)
-		gpio_free(mipi_reset_gpio);
-}
-
 static int ir2e69_send_sequence(u8 data[][2], int count)
 {
 	int r = 0;
@@ -467,7 +382,7 @@ static int ir2e69_send_sequence(u8 data[][2], int count)
 	return r;
 }
 
-static void ir2e69_reset()
+static void ir2e69_reset(void)
 {
 	int i;
 	int r;
@@ -478,20 +393,35 @@ static void ir2e69_reset()
 	mdelay(20);
 	ir2e69_set_gpio(1);
 	mdelay(20);
-	for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq); i++) {
-		if (ir2e69_power_on_seq[i][0] != 0) {
-			r = i2c_master_send(i2c_client,
-					    ir2e69_power_on_seq[i],
-					    sizeof(ir2e69_power_on_seq[i]));
-			if (r < 0)
-				dev_err(&i2c_client->dev, "%d: error %d\n",
-					i, r);
-		} else
-			mdelay(ir2e69_power_on_seq[i][1]);
+	if (drm_psb_enable_cabc) {
+		for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq_cabc); i++) {
+			if (ir2e69_power_on_seq_cabc[i][0] != 0) {
+				r = i2c_master_send(i2c_client,
+					ir2e69_power_on_seq_cabc[i],
+					sizeof(ir2e69_power_on_seq_cabc[i]));
+				if (r < 0)
+					dev_err(&i2c_client->dev, "%d: error %d\n",
+						i, r);
+			} else
+				mdelay(ir2e69_power_on_seq_cabc[i][1]);
+		}
+	} else {
+		for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq); i++) {
+			if (ir2e69_power_on_seq[i][0] != 0) {
+				r = i2c_master_send(i2c_client,
+					ir2e69_power_on_seq[i],
+					sizeof(ir2e69_power_on_seq[i]));
+				if (r < 0)
+					dev_err(&i2c_client->dev, "%d: error %d\n",
+						i, r);
+			} else
+				mdelay(ir2e69_power_on_seq[i][1]);
+		}
+
 	}
 }
 
-static void ir2e69_power_off()
+static void ir2e69_power_off(void)
 {
 	PSB_DEBUG_ENTRY("\n");
 	ir2e69_send_sequence(ir2e69_bias_off_seq,
@@ -501,12 +431,10 @@ static void ir2e69_power_off()
 		mdelay(200);
 	else
 		mdelay(20);
-#ifndef NO_DCDC_POWER_OFF
 	ir2e69_set_gpio(0);
-#endif
 }
 
-static void ir2e69_power_on()
+static void ir2e69_power_on(void)
 {
 	PSB_DEBUG_ENTRY("\n");
 	ir2e69_send_sequence(ir2e69_normal_seq,
@@ -515,13 +443,11 @@ static void ir2e69_power_on()
 			ARRAY_SIZE(ir2e69_bias_on_seq));
 }
 
-static void ls04x_reset()
+static void ls04x_reset(void)
 {
 	PSB_DEBUG_ENTRY("\n");
-#ifndef NO_DISPLAY_RESET
 	i2c_master_send(i2c_client, ls04x_reset_low, sizeof(ls04x_reset_low));
 	mdelay(10);
-#endif
 	i2c_master_send(i2c_client, ls04x_reset_high, sizeof(ls04x_reset_high));
 	mdelay(20);
 }
@@ -630,15 +556,6 @@ static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 				   ls04x_power_setting_int_pwr2_igzo,
 				   sizeof(ls04x_power_setting_int_pwr2_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-#if 0
-	/* comment vcom setting for igzo and use default setting
-	 * it is used to avoiding 1-hz panel flicker issue.
-	 */
-	mdfld_dsi_send_gen_long_lp(sender,
-				   ls04x_vcom_setting,
-				   sizeof(ls04x_vcom_setting),
-				   MDFLD_DSI_SEND_PACKAGE);
-#endif
 	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_sleep_out_nvm_load_setting[0],
 				    ls04x_sleep_out_nvm_load_setting[1], 2,
@@ -667,9 +584,13 @@ static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 				   ls04x_panel_sync_out4,
 				   sizeof(ls04x_panel_sync_out4),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_display, 0x2c, 1,
+	mdfld_dsi_send_mcs_short_hs(sender,
+				    ls04x_ledpwm_on[0],
+				    ls04x_ledpwm_on[1], 1,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_cabc, 0x1, 1,
+	mdfld_dsi_send_mcs_short_hs(sender,
+				    ls04x_cabc_on[0],
+				    ls04x_cabc_on[1], 1,
 				    MDFLD_DSI_SEND_PACKAGE);
 
 	/* Send column and page addr before write mem start,
@@ -778,9 +699,13 @@ static int ls04x_cgs_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 				   ls04x_sequencer_timing_power_on_cgs,
 				   sizeof(ls04x_sequencer_timing_power_on_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_display, 0x2c, 1,
+	mdfld_dsi_send_mcs_short_hs(sender,
+				    ls04x_ledpwm_on[0],
+				    ls04x_ledpwm_on[1], 1,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_cabc, 0x1, 1,
+	mdfld_dsi_send_mcs_short_hs(sender,
+				    ls04x_cabc_on[0],
+				    ls04x_cabc_on[1], 1,
 				    MDFLD_DSI_SEND_PACKAGE);
 
 	/* Send column and page addr before write mem start,
@@ -801,28 +726,24 @@ static int ls04x_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
 	int r = 0;
 	u8 data[16];
-
-	PSB_DEBUG_ENTRY("\n");
-
-	memset(data, 0, sizeof(data));
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
+
+	PSB_DEBUG_ENTRY("\n");
 
 	if (!sender)
 		return -EINVAL;
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
-
+	memset(data, 0, sizeof(data));
 	mdfld_dsi_send_gen_short_hs(sender,
 			ls04x_mcap[0],
 			ls04x_mcap[1], 2,
 			MDFLD_DSI_SEND_PACKAGE);
 
-#ifdef ENABLE_PANEL_READ
 	r = mdfld_dsi_read_gen_hs(sender,
 			ls04x_device_code_read[0], 0, 1, data, 5);
 	PSB_DEBUG_GENERAL("device code read: %d %02x %02x %02x %02x %02x\n",
 			  r, data[0], data[1], data[2], data[3], data[4]);
-#endif
 
 	if ((data[2] == 0x14) && (data[3] == 0x13))
 		r = ls04x_igzo_drv_ic_init(dsi_config);
@@ -905,10 +826,12 @@ static void ls04x_cmd_get_panel_info(int pipe, struct panel_info *pi)
 static int ls04x_cgs_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 					int level)
 {
-	struct mdfld_dsi_pkg_sender *sender
-		= mdfld_dsi_get_pkg_sender(dsi_config);
-
 	if (drm_psb_enable_cabc) {
+		struct mdfld_dsi_pkg_sender *sender
+			= mdfld_dsi_get_pkg_sender(dsi_config);
+		if (!sender)
+			return -EINVAL;
+
 		u8 brightness[3] = {0, };
 
 		brightness[0] = write_display_brightness;
@@ -935,10 +858,12 @@ static int ls04x_cgs_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 static int ls04x_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 					int level)
 {
-	struct mdfld_dsi_pkg_sender *sender
-		= mdfld_dsi_get_pkg_sender(dsi_config);
-
 	if (drm_psb_enable_cabc) {
+		struct mdfld_dsi_pkg_sender *sender
+			= mdfld_dsi_get_pkg_sender(dsi_config);
+		if (!sender)
+			return -EINVAL;
+
 		u8 brightness[3] = {0, };
 
 		brightness[0] = write_display_brightness;
@@ -962,34 +887,24 @@ static int ls04x_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	return 0;
 }
 
-static void vb_cmd_panel_reset()
+static int vb_cmd_reset(struct mdfld_dsi_config *dsi_config)
 {
 	PSB_DEBUG_ENTRY("\n");
-
-	mdelay(10);
-	mdelay(3);
-}
-
-static int vb_cmd_reset()
-{
-	PSB_DEBUG_ENTRY("\n");
-#ifndef NO_POWER_OFF
 	mdelay(10);
 	ir2e69_reset();
 	ls04x_reset();
 	mdelay(3);
-#endif
 	return 0;
 }
 
 static int vb_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 {
-	int r = 0;
-	u8 power = 0;
-
-	ir2e69_power_on();
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
+	if (!sender)
+		return -EINVAL;
+
+	ir2e69_power_on();
 	mdfld_dsi_send_mcs_short_hs(sender, set_tear_on, 0x00, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
 	mdfld_dsi_send_mcs_short_hs(sender, set_display_on, 0, 0,
@@ -1010,11 +925,10 @@ static int vb_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 
 static int vb_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 {
-	int r = 0;
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
-	u8 power = 0;
-
+	if (!sender)
+		return -EINVAL;
 
 	PSB_DEBUG_ENTRY("\n");
 	mdfld_dsi_send_mcs_short_hs(sender, set_display_off, 0, 0,
@@ -1024,113 +938,59 @@ static int vb_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 					MDFLD_DSI_SEND_PACKAGE);
 	mdelay(100);
 
-#ifdef ENABLE_DEEP_SLEEP
-	r = mdfld_dsi_send_gen_short_hs(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 			ls04x_deep_standby[0],
 			ls04x_deep_standby[1],
 			2, MDFLD_DSI_SEND_PACKAGE);
 	mdelay(16);
-#endif
 
 	ir2e69_power_off();
 	mdelay(15);
 
-#ifndef NO_POWER_OFF
-	/*
-	r = mdfld_dsi_get_power_mode(dsi_config, &power,
-					MDFLD_DSI_LP_TRANSMISSION);
-	*/
-
 	i2c_master_send(i2c_client, ls04x_reset_low, sizeof(ls04x_reset_low));
 	mdelay(10);
-#endif
 
 	return 0;
 }
 
 static int vb_cmd_detect(struct mdfld_dsi_config *dsi_config)
 {
-	int status;
-	int pipe = dsi_config->pipe;
+	int status = MDFLD_DSI_PANEL_DISCONNECTED;
+#if 1
+	struct drm_device *dev = dsi_config->dev;
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	u32 dpll_val, device_ready_val;
 
 	PSB_DEBUG_ENTRY("\n");
-
-	if (pipe == 0) {
-		/*
-		* FIXME: WA to detect the panel connection status, and need to
-		* implement detection feature with get_power_mode DSI command.
-		*/
-		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					       OSPM_UHB_FORCE_POWER_ON)) {
-			DRM_ERROR("hw begin failed\n");
-			return -EAGAIN;
-		}
-
-#if 1
-		struct drm_device *dev = dsi_config->dev;
-		struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
-		u32 dpll_val, device_ready_val;
-		dpll_val = REG_READ(regs->dpll_reg);
-		device_ready_val = REG_READ(regs->device_ready_reg);
-		if ((device_ready_val & DSI_DEVICE_READY) &&
-		    (dpll_val & DPLL_VCO_ENABLE)) {
-			dsi_config->dsi_hw_context.panel_on = true;
-		} else {
-			dsi_config->dsi_hw_context.panel_on = false;
-			DRM_INFO("%s: panel is not detected!\n", __func__);
-		}
-
-		dsi_config->dsi_hw_context.panel_on = false;
-		status = MDFLD_DSI_PANEL_CONNECTED;
-
-		/* ------------ */
-		struct mdfld_dsi_pkg_sender *sender
-					= mdfld_dsi_get_pkg_sender(dsi_config);
-		u8 data[5]; memset(data, 0, sizeof(data));
-#ifdef ENABLE_PANEL_READ
-		u8 r = mdfld_dsi_read_gen_lp(sender,
-					     ls04x_device_code_read[0], 0, 1,
-						data, 5);
-		PSB_DEBUG_GENERAL("device code: %d %02x %02x %02x %02x %02x\n",
-			r, data[0], data[1], data[2], data[3], data[4]);
-#endif
-
-		u8 power = 0;
-
-		mdfld_dsi_send_mcs_short_lp(sender, exit_sleep_mode, 0, 0,
-					    MDFLD_DSI_SEND_PACKAGE);
-		mdelay(20);
-
-#ifdef ENABLE_PANEL_READ
-		r = mdfld_dsi_get_power_mode(dsi_config, &power,
-					MDFLD_DSI_LP_TRANSMISSION);
-		PSB_DEBUG_GENERAL(": %d %d %x\n", r, status, power);
-#endif
-		/* ------------ */
-
-#else
-		status = MDFLD_DSI_PANEL_DISCONNECTED;
-		u8 power = 0;
-
-		if (mdfld_dsi_get_power_mode(dsi_config, &power,
-					     MDFLD_DSI_LP_TRANSMISSION) > 0) {
-			if (power & 0x04)
-				dsi_config->dsi_hw_context.panel_on = true;
-			else
-				dsi_config->dsi_hw_context.panel_on = false;
-			status = MDFLD_DSI_PANEL_CONNECTED;
-		}
-		PSB_DEBUG_GENERAL(": %d %x\n", status, power);
-		PSB_DEBUG_GENERAL("display connection state: %d, power: %x\n",
-				status,
-				power);
-#endif
-
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	dpll_val = REG_READ(regs->dpll_reg);
+	device_ready_val = REG_READ(regs->device_ready_reg);
+	if ((device_ready_val & DSI_DEVICE_READY) &&
+	    (dpll_val & DPLL_VCO_ENABLE)) {
+		dsi_config->dsi_hw_context.panel_on = true;
 	} else {
-		DRM_INFO("%s: do NOT support dual panel\n", __func__);
-		status = MDFLD_DSI_PANEL_DISCONNECTED;
+		dsi_config->dsi_hw_context.panel_on = false;
+		DRM_INFO("%s: panel is not detected!\n", __func__);
 	}
+
+	dsi_config->dsi_hw_context.panel_on = false;
+	status = MDFLD_DSI_PANEL_CONNECTED;
+#else
+	u8 power = 0;
+
+	PSB_DEBUG_ENTRY("\n");
+	if (mdfld_dsi_get_power_mode(dsi_config, &power,
+				     MDFLD_DSI_LP_TRANSMISSION) > 0) {
+		if (power & 0x04)
+			dsi_config->dsi_hw_context.panel_on = true;
+		else
+			dsi_config->dsi_hw_context.panel_on = false;
+		status = MDFLD_DSI_PANEL_CONNECTED;
+	}
+	PSB_DEBUG_GENERAL(": %d %x\n", status, power);
+	PSB_DEBUG_GENERAL("display connection state: %d, power: %x\n",
+			  status,
+			  power);
+#endif
 
 	return status;
 
@@ -1216,7 +1076,7 @@ static int vb_lcd_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	return 0;
+	return ret;
 }
 
 static struct platform_device_id vb_panel_tbl[] = {

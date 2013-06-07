@@ -490,11 +490,12 @@ read_adc_exit:
 }
 
 /* returns the battery pack temperature read from adc */
-static int platform_get_battery_pack_temp(int *temp)
+int platform_get_battery_pack_temp(int *temp)
 {
 	pr_debug("%s\n", __func__);
 	return platform_read_adc_temp(temp, bptherm_curve_data);
 }
+EXPORT_SYMBOL(platform_get_battery_pack_temp);
 
 static void platform_free_data(void)
 {
@@ -531,5 +532,9 @@ void *bq24192_platform_data(void *info)
 
 	register_rpmsg_service("rpmsg_bq24192", RPROC_SCU,
 				RP_BQ24192);
+	/* WA for pmic rpmsg service registration
+	   for power source detection driver */
+	register_rpmsg_service("rpmsg_pmic_charger", RPROC_SCU,
+				RP_PMIC_CHARGER);
 	return &platform_data;
 }

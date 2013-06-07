@@ -20,6 +20,7 @@
  */
 
 #include <media/videobuf-vmalloc.h>
+#include <media/v4l2-dev.h>
 
 #include "sh_css_debug.h"
 #include "host/mmu_local.h"
@@ -29,6 +30,11 @@
 #include "atomisp_compat.h"
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
+
+void atomisp_store_uint32(hrt_address addr, uint32_t data)
+{
+	device_store_uint32(addr, data);
+}
 
 int atomisp_css_init(struct atomisp_device *isp)
 {
@@ -141,19 +147,32 @@ void atomisp_set_css_env(struct atomisp_device *isp)
 void atomisp_css_init_struct(struct atomisp_device *isp)
 {
 	/* obtain the pointers to the default configurations */
-	sh_css_get_tnr_config(&isp->params.default_tnr_config);
-	sh_css_get_nr_config(&isp->params.default_nr_config);
-	sh_css_get_ee_config(&isp->params.default_ee_config);
-	sh_css_get_ob_config(&isp->params.default_ob_config);
-	sh_css_get_dp_config(&isp->params.default_dp_config);
-	sh_css_get_wb_config(&isp->params.default_wb_config);
-	sh_css_get_cc_config(&isp->params.default_cc_config);
-	sh_css_get_de_config(&isp->params.default_de_config);
-	sh_css_get_gc_config(&isp->params.default_gc_config);
-	sh_css_get_3a_config(&isp->params.default_3a_config);
-	sh_css_get_macc_table(&isp->params.default_macc_table);
-	sh_css_get_ctc_table(&isp->params.default_ctc_table);
-	sh_css_get_gamma_table(&isp->params.default_gamma_table);
+	sh_css_get_tnr_config((const struct atomisp_css_tnr_config **)
+				&isp->params.default_tnr_config);
+	sh_css_get_nr_config((const struct atomisp_css_nr_config **)
+				&isp->params.default_nr_config);
+	sh_css_get_ee_config((const struct atomisp_css_ee_config **)
+				&isp->params.default_ee_config);
+	sh_css_get_ob_config((const struct atomisp_css_ob_config **)
+				&isp->params.default_ob_config);
+	sh_css_get_dp_config((const struct atomisp_css_dp_config **)
+				&isp->params.default_dp_config);
+	sh_css_get_wb_config((const struct atomisp_css_wb_config **)
+				&isp->params.default_wb_config);
+	sh_css_get_cc_config((const struct atomisp_css_cc_config **)
+				&isp->params.default_cc_config);
+	sh_css_get_de_config((const struct atomisp_css_de_config **)
+				&isp->params.default_de_config);
+	sh_css_get_gc_config((const struct atomisp_css_gc_config **)
+				&isp->params.default_gc_config);
+	sh_css_get_3a_config((const struct atomisp_css_3a_config **)
+				&isp->params.default_3a_config);
+	sh_css_get_macc_table((const struct atomisp_css_macc_table **)
+				&isp->params.default_macc_table);
+	sh_css_get_ctc_table((const struct atomisp_css_ctc_table **)
+				&isp->params.default_ctc_table);
+	sh_css_get_gamma_table((const struct atomisp_css_gamma_table **)
+				&isp->params.default_gamma_table);
 
 	/* we also initialize our configurations with the defaults */
 	isp->params.tnr_config  = *isp->params.default_tnr_config;
@@ -222,6 +241,11 @@ void atomisp_css_mmu_invalidate_cache(void)
 void atomisp_css_mmu_invalidate_tlb(void)
 {
 	sh_css_enable_sp_invalidate_tlb();
+}
+
+void atomisp_css_mmu_set_page_table_base_index(unsigned long base_index)
+{
+	sh_css_mmu_set_page_table_base_index((hrt_data)base_index);
 }
 
 int atomisp_css_start(struct atomisp_device *isp,
@@ -308,18 +332,207 @@ int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
 	return 0;
 }
 
+int atomisp_css_allocate_3a_dis_bufs(struct atomisp_device *isp,
+				struct atomisp_s3a_buf *s3a_buf,
+				struct atomisp_dis_buf *dis_buf)
+{
+	if (sh_css_allocate_stat_buffers_from_info(&s3a_buf->s3a_data,
+			&dis_buf->dis_data, &isp->params.curr_grid_info)
+			!= sh_css_success) {
+		dev_err(isp->dev, "3a and dis buf allocation failed.\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_free_3a_buffers(struct atomisp_s3a_buf *s3a_buf)
+{
+	sh_css_free_stat_buffers(&s3a_buf->s3a_data, NULL);
+}
+
+void atomisp_css_free_dis_buffers(struct atomisp_dis_buf *dis_buf)
+{
+	sh_css_free_stat_buffers(NULL, &dis_buf->dis_data);
+}
+
+void atomisp_css_free_3a_dis_buffers(struct atomisp_device *isp)
+{
+	struct atomisp_s3a_buf *s3a_buf, *_s3a_buf;
+	struct atomisp_dis_buf *dis_buf, *_dis_buf;
+
+	/* 3A statistics use vmalloc, DIS use kmalloc */
+	vfree(isp->params.s3a_output_buf);
+	isp->params.s3a_output_buf = NULL;
+	isp->params.s3a_output_bytes = 0;
+	isp->params.s3a_buf_data_valid = false;
+
+	kfree(isp->params.dis_hor_proj_buf);
+	kfree(isp->params.dis_ver_proj_buf);
+	kfree(isp->params.dis_hor_coef_buf);
+	kfree(isp->params.dis_ver_coef_buf);
+
+	isp->params.dis_hor_proj_buf = NULL;
+	isp->params.dis_ver_proj_buf = NULL;
+	isp->params.dis_hor_coef_buf = NULL;
+	isp->params.dis_ver_coef_buf = NULL;
+	isp->params.dis_hor_proj_bytes = 0;
+	isp->params.dis_ver_proj_bytes = 0;
+	isp->params.dis_hor_coef_bytes = 0;
+	isp->params.dis_ver_coef_bytes = 0;
+	isp->params.dis_proj_data_valid = false;
+
+	list_for_each_entry_safe(s3a_buf, _s3a_buf, &isp->s3a_stats, list) {
+		sh_css_free_stat_buffers(&s3a_buf->s3a_data, NULL);
+		list_del(&s3a_buf->list);
+		kfree(s3a_buf);
+	}
+
+	list_for_each_entry_safe(dis_buf, _dis_buf, &isp->dis_stats, list) {
+		sh_css_free_stat_buffers(NULL, &dis_buf->dis_data);
+		list_del(&dis_buf->list);
+		kfree(dis_buf);
+	}
+}
+
+int atomisp_css_get_grid_info(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id)
+{
+	enum sh_css_err err;
+	struct atomisp_css_grid_info old_info = isp->params.curr_grid_info;
+
+	switch (isp->isp_subdev.run_mode->val) {
+	case ATOMISP_RUN_MODE_PREVIEW:
+		err = sh_css_preview_get_grid_info(&isp->params.curr_grid_info);
+		if (err != sh_css_success) {
+			dev_err(isp->dev,
+				 "sh_css_preview_get_grid_info failed: %d\n",
+				 err);
+			return -EINVAL;
+		}
+		break;
+	case ATOMISP_RUN_MODE_VIDEO:
+		err = sh_css_video_get_grid_info(&isp->params.curr_grid_info);
+		if (err != sh_css_success) {
+			dev_err(isp->dev,
+				 "sh_css_video_get_grid_info failed: %d\n",
+				 err);
+			return -EINVAL;
+		}
+		break;
+	default:
+		err = sh_css_capture_get_grid_info(&isp->params.curr_grid_info);
+		if (err != sh_css_success) {
+			dev_err(isp->dev,
+				 "sh_css_capture_get_grid_info failed: %d\n",
+				 err);
+			return -EINVAL;
+		}
+	}
+
+	/* If the grid info has not changed and the buffers for 3A and
+	 * DIS statistics buffers are allocated or buffer size would be zero
+	 * then no need to do anything. */
+	if ((!memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info))
+	    && isp->params.s3a_output_buf && isp->params.dis_hor_coef_buf)
+	    || isp->params.curr_grid_info.s3a_grid.width == 0
+	    || isp->params.curr_grid_info.s3a_grid.height == 0)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_alloc_3a_output_buf(struct atomisp_device *isp)
+{
+	/* 3A statistics. These can be big, so we use vmalloc. */
+	isp->params.s3a_output_bytes =
+		isp->params.curr_grid_info.s3a_grid.width *
+		isp->params.curr_grid_info.s3a_grid.height *
+		sizeof(*isp->params.s3a_output_buf);
+
+	dev_dbg(isp->dev, "isp->params.s3a_output_bytes: %d\n",
+		isp->params.s3a_output_bytes);
+	isp->params.s3a_output_buf = vmalloc(isp->params.s3a_output_bytes);
+
+	if (isp->params.s3a_output_buf == NULL
+	    && isp->params.s3a_output_bytes != 0)
+		return -ENOMEM;
+
+	memset(isp->params.s3a_output_buf, 0, isp->params.s3a_output_bytes);
+	isp->params.s3a_buf_data_valid = false;
+
+	return 0;
+}
+
+int atomisp_alloc_dis_coef_buf(struct atomisp_device *isp)
+{
+	/* DIS coefficients. */
+	isp->params.dis_hor_coef_bytes =
+		isp->params.curr_grid_info.dvs_hor_coef_num *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_hor_coef_buf);
+
+	isp->params.dis_ver_coef_bytes =
+		isp->params.curr_grid_info.dvs_ver_coef_num *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_ver_coef_buf);
+
+	isp->params.dis_hor_coef_buf =
+		kzalloc(isp->params.dis_hor_coef_bytes, GFP_KERNEL);
+	if (isp->params.dis_hor_coef_buf == NULL &&
+			isp->params.dis_hor_coef_bytes != 0)
+		return -ENOMEM;
+
+	isp->params.dis_ver_coef_buf =
+		kzalloc(isp->params.dis_ver_coef_bytes, GFP_KERNEL);
+	if (isp->params.dis_ver_coef_buf == NULL &&
+			isp->params.dis_ver_coef_bytes != 0)
+		return -ENOMEM;
+
+	/* DIS projections. */
+	isp->params.dis_proj_data_valid = false;
+	isp->params.dis_hor_proj_bytes =
+		isp->params.curr_grid_info.dvs_grid.aligned_height *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_hor_proj_buf);
+
+	isp->params.dis_ver_proj_bytes =
+		isp->params.curr_grid_info.dvs_grid.aligned_width *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_ver_proj_buf);
+
+	isp->params.dis_hor_proj_buf = kzalloc(isp->params.dis_hor_proj_bytes,
+			GFP_KERNEL);
+	if (isp->params.dis_hor_proj_buf == NULL &&
+			isp->params.dis_hor_proj_bytes != 0)
+		return -ENOMEM;
+
+	isp->params.dis_ver_proj_buf = kzalloc(isp->params.dis_ver_proj_bytes,
+			GFP_KERNEL);
+	if (isp->params.dis_ver_proj_buf == NULL &&
+			isp->params.dis_ver_proj_bytes != 0)
+		return -ENOMEM;
+
+	return 0;
+}
+
 int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
 				  struct atomisp_css_buffer *isp_css_buffer)
 {
 	enum sh_css_err err;
 
-	err = sh_css_get_3a_statistics(isp->params.s3a_output_buf,
+	if (isp->params.s3a_output_buf &&
+		isp->params.s3a_output_bytes) {
+		/* To avoid racing with atomisp_3a_stat() */
+		err = sh_css_get_3a_statistics(isp->params.s3a_output_buf,
 				isp->params.curr_grid_info.s3a_grid.use_dmem,
 				isp_css_buffer->s3a_data);
-	if (err != sh_css_success) {
-		dev_err(isp->dev,
-			"sh_css_get_3a_statistics failed: 0x%x\n", err);
-		return -EINVAL;
+		if (err != sh_css_success) {
+			dev_err(isp->dev,
+				"sh_css_get_3a_statistics failed: 0x%x\n", err);
+			return -EINVAL;
+		}
+		isp->params.s3a_buf_data_valid = true;
 	}
 
 	return 0;
@@ -328,18 +541,27 @@ int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
 void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
 				    struct atomisp_css_buffer *isp_css_buffer)
 {
-	sh_css_get_dis_projections(isp->params.dis_hor_proj_buf,
+	if (isp->params.dis_ver_proj_bytes && isp->params.dis_ver_proj_buf &&
+	    isp->params.dis_hor_proj_buf && isp->params.dis_hor_proj_bytes) {
+		/* To avoid racing with atomisp_get_dis_stat()*/
+		sh_css_get_dis_projections(isp->params.dis_hor_proj_buf,
 				   isp->params.dis_ver_proj_buf,
 				   isp_css_buffer->dis_data);
+		isp->params.dis_proj_data_valid = true;
+	}
 }
 
 int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
 {
-	if (sh_css_dequeue_event(&current_event->pipe, &current_event->event)
-	    != sh_css_success)
+	if (sh_css_dequeue_event(&current_event->pipe,
+				&current_event->event.type) != sh_css_success)
 		return -EINVAL;
 
 	return 0;
+}
+
+void atomisp_css_temp_pipe_to_pipe_id(struct atomisp_css_event *current_event)
+{
 }
 
 int atomisp_css_input_set_resolution(struct atomisp_device *isp,
@@ -398,6 +620,10 @@ void atomisp_css_enable_raw_binning(struct atomisp_device *isp,
 	sh_css_enable_raw_binning(enable);
 }
 
+void atomisp_css_enable_dz(struct atomisp_device *isp, bool enable)
+{
+}
+
 void atomisp_css_capture_set_mode(struct atomisp_device *isp,
 				enum atomisp_css_capture_mode mode)
 {
@@ -428,8 +654,7 @@ void atomisp_css_enable_continuous(struct atomisp_device *isp,
 	sh_css_enable_continuous(enable);
 }
 
-void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
-				  bool enable, bool stop_copy_preview)
+void atomisp_css_enable_cont_capt(bool enable, bool stop_copy_preview)
 {
 	sh_css_enable_cont_capt(enable, stop_copy_preview);
 }
@@ -483,6 +708,28 @@ int atomisp_css_frame_map(struct atomisp_css_frame **frame,
 		return -ENOMEM;
 
 	return 0;
+}
+
+int atomisp_css_set_black_frame(struct atomisp_device *isp,
+				const struct atomisp_css_frame *raw_black_frame)
+{
+	if (sh_css_set_black_frame(raw_black_frame) != sh_css_success)
+		return -ENOMEM;
+
+	return 0;
+}
+
+int atomisp_css_allocate_continuous_frames(bool init_time)
+{
+	if (sh_css_allocate_continuous_frames(init_time) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+void atomisp_css_update_continuous_frames(void)
+{
+	sh_css_update_continuous_frames();
 }
 
 int atomisp_css_stop(struct atomisp_device *isp,
@@ -566,6 +813,57 @@ int atomisp_css_video_configure_output(struct atomisp_device *isp,
 	return 0;
 }
 
+int atomisp_css_video_configure_viewfinder(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	if (sh_css_video_configure_viewfinder(width, height, format)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_configure_viewfinder(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	if (sh_css_capture_configure_viewfinder(width, height, format)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_video_get_viewfinder_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_video_get_viewfinder_frame_info(info) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_get_viewfinder_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_capture_get_viewfinder_frame_info(info)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_get_output_raw_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_capture_get_output_raw_frame_info(info)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
 int atomisp_css_preview_get_output_frame_info(struct atomisp_device *isp,
 					struct atomisp_css_frame_info *info)
 {
@@ -591,6 +889,45 @@ int atomisp_css_video_get_output_frame_info(struct atomisp_device *isp,
 		return -EINVAL;
 
 	return 0;
+}
+
+int atomisp_get_css_frame_info(struct atomisp_device *isp,
+				uint16_t source_pad,
+				struct atomisp_css_frame_info *frame_info)
+{
+	enum sh_css_err ret = sh_css_err_internal_error;
+
+	switch (source_pad) {
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
+			ret = sh_css_video_get_output_frame_info(frame_info);
+		else
+			ret = sh_css_capture_get_output_frame_info(frame_info);
+		break;
+	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+			ret = sh_css_video_get_viewfinder_frame_info(
+					frame_info);
+		else if (!atomisp_is_mbuscode_raw(
+				isp->isp_subdev.
+				fmt[isp->isp_subdev.capture_pad].fmt.code))
+			ret = sh_css_capture_get_viewfinder_frame_info(
+					frame_info);
+		break;
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+			ret = sh_css_video_get_viewfinder_frame_info(
+					frame_info);
+		else
+			ret = sh_css_preview_get_output_frame_info(frame_info);
+		break;
+	default:
+		/* Return with error */
+		break;
+	}
+
+	return ret != sh_css_success ? -EINVAL : 0;
 }
 
 int atomisp_css_preview_configure_pp_input(struct atomisp_device *isp,
@@ -645,25 +982,25 @@ void atomisp_css_request_flash(struct atomisp_device *isp)
 }
 
 void atomisp_css_set_wb_config(struct atomisp_device *isp,
-			const struct atomisp_css_wb_config *wb_config)
+			struct atomisp_css_wb_config *wb_config)
 {
 	sh_css_set_wb_config(wb_config);
 }
 
 void atomisp_css_set_ob_config(struct atomisp_device *isp,
-			const struct atomisp_css_ob_config *ob_config)
+			struct atomisp_css_ob_config *ob_config)
 {
 	sh_css_set_ob_config(ob_config);
 }
 
 void atomisp_css_set_dp_config(struct atomisp_device *isp,
-			const struct atomisp_css_dp_config *dp_config)
+			struct atomisp_css_dp_config *dp_config)
 {
 	sh_css_set_dp_config(dp_config);
 }
 
 void atomisp_css_set_de_config(struct atomisp_device *isp,
-			const struct atomisp_css_de_config *de_config)
+			struct atomisp_css_de_config *de_config)
 {
 	sh_css_set_de_config(de_config);
 }
@@ -674,61 +1011,61 @@ void atomisp_css_set_default_de_config(struct atomisp_device *isp)
 }
 
 void atomisp_css_set_ce_config(struct atomisp_device *isp,
-			const struct atomisp_css_ce_config *ce_config)
+			struct atomisp_css_ce_config *ce_config)
 {
 	sh_css_set_ce_config(ce_config);
 }
 
 void atomisp_css_set_nr_config(struct atomisp_device *isp,
-			const struct atomisp_css_nr_config *nr_config)
+			struct atomisp_css_nr_config *nr_config)
 {
 	sh_css_set_nr_config(nr_config);
 }
 
 void atomisp_css_set_ee_config(struct atomisp_device *isp,
-			const struct atomisp_css_ee_config *ee_config)
+			struct atomisp_css_ee_config *ee_config)
 {
 	sh_css_set_ee_config(ee_config);
 }
 
 void atomisp_css_set_tnr_config(struct atomisp_device *isp,
-			const struct atomisp_css_tnr_config *tnr_config)
+			struct atomisp_css_tnr_config *tnr_config)
 {
 	sh_css_set_tnr_config(tnr_config);
 }
 
 void atomisp_css_set_cc_config(struct atomisp_device *isp,
-			const struct atomisp_css_cc_config *cc_config)
+			struct atomisp_css_cc_config *cc_config)
 {
 	sh_css_set_cc_config(cc_config);
 }
 
 void atomisp_css_set_macc_table(struct atomisp_device *isp,
-			const struct atomisp_css_macc_table *macc_table)
+			struct atomisp_css_macc_table *macc_table)
 {
 	sh_css_set_macc_table(macc_table);
 }
 
 void atomisp_css_set_gamma_table(struct atomisp_device *isp,
-			const struct atomisp_css_gamma_table *gamma_table)
+			struct atomisp_css_gamma_table *gamma_table)
 {
 	sh_css_set_gamma_table(gamma_table);
 }
 
 void atomisp_css_set_ctc_table(struct atomisp_device *isp,
-			const struct atomisp_css_ctc_table *ctc_table)
+			struct atomisp_css_ctc_table *ctc_table)
 {
 	sh_css_set_ctc_table(ctc_table);
 }
 
 void atomisp_css_set_gc_config(struct atomisp_device *isp,
-			const struct atomisp_css_gc_config *gc_config)
+			struct atomisp_css_gc_config *gc_config)
 {
 	sh_css_set_gc_config(gc_config);
 }
 
 void atomisp_css_set_3a_config(struct atomisp_device *isp,
-			const struct atomisp_css_3a_config *s3a_config)
+			struct atomisp_css_3a_config *s3a_config)
 {
 	sh_css_set_3a_config(s3a_config);
 }
@@ -832,7 +1169,7 @@ int atomisp_css_get_ctc_table(struct atomisp_device *isp,
 	const struct sh_css_ctc_table *tab;
 
 	sh_css_get_ctc_table(&tab);
-	memcpy(config, tab, sizeof(*config));
+	memcpy(config, tab->data, sizeof(tab->data));
 	return 0;
 }
 
@@ -842,7 +1179,7 @@ int atomisp_css_get_gamma_table(struct atomisp_device *isp,
 	const struct sh_css_gamma_table *tab;
 
 	sh_css_get_gamma_table(&tab);
-	memcpy(config, tab, sizeof(*config));
+	memcpy(config, tab->data, sizeof(tab->data));
 
 	return 0;
 }
@@ -875,7 +1212,7 @@ struct atomisp_css_shading_table *atomisp_css_shading_table_alloc(
 }
 
 void atomisp_css_set_shading_table(struct atomisp_device *isp,
-		const struct atomisp_css_shading_table *table)
+				struct atomisp_css_shading_table *table)
 {
 	sh_css_set_shading_table(table);
 }
@@ -892,7 +1229,7 @@ struct atomisp_css_morph_table *atomisp_css_morph_table_allocate(
 }
 
 void atomisp_css_set_morph_table(struct atomisp_device *isp,
-				const struct atomisp_css_morph_table *table)
+					struct atomisp_css_morph_table *table)
 {
 	sh_css_set_morph_table(table);
 }

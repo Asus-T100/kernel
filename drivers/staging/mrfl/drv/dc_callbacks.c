@@ -50,7 +50,7 @@ static int FindCurPipe(struct drm_device *dev)
 }
 #endif /* if KEEP_UNUSED_CODE */
 
-static user_mode_start(struct drm_psb_private *dev_priv)
+static void user_mode_start(struct drm_psb_private *dev_priv)
 {
 	if (!dev_priv->um_start) {
 		dev_priv->um_start = true;
@@ -138,7 +138,7 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	u32 dspcntr;
 	u32 dspstride;
 	u32 reg_offset;
-	u32 val;
+	u32 val = 0;
 	u32 power_island = 0;
 	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_hw_context *dsi_ctx;
@@ -172,11 +172,6 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 		dsi_ctx->dspsurf = uiAddr;
 	}
 
-	power_island = pipe_to_island(pipeflag);
-
-	if (!power_island_get(power_island))
-		return;
-
 	dspsurf = DSPASURF + reg_offset;
 	dspcntr = DSPACNTR + reg_offset;
 	dspstride = DSPASTRIDE + reg_offset;
@@ -186,8 +181,6 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	DCWriteReg(dev, dspstride, uiStride);
 	/*update surface address*/
 	DCWriteReg(dev, dspsurf, uiAddr);
-
-	power_island_put(power_island);
 }
 
 void DCCBFlipOverlay(struct drm_device *dev,
@@ -195,7 +188,6 @@ void DCCBFlipOverlay(struct drm_device *dev,
 {
 	struct drm_psb_private *dev_priv;
 	u32 ovadd_reg = OV_OVADD;
-	u32 power_island = OSPM_DISPLAY_A;
 
 	if (!dev || !ctx)
 		return;
@@ -204,31 +196,20 @@ void DCCBFlipOverlay(struct drm_device *dev,
 
 	user_mode_start(dev_priv);
 
-	if (ctx->index == 1) {
+	if (ctx->index == 1)
 		ovadd_reg = OVC_OVADD;
-		power_island = OSPM_DISPLAY_C;
-	}
 
 	ctx->ovadd |= ctx->pipe;
 	ctx->ovadd |= 1;
 
-	if (!power_island_get(power_island))
-		return;
-
 	PSB_WVDC32(ctx->ovadd, ovadd_reg);
-
-	power_island_put(power_island);
 }
 
 void DCCBFlipSprite(struct drm_device *dev,
 			struct intel_dc_sprite_ctx *ctx)
 {
 	struct drm_psb_private *dev_priv;
-	struct mdfld_dsi_config *dsi_config = NULL;
-	struct mdfld_dsi_hw_context *dsi_ctx;
-	u32 reg_offset;
-	int pipe;
-	u32 power_island = 0;
+	u32 reg_offset = 0x3000;
 
 	if (!dev || !ctx)
 		return;
@@ -237,34 +218,16 @@ void DCCBFlipSprite(struct drm_device *dev,
 
 	user_mode_start(dev_priv);
 
-	if (ctx->index == 0) {
-		reg_offset = 0;
-		dsi_config = dev_priv->dsi_configs[0];
-		pipe = 0;
-	} else if (ctx->index == 1) {
-		reg_offset = 0x1000;
-		pipe = 1;
-	} else if (ctx->index == 2) {
-		reg_offset = 0x2000;
-		dsi_config = dev_priv->dsi_configs[1];
-		pipe = 2;
-	} else
+	if (ctx->index != 0) {
+		DRM_ERROR("%s: invalid index %d\n", __func__, ctx->index);
 		return;
-
-	if (dsi_config) {
-		dsi_ctx = &dsi_config->dsi_hw_context;
-		dsi_ctx->dsppos = ctx->pos;
-		dsi_ctx->dspsize = ctx->size;
-		dsi_ctx->dspstride = ctx->stride;
-		dsi_ctx->dspcntr = ctx->cntr;
-		dsi_ctx->dsplinoff = ctx->linoff;
-		dsi_ctx->dspsurf = ctx->surf;
 	}
 
-	power_island = pipe_to_island(pipe);
-
-	if (!power_island_get(power_island))
-		return;
+	/* asign sprite to pipe */
+	if (ctx->pipe)
+		ctx->cntr |= (0x1 << 24);
+	else
+		ctx->cntr &= ~(0x3 << 24);
 
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
@@ -281,8 +244,6 @@ void DCCBFlipSprite(struct drm_device *dev,
 		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
 		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
 	}
-
-	power_island_put(power_island);
 }
 
 void DCCBFlipPrimary(struct drm_device *dev,
@@ -293,7 +254,6 @@ void DCCBFlipPrimary(struct drm_device *dev,
 	struct mdfld_dsi_hw_context *dsi_ctx;
 	u32 reg_offset;
 	int pipe;
-	u32 power_island = 0;
 
 	if (!dev || !ctx)
 		return;
@@ -326,11 +286,6 @@ void DCCBFlipPrimary(struct drm_device *dev,
 		dsi_ctx->dspsurf = ctx->surf;
 	}
 
-	power_island = pipe_to_island(pipe);
-
-	if (!power_island_get(power_island))
-		return;
-
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
 
@@ -346,8 +301,74 @@ void DCCBFlipPrimary(struct drm_device *dev,
 		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
 		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
 	}
+}
 
-	power_island_put(power_island);
+static void _OverlayWaitFlip(struct drm_device *dev, u32 ovstat_reg)
+{
+	int retry;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	/**
+	 * make sure overlay command buffer
+	 * was copied before updating the system
+	 * overlay command buffer.
+	 */
+	retry = 3000;
+	while (--retry) {
+		if (BIT31 & PSB_RVDC32(ovstat_reg))
+			break;
+		udelay(10);
+	}
+
+	if (!retry)
+		DRM_ERROR("OVADD flip timeout!\n");
+}
+int DCCBOverlayEnable(struct drm_device *dev, u32 ctx,
+			int index, int enabled)
+{
+	u32 ovadd_reg = OV_OVADD;
+	u32 ovstat_reg = OV_DOVASTA;
+	u32 power_islands = OSPM_DISPLAY_A;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+
+	if (index != 0 && index != 1) {
+		DRM_ERROR("Invalid overlay index %d\n", index);
+		return -EINVAL;
+	}
+
+	if (index) {
+		ovadd_reg = OVC_OVADD;
+		ovstat_reg = OVC_DOVCSTA;
+		power_islands |= OSPM_DISPLAY_C;
+	}
+
+	if (power_island_get(power_islands)) {
+		PSB_WVDC32(ctx, ovadd_reg);
+		/*wait for overlay flipped*/
+		_OverlayWaitFlip(dev, ovstat_reg);
+		power_island_put(power_islands);
+	}
+
+	return 0;
+}
+
+int DCCBSpriteEnable(struct drm_device *dev, u32 ctx,
+			int index, int enabled)
+{
+	u32 power_islands = (OSPM_DISPLAY_A | OSPM_DISPLAY_C);
+	struct drm_psb_private *dev_priv = dev->dev_private;
+
+	if (index != 0) {
+		DRM_ERROR("Invalid overlay index %d\n", index);
+		return -EINVAL;
+	}
+
+	if (power_island_get(power_islands)) {
+		PSB_WVDC32((PSB_RVDC32(DSPDCNTR) & ~BIT31), DSPDCNTR);
+		PSB_WVDC32((PSB_RVDC32(DSPDSURF)), DSPDSURF);
+		power_island_put(power_islands);
+	}
+
+	return 0;
 }
 
 void DCCBUpdateDbiPanel(struct drm_device *dev)
@@ -410,4 +431,29 @@ bool DCCBIsSuspended(struct drm_device *dev)
 	mutex_unlock(&dev->mode_config.mutex);
 
 	return ret;
+}
+
+int DCCBIsPipeActive(struct drm_device *dev, int pipe)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+	u32 pipeconf_reg;
+	int active = 0;
+
+	if (pipe == 0)
+		pipeconf_reg = PIPEACONF;
+	else if (pipe == 1)
+		pipeconf_reg = PIPEBCONF;
+	else {
+		DRM_ERROR("%s: unsupported pipe %d\n", __func__, pipe);
+		return 0;
+	}
+
+	/* get display a for register reading */
+	if (power_island_get(OSPM_DISPLAY_A)) {
+		active = (PSB_RVDC32(pipeconf_reg) & BIT31) ? 1 : 0 ;
+		power_island_put(OSPM_DISPLAY_A);
+	}
+
+	return active;
 }

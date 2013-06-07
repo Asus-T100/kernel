@@ -20,7 +20,10 @@
  * 02110-1301, USA.
  *
  */
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 #include <sh_css.h>
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+
 #include <host/mmu_local.h>
 
 #include "mmu/isp_mmu.h"
@@ -54,7 +57,7 @@ static int sh_set_pd_base(struct isp_mmu *mmu,
 {
 	unsigned int pte = sh_phys_to_pte(mmu, phys);
 	/*mmgr_set_base_address(HOST_ADDRESS(pte));*/
-	sh_css_mmu_set_page_table_base_index(HOST_ADDRESS(pte));
+	atomisp_css_mmu_set_page_table_base_index(HOST_ADDRESS(pte));
 	return 0;
 }
 

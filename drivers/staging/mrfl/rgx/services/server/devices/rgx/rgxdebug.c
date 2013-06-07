@@ -56,10 +56,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxutils.h"
 #include "tlstream.h"
 #include "rgxfwutils.h"
+#include "pvrsrv.h"
 
 #include "devicemem_pdump.h"
 
 #include "rgx_fwif.h"
+#include "pvrsrv.h"
 
 #define RGX_DEBUG_STR_SIZE	(50)
 
@@ -68,6 +70,8 @@ IMG_CHAR* pszPowStateName [] = {
 	RGXFWIF_POW_STATES
 #undef X
 };
+
+extern IMG_UINT32 g_ui32HostSampleIRQCount;
 
 /*!
 *******************************************************************************
@@ -507,6 +511,80 @@ static IMG_VOID _RGXDumpFWAssert(PVRSRV_RGXDEV_INFO	*psDevInfo)
 
 }
 
+
+/*!
+*******************************************************************************
+@Function	    _RGXDumpDriverAndDeviceState
+@Description    Dumps the current state of the driver and device.
+@Input          psDevInfo  RGX device info.
+******************************************************************************/
+static IMG_VOID _RGXDumpDriverAndDeviceState(PVRSRV_RGXDEV_INFO	*psDevInfo)
+{
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+	IMG_CHAR *pszState = "";
+
+	if (psPVRSRVData == IMG_NULL  ||  psDevInfo == NULL)
+	{
+		return;
+	}
+
+	/* Services state */
+	switch (psPVRSRVData->eServicesState)
+	{
+		case PVRSRV_SERVICES_STATE_OK:
+		{
+			PVR_LOG(("Services State: OK"));
+			break;
+		}
+		
+		case PVRSRV_SERVICES_STATE_BAD:
+		{
+			PVR_LOG(("Services State: BAD"));
+			break;
+		}
+		
+		default:
+		{
+			PVR_LOG(("Services State: UNKNOWN (%d)", psPVRSRVData->eServicesState));
+			break;
+		}
+	}
+
+	/* Firmware state */
+	switch (psDevInfo->psDeviceNode->eHealthStatus)
+	{
+		case PVRSRV_DEVICE_HEALTH_STATUS_OK:
+		{
+			pszState = "OK";
+			break;
+		}
+		
+		case PVRSRV_DEVICE_HEALTH_STATUS_DEAD:
+		{
+			pszState = "DEAD";
+			break;
+		}
+		
+		default:
+		{
+			pszState = "UNKNOWN";
+			break;
+		}
+	}
+
+	if (psDevInfo->psRGXFWIfTraceBuf)
+	{
+		PVR_LOG(("Firmware State: %s (HWRState 0x%08x)",pszState, psDevInfo->psRGXFWIfTraceBuf->ui32HWRStateFlags));
+	}
+	else
+	{
+		PVR_LOG(("Firmware State: %s", pszState));
+	}
+
+
+} /* _RGXDumpDriverAndDeviceState */
+
+
 /*!
 *******************************************************************************
 
@@ -537,6 +615,7 @@ static IMG_VOID _RGXDumpRGXDebugSummary(PVRSRV_RGXDEV_INFO *psDevInfo)
 
 	_RGXDumpFWAssert(psDevInfo);
 
+	_RGXDumpDriverAndDeviceState(psDevInfo);
 	
 	/* Dump DM lock-up information and FW cr poll state */
 	{
@@ -558,7 +637,8 @@ static IMG_VOID _RGXDumpRGXDebugSummary(PVRSRV_RGXDEV_INFO *psDevInfo)
 			
 		for (dm = 0; dm < RGXFWIF_HWDM_MAX; dm++)
 		{
-			if (psRGXFWIfTraceBufCtl->aui16HwrDmLockedUpCount[dm])
+			if ((psRGXFWIfTraceBufCtl->aui16HwrDmLockedUpCount[dm]) ||
+					psRGXFWIfTraceBufCtl->ui32HWRStateFlags != 0x3)
 			{
 				bAnyLocked = IMG_TRUE;
 				break;					
@@ -605,6 +685,27 @@ static IMG_VOID _RGXDumpRGXDebugSummary(PVRSRV_RGXDEV_INFO *psDevInfo)
 			PVR_LOG((pszLine));
 			
 			OSFreeMem(pszLine);
+
+			/* Print out per HWR info */
+			for (dm = 0; (dm < RGXFWIF_HWDM_MAX) && (apszDmNames[dm] != IMG_NULL); dm++)
+			{
+				RGXFWIF_HWRINFOBUF *psHWInfoBuf = psDevInfo->psRGXFWIfHWRInfoBuf;
+				PVR_LOG(("DM %d (HWRflags 0x%08x)", dm, psRGXFWIfTraceBufCtl->aui32HWRRecoveryFlags[dm]));
+				for (i=0;i<RGXFWIF_MAX_HWINFO;i++)
+				{
+					IMG_UINT32 ui32Offset = (psHWInfoBuf->ui32WriteIndex[dm] + i) % RGXFWIF_MAX_HWINFO;
+					RGX_HWRINFO *psHWRInfo = &psHWInfoBuf->sHWRInfo[dm][ui32Offset];
+
+					if (psHWRInfo->ui32HWRNumber != 0) 
+					{
+						PVR_LOG(("Recovery %d: PID = %d, frame = %d, HWRTData = 0x%08X",
+						         psHWRInfo->ui32HWRNumber,
+						         psHWRInfo->ui32PID,
+						         psHWRInfo->ui32FrameNum,
+						         psHWRInfo->ui32ActiveHWRTData));
+					}
+				}
+			}	
 		}
 	}
 
@@ -618,134 +719,182 @@ static IMG_VOID _RGXDumpRGXDebugSummary(PVRSRV_RGXDEV_INFO *psDevInfo)
 IMG_VOID RGXDumpDebugInfo (PVRSRV_RGXDEV_INFO	*psDevInfo,
 						   IMG_BOOL				bDumpRGXRegs)
 {
+	IMG_UINT32 i;
+
+	for(i=0;i<DEBUG_REQUEST_VERBOSITY_MAX;i++)
+	{
+		RGXDebugRequestProcess(psDevInfo, bDumpRGXRegs, i);
+	}
+}
+
+IMG_VOID RGXDebugRequestProcess(PVRSRV_RGXDEV_INFO	*psDevInfo,
+							    IMG_BOOL			bDumpRGXRegs,
+							    IMG_UINT32			ui32VerbLevel)
+{
 	PVRSRV_ERROR	eError;
 	int tid;
 
-	_RGXDumpRGXDebugSummary(psDevInfo);
-
-	if (bDumpRGXRegs)
+	switch (ui32VerbLevel)
 	{
-		PVR_LOG(("------[ RGX registers ]------"));
-		PVR_LOG(("RGX Register Base Address (Linear):   0x%p", psDevInfo->pvRegsBaseKM));
-		PVR_LOG(("RGX Register Base Address (Physical): 0x%08lX", (unsigned long)psDevInfo->sRegsPhysBase.uiAddr));
-
-		/* Forcing bit 6 of MslvCtrl1 to 0 to avoid internal reg read going though the core */
-		OSWriteHWReg32(psDevInfo->pvRegsBaseKM, RGX_CR_META_SP_MSLVCTRL1, 0x0);
-
-		eError = RGXRunScript(psDevInfo, psDevInfo->sScripts.asDbgCommands, RGX_MAX_INIT_COMMANDS, PDUMP_FLAGS_CONTINUOUS);
-		if (eError != PVRSRV_OK)
-		{
-			PVR_DPF((PVR_DBG_ERROR,"RGXDumpDebugInfo: RGXRunScript failed (%d)", eError));
-			return;
-		}
-
-	}
-
-	{
-		RGXFWIF_DM	eKCCBType;
+		case DEBUG_REQUEST_VERBOSITY_LOW :
+			_RGXDumpRGXDebugSummary(psDevInfo);
 		
-		/*
- 			Dump out the kernel CCBs.
- 		*/
-		for (eKCCBType = 0; eKCCBType < RGXFWIF_DM_MAX; eKCCBType++)
-		{
-			RGXFWIF_KCCB_CTL	*psKCCBCtl = psDevInfo->apsKernelCCBCtl[eKCCBType];
-
-			PVR_LOG(("RGX Kernel CCB %u WO:0x%X RO:0x%X",
-					 eKCCBType, psKCCBCtl->ui32WriteOffset, psKCCBCtl->ui32ReadOffset));
-
-		}
- 	}
- 	
-	/* Dump FW trace information */
-	for ( tid = 0 ; tid < RGXFW_THREAD_NUM ; tid++) 
-	{
-		IMG_UINT32	i;
-		IMG_BOOL	bPrevLineWasZero = IMG_FALSE;
-		IMG_BOOL	bLineIsAllZeros = IMG_FALSE;
-		IMG_UINT32	ui32CountLines = 0;
-		IMG_UINT32	*pui32TraceBuffer;
-		RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl = psDevInfo->psRGXFWIfTraceBuf;
-		IMG_CHAR	*pszLine;
-
-		pui32TraceBuffer = &psRGXFWIfTraceBufCtl->sTraceBuf[tid].aui32TraceBuffer[0];
-
-		/* each element in the line is 8 characters plus a space */
-		pszLine = OSAllocMem(9*RGXFW_TRACE_BUFFER_LINESIZE);
-		if (pszLine == IMG_NULL)
-		{
-			PVR_DPF((PVR_DBG_ERROR,"RGXDumpDebugInfo: Out of mem allocating line string (size: %d)", 9*RGXFW_TRACE_BUFFER_LINESIZE));
-			return;
-		}
-
-		/* Print the tracepointer */
-		if (psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_GROUP_MASK)
-		{
-			PVR_LOG(("Debug log type: %s ( %s%s%s%s%s%s%s%s%s)", 
-				((psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_TRACE)?("trace"):("tbi")),
-				RGXFWIF_LOG_ENABLED_GROUPS_LIST(psRGXFWIfTraceBufCtl->ui32LogType)
-				));
-		}
-		else
-		{
-			PVR_LOG(("Debug log type: none"));
-		}
+			if (bDumpRGXRegs)
+			{
+				PVR_LOG(("------[ RGX registers ]------"));
+				PVR_LOG(("RGX Register Base Address (Linear):   0x%p", psDevInfo->pvRegsBaseKM));
+				PVR_LOG(("RGX Register Base Address (Physical): 0x%08lX", (unsigned long)psDevInfo->sRegsPhysBase.uiAddr));
 		
-		PVR_LOG(("------[ RGX Kernel FW thread %d trace START ]------", tid));
-		PVR_LOG(("FWT[traceptr]: %X", psRGXFWIfTraceBufCtl->sTraceBuf[tid].ui32TracePointer));
-
-		for (i = 0; i < RGXFW_TRACE_BUFFER_SIZE; i += RGXFW_TRACE_BUFFER_LINESIZE)
-		{
-			IMG_UINT32 k = 0;
-			IMG_UINT32 ui32Line = 0x0;
-			IMG_UINT32 ui32LineOffset = i*sizeof(IMG_UINT32);
-			IMG_CHAR   *pszBuf = pszLine;
-
-			for (k = 0; k < RGXFW_TRACE_BUFFER_LINESIZE; k++)
-			{
-				ui32Line |= pui32TraceBuffer[i + k];
-
-				/* prepare the line to print it. The '+1' is because of the trailing '\0' added */
-				OSSNPrintf(pszBuf, 9 + 1, " %08x", pui32TraceBuffer[i + k]);
-				pszBuf += 9; /* write over the '\0' */
-			}
-
-			bLineIsAllZeros = (ui32Line == 0x0);
-
-			if (bLineIsAllZeros && bPrevLineWasZero)
-			{
-				ui32CountLines++;
-			}
-			else if (bLineIsAllZeros && !bPrevLineWasZero)
-			{
-				bPrevLineWasZero = IMG_TRUE;
-				ui32CountLines = 0;
-				PVR_LOG(("FWT[%08x]: 00000000 ... 00000000", ui32LineOffset))
-			}
-			else
-			{
-				if (bPrevLineWasZero)
+				/* Forcing bit 6 of MslvCtrl1 to 0 to avoid internal reg read going though the core */
+				OSWriteHWReg32(psDevInfo->pvRegsBaseKM, RGX_CR_META_SP_MSLVCTRL1, 0x0);
+		
+				eError = RGXRunScript(psDevInfo, psDevInfo->sScripts.asDbgCommands, RGX_MAX_INIT_COMMANDS, PDUMP_FLAGS_CONTINUOUS);
+				if (eError != PVRSRV_OK)
 				{
-					PVR_LOG(("FWT[%08x]: %d lines were all zero", ui32LineOffset, ui32CountLines));
+					PVR_DPF((PVR_DBG_ERROR,"RGXDumpDebugInfo: RGXRunScript failed (%d)", eError));
+					return;
 				}
-				else
-				{
-
-					PVR_LOG(("FWT[%08x]:%s", ui32LineOffset, pszLine));
-				}
-				bPrevLineWasZero = IMG_FALSE;
+		
 			}
+		
+			{
+				RGXFWIF_DM	eKCCBType;
+				
+				/*
+		 			Dump out the kernel CCBs.
+		 		*/
+				for (eKCCBType = 0; eKCCBType < RGXFWIF_DM_MAX; eKCCBType++)
+				{
+					RGXFWIF_CCB_CTL	*psKCCBCtl = psDevInfo->apsKernelCCBCtl[eKCCBType];
+		
+					PVR_LOG(("RGX Kernel CCB %u WO:0x%X RO:0x%X",
+							eKCCBType, psKCCBCtl->ui32WriteOffset, psKCCBCtl->ui32ReadOffset));
 
-		}
-		if (bPrevLineWasZero)
-		{
-			PVR_LOG(("FWT[END]: %d lines were all zero", ui32CountLines));
-		}
+				}
+		 	}
+		 	/* Dump the IRQ info */
+			{
+				PVR_LOG(("RGX FW IRQ count = %d, last sampled in MISR = %d",
+								psDevInfo->psRGXFWIfTraceBuf->ui32InterruptCount,
+								g_ui32HostSampleIRQCount));
+			}
+			break;
 
-		PVR_LOG(("------[ RGX Kernel FW thread %d trace END ]------", tid));
-
-		OSFreeMem(pszLine);
-
+		case DEBUG_REQUEST_VERBOSITY_MEDIUM:
+			{
+				/* Dump the FW config flags */
+				{
+					RGXFWIF_INIT		*psRGXFWInit;
+					
+					eError = DevmemAcquireCpuVirtAddr(psDevInfo->psRGXFWIfInitMemDesc,
+												  (IMG_VOID **)&psRGXFWInit);
+			
+					if (eError != PVRSRV_OK)
+					{
+						PVR_DPF((PVR_DBG_ERROR,"RGXDumpDebugInfo: Failed to acquire kernel fw if ctl (%u)",
+								eError));
+						return;
+					}
+			
+					PVR_LOG(("RGX FW config flags = 0x%X", psRGXFWInit->ui32ConfigFlags));
+				
+					DevmemReleaseCpuVirtAddr(psDevInfo->psRGXFWIfInitMemDesc);
+				}
+		
+				/* Dump FW trace information */
+				for ( tid = 0 ; tid < RGXFW_THREAD_NUM ; tid++) 
+				{
+					IMG_UINT32	i;
+					IMG_BOOL	bPrevLineWasZero = IMG_FALSE;
+					IMG_BOOL	bLineIsAllZeros = IMG_FALSE;
+					IMG_UINT32	ui32CountLines = 0;
+					IMG_UINT32	*pui32TraceBuffer;
+					RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl = psDevInfo->psRGXFWIfTraceBuf;
+					IMG_CHAR	*pszLine;
+		
+					pui32TraceBuffer = &psRGXFWIfTraceBufCtl->sTraceBuf[tid].aui32TraceBuffer[0];
+		
+					/* each element in the line is 8 characters plus a space */
+					pszLine = OSAllocMem(9*RGXFW_TRACE_BUFFER_LINESIZE);
+					if (pszLine == IMG_NULL)
+					{
+						PVR_DPF((PVR_DBG_ERROR,"RGXDumpDebugInfo: Out of mem allocating line string (size: %d)", 9*RGXFW_TRACE_BUFFER_LINESIZE));
+						return;
+					}
+		
+					/* Print the tracepointer */
+					if (psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_GROUP_MASK)
+					{
+						PVR_LOG(("Debug log type: %s ( %s%s%s%s%s%s%s%s%s%s)", 
+							((psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_TRACE)?("trace"):("tbi")),
+							RGXFWIF_LOG_ENABLED_GROUPS_LIST(psRGXFWIfTraceBufCtl->ui32LogType)
+							));
+					}
+					else
+					{
+						PVR_LOG(("Debug log type: none"));
+					}
+					
+					PVR_LOG(("------[ RGX Kernel FW thread %d trace START ]------", tid));
+					PVR_LOG(("FWT[traceptr]: %X", psRGXFWIfTraceBufCtl->sTraceBuf[tid].ui32TracePointer));
+		
+					for (i = 0; i < RGXFW_TRACE_BUFFER_SIZE; i += RGXFW_TRACE_BUFFER_LINESIZE)
+					{
+						IMG_UINT32 k = 0;
+						IMG_UINT32 ui32Line = 0x0;
+						IMG_UINT32 ui32LineOffset = i*sizeof(IMG_UINT32);
+						IMG_CHAR   *pszBuf = pszLine;
+		
+						for (k = 0; k < RGXFW_TRACE_BUFFER_LINESIZE; k++)
+						{
+							ui32Line |= pui32TraceBuffer[i + k];
+		
+							/* prepare the line to print it. The '+1' is because of the trailing '\0' added */
+							OSSNPrintf(pszBuf, 9 + 1, " %08x", pui32TraceBuffer[i + k]);
+							pszBuf += 9; /* write over the '\0' */
+						}
+		
+						bLineIsAllZeros = (ui32Line == 0x0);
+		
+						if (bLineIsAllZeros && bPrevLineWasZero)
+						{
+							ui32CountLines++;
+						}
+						else if (bLineIsAllZeros && !bPrevLineWasZero)
+						{
+							bPrevLineWasZero = IMG_TRUE;
+							ui32CountLines = 0;
+							PVR_LOG(("FWT[%08x]: 00000000 ... 00000000", ui32LineOffset))
+						}
+						else
+						{
+							if (bPrevLineWasZero)
+							{
+								PVR_LOG(("FWT[%08x]: %d lines were all zero", ui32LineOffset, ui32CountLines));
+							}
+							else
+							{
+		
+								PVR_LOG(("FWT[%08x]:%s", ui32LineOffset, pszLine));
+							}
+							bPrevLineWasZero = IMG_FALSE;
+						}
+		
+					}
+					if (bPrevLineWasZero)
+					{
+						PVR_LOG(("FWT[END]: %d lines were all zero", ui32CountLines));
+					}
+		
+					PVR_LOG(("------[ RGX Kernel FW thread %d trace END ]------", tid));
+		
+					OSFreeMem(pszLine);
+				}
+			}
+			break;
+			
+		default:
+			break;
 	}
 }
 

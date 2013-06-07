@@ -118,12 +118,14 @@ PVRSRV_ERROR IMG_CALLCONV SCPAllocCommand(SCP_CONTEXT *psSCPContext,
 										  IMG_UINT32 ui32SyncPrimCount,
 										  SERVER_SYNC_PRIMITIVE **papsSync,
 										  IMG_BOOL *pabUpdate,
+										  IMG_INT32 i32AcquireFenceFd,
 										  SCPReady pfnCommandReady,
 										  SCPDo pfnCommandDo,
 										  IMG_SIZE_T ui32ReadyDataByteSize,
 										  IMG_SIZE_T ui32CompleteDataByteSize,
 										  IMG_PVOID *ppvReadyData,
-										  IMG_PVOID *ppvCompleteData);
+										  IMG_PVOID *ppvCompleteData,
+										  IMG_INT32 *pi32ReleaseFenceFd);
 
 /*************************************************************************/ /*!
 @Function       SCPSubmitCommand
@@ -184,6 +186,19 @@ IMG_VOID SCPCommandComplete(SCP_CONTEXT *psContext);
 /*****************************************************************************/
 IMG_EXPORT
 PVRSRV_ERROR SCPFlush(SCP_CONTEXT *psContext);
+
+/*************************************************************************/ /*!
+@Function       SCPDumpStatus
+
+@Description    Dump the status of the provided software command processor.
+
+@Input          psSCPContext            Context to dump
+
+@Return         None
+*/
+/*****************************************************************************/
+IMG_EXPORT
+IMG_VOID IMG_CALLCONV SCPDumpStatus(SCP_CONTEXT *psContext);
 
 /*************************************************************************/ /*!
 @Function       SCPDestroy
