@@ -814,6 +814,7 @@ i915_reset_gen7_sol_offsets(struct drm_device *dev,
 	}
 
 	intel_ring_advance(ring);
+	i915_add_request_noflush(ring);
 
 	return 0;
 }
