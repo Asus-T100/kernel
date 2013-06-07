@@ -1277,7 +1277,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	mutex_init(&chip->lock);
 	chip_ptr = chip;
 
-	chip->bat.name = "byt-battery";
+	chip->bat.name = "byt_battery";
 	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
 	chip->bat.properties = ulpmc_battery_props;
 	chip->bat.num_properties = ARRAY_SIZE(ulpmc_battery_props);
@@ -1288,7 +1288,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 		goto probe_failed_1;
 	}
 
-	chip->chrg.name = "byt-charger";
+	chip->chrg.name = "byt_charger";
 	chip->chrg.type = POWER_SUPPLY_TYPE_USB;
 	chip->chrg.properties = ulpmc_charger_properties;
 	chip->chrg.num_properties = ARRAY_SIZE(ulpmc_charger_properties);
