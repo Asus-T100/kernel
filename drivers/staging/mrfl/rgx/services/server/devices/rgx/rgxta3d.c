@@ -2417,6 +2417,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "RGXKickTA: Failed to acquire %d bytes in client CCB", ui32TACmdSize));
+			DevmemReleaseCpuVirtAddr(psTACCBCtlMemDesc);
 			goto PVRSRVRGXKickTA3DKM_Exit;
 		}
 		
@@ -2439,6 +2440,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "RGXKickTA: Failed to release space in TA CCB"));
+			DevmemReleaseCpuVirtAddr(psTACCBCtlMemDesc);
 			goto PVRSRVRGXKickTA3DKM_Exit;
 		}
 		
@@ -2464,6 +2466,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXKickTA3DKM failed to schedule kernel TA command. Error:%u", eError));
+			DevmemReleaseCpuVirtAddr(psTACCBCtlMemDesc);
 			goto PVRSRVRGXKickTA3DKM_Exit;
 		}
 		
@@ -2541,6 +2544,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR,"PVRFDSyncQueryFencesKM: Failed (0x%x)", eError));
+			DevmemReleaseCpuVirtAddr(ps3DCCBCtlMemDesc);
 			goto PVRSRVRGXKickTA3DKM_Exit;
 		}			
 
@@ -2570,6 +2574,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "RGXKickTA: Failed to acquire %d bytes in client CCB", ui32TACmdSize));
+			DevmemReleaseCpuVirtAddr(ps3DCCBCtlMemDesc);
 			PVR_ASSERT(0);
 			goto PVRSRVRGXKickTA3DKM_Exit;
 		}
@@ -2636,6 +2641,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "RGXKickTA: Failed to release space in 3D CCB"));
+			DevmemReleaseCpuVirtAddr(ps3DCCBCtlMemDesc);
 			PVR_ASSERT(0);
 			goto PVRSRVRGXKickTA3DKM_Exit;
 		}
@@ -2662,6 +2668,7 @@ PVRSRV_ERROR PVRSRVRGXKickTA3DKM(CONNECTION_DATA	*psConnection,
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXKickTA3DKM failed to schedule kernel 3D command. Error:%u", eError));
+			DevmemReleaseCpuVirtAddr(ps3DCCBCtlMemDesc);
 			goto PVRSRVRGXKickTA3DKM_Exit;
 		}
 		
