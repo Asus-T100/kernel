@@ -213,6 +213,7 @@ static void dwc_xhci_enable_phy_suspend(struct usb_hcd *hcd, int enable)
 static void dwc_core_reset(struct usb_hcd *hcd)
 {
 	u32 val;
+	void __iomem *addr;
 
 	val = readl(hcd->regs + GCTL);
 	val |= GCTL_CORESOFTRESET;
@@ -250,6 +251,16 @@ static void dwc_core_reset(struct usb_hcd *hcd)
 	val = readl(hcd->regs + GUCTL);
 	val &= ~GUCTL_CMDEVADDR;
 	writel(val, hcd->regs + GUCTL);
+
+	/* Disable OTG3-EXI interface by default. It is one
+	 * workaround for silicon BUG. It will cause transfer
+	 * failed on EP#8 of any USB device.
+	 */
+	addr = ioremap_nocache(APBFC_EXIOTG3_MISC0_REG, 4);
+	val = readl(addr);
+	val |= (1 << 3);
+	writel(val, addr);
+	iounmap(addr);
 }
 
 
