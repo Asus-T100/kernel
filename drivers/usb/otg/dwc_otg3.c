@@ -1077,8 +1077,11 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	unsigned long flags, mA = 0;
 
 	/* FIXME: Skip charger detection flow for baytrail */
-	if (otg->otg_data->is_byt)
+	if (otg->otg_data->is_byt) {
+		/* for baytrail, optimization value is 0x4f for eye diagram */
+		ulpi_write(&otg->phy, TUSB1211_VENDOR_SPECIFIC1_SET, 0x4f);
 		return DWC_STATE_B_PERIPHERAL;
+	}
 
 	charger = get_charger_type(otg);
 	switch (charger) {
