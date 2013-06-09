@@ -215,7 +215,7 @@ static int mei_txe_aliveness_poll(struct mei_device *dev, u32 expected)
 		hw->aliveness = mei_txe_aliveness_get(dev);
 		if (hw->aliveness == expected) {
 			dev_dbg(&dev->pdev->dev,
-				"alivness settled after %d msec\n", t);
+				"aliveness settled after %d msec\n", t);
 			return t;
 		}
 		mutex_unlock(&dev->device_lock);
@@ -254,7 +254,7 @@ static long mei_txe_aliveness_wait(struct mei_device *dev, u32 expected)
 		dev_err(&dev->pdev->dev, "aliveness timed out = 0x%ld\n", err);
 			return -ETIMEDOUT;
 	}
-	dev_dbg(&dev->pdev->dev, "alivness settled after %d msec\n",
+	dev_dbg(&dev->pdev->dev, "aliveness settled after %d msec\n",
 			jiffies_to_msecs(timeout - err));
 	hw->recvd_aliv_resp = false;
 	return hw->aliveness == expected ? 0 : -EIO;
