@@ -18,9 +18,9 @@ static int __init ulpmc_i2c_init(void)
 	 * cc limit values will be
 	 * further tuned on ffrd later.
 	 */
-	ulpmc_pdata.cc_lim0 = 2000;	/* 2000mA */
-	ulpmc_pdata.cc_lim1 = 1500;	/* 1500mA */
-	ulpmc_pdata.cc_lim2 = 1000;	/* 1000mA */
+	ulpmc_pdata.cc_lim0 = 2500;	/* 2500mA */
+	ulpmc_pdata.cc_lim1 = 2000;	/* 2000mA */
+	ulpmc_pdata.cc_lim2 = 1500;	/* 1500mA */
 	ulpmc_pdata.cc_lim3 = 500;	/* 500mA */
 	/*
 	 * In BYT FFRD10 we have two batteries with

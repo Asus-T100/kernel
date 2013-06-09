@@ -301,7 +301,7 @@ static short adjust_sign_value(int value)
 	return result;
 }
 
-static int bc_reg_to_cur(u8 reg)
+static int bc_reg_to_cur(int reg)
 {
 	/*
 	 * D0, D1 bits of charge current
@@ -920,7 +920,7 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 		dev_info(&chip->client->dev, "spurious event!!!\n");
 	}
 
-	if (conn_evt) {
+	if (conn_evt && !chip->block_sdp) {
 		mutex_lock(&chip->lock);
 		ulpmc_throttle_chrg_cur(chip, chip->cur_throttle_state);
 		mutex_unlock(&chip->lock);
@@ -1318,6 +1318,11 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	pm_runtime_put_noidle(&chip->client->dev);
 	pm_schedule_suspend(&chip->client->dev, MSEC_PER_SEC);
 
+	/* set charge current to default value */
+	ret = ulpmc_write_reg8(client, ULPMC_BC_CHRG_CUR_CNTL_REG,
+			cur_to_cc_reg(chip->pdata->cc_lim0));
+	if (ret < 0)
+		dev_err(&client->dev, "I2C write error:%d\n", ret);
 	/* check battery presence */
 	check_battery_presence(chip);
 	/* clear pending interrupts */
