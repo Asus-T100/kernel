@@ -27,11 +27,16 @@
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
 #include <linux/dmi.h>
+#include <linux/pci.h>
+#include <acpi/acpi.h>
+#include "../../acpi/acpica/achware.h"
 
 #include "xhci.h"
 
 #define DRIVER_AUTHOR "Sarah Sharp"
 #define DRIVER_DESC "'eXtensible' Host Controller (xHC) Driver"
+
+static struct xhci_hcd *xhci_host;
 
 #ifdef CONFIG_USB_DWC_OTG_XCEIV
 #include "xhci-dwc.c"
@@ -231,6 +236,70 @@ static void xhci_free_irq(struct xhci_hcd *xhci)
 	return;
 }
 
+#ifdef CONFIG_ACPI
+bool pci_check_pme_enable_and_status(struct pci_dev *dev)
+{
+	int pmcsr_pos;
+	u16 pmcsr;
+	bool ret = false;
+
+	if (!dev->pm_cap)
+		return false;
+
+	pmcsr_pos = dev->pm_cap + PCI_PM_CTRL;
+	pci_read_config_word(dev, pmcsr_pos, &pmcsr);
+	if (!(pmcsr & PCI_PM_CTRL_PME_STATUS))
+		return false;
+
+	if (pmcsr & PCI_PM_CTRL_PME_ENABLE)
+		return true;
+
+	return ret;
+}
+
+static void xhci_byt_pm_check_work(struct work_struct *work)
+{
+	struct usb_hcd		*hcd;
+	struct pci_dev		*pdev;
+	u32			gpe_sts = 0;
+	u32			gpe_en = 0;
+
+	if (xhci_host)
+		hcd = xhci_to_hcd(xhci_host);
+	else
+		return;
+
+	pdev = to_pci_dev(hcd->self.controller);
+
+	/* Workaround: controller can not set PME_STATUS in D3, so
+	   get controller back to D0 and check PME_STATUS */
+	if (pdev->current_state != PCI_D0)
+		pci_set_power_state(pdev, PCI_D0);
+	else
+		goto done;
+
+	msleep(20);
+
+	if (pci_check_pme_enable_and_status(pdev)) {
+		/* wait for PME polling to be done */
+		msleep(1200);
+	}
+
+	/* clear status of GPE.PME_B0 */
+	acpi_hw_register_write(0xf1, 0x2000);
+
+done:
+	/* re-enable GPE.PME_B0 interrupt */
+	acpi_hw_register_read(0xf2, &gpe_en);
+	gpe_en = gpe_en | 0x2000;
+	acpi_hw_register_write(0xf2, gpe_en);
+
+	spin_lock(&xhci_host->lock);
+	xhci_host->pm_check_flag = 0;
+	spin_unlock(&xhci_host->lock);
+}
+#endif
+
 /*
  * Set up MSI
  */
@@ -251,6 +320,20 @@ static int xhci_setup_msi(struct xhci_hcd *xhci)
 		xhci_dbg(xhci, "disable MSI interrupt\n");
 		pci_disable_msi(pdev);
 	}
+
+#ifdef CONFIG_ACPI
+	/* Workaround: register a shared interrupt handler on ACPI to
+	 * to handle wake up event */
+	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
+		pdev->device == PCI_DEVICE_ID_INTEL_BYT_USH) {
+		xhci_host = xhci;
+		INIT_WORK(&xhci->pm_check, xhci_byt_pm_check_work);
+		ret = request_irq(9, (irq_handler_t)xhci_byt_pm_irq,
+			IRQF_SHARED, "xhci-acpi-wa", xhci_to_hcd(xhci));
+		if (ret)
+			xhci_dbg(xhci, "fail request interrupt handler\n");
+	}
+#endif
 
 	return ret;
 }

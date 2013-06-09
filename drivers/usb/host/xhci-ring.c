@@ -66,6 +66,8 @@
 
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
+#include <acpi/acpi.h>
+#include "../../acpi/acpica/achware.h"
 #include "xhci.h"
 
 static int handle_cmd_in_cmd_wait_list(struct xhci_hcd *xhci,
@@ -2793,6 +2795,37 @@ hw_died:
 
 	return IRQ_HANDLED;
 }
+
+#ifdef CONFIG_ACPI
+irqreturn_t xhci_byt_pm_irq(int irq, struct usb_hcd *hcd)
+{
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	u32			gpe_sts;
+	u32			gpe_en;
+
+	acpi_hw_register_read(0xf1, &gpe_sts);
+
+	/* 0x2000(bit 13) is PME_B0_STS for XHCI */
+	if (gpe_sts & 0x2000) {
+		/* clear PME_B0 bit in GPE0_EN(0xf2) to disable interrupt */
+		acpi_hw_register_read(0xf2, &gpe_en);
+		gpe_en = gpe_en & (~0x2000);
+		acpi_hw_register_write(0xf2, gpe_en);
+
+		spin_lock(&xhci->lock);
+		if (!xhci->pm_check_flag) {
+			xhci_dbg(xhci, "schedule work to handle PME\n");
+			xhci->pm_check_flag = 1;
+			schedule_work(&xhci->pm_check);
+		}
+		spin_unlock(&xhci->lock);
+
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
+}
+#endif
 
 irqreturn_t xhci_msi_irq(int irq, struct usb_hcd *hcd)
 {
