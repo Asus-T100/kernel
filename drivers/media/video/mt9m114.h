@@ -349,7 +349,7 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	},
 	{
 	.desc	= "720p",
