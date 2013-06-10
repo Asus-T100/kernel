@@ -640,7 +640,7 @@ int bq24192_get_charger_health(void)
  */
 int bq24192_get_battery_health(void)
 {
-	int ret, temp;
+	int ret, temp, count;
 	struct bq24192_chip *chip =
 		i2c_get_clientdata(bq24192_client);
 
@@ -660,15 +660,16 @@ int bq24192_get_battery_health(void)
 
 	temp /= 10;
 
-	if ((temp < BATT_TEMP_MIN_DEF) ||
-		(temp > BATT_TEMP_MAX_DEF))
+	if ((temp <= chip->min_temp) ||
+		(temp > chip->max_temp))
 		return POWER_SUPPLY_HEALTH_OVERHEAT;
 
 	/* Check if battery OVP condition occured. Reading the register
 	value two times to get reliable reg value, recommended by vendor*/
-	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
-	msleep(22);
-	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	for (count = 0; count <= MAX_TRY; count++) {
+		ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+		msleep(22);
+	}
 	if (ret < 0) {
 		dev_warn(&chip->client->dev,
 			"read reg failed %s\n", __func__);
@@ -1452,6 +1453,8 @@ static irqreturn_t bq24192_irq_thread(int irq, void *devid)
 		} else
 			dev_info(&chip->client->dev, "No charger connected\n");
 	}
+	/*updating health status when interrupt occurs*/
+	power_supply_changed(&chip->usb);
 	return IRQ_HANDLED;
 }
 
@@ -1669,6 +1672,9 @@ static int bq24192_probe(struct i2c_client *client,
 
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
+	/*assigning default value for min and max temp*/
+	chip->min_temp = BATT_TEMP_MIN_DEF;
+	chip->max_temp = BATT_TEMP_MAX_DEF;
 	i2c_set_clientdata(client, chip);
 	bq24192_client = client;
 	ret = bq24192_read_reg(client, BQ24192_VENDER_REV_REG);
@@ -1706,7 +1712,6 @@ static int bq24192_probe(struct i2c_client *client,
 					"FAILED: init_platform_data\n");
 		}
 	}
-
 	/*
 	 * Request for charger chip gpio.This will be used to
 	 * register for an interrupt handler for servicing charger
@@ -1851,7 +1856,7 @@ static int bq24192_resume(struct device *dev)
 	if (chip->irq > 0) {
 		ret = request_threaded_irq(chip->irq,
 				bq24192_irq_isr, bq24192_irq_thread,
-				0, "BQ24192", chip);
+				IRQF_TRIGGER_FALLING, "BQ24192", chip);
 		if (ret) {
 			dev_warn(&bq24192_client->dev,
 				"failed to register irq for pin %d\n",
