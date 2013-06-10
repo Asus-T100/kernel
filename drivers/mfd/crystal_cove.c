@@ -88,7 +88,14 @@ static struct resource thermal_resources[] = {
 		.flags = IORESOURCE_IRQ,
 	},
 };
-
+static struct resource bcu_resources[] = {
+	{
+		.name  = "BCU",
+		.start = BCU_IRQ,
+		.end   = BCU_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
 static struct mfd_cell crystal_cove_data[] = {
 	{
 		.name = "crystal_cove_pwrsrc",
@@ -107,6 +114,12 @@ static struct mfd_cell crystal_cove_data[] = {
 		.id = 0,
 		.num_resources = ARRAY_SIZE(thermal_resources),
 		.resources = thermal_resources,
+	},
+	{
+		.name = "crystal_cove_bcu",
+		.id = 0,
+		.num_resources = ARRAY_SIZE(bcu_resources),
+		.resources = bcu_resources,
 	},
 	{
 		.name = "crystal_cove_gpio",

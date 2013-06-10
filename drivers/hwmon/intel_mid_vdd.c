@@ -45,41 +45,58 @@
 #include <asm/intel_scu_pmic.h>
 #include <linux/spinlock.h>
 #include <linux/ratelimit.h>
+#include <linux/mfd/intel_mid_pmic.h>
+#include <asm/intel-mid.h>
+#include <linux/i2c.h>
 
-#define DRIVER_NAME "msic_vdd"
-#define DEVICE_NAME "msic_vdd"
+#ifdef CONFIG_BOARD_CTP
 
-/* BCU registers that control the behaviour of output signals */
-#define BCUDISA_BEH		0x10C
-#define BCUDISB_BEH		0x10D
-#define BCUDISCRIT_BEH		0x10E
-#define BCUPROCHOT_BEH		0x10F
+ #define DRIVER_NAME	"msic_vdd"
+ #define DEVICE_NAME	"msic_vdd"
 
-/* BCU Status registers */
-#define SBCUIRQ			0x110
-#define SBCUCTRL		0x111
+ #define OFFSET		0x109
+ #define BCUIRQ		0x00A
+ #define MBCUIRQ	0x019
+
+ #define VWARNA_THRES	0x04 /*2.9v*/
+
+#else
+
+ #define DRIVER_NAME	"crystal_cove_bcu"
+ #define DEVICE_NAME	"crystal_cove_bcu"
+
+ #define OFFSET		0x0B4
+ #define BCUIRQ		0x007
+ #define MBCUIRQ	0x014
+
+ #define VWARNA_THRES	0x07 /*2.9v*/
+#endif
+
+#define VWARNA_CFG	(OFFSET + 0)
+#define VWARNB_CFG	(OFFSET + 1)
+#define VCRIT_CFG	(OFFSET + 2)
+#define BCUDISA_BEH	(OFFSET + 3)
+#define BCUDISB_BEH	(OFFSET + 4)
+#define BCUDISCRIT_BEH	(OFFSET + 5)
+#define BCUPROCHOT_BEH	(OFFSET + 6)
+
+#define SBCUIRQ		(OFFSET + 7)
+#define SBCUCTRL	(OFFSET + 8)
+
+#define VWARNA_VOLT_THRES	VWARNA_THRES
+#define VWARNB_VOLT_THRES	0x04 /* 2.9v*/
+#define VCRIT_VOLT_THRES	0x01 /*3.2v*/
+
 #define SBCUCTRL_CLEAR_ASSERT	0x02
 #define SBCUCTRL_STICKY_WARNB	0x04
 #define SBCUCTRL_STICKY_WARNA	0x08
 
 #define IRQLVL1MSK		0x021
 
-/* Voltage limits (in mV) */
-#define MAX_VOLTAGE		3300
-#define MIN_VOLTAGE		2600
-
-/* BCU Interrupt registers */
-#define BCUIRQ			0x00A
-#define MBCUIRQ			0x019
 /* BCUIRQ register settings */
 #define VCRIT_IRQ		(1 << 2)
 #define VWARNA_IRQ		(1 << 1)
 #define VWARNB_IRQ		(1 << 0)
-
-/* BCU registers that govern voltage monitoring */
-#define VWARNA_CFG		0x109
-#define VWARNB_CFG		0x10A
-#define VCRIT_CFG		0x10B
 
 /* Enable BCU voltage comparator */
 #define VCOMP_ENABLE		(1 << 3)
@@ -91,11 +108,6 @@
 
 /* curently 20 fast clock is set */
 #define DEBOUNCE		(0x70)
-
-/* voltage threshold to be set for different theshold points */
-#define VWARNA_VOLT_THRES	0x04 /* 2.9V */
-#define VWARNB_VOLT_THRES	0x04 /* 2.9V */
-#define VCRIT_VOLT_THRES	0x01 /* 3.2V */
 
 /*
  * this flag has been used in lot of places to update the proper bit
@@ -119,6 +131,15 @@
 #define MSIC_BCU_LEN		1
 
 #define BCU_SMIP_OFFSET		0x5A5
+
+/* voltage threshold limits in CTP*/
+#define MAX_VOLTAGE             3300
+#define MIN_VOLTAGE             2600
+
+/* mask to clear interrupt bit*/
+#define BCUIRQ_CLEARCRIT        0X04
+#define BCUIRQ_CLEARA           0x02
+#define BCUIRQ_CLEARB           0x01
 
 /* default values for register configuration */
 #define INIT_VWARNA		(VWARNA_VOLT_THRES | DEBOUNCE | VCOMP_ENABLE)
@@ -502,10 +523,12 @@ static irqreturn_t vdd_intrpt_handler(int id, void *dev)
 	uint8_t irq_data;
 	unsigned long __flags;
 
+#ifdef CONFIG_BOARD_CTP
 	irq_data = readb(vinfo->bcu_intr_addr);
 	spin_lock_irqsave(&vdd_interrupt_lock, __flags);
 	global_irq_data |= irq_data;
 	spin_unlock_irqrestore(&vdd_interrupt_lock, __flags);
+#endif
 	return IRQ_WAKE_THREAD;
 };
 
@@ -516,10 +539,16 @@ static irqreturn_t vdd_intrpt_handler(int id, void *dev)
   */
 static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 {
-	uint8_t irq_data, event = 0;
+	uint8_t irq_data, event = 0, clear_irq, ret;
 	struct vdd_info *vinfo = (struct vdd_info *)dev_data;
 
 	spin_lock_irq(&vdd_interrupt_lock);
+#ifndef CONFIG_BOARD_CTP
+	ret = intel_scu_ipc_ioread8(BCUIRQ, &global_irq_data);
+	if (ret)
+		dev_warn(&vinfo->pdev->dev, "ipc read/write failed\n");
+	clear_irq = global_irq_data;
+#endif
 	irq_data = global_irq_data;
 	global_irq_data = 0;
 	spin_unlock_irq(&vdd_interrupt_lock);
@@ -541,6 +570,12 @@ static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 
 	handle_events(event, dev_data);
 
+#ifndef CONFIG_BOARD_CTP
+	ret = intel_scu_ipc_iowrite8(BCUIRQ, clear_irq);
+	clear_irq = 0;
+	if (ret)
+		dev_warn(&vinfo->pdev->dev, "ipc read/write failed\n");
+#endif
 	mutex_unlock(&vdd_update_lock);
 	return IRQ_HANDLED;
 }
@@ -650,7 +685,11 @@ static int mid_vdd_probe(struct platform_device *pdev)
 	vinfo->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, vinfo);
 
+#ifdef CONFIG_BOARD_CTP
 	vinfo->bcu_intr_addr = ioremap(MSIC_BCU_STAT, MSIC_BCU_LEN);
+#else
+	vinfo->bcu_intr_addr = BCUIRQ;
+#endif
 	if (!vinfo->bcu_intr_addr) {
 		dev_err(&pdev->dev, "ioremap failed\n");
 		return -ENOMEM;
