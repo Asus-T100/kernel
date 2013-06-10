@@ -211,8 +211,6 @@ static void mei_txe_remove(struct pci_dev *pdev)
 	}
 
 	pm_runtime_get_noresume(&pdev->dev);
-	dev_dbg(&pdev->dev, "rpm: remove: usage count: %d\n",
-		atomic_read(&pdev->dev.power.usage_count));
 
 	hw = to_txe_hw(dev);
 
