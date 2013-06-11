@@ -26,6 +26,8 @@
 #define CONFIG_SUPPORT_HDMI_AUDIO
 #ifdef CONFIG_SUPPORT_HDMI_AUDIO
 int i915_hdmi_state;
+int i915_notify_had;
+
 /*
  * Audio register range 0x65000 to 0x65FFF
  */
@@ -46,7 +48,15 @@ void i915_hdmi_audio_init(struct hdmi_audio_priv *p_hdmi_priv)
 /* Added for HDMI Audio */
 void hdmi_get_eld(uint8_t *eld)
 {
+	struct drm_device *dev = hdmi_priv->dev;
+	struct drm_i915_private *dev_priv =
+		(struct drm_i915_private *) dev->dev_private;
 	memcpy(hdmi_eld, eld, HAD_MAX_ELD_BYTES);
+	if (i915_notify_had) {
+		mid_hdmi_audio_signal_event(dev_priv->dev,
+			HAD_EVENT_HOT_PLUG);
+		i915_notify_had = 0;
+	}
 }
 
 static inline int android_hdmi_get_eld(struct drm_device *dev, void *eld)
