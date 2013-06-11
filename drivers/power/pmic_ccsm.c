@@ -1413,7 +1413,7 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	/* register interrupt */
 	retval = request_threaded_irq(chc.irq, pmic_isr,
 			pmic_thread_handler,
-			IRQF_SHARED ,
+			IRQF_SHARED|IRQF_NO_SUSPEND ,
 			DRIVER_NAME, &chc);
 	if (retval) {
 		dev_err(&pdev->dev,
@@ -1514,9 +1514,6 @@ static int pmic_chrgr_suspend(struct device *dev)
 static int pmic_chrgr_resume(struct device *dev)
 {
 	dev_dbg(dev, "%s called\n", __func__);
-	if (pmic_check_initial_events())
-		dev_err(chc.dev,
-			"Error posting initial events\n");
 	return 0;
 }
 #endif
