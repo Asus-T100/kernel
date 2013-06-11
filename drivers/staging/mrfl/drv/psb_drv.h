@@ -21,6 +21,7 @@
 #define _PSB_DRV_H_
 
 #include <linux/version.h>
+#include <linux/panel_psb_drv.h>
 
 #include <drm/drmP.h>
 #include "psb_drm.h"
@@ -66,24 +67,6 @@ enum {
 	CHIP_MRFLD_1180 = 4
 };
 
-enum panel_type {
-	TPO_CMD,
-	TPO_VID,
-	TMD_CMD,
-	TMD_VID,
-	TMD_6X10_VID,
-	PYR_CMD,
-	PYR_VID,
-	TPO,
-	TMD,
-	PYR,
-	HDMI,
-	JDI_VID,
-	JDI_CMD,
-	CMI_VID,
-	CMI_CMD,
-	GCT_DETECT
-};
 
 #define PCI_ID_TOPAZ_DISABLED 0x4101
 
