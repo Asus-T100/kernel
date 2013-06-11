@@ -1846,6 +1846,11 @@ int intel_gps_core_write32(struct drm_i915_private *dev_priv,
 int intel_gps_core_write32_bits(struct drm_i915_private *dev_priv,
 					u32 reg, u32 val, u32 mask);
 
+int intel_pmc_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_pmc_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_pmc_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
+
 #define intel_dpio_read(dev_priv, reg)	intel_dpio_read32_tmp(dev_priv, reg)
 #define intel_dpio_write(dev_priv, reg, val) \
 			intel_dpio_write32(dev_priv, reg, val)
@@ -1875,5 +1880,10 @@ int intel_gps_core_write32_bits(struct drm_i915_private *dev_priv,
 			intel_ccu_write32(dev_priv, reg, val)
 #define intel_ccu_write_bits(dev_priv, reg, val, mask) \
 			intel_ccu_write32_bits(dev_priv, reg, val, mask)
-
+#define intel_pmc_read(dev_priv, reg, val) \
+			intel_pmc_read32(dev_priv, reg, val)
+#define intel_pmc_write(dev_priv, reg, val) \
+			intel_pmc_write32(dev_priv, reg, val)
+#define intel_pmc_write_bits(dev_priv, reg, val, mask) \
+			intel_pmc_write32_bits(dev_priv, reg, val, mask)
 #endif
