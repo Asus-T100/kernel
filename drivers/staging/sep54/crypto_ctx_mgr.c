@@ -456,14 +456,17 @@ void ctxmgr_unmap_kernel_ctx(struct client_crypto_ctx_info *ctx_info)
 		SEP_LOG_DEBUG("Context not mapped\n");
 		return;
 	}
+#endif
+
+	embedded_sep_ctx_offset =
+	    get_sep_ctx_offset(ctx_info->ctx_kptr->alg_class);
+
+#ifdef DEBUG
 	if (embedded_sep_ctx_offset == 0) {
 		SEP_LOG_ERR("Invalid algorithm class\n");
 		return;
 	}
 #endif
-
-	embedded_sep_ctx_offset =
-	    get_sep_ctx_offset(ctx_info->ctx_kptr->alg_class);
 
 	SEP_LOG_DEBUG("kernel_ctx_ptr=%p\n", ctx_info->ctx_kptr);
 	embedded_sep_ctx_p = (struct sep_ctx_cache_entry *)
