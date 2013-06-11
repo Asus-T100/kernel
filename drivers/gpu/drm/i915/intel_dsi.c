@@ -118,6 +118,9 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 	},
 };
 
+/* Prototype for internal functions */
+static void dsi_config(struct drm_encoder *encoder);
+
 static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
 {
 	return container_of(intel_attached_encoder(connector),
@@ -677,8 +680,8 @@ static void dsi_config(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	int pipe = intel_crtc->pipe;
 	u32 tmp;
 

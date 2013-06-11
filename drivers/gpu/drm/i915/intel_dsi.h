@@ -152,9 +152,6 @@ extern struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops;
 extern struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 
-/* internal functions */
-static void dsi_config(struct drm_encoder *encoder);
-
 /* external functions */
 void intel_dsi_enable(struct intel_encoder *encoder);
 bool intel_dsi_init(struct drm_device *dev);

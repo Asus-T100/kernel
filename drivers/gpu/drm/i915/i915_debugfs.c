@@ -2088,7 +2088,7 @@ i915_rps_init_write(struct file *filp, const char __user *ubuf, size_t cnt,
 
 		buf[cnt] = 0;
 
-		ret = kstrtoul(buf, 0, &val);
+		ret = kstrtoul(buf, 0, (unsigned long *)&val);
 		if (ret)
 			return -EINVAL;
 	}
@@ -2839,7 +2839,7 @@ i915_write_rc6_status(struct file *filp,
 			return -EFAULT;
 		buf[cnt] = 0;
 
-		ret = kstrtoul(buf, 0, &val);
+		ret = kstrtoul(buf, 0, (unsigned long *)&val);
 		if (ret)
 			return -EINVAL;
 	}
@@ -2914,7 +2914,7 @@ i915_rpm_debug_write(struct file *filp,
 			return -EFAULT;
 		buf[cnt] = 0;
 
-		if (kstrtoul(buf, 0, &val))
+		if (kstrtoul(buf, 0, (unsigned long *)&val))
 			return -EINVAL;
 	}
 

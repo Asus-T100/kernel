@@ -4935,7 +4935,7 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
-	int refclk, num_connectors = 0;
+	int refclk = 0, num_connectors = 0;
 	intel_clock_t clock, reduced_clock;
 	u32 dspcntr, pipeconf, vsyncshift;
 	bool ok, has_reduced_clock = false, is_sdvo = false;
@@ -4943,7 +4943,7 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 			is_dsi = false, is_edp = false;
 	struct intel_encoder *encoder;
 	struct intel_dsi *intel_dsi;
-	const intel_limit_t *limit;
+	const intel_limit_t *limit = NULL;
 	int ret;
 	struct intel_program_clock_bending clockbend;
 	bool dither = false;
@@ -7487,6 +7487,7 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 	struct drm_crtc *crtc;
 	struct intel_encoder *intel_encoder;
+	int ret = 0;
 
 	drm_kms_helper_poll_disable(drm_dev);
 	display_save_restore_hotplug(drm_dev, SAVEHPD);
@@ -7501,7 +7502,7 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 				intel_encoder_prepare(&intel_encoder->base);
 		}
 	}
-	int ret = mid_hdmi_audio_suspend(drm_dev);
+	ret = mid_hdmi_audio_suspend(drm_dev);
 	if (ret != true)
 		DRM_ERROR("Error suspending HDMI audio\n");
 	dev_priv->disp_pm_in_progress = false;

@@ -911,6 +911,7 @@ intel_hdmi_set_property(struct drm_connector *connector,
 	if (ret)
 		return ret;
 
+	/*Check force audio */
 	if (property == dev_priv->force_audio_property) {
 		enum hdmi_force_audio i = val;
 		bool has_audio;
@@ -944,7 +945,7 @@ intel_hdmi_set_property(struct drm_connector *connector,
 		if (val == intel_hdmi->pfit)
 			return 0;
 
-		DRM_DEBUG_DRIVER("val = %d", val);
+		DRM_DEBUG_DRIVER("val = %d", (int)val);
 		intel_hdmi->pfit = val;
 		goto done;
 	}

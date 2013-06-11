@@ -34,5 +34,4 @@
 #define B080XAT_10x7_PANEL_WIDTH         122
 #define B080XAT_10x7_PANEL_HEIGHT        162
 
-
 #endif /* __DSI_MOD_AUO_B080XAT_H__ */
