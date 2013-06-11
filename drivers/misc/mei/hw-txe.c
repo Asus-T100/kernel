@@ -247,12 +247,12 @@ static long mei_txe_aliveness_wait(struct mei_device *dev, u32 expected)
 		return 0;
 
 	mutex_unlock(&dev->device_lock);
-	err = wait_event_interruptible_timeout(hw->wait_aliveness_resp,
+	err = wait_event_timeout(hw->wait_aliveness_resp,
 			hw->recvd_aliv_resp, timeout);
 	mutex_lock(&dev->device_lock);
 	if (err <= 0 || !hw->recvd_aliv_resp) {
-		dev_err(&dev->pdev->dev, "aliveness timed out = 0x%ld\n", err);
-			return -ETIMEDOUT;
+		dev_err(&dev->pdev->dev, "aliveness timed out = %ld\n", err);
+		return -ETIMEDOUT;
 	}
 	dev_dbg(&dev->pdev->dev, "aliveness settled after %d msec\n",
 			jiffies_to_msecs(timeout - err));
@@ -901,7 +901,7 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 		dev_dbg(&dev->pdev->dev,
 			"Aliveness Interrrupt: Status: %d\n", hw->aliveness);
 		hw->recvd_aliv_resp = true;
-		wake_up_interruptible(&hw->wait_aliveness_resp);
+		wake_up(&hw->wait_aliveness_resp);
 	}
 
 
