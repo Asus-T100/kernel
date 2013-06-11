@@ -270,3 +270,9 @@ int intel_pmc_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 	return intel_sideband_write32_bits(dev_priv,
 				IOSF_PORT_PMC, reg, val, mask);
 }
+
+/* Function reads the fuse port */
+int intel_fuse_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
+{
+	return intel_sideband_read32(dev_priv, IOSF_PORT_FUSE, reg, val);
+}

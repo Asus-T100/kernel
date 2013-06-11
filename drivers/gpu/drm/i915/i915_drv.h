@@ -1850,6 +1850,7 @@ int intel_gps_core_write32(struct drm_i915_private *dev_priv,
 					u32 reg, u32 val);
 int intel_gps_core_write32_bits(struct drm_i915_private *dev_priv,
 					u32 reg, u32 val, u32 mask);
+int intel_fuse_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
 
 int intel_pmc_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
 int intel_pmc_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
