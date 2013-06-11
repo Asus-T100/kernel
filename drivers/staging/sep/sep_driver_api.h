@@ -70,6 +70,9 @@
 /* Op code to tell sep the shared memory location */
 #define DX_SEP_HOST_SEP_SEP_DRIVER_LOADED_OP_CODE 0xBC3
 
+/* Op code to tell sep we are rebooting */
+#define DX_SEP_HOST_SEP_SEP_DRIVER_REBOOT_OP_CODE 0xBC4
+
 /* Incorrect Op Code return */
 #define  DX_SEP_HOST_INCORRECT_OP_CODE 0xA09004
 
