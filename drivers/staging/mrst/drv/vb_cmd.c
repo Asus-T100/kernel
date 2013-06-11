@@ -46,8 +46,40 @@
 
 enum vb_panel_type {
 	PANEL_IGZO = 0,
-	PANEL_CGS
+	PANEL_CGS,
+	PANEL_IGZO_G8
 };
+
+enum dsi_init_command_type {
+	GEN_LONG_LP_CMD,
+	GEN_SHORT_LP_CMD,
+	MCS_LONG_LP_CMD,
+	MCS_SHORT_LP_CMD,
+	GEN_LONG_HS_CMD,
+	GEN_SHORT_HS_CMD,
+	MCS_LONG_HS_CMD,
+	MCS_SHORT_HS_CMD,
+	DELAY_CMD,
+	DONE_CMD
+};
+
+struct dsi_init_command {
+	enum dsi_init_command_type type;
+	u32 count;
+	u8 *param;
+};
+
+#define GENERIC_CMD(type, param) {type, sizeof(param), param}
+#define GEN_LONG_LP(param) GENERIC_CMD(GEN_LONG_LP_CMD, param)
+#define GEN_SHORT_LP(param) GENERIC_CMD(GEN_SHORT_LP_CMD, param)
+#define MCS_LONG_LP(param) GENERIC_CMD(MCS_LONG_LP_CMD, param)
+#define MCS_SHORT_LP(param) GENERIC_CMD(MCS_SHORT_LP_CMD, param)
+#define GEN_LONG_HS(param) GENERIC_CMD(GEN_LONG_HS_CMD, param)
+#define GEN_SHORT_HS(param) GENERIC_CMD(GEN_SHORT_HS_CMD, param)
+#define MCS_LONG_HS(param) GENERIC_CMD(MCS_LONG_HS_CMD, param)
+#define MCS_SHORT_HS(param) GENERIC_CMD(MCS_SHORT_HS_CMD, param)
+#define DELAY(delay) {DELAY_CMD, delay, NULL}
+#define DONE() {DONE_CMD, 0, NULL}
 
 static u8 ls04x_mcap[] = { 0xb0, 0x00 };
 static u8 ls04x_mcap_cgs[] = { 0xb0, 0x04 };
@@ -55,21 +87,36 @@ static u8 ls04x_device_code_read[] = { 0xbf };
 static u8 ls04x_frame_memory_access_igzo[] = {
 	0xb3, 0x00, 0xc0, 0x00,
 	0x00, 0x00, 0x00};
+static u8 ls04x_frame_memory_access_igzo_g8[] = {
+	0xb3, 0x0c, 0x10, 0x00,
+	0x00, 0x00, 0x00};
 static u8 ls04x_frame_memory_access_cgs[] = {
 	0xb3, 0x00, 0x00, 0x22,
 	0x00, 0x00};
 static u8 ls04x_interface_id[] = {
 	0xb4, 0x0c, 0x12};
+static u8 ls04x_interface_id_igzo_g8[] = {
+	0xb4, 0x0c, 0x00};
 static u8 ls04x_dsi_control1_igzo[] = {
 	0xb6, 0x39, 0xb3};
+static u8 ls04x_dsi_control1_igzo_g8[] = {
+	0xb6, 0x09, 0xa3};
 static u8 ls04x_dsi_control1_cgs[] = {
 	0xb6, 0x31, 0xb5};
 static u8 ls04x_dsi_control2[] = { 0xb7, 0x00 };
+static u8 ls04x_external_clock_igzo_g8[] = {
+	0xbe, 0x00, 0x04};
 static u8 ls04x_panel_pin_ctrl[] = {
 	0xcb, 0x67, 0x26, 0xc0,
 	0x19, 0x0e, 0x00, 0x00,
 	0x00, 0x00, 0xc0, 0x00};
+static u8 ls04x_panel_pin_ctrl_igzo_g8[] = {
+	0xcb, 0x80, 0xcc, 0x34,
+	0x0b, 0x73, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00, 0xc0};
 static u8 ls04x_panel_interface_ctrl_igzo[] = { 0xcc, 0x01 };
+static u8 ls04x_panel_interface_ctrl_igzo_g8[] = { 0xcc, 0x03 };
 static u8 ls04x_panel_interface_ctrl_cgs[] = { 0xcc, 0x06 };
 static u8 ls04x_display_setting1_igzo[] = {
 	0xc1, 0x0c, 0x62, 0x40,
@@ -82,6 +129,17 @@ static u8 ls04x_display_setting1_igzo[] = {
 	0x04, 0x00, 0x20, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00};
+static u8 ls04x_display_setting1_igzo_g8[] = {
+	0xc1, 0x8c, 0xa2, 0x00,
+	0x53, 0xc3, 0x91, 0xab,
+	0xab, 0x06, 0x04, 0x26,
+	0x06, 0xba, 0xba, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x01, 0x00, 0x00, 0x00,
+	0x00, 0x62, 0x30, 0x40,
+	0xa5, 0x0f, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00};
 static u8 ls04x_display_setting1_cgs[] = {
 	0xc1, 0x04, 0x64, 0x10,
 	0x41, 0x00, 0x00, 0x8e,
@@ -93,6 +151,9 @@ static u8 ls04x_display_setting1_cgs[] = {
 static u8 ls04x_display_setting2_igzo[] = {
 	0xc2, 0x30, 0xf5, 0x00,
 	0x0c, 0x0e, 0x00, 0x00};
+static u8 ls04x_display_setting2_igzo_g8[] = {
+	0xc2, 0x50, 0xf5, 0x00,
+	0x0c, 0x4d, 0x00, 0x00};
 static u8 ls04x_display_setting2_cgs[] = {
 	0xc2, 0x20, 0xf5, 0x00,
 	0x08, 0x08, 0x00};
@@ -103,6 +164,10 @@ static u8 ls04x_source_timing_setting_igzo[] = {
 	0x00, 0x43, 0x2d, 0x00,
 	0x00, 0x00, 0x00, 0x03,
 	0x2d, 0x00};
+static u8 ls04x_source_timing_setting_igzo_g8[] = {
+	0xc4, 0x70, 0x00, 0x0f,
+	0x0f, 0xcf, 0x00, 0x01,
+	0x01, 0x00, 0x00, 0x01};
 static u8 ls04x_source_timing_setting_cgs[] = {
 	0xc4, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x09,
@@ -111,6 +176,9 @@ static u8 ls04x_source_timing_setting_cgs[] = {
 static u8 ls04x_gip_timing_setting[] = {
 	0xc6, 0xb2, 0x13, 0xa2,
 	0xb2, 0x13, 0xa2};
+static u8 ls04x_gip_timing_setting_igzo_g8[] = {
+	0xc6, 0xb3, 0x7a, 0x7a,
+	0x00, 0x00};
 static u8 ls04x_ltps_timing_setting_cgs[] = {
 	0xc6, 0xb0, 0x00, 0xb1,
 	0x05, 0xa6, 0x00, 0x00,
@@ -147,6 +215,39 @@ static u8 ls04x_gamma_c_setting_igzo[] = {
 	0x13, 0x20, 0x36, 0x26,
 	0x32, 0x3e, 0x4a, 0x5b,
 	0x67};
+static u8 ls04x_gamma_a_setting_igzo_g8[] = {
+	0xc7, 0x00, 0x10, 0x1c,
+	0x2b, 0x38, 0x43, 0x5c,
+	0x6e, 0x7c, 0x89, 0x3b,
+	0x47, 0x55, 0x69, 0x72,
+	0x7e, 0x8c, 0x93, 0x97,
+	0x00, 0x10, 0x1c, 0x2b,
+	0x38, 0x43, 0x5c, 0x6e,
+	0x7c, 0x89, 0x3b, 0x47,
+	0x55, 0x69, 0x72, 0x7e,
+	0x8c, 0x93, 0x97};
+static u8 ls04x_gamma_b_setting_igzo_g8[] = {
+	0xc8, 0x00, 0x10, 0x1c,
+	0x2b, 0x38, 0x43, 0x5c,
+	0x6e, 0x7c, 0x89, 0x3b,
+	0x47, 0x55, 0x69, 0x72,
+	0x7e, 0x8c, 0x93, 0x97,
+	0x00, 0x10, 0x1c, 0x2b,
+	0x38, 0x43, 0x5c, 0x6e,
+	0x7c, 0x89, 0x3b, 0x47,
+	0x55, 0x69, 0x72, 0x7e,
+	0x8c, 0x93, 0x97};
+static u8 ls04x_gamma_c_setting_igzo_g8[] = {
+	0xc9, 0x00, 0x10, 0x1c,
+	0x2b, 0x38, 0x43, 0x5c,
+	0x6e, 0x7c, 0x89, 0x3b,
+	0x47, 0x55, 0x69, 0x72,
+	0x7e, 0x8c, 0x93, 0x97,
+	0x00, 0x10, 0x1c, 0x2b,
+	0x38, 0x43, 0x5c, 0x6e,
+	0x7c, 0x89, 0x3b, 0x47,
+	0x55, 0x69, 0x72, 0x7e,
+	0x8c, 0x93, 0x97};
 static u8 ls04x_gamma_a_setting_cgs[] = {
 	0xc7, 0x00, 0x0c, 0x15,
 	0x1f, 0x2e, 0x42, 0x2e,
@@ -185,6 +286,14 @@ static u8 ls04x_backlight_setting2_pwr_save[] = {
 static u8 ls04x_backlight_setting4_pwr_save[] = {
 	0xba, 0x0f, 0x18, 0x04,
 	0x40, 0x9f, 0x1f, 0xd7};
+static u8 ls04x_backlight_setting4_igzo_g8[] = {
+	0xce, 0x7d, 0x40, 0x48,
+	0x56, 0x67, 0x78, 0x88,
+	0x98, 0xa7, 0xb5, 0xc3,
+	0xd1, 0xde, 0xe9, 0xf2,
+	0xfa, 0xff, 0x04, 0x00,
+	0x04, 0x04, 0x44, 0x00,
+	0x00};
 static u8 ls04x_backlight_setting6_igzo[] = {
 	0xce, 0x00, 0x04, 0x08,
 	0x01, 0x00, 0x00, 0x00};
@@ -194,11 +303,23 @@ static u8 ls04x_power_setting_igzo[] = {
 	0x00, 0x89, 0x01, 0xbb,
 	0x0c, 0x8f, 0x0e, 0x21,
 	0x20};
+static u8 ls04x_power_setting_igzo_g8[] = {
+	0xd0, 0x11, 0x43, 0x63,
+	0xe3, 0x4c, 0x19, 0x19,
+	0x0c, 0x0c, 0xaa};
 static u8 ls04x_power_setting_cgs[] = {
 	0xd0, 0x10, 0x4c, 0x18,
 	0xcc, 0xda, 0x5a, 0x01,
 	0x8a, 0x01, 0xbb, 0x58,
 	0x4a};
+static u8 ls04x_power_setting_switching_reg_igzo_g8[] = {
+	0xd1, 0x10, 0x00, 0x80,
+	0x02, 0x04, 0x06, 0x08,
+	0x00, 0xc0, 0x00, 0x00,
+	0x1e, 0x02, 0xd0, 0x00,
+	0x80, 0x02, 0x04, 0x06,
+	0x08, 0x00, 0x00, 0x1e,
+	0x03, 0x00};
 static u8 ls04x_power_setting_int_pwr1_igzo[] = { 0xd2, 0x9c };
 static u8 ls04x_power_setting_int_pwr1_cgs[] = { 0xd2, 0xb8 };
 static u8 ls04x_power_setting_int_pwr2_igzo[] = {
@@ -208,6 +329,14 @@ static u8 ls04x_power_setting_int_pwr2_igzo[] = {
 	0xa0, 0xa8, 0xa0, 0x07,
 	0xc7, 0xb7, 0x33, 0xa2,
 	0x73, 0xc7, 0x00, 0x00,
+	0x00};
+static u8 ls04x_power_setting_int_pwr2_igzo_g8[] = {
+	0xd3, 0x1b, 0x33, 0xbb,
+	0xbb, 0xb3, 0x33, 0x33,
+	0x33, 0x80, 0x88, 0x9f,
+	0x5f, 0xc2, 0x42, 0x33,
+	0x33, 0xf7, 0xf3, 0x3d,
+	0xbc, 0x07, 0x00, 0x00,
 	0x00};
 static u8 ls04x_power_setting_int_pwr2_cgs[] = {
 	0xd3, 0x1a, 0xb3, 0xbb,
@@ -219,6 +348,10 @@ static u8 ls04x_power_setting_int_pwr2_cgs[] = {
 static u8 ls04x_vcom_setting[] = {
 	0xd5, 0x06, 0x00, 0x00,
 	0x01, 0x2b, 0x01, 0x2b};
+static u8 ls04x_vcom_setting_igzo_g8[] = {
+	0xd5, 0x0c, 0x00, 0x00,
+	0x01, 0xa0, 0x00, 0x00,
+	0x01, 0x00, 0x00, 0x00};
 static u8 ls04x_sleep_out_nvm_load_setting[] = { 0xd6, 0x01 };
 static u8 ls04x_sequencer_timing_power_on_igzo[] = {
 	0xd7, 0x44, 0x01, 0xff,
@@ -246,11 +379,28 @@ static u8 ls04x_low_power_function[] = {
 	0xc0, 0x00, 0x76, 0x33,
 	0x33, 0x00, 0xf0, 0x33,
 	0x33};
+static u8 ls04x_seq_timing_ctrl_gip_igzo_g8[] = {
+	0xeb, 0x09, 0x55, 0xe4,
+	0x00, 0x04, 0x00, 0x55,
+	0x01, 0x00, 0x00, 0xa8,
+	0x6a, 0x55, 0xaa, 0xaa,
+	0x80, 0x68, 0x20, 0xff,
+	0xff, 0xff, 0xff, 0xff,
+	0xaa, 0xa4, 0xa4, 0xaa,
+	0x01, 0x09, 0x55, 0x00};
 static u8 ls04x_panel_sync_out1[] = {
 	0xec, 0x01, 0x40};
+static u8 ls04x_panel_sync_out1_igzo_g8[] = {
+	0xec, 0x04, 0x10, 0x00,
+	0x00};
 static u8 ls04x_panel_sync_out2[] = {
 	0xed, 0x00, 0x00, 0x00,
 	0x00, 0x00};
+static u8 ls04x_panel_sync_out2_igzo_g8[] = {
+	0xed, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00};
 static u8 ls04x_panel_sync_out3[] = { 0xee, 0x00 };
 static u8 ls04x_panel_sync_out4[] = {
 	0xef, 0x00, 0x00, 0x00,
@@ -266,6 +416,102 @@ static u8 ls04x_set_page_addr[] = {
 static u8 ls04x_ledpwm_on[] = { 0x53, 0x2c };
 static u8 ls04x_cabc_on[] = { 0x55, 0x01 };
 static u8 ls04x_deep_standby[] = { 0xb1, 0x01 };
+
+static struct dsi_init_command igzo_init_commands[] = {
+	GEN_SHORT_HS(ls04x_mcap),
+	GEN_LONG_HS(ls04x_frame_memory_access_igzo),
+	GEN_LONG_HS(ls04x_interface_id),
+	GEN_LONG_HS(ls04x_dsi_control1_igzo),
+	GEN_SHORT_HS(ls04x_dsi_control2),
+	GEN_LONG_HS(ls04x_panel_pin_ctrl),
+	GEN_SHORT_HS(ls04x_panel_interface_ctrl_igzo),
+	GEN_LONG_HS(ls04x_display_setting1_igzo),
+	GEN_LONG_HS(ls04x_display_setting2_igzo),
+	GEN_LONG_HS(ls04x_tpc_sync_ctrl),
+	GEN_LONG_HS(ls04x_source_timing_setting_igzo),
+	GEN_LONG_HS(ls04x_gip_timing_setting),
+	GEN_LONG_HS(ls04x_backlight_setting1_pwr_save),
+	GEN_LONG_HS(ls04x_backlight_setting2_pwr_save),
+	GEN_LONG_HS(ls04x_backlight_setting4_pwr_save),
+	GEN_LONG_HS(ls04x_backlight_setting6_igzo),
+	GEN_LONG_HS(ls04x_gamma_a_setting_igzo),
+	GEN_LONG_HS(ls04x_gamma_b_setting_igzo),
+	GEN_LONG_HS(ls04x_gamma_c_setting_igzo),
+	GEN_LONG_HS(ls04x_power_setting_igzo),
+	GEN_SHORT_HS(ls04x_power_setting_int_pwr1_igzo),
+	GEN_LONG_HS(ls04x_power_setting_int_pwr2_igzo),
+	GEN_SHORT_HS(ls04x_sleep_out_nvm_load_setting),
+	GEN_LONG_HS(ls04x_sequencer_timing_power_on_igzo),
+	GEN_LONG_HS(ls04x_low_power_function),
+	GEN_LONG_HS(ls04x_panel_sync_out1),
+	GEN_LONG_HS(ls04x_panel_sync_out2),
+	GEN_SHORT_HS(ls04x_panel_sync_out3),
+	GEN_LONG_HS(ls04x_panel_sync_out4),
+	MCS_SHORT_HS(ls04x_ledpwm_on),
+	MCS_SHORT_HS(ls04x_cabc_on),
+	MCS_LONG_HS(ls04x_set_column_addr),
+	MCS_LONG_HS(ls04x_set_page_addr),
+	DONE()
+};
+
+static struct dsi_init_command igzo_g8_init_commands[] = {
+	GEN_SHORT_HS(ls04x_mcap),
+	GEN_LONG_HS(ls04x_frame_memory_access_igzo_g8),
+	GEN_LONG_HS(ls04x_interface_id_igzo_g8),
+	GEN_LONG_HS(ls04x_dsi_control1_igzo_g8),
+	GEN_LONG_HS(ls04x_external_clock_igzo_g8),
+	GEN_LONG_HS(ls04x_panel_pin_ctrl_igzo_g8),
+	GEN_SHORT_HS(ls04x_panel_interface_ctrl_igzo_g8),
+	GEN_LONG_HS(ls04x_display_setting1_igzo_g8),
+	GEN_LONG_HS(ls04x_display_setting2_igzo_g8),
+	GEN_LONG_HS(ls04x_tpc_sync_ctrl),
+	GEN_LONG_HS(ls04x_source_timing_setting_igzo_g8),
+	GEN_LONG_HS(ls04x_gip_timing_setting_igzo_g8),
+	GEN_LONG_HS(ls04x_gamma_a_setting_igzo_g8),
+	GEN_LONG_HS(ls04x_gamma_b_setting_igzo_g8),
+	GEN_LONG_HS(ls04x_gamma_c_setting_igzo_g8),
+	GEN_LONG_HS(ls04x_backlight_setting4_igzo_g8),
+	GEN_LONG_HS(ls04x_power_setting_igzo_g8),
+	GEN_LONG_HS(ls04x_power_setting_switching_reg_igzo_g8),
+	GEN_LONG_HS(ls04x_power_setting_int_pwr2_igzo_g8),
+	GEN_LONG_HS(ls04x_vcom_setting_igzo_g8),
+	GEN_SHORT_HS(ls04x_sleep_out_nvm_load_setting),
+	GEN_LONG_HS(ls04x_seq_timing_ctrl_gip_igzo_g8),
+	GEN_LONG_HS(ls04x_panel_sync_out1_igzo_g8),
+	GEN_LONG_HS(ls04x_panel_sync_out2_igzo_g8),
+	MCS_SHORT_HS(ls04x_ledpwm_on),
+	MCS_SHORT_HS(ls04x_cabc_on),
+	MCS_LONG_HS(ls04x_set_column_addr),
+	MCS_LONG_HS(ls04x_set_page_addr),
+	DONE()
+};
+
+static struct dsi_init_command cgs_init_commands[] = {
+	GEN_SHORT_HS(ls04x_mcap_cgs),
+	GEN_LONG_HS(ls04x_frame_memory_access_cgs),
+	GEN_LONG_HS(ls04x_interface_id),
+	GEN_LONG_HS(ls04x_dsi_control1_cgs),
+	GEN_SHORT_HS(ls04x_panel_interface_ctrl_cgs),
+	GEN_LONG_HS(ls04x_display_setting1_cgs),
+	GEN_LONG_HS(ls04x_display_setting2_cgs),
+	GEN_LONG_HS(ls04x_tpc_sync_ctrl),
+	GEN_LONG_HS(ls04x_source_timing_setting_cgs),
+	GEN_LONG_HS(ls04x_ltps_timing_setting_cgs),
+	GEN_LONG_HS(ls04x_gamma_a_setting_cgs),
+	GEN_LONG_HS(ls04x_gamma_b_setting_cgs),
+	GEN_LONG_HS(ls04x_gamma_c_setting_cgs),
+	GEN_LONG_HS(ls04x_power_setting_cgs),
+	GEN_SHORT_HS(ls04x_power_setting_int_pwr1_cgs),
+	GEN_LONG_HS(ls04x_power_setting_int_pwr2_cgs),
+	GEN_LONG_HS(ls04x_vcom_setting),
+	GEN_SHORT_HS(ls04x_sleep_out_nvm_load_setting),
+	GEN_LONG_HS(ls04x_sequencer_timing_power_on_cgs),
+	MCS_SHORT_HS(ls04x_ledpwm_on),
+	MCS_SHORT_HS(ls04x_cabc_on),
+	MCS_LONG_HS(ls04x_set_column_addr),
+	MCS_LONG_HS(ls04x_set_page_addr),
+	DONE()
+};
 
 static u8 ir2e69_power_on_seq_cabc[][2] = {
 	{0x03, 0x01},
@@ -285,7 +531,6 @@ static u8 ir2e69_power_on_seq_cabc[][2] = {
 	{0xf1, 0x00},
 	{0xda, 0x30},
 	{0xd8, 0x00} };
-
 static u8 ir2e69_power_on_seq[][2] = {
 	{0x03, 0x01},
 	{0,      20},
@@ -304,7 +549,6 @@ static u8 ir2e69_power_on_seq[][2] = {
 	{0xf1, 0x00},
 	{0xda, 0x30},
 	{0xd8, 0x00} };
-
 static u8 ir2e69_bias_on_seq[][2] = {
 	{0x28, 0x40},
 	{0,       1},
@@ -329,6 +573,69 @@ static struct i2c_board_info dcdc_board_info = {
 static struct i2c_client *i2c_client;
 
 static int mipi_reset_gpio = -1;
+
+static int pwm_width;
+
+static int handle_dsi_init_commands(struct mdfld_dsi_pkg_sender *sender,
+				struct dsi_init_command *command)
+{
+	int r = 0;
+
+	if (!sender)
+		return -EINVAL;
+
+	while (command->type != DONE_CMD && r == 0) {
+		switch (command->type) {
+		case GEN_LONG_LP_CMD:
+			r = mdfld_dsi_send_gen_long_lp(sender, command->param,
+				command->count, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case GEN_SHORT_LP_CMD:
+			r = mdfld_dsi_send_gen_short_lp(sender,
+				command->param[0],
+				command->count > 1 ? command->param[1] : 0,
+				command->count, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case MCS_LONG_LP_CMD:
+			r = mdfld_dsi_send_mcs_long_lp(sender, command->param,
+				command->count, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case MCS_SHORT_LP_CMD:
+			r = mdfld_dsi_send_mcs_short_lp(sender,
+				command->param[0],
+				command->count > 1 ? command->param[1] : 0,
+				command->count - 1, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case GEN_LONG_HS_CMD:
+			r = mdfld_dsi_send_gen_long_hs(sender, command->param,
+				command->count, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case GEN_SHORT_HS_CMD:
+			r = mdfld_dsi_send_gen_short_hs(sender,
+				command->param[0],
+				command->count > 1 ? command->param[1] : 0,
+				command->count, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case MCS_LONG_HS_CMD:
+			r = mdfld_dsi_send_mcs_long_hs(sender, command->param,
+				command->count, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case MCS_SHORT_HS_CMD:
+			r = mdfld_dsi_send_mcs_short_hs(sender,
+				command->param[0],
+				command->count > 1 ? command->param[1] : 0,
+				command->count - 1, MDFLD_DSI_SEND_PACKAGE);
+			break;
+		case DELAY_CMD:
+			usleep_range(command->count, command->count * 3 / 2);
+			break;
+		case DONE_CMD:
+			break;
+		}
+		command++;
+	}
+	return r;
+}
 
 static void ir2e69_set_gpio(int value)
 {
@@ -384,41 +691,18 @@ static int ir2e69_send_sequence(u8 data[][2], int count)
 
 static void ir2e69_reset(void)
 {
-	int i;
-	int r;
-
 	PSB_DEBUG_ENTRY("\n");
 
 	ir2e69_set_gpio(0);
 	mdelay(20);
 	ir2e69_set_gpio(1);
 	mdelay(20);
-	if (drm_psb_enable_cabc) {
-		for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq_cabc); i++) {
-			if (ir2e69_power_on_seq_cabc[i][0] != 0) {
-				r = i2c_master_send(i2c_client,
-					ir2e69_power_on_seq_cabc[i],
-					sizeof(ir2e69_power_on_seq_cabc[i]));
-				if (r < 0)
-					dev_err(&i2c_client->dev, "%d: error %d\n",
-						i, r);
-			} else
-				mdelay(ir2e69_power_on_seq_cabc[i][1]);
-		}
-	} else {
-		for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq); i++) {
-			if (ir2e69_power_on_seq[i][0] != 0) {
-				r = i2c_master_send(i2c_client,
-					ir2e69_power_on_seq[i],
-					sizeof(ir2e69_power_on_seq[i]));
-				if (r < 0)
-					dev_err(&i2c_client->dev, "%d: error %d\n",
-						i, r);
-			} else
-				mdelay(ir2e69_power_on_seq[i][1]);
-		}
-
-	}
+	if (drm_psb_enable_cabc)
+		ir2e69_send_sequence(ir2e69_power_on_seq_cabc,
+				ARRAY_SIZE(ir2e69_power_on_seq_cabc));
+	else
+		ir2e69_send_sequence(ir2e69_power_on_seq,
+				ARRAY_SIZE(ir2e69_power_on_seq));
 }
 
 static void ir2e69_power_off(void)
@@ -454,272 +738,26 @@ static void ls04x_reset(void)
 
 static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_pkg_sender *sender
-		= mdfld_dsi_get_pkg_sender(dsi_config);
-
 	DRM_INFO("IGZO panel detected!\n");
+	pwm_width = 12;
+	return handle_dsi_init_commands(mdfld_dsi_get_pkg_sender(dsi_config),
+						igzo_init_commands);
+}
 
-	if (!sender)
-		return -EINVAL;
-	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
-
-	/**
-	  * This works because the default lane count of panel is 4, otherwise
-	  * need switch lane count to the default value before using high speed
-	  * mode
-	  */
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_mcap[0],
-				    ls04x_mcap[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_frame_memory_access_igzo,
-				   sizeof(ls04x_frame_memory_access_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_interface_id,
-				   sizeof(ls04x_interface_id),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_dsi_control1_igzo,
-				   sizeof(ls04x_dsi_control1_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_dsi_control2[0],
-				    ls04x_dsi_control2[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_panel_pin_ctrl,
-				   sizeof(ls04x_panel_pin_ctrl),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_panel_interface_ctrl_igzo[0],
-				    ls04x_panel_interface_ctrl_igzo[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_display_setting1_igzo,
-				   sizeof(ls04x_display_setting1_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_display_setting2_igzo,
-				   sizeof(ls04x_display_setting2_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_tpc_sync_ctrl,
-				   sizeof(ls04x_tpc_sync_ctrl),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_source_timing_setting_igzo,
-				   sizeof(ls04x_source_timing_setting_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_gip_timing_setting,
-				   sizeof(ls04x_gip_timing_setting),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_backlight_setting1_pwr_save,
-				   sizeof(ls04x_backlight_setting1_pwr_save),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_backlight_setting2_pwr_save,
-				   sizeof(ls04x_backlight_setting2_pwr_save),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_backlight_setting4_pwr_save,
-				   sizeof(ls04x_backlight_setting4_pwr_save),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_backlight_setting6_igzo,
-				   sizeof(ls04x_backlight_setting6_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_gamma_a_setting_igzo,
-				   sizeof(ls04x_gamma_a_setting_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_gamma_b_setting_igzo,
-				   sizeof(ls04x_gamma_b_setting_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_gamma_c_setting_igzo,
-				   sizeof(ls04x_gamma_c_setting_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_power_setting_igzo,
-				   sizeof(ls04x_power_setting_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_power_setting_int_pwr1_igzo[0],
-				    ls04x_power_setting_int_pwr1_igzo[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_power_setting_int_pwr2_igzo,
-				   sizeof(ls04x_power_setting_int_pwr2_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_sleep_out_nvm_load_setting[0],
-				    ls04x_sleep_out_nvm_load_setting[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_sequencer_timing_power_on_igzo,
-				   sizeof(ls04x_sequencer_timing_power_on_igzo),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_low_power_function,
-				   sizeof(ls04x_low_power_function),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_panel_sync_out1,
-				   sizeof(ls04x_panel_sync_out1),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_panel_sync_out2,
-				   sizeof(ls04x_panel_sync_out2),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_panel_sync_out3[0],
-				    ls04x_panel_sync_out3[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_panel_sync_out4,
-				   sizeof(ls04x_panel_sync_out4),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    ls04x_ledpwm_on[0],
-				    ls04x_ledpwm_on[1], 1,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    ls04x_cabc_on[0],
-				    ls04x_cabc_on[1], 1,
-				    MDFLD_DSI_SEND_PACKAGE);
-
-	/* Send column and page addr before write mem start,
-	 * as the default setting causes partial screen messy.
-	 */
-	mdfld_dsi_send_mcs_long_hs(sender,
-				   ls04x_set_column_addr,
-				   sizeof(ls04x_set_column_addr),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_long_hs(sender,
-				   ls04x_set_page_addr,
-				   sizeof(ls04x_set_page_addr),
-				   MDFLD_DSI_SEND_PACKAGE);
-	return 0;
+static int ls04x_igzo_g8_drv_ic_init(struct mdfld_dsi_config *dsi_config)
+{
+	DRM_INFO("IGZO G8 panel detected!\n");
+	pwm_width = 8;
+	return handle_dsi_init_commands(mdfld_dsi_get_pkg_sender(dsi_config),
+						igzo_g8_init_commands);
 }
 
 static int ls04x_cgs_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_pkg_sender *sender
-		= mdfld_dsi_get_pkg_sender(dsi_config);
-
 	DRM_INFO("CGS panel detected!\n");
-
-	if (!sender)
-		return -EINVAL;
-	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
-
-	/**
-	  * This works because the default lane count of panel is 4, otherwise
-	  * need switch lane count to the default value before using high speed
-	  * mode
-	  */
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_mcap_cgs[0],
-				    ls04x_mcap_cgs[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_frame_memory_access_cgs,
-				   sizeof(ls04x_frame_memory_access_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_interface_id,
-				   sizeof(ls04x_interface_id),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_dsi_control1_cgs,
-				   sizeof(ls04x_dsi_control1_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_panel_interface_ctrl_cgs[0],
-				    ls04x_panel_interface_ctrl_cgs[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_display_setting1_cgs,
-				   sizeof(ls04x_display_setting1_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_display_setting2_cgs,
-				   sizeof(ls04x_display_setting2_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_tpc_sync_ctrl,
-				   sizeof(ls04x_tpc_sync_ctrl),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_source_timing_setting_cgs,
-				   sizeof(ls04x_source_timing_setting_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_ltps_timing_setting_cgs,
-				   sizeof(ls04x_ltps_timing_setting_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_gamma_a_setting_cgs,
-				   sizeof(ls04x_gamma_a_setting_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_gamma_b_setting_cgs,
-				   sizeof(ls04x_gamma_b_setting_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_gamma_c_setting_cgs,
-				   sizeof(ls04x_gamma_c_setting_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_power_setting_cgs,
-				   sizeof(ls04x_power_setting_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_power_setting_int_pwr1_cgs[0],
-				    ls04x_power_setting_int_pwr1_cgs[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_power_setting_int_pwr2_cgs,
-				   sizeof(ls04x_power_setting_int_pwr2_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_vcom_setting,
-				   sizeof(ls04x_vcom_setting),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_hs(sender,
-				    ls04x_sleep_out_nvm_load_setting[0],
-				    ls04x_sleep_out_nvm_load_setting[1], 2,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_hs(sender,
-				   ls04x_sequencer_timing_power_on_cgs,
-				   sizeof(ls04x_sequencer_timing_power_on_cgs),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    ls04x_ledpwm_on[0],
-				    ls04x_ledpwm_on[1], 1,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    ls04x_cabc_on[0],
-				    ls04x_cabc_on[1], 1,
-				    MDFLD_DSI_SEND_PACKAGE);
-
-	/* Send column and page addr before write mem start,
-	 * as the default setting causes partial screen messy.
-	 */
-	mdfld_dsi_send_mcs_long_hs(sender,
-				   ls04x_set_column_addr,
-				   sizeof(ls04x_set_column_addr),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_long_hs(sender,
-				   ls04x_set_page_addr,
-				   sizeof(ls04x_set_page_addr),
-				   MDFLD_DSI_SEND_PACKAGE);
-	return 0;
+	pwm_width = 8;
+	return handle_dsi_init_commands(mdfld_dsi_get_pkg_sender(dsi_config),
+						cgs_init_commands);
 }
 
 static int ls04x_drv_ic_init(struct mdfld_dsi_config *dsi_config)
@@ -749,6 +787,8 @@ static int ls04x_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 		r = ls04x_igzo_drv_ic_init(dsi_config);
 	else if ((data[2] == 0x34) && (data[3] == 0x15))
 		r = ls04x_cgs_drv_ic_init(dsi_config);
+	else if ((data[2] == 0x94) && (data[3] == 0x31))
+		r = ls04x_igzo_g8_drv_ic_init(dsi_config);
 	else
 		DRM_INFO("unknown device code: %02x %02x\n", data[2], data[3]);
 
@@ -858,30 +898,30 @@ static int ls04x_cgs_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 static int ls04x_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 					int level)
 {
+	u8 brightness[3];
 	if (drm_psb_enable_cabc) {
 		struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
 		if (!sender)
 			return -EINVAL;
 
-		u8 brightness[3] = {0, };
-
 		brightness[0] = write_display_brightness;
-		brightness[1] = (level * 4095 / 100) >> 8;
-		brightness[2] = (level * 4095 / 100) & 0xff;
+		if (pwm_width == 12) {
+			brightness[1] = (level * 4095 / 100) >> 8;
+			brightness[2] = (level * 4095 / 100) & 0xff;
+		} else {
+			brightness[1] = (level * 255 / 100);
+		}
 		mdfld_dsi_send_mcs_long_lp(sender,
 				brightness,
-				sizeof(brightness),
+				pwm_width == 12 ? 3 : 2,
 				MDFLD_DSI_SEND_PACKAGE);
 	} else {
-		u8 brightness[2];
-
-		PSB_DEBUG_ENTRY("%d\n", level);
 		brightness[0] = 0x0a;
-		brightness[1] = level * 255 / 100;
-		i2c_master_send(i2c_client, brightness, sizeof(brightness));
+		brightness[1] = level * 200 / 100;
+		i2c_master_send(i2c_client, brightness, 2);
 		brightness[0] = 0x0b;
-		i2c_master_send(i2c_client, brightness, sizeof(brightness));
+		i2c_master_send(i2c_client, brightness, 2);
 	}
 
 	return 0;
@@ -914,10 +954,14 @@ static int vb_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	mdelay(100);
 
 	if (drm_psb_enable_cabc) {
-		mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_display, 0x2c, 1,
-				MDFLD_DSI_SEND_PACKAGE);
-		mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_cabc, 0x1, 1,
-				MDFLD_DSI_SEND_PACKAGE);
+		mdfld_dsi_send_mcs_short_hs(sender,
+					    ls04x_ledpwm_on[0],
+					    ls04x_ledpwm_on[1], 1,
+					    MDFLD_DSI_SEND_PACKAGE);
+		mdfld_dsi_send_mcs_short_hs(sender,
+					    ls04x_cabc_on[0],
+					    ls04x_cabc_on[1], 1,
+					    MDFLD_DSI_SEND_PACKAGE);
 	}
 
 	return 0;
@@ -1007,40 +1051,6 @@ struct notifier_block vb_cmd_reboot_notifier_block = {
 	.notifier_call = vb_cmd_reboot
 };
 
-void vb_igzo_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
-{
-	PSB_DEBUG_ENTRY("\n");
-
-	p_funcs->get_config_mode = ls04x_cmd_get_config_mode;
-	p_funcs->get_panel_info = ls04x_cmd_get_panel_info;
-	p_funcs->reset = vb_cmd_reset;
-	p_funcs->drv_ic_init = ls04x_igzo_drv_ic_init;
-	p_funcs->dsi_controller_init = ls04x_dsi_controller_init;
-	p_funcs->detect = vb_cmd_detect;
-	p_funcs->power_on = vb_cmd_power_on;
-	p_funcs->power_off = vb_cmd_power_off;
-	p_funcs->set_brightness = ls04x_cmd_set_brightness;
-	ir2e69_register();
-	register_reboot_notifier(&vb_cmd_reboot_notifier_block);
-}
-
-void vb_cgs_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
-{
-	PSB_DEBUG_ENTRY("\n");
-
-	p_funcs->get_config_mode = ls04x_cmd_get_config_mode;
-	p_funcs->get_panel_info = ls04x_cmd_get_panel_info;
-	p_funcs->reset = vb_cmd_reset;
-	p_funcs->drv_ic_init = ls04x_cgs_drv_ic_init;
-	p_funcs->dsi_controller_init = ls04x_dsi_controller_init;
-	p_funcs->detect = vb_cmd_detect;
-	p_funcs->power_on = vb_cmd_power_on;
-	p_funcs->power_off = vb_cmd_power_off;
-	p_funcs->set_brightness = ls04x_cgs_cmd_set_brightness;
-	ir2e69_register();
-	register_reboot_notifier(&vb_cmd_reboot_notifier_block);
-}
-
 void vb_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
 	PSB_DEBUG_ENTRY("\n");
@@ -1048,7 +1058,6 @@ void vb_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->get_config_mode = ls04x_cmd_get_config_mode;
 	p_funcs->get_panel_info = ls04x_cmd_get_panel_info;
 	p_funcs->reset = vb_cmd_reset;
-	p_funcs->drv_ic_init = ls04x_drv_ic_init;
 	p_funcs->dsi_controller_init = ls04x_dsi_controller_init;
 	p_funcs->detect = vb_cmd_detect;
 	p_funcs->power_on = vb_cmd_power_on;
@@ -1056,6 +1065,33 @@ void vb_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->set_brightness = ls04x_cmd_set_brightness;
 	ir2e69_register();
 	register_reboot_notifier(&vb_cmd_reboot_notifier_block);
+}
+
+void vb_igzo_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
+{
+	PSB_DEBUG_ENTRY("\n");
+
+	vb_cmd_init(dev, p_funcs);
+	p_funcs->drv_ic_init = ls04x_drv_ic_init;
+	p_funcs->set_brightness = ls04x_cmd_set_brightness;
+}
+
+void vb_igzo_g8_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
+{
+	PSB_DEBUG_ENTRY("\n");
+
+	vb_cmd_init(dev, p_funcs);
+	p_funcs->drv_ic_init = ls04x_drv_ic_init;
+	p_funcs->set_brightness = ls04x_cmd_set_brightness;
+}
+
+void vb_cgs_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
+{
+	PSB_DEBUG_ENTRY("\n");
+
+	vb_cmd_init(dev, p_funcs);
+	p_funcs->drv_ic_init = ls04x_cgs_drv_ic_init;
+	p_funcs->set_brightness = ls04x_cgs_cmd_set_brightness;
 }
 
 static int vb_lcd_probe(struct platform_device *pdev)
@@ -1071,6 +1107,9 @@ static int vb_lcd_probe(struct platform_device *pdev)
 	} else if (panel_type == PANEL_CGS) {
 		DRM_INFO("%s: CGS panel detected\n", __func__);
 		intel_mid_panel_register(vb_cgs_cmd_init);
+	} else if (panel_type == PANEL_IGZO_G8) {
+		DRM_INFO("%s: IGZO G8 panel detected\n", __func__);
+		intel_mid_panel_register(vb_igzo_g8_cmd_init);
 	} else {
 		DRM_ERROR("bad vb panel type %d\n", panel_type);
 		return -EINVAL;
@@ -1082,6 +1121,7 @@ static int vb_lcd_probe(struct platform_device *pdev)
 static struct platform_device_id vb_panel_tbl[] = {
 	{ "SHARP IGZO VKB", PANEL_IGZO },
 	{ "SHARP CGS VKB",  PANEL_CGS },
+	{ "SHARP IGZOG8 VKB",  PANEL_IGZO_G8 },
 	{ }
 };
 
