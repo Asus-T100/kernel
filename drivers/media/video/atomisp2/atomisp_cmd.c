@@ -3235,7 +3235,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			width, height, format->sh_fmt);
 		return -EINVAL;
 	}
-	if (isp->isp_subdev.continuous_mode->val) {
+	if (isp->isp_subdev.continuous_mode->val &&
+		configure_pp_input == atomisp_css_preview_configure_pp_input) {
+		/* See PSI BZ 115124. preview_configure_pp_input()
+		 * API does not work correctly in continuous mode and
+		 * and must be disabled by setting it to (0, 0).
+		 */
 		configure_pp_input(isp, 0, 0);
 	} else {
 		ret = configure_pp_input(isp, isp_sink_crop->width,
