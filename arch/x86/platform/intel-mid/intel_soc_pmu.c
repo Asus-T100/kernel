@@ -1426,6 +1426,8 @@ retry:
 	if ((chk_val == new_value) && (i < MAX_DEVICES))
 		update_dev_res(i, state);
 
+	WARN_ON(chk_val != new_value);
+
 nc_done:
 #if !IS_ENABLED(CONFIG_VIDEO_ATOMISP)
 	/* ATOMISP is always powered up on system-resume path. It needs
