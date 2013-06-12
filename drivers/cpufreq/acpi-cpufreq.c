@@ -39,6 +39,7 @@
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/uaccess.h>
+#include <linux/intel_mid_pm.h>
 
 #include <acpi/processor.h>
 
@@ -430,6 +431,8 @@ static void free_acpi_perf_data(void)
 static int __init acpi_cpufreq_early_init(void)
 {
 	unsigned int i;
+	u64 misc_enable;
+
 	pr_debug("acpi_cpufreq_early_init\n");
 
 	acpi_perf_data = alloc_percpu(struct acpi_processor_performance);
@@ -445,6 +448,19 @@ static int __init acpi_cpufreq_early_init(void)
 			/* Freeing a NULL pointer is OK: alloc_percpu zeroes. */
 			free_acpi_perf_data();
 			return -ENOMEM;
+		}
+	}
+
+	if (platform_is(INTEL_ATOM_BYT)) {
+		int cpu;
+		u32 lo, hi;
+		for (cpu = 0; cpu < num_present_cpus(); cpu++) {
+			rdmsr_on_cpu(cpu, MSR_IA32_MISC_ENABLE, &lo, &hi);
+			misc_enable = (lo | ((u64)hi << 32));
+			misc_enable |= MSR_IA32_MISC_ENABLE_TURBO_DISABLE;
+			lo = (u32) misc_enable;
+			hi = (u32) (misc_enable >> 32);
+			wrmsr_on_cpu(cpu, MSR_IA32_MISC_ENABLE, lo, hi);
 		}
 	}
 
