@@ -182,8 +182,16 @@ void __init bcm43xx_platform_data_init_post_scu(void)
 	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		gpio_enable = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
 	else {
-		gpio_enable = 150;
-		pr_err("baytrail, hardcoding GPIO Enable to %d\n", gpio_enable);
+		if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
+			    INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG)) {
+			pr_err("bcm byt-m specific GPIO enable");
+			gpio_enable = 151;
+		} else {
+			pr_err("bcm byt-t specific GPIO enable");
+			gpio_enable = 150;
+		}
+		pr_err("bcm byt specific GPIO enable: %d", gpio_enable);
+
 	}
 	if (gpio_enable < 0) {
 		pr_err("%s: Unable to find WLAN-enable GPIO in the SFI table\n",
