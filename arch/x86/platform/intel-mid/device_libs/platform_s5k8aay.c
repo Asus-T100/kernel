@@ -187,6 +187,12 @@ static int s5k8aay_csi_configure(struct v4l2_subdev *sd, int flag)
 		ATOMISP_INPUT_FORMAT_YUV422_8, -1, flag);
 }
 
+static char *s5k8aay_msr_file_name(void)
+{
+	/* Only one platform at the moment */
+	return "01s5k8aay.drvb";
+}
+
 static struct camera_sensor_platform_data s5k8aay_sensor_platform_data = {
 	.gpio_ctrl      = s5k8aay_gpio_ctrl,
 	.flisclk_ctrl   = s5k8aay_flisclk_ctrl,
@@ -195,6 +201,7 @@ static struct camera_sensor_platform_data s5k8aay_sensor_platform_data = {
 #ifdef CONFIG_BOARD_CTP
 	.platform_init = s5k8aay_platform_init,
 	.platform_deinit = s5k8aay_platform_deinit,
+	.msr_file_name   = s5k8aay_msr_file_name,
 #endif
 };
 

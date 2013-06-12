@@ -849,6 +849,7 @@ static int s5k8aay_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct s5k8aay_device *dev;
+	char *msr_file_name;
 	unsigned int i;
 	int ret;
 
@@ -907,8 +908,9 @@ static int s5k8aay_probe(struct i2c_client *client,
 	dev->ctrl_handler.lock = &dev->input_lock;
 	dev->sd.ctrl_handler = &dev->ctrl_handler;
 
-	/* FIXME: remove hard coded file name */
-	ret = load_msr_list(client, "01s5k8aay.drvb", &dev->fw);
+	msr_file_name = dev->platform_data->msr_file_name();
+
+	ret = load_msr_list(client, msr_file_name, &dev->fw);
 	if (ret) {
 		s5k8aay_remove(client);
 		return ret;
