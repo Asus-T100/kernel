@@ -68,7 +68,8 @@
 #define EDID_QUIRK_DETAILED_SYNC_PP		(1 << 6)
 /* Force reduced-blanking timings for detailed modes */
 #define EDID_QUIRK_FORCE_REDUCED_BLANKING	(1 << 7)
-
+/*For vendor specific data block read*/
+#define VSDB_SIZE 5
 struct detailed_mode_closure {
 	struct drm_connector *connector;
 	struct edid *edid;
@@ -1661,7 +1662,8 @@ void drm_edid_to_eld(struct drm_connector *connector, struct edid *edid)
 			case VENDOR_BLOCK:
 				/* HDMI Vendor-Specific Data Block */
 				if (db[1] == 0x03 && db[2] == 0x0c && db[3] == 0)
-					parse_hdmi_vsdb(connector, db);
+					if (dbl > VSDB_SIZE)
+						parse_hdmi_vsdb(connector, db);
 				break;
 			default:
 				break;
