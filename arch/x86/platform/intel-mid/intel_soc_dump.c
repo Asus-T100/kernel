@@ -75,6 +75,15 @@
  * i2c write: echo "w i2c <bus> <addr> <val>" > dump_cmd
  *      e.g.  echo "w i2c 2 0x70 0x0f" > dump_cmd
  *
+ * SCU indirect memory read: echo "r[4] scu <addr>" > dump_cmd
+ *     e.g.  echo "r scu 0xff108194" > dump_cmd
+ *
+ * SCU indirect memory write: echo "w[4] scu <addr> <val>" > dump_cmd
+ *     e.g.  echo "w scu 0xff108194 0x03000001" > dump_cmd
+ *
+ *  SCU indirect read/write is limited to those addresses in
+ *  IndRdWrValidAddrRange array in SCU FW.
+ *
  */
 
 #include <linux/kernel.h>
@@ -92,6 +101,7 @@
 #include <asm/intel-mid.h>
 #include <asm/processor.h>
 #include <asm/msr.h>
+#include <asm/intel_mid_rpmsg.h>
 
 #define MAX_CMDLEN		96
 #define MAX_ERRLEN		255
@@ -112,9 +122,13 @@
 #define ACCESS_BUS_PCI		4 /* PCI bus */
 #define ACCESS_BUS_MSR		5 /* MSR registers */
 #define ACCESS_BUS_I2C		6 /* I2C bus */
+#define ACCESS_BUS_SCU_INDRW	7 /* SCU indirect read/write */
 
 #define ACCESS_DIR_READ		1
 #define ACCESS_DIR_WRITE	2
+
+#define RP_INDIRECT_READ	0x02 /* MSG_ID for indirect read via SCU */
+#define RP_INDIRECT_WRITE	0x05 /* MSG_ID for indirect write via SCU */
 
 #define SHOW_NUM_PER_LINE	(32 / access_width)
 #define LINE_WIDTH		(access_width * SHOW_NUM_PER_LINE)
@@ -161,6 +175,9 @@ static u32 msr_reg;
 /* i2c */
 static u8 i2c_bus;
 static u32 i2c_addr;
+
+/* scu */
+static u32 scu_addr;
 
 static const struct mmio_pci_map soc_pnw_map[] = {
 	{ 0xff128000, 0x400, 0, 0, 1, "SPI0" },
@@ -244,7 +261,7 @@ static const struct mmio_pci_map soc_clv_map[] = {
 
 	/* invisible to IA: { 0xffaf8000, 0, -1, -1, -1, "LPE DMA0" }, */
 	{ 0xffaf0000, 0x800, 0, 2, 6, "LPE DMA1" },
-	/* invisible to IA: { 0xffae8000, 0, -1, -1, -1, "LPE SHIM" }, */
+	{ 0xffae8000, 0x1000, 0, 1, 3, "LPE SHIM" },
 	/* { 0xffae9000, 0, 0, 6, 5, "VIBRA" }, LPE SHIM BASE + 0x1000 */
 
 	{ 0xffa28080, 0x80, 0, 5, 0, "UART0" },
@@ -846,6 +863,56 @@ failed:
 	return -EINVAL;
 }
 
+static int parse_scu_args(char **arg_list, int arg_num)
+{
+	int ret;
+
+	if (access_width != ACCESS_WIDTH_32BIT)
+		access_width = ACCESS_WIDTH_32BIT;
+
+	ret = kstrtou32(arg_list[2], 0, &scu_addr);
+	if (ret) {
+		snprintf(err_buf, MAX_ERRLEN, "invalid scu address %s\n",
+							arg_list[2]);
+		goto failed;
+	}
+
+	if (scu_addr % 4) {
+		snprintf(err_buf, MAX_ERRLEN,
+			"addr %x is not 4 bytes aligned!\n",
+						scu_addr);
+		goto failed;
+	}
+
+	if (access_dir == ACCESS_DIR_READ) {
+		if (arg_num != 3) {
+			snprintf(err_buf, MAX_ERRLEN,
+				"usage: r[4] scu <addr>\n");
+			goto failed;
+		}
+	}
+
+	if (access_dir == ACCESS_DIR_WRITE) {
+		if (arg_num != 4) {
+			snprintf(err_buf, MAX_ERRLEN,
+				"usage: w[4] scu <addr> <val>\n");
+			goto failed;
+		}
+		ret = kstrtou32(arg_list[3], 0, &access_value);
+		if (ret) {
+			snprintf(err_buf, MAX_ERRLEN,
+				"invalid scu write value %s\n",
+						arg_list[3]);
+			goto failed;
+		}
+	}
+
+	return 0;
+
+failed:
+	return -EINVAL;
+}
+
 static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 				size_t len, loff_t *offset)
 {
@@ -943,6 +1010,9 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 	} else if (!strncmp(arg_list[1], "i2c", 3)) {
 		access_bus = ACCESS_BUS_I2C;
 		ret = parse_i2c_args(arg_list, arg_num);
+	} else if (!strncmp(arg_list[1], "scu", 3)) {
+		access_bus = ACCESS_BUS_SCU_INDRW;
+		ret = parse_scu_args(arg_list, arg_num);
 	} else {
 		snprintf(err_buf, MAX_ERRLEN, "unknown argument: %s\n",
 							arg_list[1]);
@@ -1364,6 +1434,67 @@ static int dump_output_show_i2c(struct seq_file *s)
 	return 0;
 }
 
+static int dump_output_show_scu(struct seq_file *s)
+{
+	struct pci_dev *pdev;
+	char *name;
+	int ret;
+	u32 cmd, sub = 0, dptr = 0, sptr = 0;
+	u8 wbuflen = 4, rbuflen = 4;
+	u8 wbuf[16];
+	u8 rbuf[16];
+
+	memset(wbuf, 0, 16);
+	memset(rbuf, 0, 16);
+
+	pdev = mmio_to_pci(scu_addr, &name);
+	if (pdev && pm_runtime_get_sync(&pdev->dev) < 0) {
+		seq_printf(s, "can't put device %s into D0i0 state\n", name);
+		return 0;
+	}
+
+	if (access_dir == ACCESS_DIR_WRITE) {
+		cmd = RP_INDIRECT_WRITE;
+		dptr = scu_addr;
+		wbuf[0] = (u8) (access_value & 0xff);
+		wbuf[1] = (u8) ((access_value >> 8) & 0xff);
+		wbuf[2] = (u8) ((access_value >> 16) & 0xff);
+		wbuf[3] = (u8) ((access_value >> 24) & 0xff);
+
+		ret = rpmsg_send_generic_raw_command(cmd, sub, wbuf, wbuflen,
+			(u32 *)rbuf, rbuflen, dptr, sptr);
+
+		if (ret) {
+			seq_printf(s,
+				"Indirect write failed (check dmesg): "
+						"[%08x]\n", scu_addr);
+		} else {
+			seq_printf(s, "write succeeded\n");
+		}
+	} else if (access_dir == ACCESS_DIR_READ) {
+		cmd = RP_INDIRECT_READ;
+		sptr = scu_addr;
+
+		ret = rpmsg_send_generic_raw_command(cmd, sub, wbuf, wbuflen,
+			(u32 *)rbuf, rbuflen, dptr, sptr);
+
+		if (ret) {
+			seq_printf(s,
+				"Indirect read failed (check dmesg): "
+						"[%08x]\n", scu_addr);
+		} else {
+			access_value = (rbuf[3] << 24) | (rbuf[2] << 16) |
+				(rbuf[1] << 8) | (rbuf[0]);
+			seq_printf(s, "[%08x] %08x\n", scu_addr, access_value);
+		}
+	}
+
+	if (pdev)
+		pm_runtime_put_sync(&pdev->dev);
+
+	return 0;
+}
+
 static int dump_output_show(struct seq_file *s, void *unused)
 {
 	int ret = 0;
@@ -1391,6 +1522,9 @@ static int dump_output_show(struct seq_file *s, void *unused)
 		break;
 	case ACCESS_BUS_I2C:
 		ret = dump_output_show_i2c(s);
+		break;
+	case ACCESS_BUS_SCU_INDRW:
+		ret = dump_output_show_scu(s);
 		break;
 	default:
 		seq_printf(s, "unknow bus type: %d\n", access_bus);
