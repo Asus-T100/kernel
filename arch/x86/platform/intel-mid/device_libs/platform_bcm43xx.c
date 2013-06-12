@@ -167,7 +167,16 @@ void __init bcm43xx_platform_data_init_post_scu(void)
 		/*Get GPIO numbers from the SFI table*/
 		wifi_irq_gpio = get_gpio_by_name(BCM43XX_SFI_GPIO_IRQ_NAME);
 	} else {
-		wifi_irq_gpio = 144;
+		if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
+			    INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG)) {
+			wifi_irq_gpio = 147;
+			pr_err("bcm byt-m specific GPIO IRQ: %d"
+			       , wifi_irq_gpio);
+		} else {
+			wifi_irq_gpio = 145;
+			pr_err("bcm byt-t specific GPIO IRQ: %d"
+			       , wifi_irq_gpio);
+		}
 	}
 
 	if (wifi_irq_gpio < 0) {
