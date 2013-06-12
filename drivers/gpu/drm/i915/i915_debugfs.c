@@ -1875,18 +1875,17 @@ i915_rps_init_read(struct file *filp, char __user *ubuf, size_t max,
 	struct drm_device *dev = filp->private_data;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	char buf[] = "rps init read is not defined";
-	int len, ret;
+	int len;
 	u32 rval;
 
 	if (!(IS_VALLEYVIEW(dev)))
 		return -ENODEV;
 
-	if (len > sizeof(buf))
-		len = sizeof(buf);
-
 	rval = I915_READ(GEN6_RP_CONTROL);
 	len = snprintf(buf, sizeof(buf),
 		       "Turbo Enabled: %s\n", yesno(rval & GEN6_RP_ENABLE));
+	if (len > sizeof(buf))
+		len = sizeof(buf);
 	return simple_read_from_buffer(ubuf, max, ppos, buf, len);
 }
 

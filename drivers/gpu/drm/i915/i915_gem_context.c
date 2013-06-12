@@ -102,7 +102,7 @@ static int do_switch(struct i915_hw_context *to);
 static int get_context_size(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int ret;
+	int ret = 0;
 	u32 reg;
 
 	switch (INTEL_INFO(dev)->gen) {
