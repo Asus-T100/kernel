@@ -94,6 +94,7 @@ struct camera_sensor_platform_data {
 	bool (*low_fps)(void);
 	int (*platform_init)(struct i2c_client *);
 	int (*platform_deinit)(void);
+	char *(*msr_file_name)(void);
 };
 
 struct camera_af_platform_data {
