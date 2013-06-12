@@ -230,7 +230,7 @@ static int __imx_buf_reg_array(struct i2c_client *client,
 	case IMX_16BIT:
 		size = 2;
 		data16 = (u16 *)&ctrl->buffer.data[ctrl->index];
-		*data16 = (u16)next->val;
+		*data16 = cpu_to_be16((u16)next->val);
 		break;
 	default:
 		return -EINVAL;
