@@ -397,7 +397,7 @@ config VIDEO_MSRLIST_HELPER
 
 config VIDEO_S5K8AAY
 	tristate "Samsung S5K8AAY (EVT1) sensor support"
-	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP
+	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP && VIDEO_MSRLIST_HELPER
 	---help---
 	  This is a Video4Linux2 sensor-level driver for the Samsung
 	  S5K8AAY (EVT1) 1/8" 1.2MP SoC sensor.

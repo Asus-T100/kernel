@@ -26,6 +26,7 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <linux/atomisp_platform.h>
+#include <linux/libmsrlisthelper.h>
 
 #define S5K8AAY_TOK_16BIT	2
 #define S5K8AAY_TOK_TERM	0xf0	/* terminating token for reg list */
@@ -44,8 +45,7 @@ struct s5k8aay_resolution {
 	unsigned int width;
 	unsigned int height;
 	unsigned int skip_frames;
-	const struct s5k8aay_reg *regs;
-	const struct s5k8aay_reg *clock_regs;
+	const struct s5k8aay_reg *mode_regs;
 };
 
 #include "s5k8aay_settings.h"
@@ -92,6 +92,7 @@ struct s5k8aay_device {
 	bool streaming;
 	int fmt_idx;
 	struct v4l2_ctrl_handler ctrl_handler;
+	const struct firmware *fw;
 };
 
 /*
@@ -104,32 +105,28 @@ static const struct s5k8aay_resolution const s5k8aay_res_modes[] = {
 		.width = 1056,
 		.height = 864,
 		.skip_frames = 3,
-		.regs = s5k8aay_regs_19_1056x864,
-		.clock_regs = s5k8aay_regs_10,
+		.mode_regs = s5k8aay_regs_19_1056x864,
 	},
 	{
 		.desc = "s5k8aay_1200x800",
 		.width = 1200,
 		.height = 800,
 		.skip_frames = 3,
-		.regs = s5k8aay_regs_19_1200x800,
-		.clock_regs = s5k8aay_regs_10,
+		.mode_regs = s5k8aay_regs_19_1200x800,
 	},
 	{
 		.desc = "s5k8aay_1280x720",
 		.width = 1280,
 		.height = 720,
 		.skip_frames = 3,
-		.regs = s5k8aay_regs_19_1280x720,
-		.clock_regs = s5k8aay_regs_10,
+		.mode_regs = s5k8aay_regs_19_1280x720,
 	},
 	{
 		.desc = "s5k8aay_1280x960",
 		.width = 1280,
 		.height = 960,
 		.skip_frames = 3,
-		.regs = s5k8aay_regs_19_1280x960,
-		.clock_regs = s5k8aay_regs_10_clock_1280x960,
+		.mode_regs = s5k8aay_regs_19_1280x960,
 	}
 };
 
@@ -320,27 +317,10 @@ static int s5k8aay_set_streaming(struct v4l2_subdev *sd)
 
 	static struct s5k8aay_reg const *pre_regs[] = {
 		s5k8aay_regs_1,
-		s5k8aay_regs_2,
-		s5k8aay_regs_3,
-		s5k8aay_regs_4,
-		s5k8aay_regs_5,
-		s5k8aay_regs_6,
-		s5k8aay_regs_7,
-		s5k8aay_regs_8,
-		s5k8aay_regs_9,
-		s5k8aay_regs_11,
-		s5k8aay_regs_12,
-		s5k8aay_regs_13,
-		s5k8aay_regs_14,
-		s5k8aay_regs_15,
-		s5k8aay_regs_16,
-		s5k8aay_regs_17,
-		s5k8aay_regs_18,
 	};
 
 	const struct s5k8aay_reg const *mode_regs[] = {
-		s5k8aay_res_modes[dev->fmt_idx].clock_regs,
-		s5k8aay_res_modes[dev->fmt_idx].regs,
+		s5k8aay_res_modes[dev->fmt_idx].mode_regs,
 	};
 
 	static struct s5k8aay_reg const *post_regs[] = {
@@ -349,6 +329,10 @@ static int s5k8aay_set_streaming(struct v4l2_subdev *sd)
 	int ret;
 
 	ret = s5k8aay_write_array_list(sd, pre_regs, ARRAY_SIZE(pre_regs));
+	if (ret)
+		return ret;
+
+	ret = apply_msr_data(client, dev->fw);
 	if (ret)
 		return ret;
 
@@ -856,6 +840,7 @@ static int s5k8aay_remove(struct i2c_client *client)
 	v4l2_ctrl_handler_free(&dev->ctrl_handler);
 	v4l2_device_unregister_subdev(sd);
 	mutex_destroy(&dev->input_lock);
+	release_msr_list(client, dev->fw);
 	kfree(dev);
 	return 0;
 }
@@ -922,7 +907,14 @@ static int s5k8aay_probe(struct i2c_client *client,
 	dev->ctrl_handler.lock = &dev->input_lock;
 	dev->sd.ctrl_handler = &dev->ctrl_handler;
 
-	return 0;
+	/* FIXME: remove hard coded file name */
+	ret = load_msr_list(client, "01s5k8aay.drvb", &dev->fw);
+	if (ret) {
+		s5k8aay_remove(client);
+		return ret;
+	}
+
+	return ret;
 }
 
 static const struct i2c_device_id s5k8aay_id[] = {
