@@ -1113,7 +1113,6 @@ static inline int bq24192_enable_charging(
 
 	ret = val ? POWER_ON_CFG_CHRG_CFG_EN : POWER_ON_CFG_CHRG_CFG_DIS;
 
-	chip->online = val;
 	/*
 	 * check if we have the battery emulator connected. We do not start
 	 * charging if the emulator is connected
@@ -1342,7 +1341,8 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 					POWER_SUPPLY_CHARGER_TYPE_NONE);
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		val->intval = chip->online;
+		val->intval = (chip->cable_type !=
+				POWER_SUPPLY_CHARGER_TYPE_NONE) ? true : false;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = bq24192_get_charger_health();
