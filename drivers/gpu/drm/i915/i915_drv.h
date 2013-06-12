@@ -586,7 +586,7 @@ typedef struct drm_i915_private {
 	int fence_reg_start; /* 4 if userland hasn't ioctl'd us yet */
 	int num_fence_regs; /* 8 on pre-965, 16 otherwise */
 
-	unsigned int fsb_freq, mem_freq, is_ddr3;
+	unsigned int fsb_freq, mem_freq, is_ddr3, cck_freq, gpll;
 
 	spinlock_t error_lock;
 	/* Protected by dev->error_lock. */

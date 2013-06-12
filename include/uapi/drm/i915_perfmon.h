@@ -41,6 +41,7 @@ struct drm_i915_perfmon_set_max_freq {
 struct drm_i915_perfmon_freq_info {
 	__u32 max_gpu_freq;
 	__u32 min_gpu_freq;
+	__u32 cur_gpu_freq;
 };
 
 enum I915_PERFMON_IOCTL_OP {
