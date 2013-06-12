@@ -4212,6 +4212,7 @@ static bool intel_choose_pipe_bpp_dither(struct drm_crtc *crtc,
 		bpc = 6; /* min is 18bpp */
 		break;
 	case 24:
+	case 32:
 		bpc = 8;
 		break;
 	case 30:
@@ -4858,12 +4859,15 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	intel_clock_t clock, reduced_clock;
 	u32 dspcntr, pipeconf, vsyncshift;
 	bool ok, has_reduced_clock = false, is_sdvo = false;
-	bool is_lvds = false, is_tv = false, is_dp = false, is_dsi = false;
+	bool is_lvds = false, is_tv = false, is_dp = false,
+			is_dsi = false, is_edp = false;
 	struct intel_encoder *encoder;
 	struct intel_dsi *intel_dsi;
 	const intel_limit_t *limit;
 	int ret;
 	struct intel_program_clock_bending clockbend;
+	bool dither = false;
+	unsigned int pipe_bpp = 0;
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		switch (encoder->type) {
@@ -4885,6 +4889,9 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		case INTEL_OUTPUT_DSI:
 			is_dsi = true;
 			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			break;
+		case INTEL_OUTPUT_EDP:
+			is_edp = true;
 			break;
 		}
 
@@ -4952,6 +4959,41 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		}
 	}
 
+	/* setup pipeconf */
+	pipeconf = I915_READ(PIPECONF(pipe));
+
+	/* default to 8bpc */
+	pipeconf &= ~(PIPECONF_BPC_MASK | PIPECONF_DITHER_EN);
+
+	/* Determine panel color depth like we do in ironlake */
+	dither = intel_choose_pipe_bpp_dither(crtc, &pipe_bpp, adjusted_mode);
+
+	switch (pipe_bpp) {
+	case 18:
+		pipeconf |= PIPECONF_6BPC;
+		break;
+	case 24:
+		pipeconf |= PIPECONF_8BPC;
+		break;
+	case 30:
+		pipeconf |= PIPECONF_10BPC;
+		break;
+	case 36:
+		pipeconf |= PIPECONF_12BPC;
+		break;
+	default:
+		WARN(1, "intel_choose_pipe_bpp returned invalid value %d\n",
+			pipe_bpp);
+		pipeconf |= PIPECONF_8BPC;
+		pipe_bpp = 24;
+		break;
+	}
+
+	/* Set intel_crtc->bpp before vlv_update_pll and i9xx_update_pll
+	 * as they use this value to call intel_dp_compute_m_n
+	 */
+	intel_crtc->bpp = pipe_bpp;
+
 	if (IS_GEN2(dev))
 		i8xx_update_pll(crtc, adjusted_mode, &clock, num_connectors);
 	else if (IS_VALLEYVIEW(dev)) {
@@ -4969,9 +5011,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		i9xx_update_pll(crtc, mode, adjusted_mode, &clock,
 				has_reduced_clock ? &reduced_clock : NULL,
 				num_connectors);
-
-	/* setup pipeconf */
-	pipeconf = I915_READ(PIPECONF(pipe));
 
 	/* Set up the display plane register */
 	dspcntr = DISPPLANE_GAMMA_ENABLE;
@@ -4995,8 +5034,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 			pipeconf &= ~PIPECONF_DOUBLE_WIDE;
 	}
 
-	/* default to 8bpc */
-	pipeconf &= ~(PIPECONF_BPC_MASK | PIPECONF_DITHER_EN);
 	if (is_dp) {
 		if (adjusted_mode->private_flags & INTEL_MODE_DP_FORCE_6BPC) {
 			pipeconf |= PIPECONF_6BPC |
@@ -5011,6 +5048,12 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 				PIPECONF_ENABLE |
 				I965_PIPECONF_ACTIVE;
 		}
+	}
+
+	/* Enable dithering */
+	if (is_edp && dither) {
+		pipeconf |= PIPECONF_DITHER_EN |
+			PIPECONF_DITHER_TYPE_SP;
 	}
 
 	DRM_DEBUG_KMS("Mode for pipe %c:\n", pipe == 0 ? 'A' : 'B');
