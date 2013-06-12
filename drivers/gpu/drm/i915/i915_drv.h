@@ -945,6 +945,8 @@ typedef struct drm_i915_private {
 		atomic_t down_threshold;
 	} turbodebug;
 
+	int max_frequency_mode;
+
 	u64 last_count1;
 	unsigned long last_time1;
 	unsigned long chipset_power;

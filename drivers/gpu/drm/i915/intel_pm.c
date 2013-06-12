@@ -3031,10 +3031,14 @@ void valleyview_enable_rps(struct drm_device *dev)
 	/* Setup RC6 */
 	vlv_rs_initialize(dev);
 
-	/* Setu Gfx Turbo */
-	if (i915_enable_turbo > 0)
+	/* Setup Gfx Turbo */
+	if (i915_enable_turbo > 0) {
 		vlv_turbo_initialize(dev);
-
+		if (dev_priv->max_frequency_mode) {
+			vlv_turbo_disable(dev);
+			valleyview_set_rps(dev, dev_priv->rps.max_delay);
+		}
+	}
 }
 
 void ironlake_teardown_rc6(struct drm_device *dev)

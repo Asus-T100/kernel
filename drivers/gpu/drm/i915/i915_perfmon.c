@@ -104,6 +104,34 @@ int intel_get_freq_info(struct drm_device *dev,
 }
 
 /**
+ * intel_set_max_freq - enable max GPU frequency override
+ *
+ * Overrides turbo algorithm to switch GPU to maximum
+ * frequency.
+ */
+int intel_set_max_freq(struct drm_device *dev, int enable)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (!IS_VALLEYVIEW(dev))
+		return -EINVAL;
+
+	mutex_lock(&dev->struct_mutex);
+	if (enable) {
+		dev_priv->max_frequency_mode = true;
+		vlv_turbo_disable(dev);
+		valleyview_set_rps(dev, dev_priv->rps.max_delay);
+	} else {
+		dev_priv->max_frequency_mode = false;
+		vlv_turbo_initialize(dev);
+	}
+	mutex_unlock(&dev->struct_mutex);
+
+	return 0;
+}
+
+
+/**
  * i915_perfmon_ioctl - performance monitoring support
  *
  * Main entry point to performance monitoring support
@@ -127,6 +155,9 @@ int i915_perfmon_ioctl(struct drm_device *dev, void *data,
 			&perfmon->data.freq_info.cur_gpu_freq);
 		break;
 	case I915_PERFMON_SET_MAX_FREQ:
+		retcode = intel_set_max_freq(dev,
+			perfmon->data.set_max_freq.enable);
+		break;
 	case I915_PERFMON_ALLOC_OA_BUFFER:
 	case I915_PERFMON_FREE_OA_BUFFER:
 	case I915_PERFMON_SET_OA_IRQS:
