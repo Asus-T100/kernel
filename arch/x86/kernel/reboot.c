@@ -840,6 +840,9 @@ void nmi_shootdown_cpus(nmi_shootdown_cb callback)
 		mdelay(1);
 		msecs--;
 	}
+	if (msecs == 0)
+		printk(KERN_ERR "nmi_shootdown_cpus not all cpu shootdown %d.\n",
+			waiting_for_crash_ipi);
 
 	/* Leave the nmi callback set */
 }

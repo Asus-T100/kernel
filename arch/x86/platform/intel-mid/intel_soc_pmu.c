@@ -236,6 +236,47 @@ static void pmu_write_subsys_config(struct pmu_ss_states *pm_ssc)
 	writel(pm_ssc->pmu2_states[3], &mid_pmu_cxt->pmu_reg->pm_ssc[3]);
 }
 
+int set_all_power_on_inpanic(void)
+{
+	int status = 0, i;
+	struct pmu_ss_states cur_pmssc;
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		return status;
+
+	/* Ignore request until we have initialized */
+	if (unlikely((!pmu_initialized)))
+		return PMU_FAILED;
+
+	cur_pmssc.pmu2_states[0] = D0I0_MASK;
+	cur_pmssc.pmu2_states[1] = D0I0_MASK;
+	cur_pmssc.pmu2_states[2] = D0I0_MASK;
+	cur_pmssc.pmu2_states[3] = D0I0_MASK;
+
+	for (i = 0; down_trylock(&mid_pmu_cxt->scu_ready_sem) && (i < 10); i++)
+		mdelay(100);
+
+	mid_pmu_cxt->shutdown_started = true;
+
+	pmu_nc_set_power_state(0xffff, OSPM_ISLAND_UP, APM_REG_TYPE);
+	pmu_nc_set_power_state(0xffff, OSPM_ISLAND_UP, OSPM_REG_TYPE);
+
+	if (_pmu2_wait_not_busy())
+		printk(KERN_CRIT "PMU2 is busy!! But we must go on...\n");
+
+	/* issue the cmd to SCU to set the new pm configure */
+	pmu_write_subsys_config(&cur_pmssc);
+	writel(INTERACTIVE_VALUE, &mid_pmu_cxt->pmu_reg->pm_cmd);
+
+	if (_pmu2_wait_not_busy())
+		printk(KERN_CRIT "PMU2 is busy!! But we must go on...\n");
+
+	/* Don't care hold or unhold the sem, just release it */
+	up(&mid_pmu_cxt->scu_ready_sem);
+	return status;
+}
+EXPORT_SYMBOL(set_all_power_on_inpanic);
+
 void log_wakeup_irq(void)
 {
 	unsigned int irr = 0, vector = 0;

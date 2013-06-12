@@ -229,6 +229,15 @@ static int watchdog_set_appropriate_timeouts(void)
 	return watchdog_set_timeouts_and_start(pre_timeout, timeout);
 }
 
+#ifndef CONFIG_CRASH_DUMP
+int kexec_crash_reset_timeouts(int reset_timeout)
+{
+	if (disable_kernel_watchdog != 1)
+		return watchdog_set_timeouts_and_start(pre_timeout,
+						reset_timeout);
+}
+#endif
+
 /* Keep alive  */
 static int watchdog_keepalive(void)
 {
@@ -272,16 +281,18 @@ static int watchdog_stop(void)
 
 	return error;
 }
+EXPORT_SYMBOL(watchdog_stop);
 
 /* warning interrupt handler */
 static irqreturn_t watchdog_warning_interrupt(int irq, void *dev_id)
 {
+#ifndef CONFIG_CRASH_DUMP
 	pr_warn("[SHTDWN] %s, WATCHDOG TIMEOUT!\n", __func__);
 
 	/* Let's reset the platform after dumping some data */
 	trigger_all_cpu_backtrace();
 	panic("Kernel Watchdog");
-
+#endif
 	/* This code should not be reached */
 	return IRQ_HANDLED;
 }

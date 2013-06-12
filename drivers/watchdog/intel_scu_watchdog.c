@@ -266,6 +266,15 @@ static int watchdog_set_appropriate_timeouts(void)
 	return watchdog_set_timeouts(timer_timeout, pre_timeout, timeout);
 }
 
+#ifndef CONFIG_CRASH_DUMP
+int kexec_crash_reset_timeouts(int reset_timeout)
+{
+	if (disable_kernel_watchdog != 1)
+		return watchdog_set_timeouts(timer_timeout,
+			pre_timeout, reset_timeout);
+}
+#endif
+
 /* Keep alive  */
 static int watchdog_keepalive(void)
 {

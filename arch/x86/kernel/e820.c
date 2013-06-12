@@ -844,7 +844,7 @@ static int __init parse_memmap_opt(char *p)
 		return -EINVAL;
 
 	if (!strncmp(p, "exactmap", 8)) {
-#ifdef CONFIG_CRASH_DUMP
+#if 0 /* def CONFIG_CRASH_DUMP */
 		/*
 		 * If we are doing a crash dump, we still need to know
 		 * the real mem size before original memory map is

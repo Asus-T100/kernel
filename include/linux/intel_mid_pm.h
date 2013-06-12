@@ -160,6 +160,7 @@ extern unsigned int pmu_get_new_cstate(unsigned int cstate, int *index);
 extern int get_target_platform_state(unsigned long *eax);
 extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);
+extern int set_all_power_on_inpanic(void);
 extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
 
