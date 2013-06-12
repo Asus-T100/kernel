@@ -3602,6 +3602,8 @@ static void wm8958_open_circuit_work(struct work_struct *work)
 			    wm8994->btn_mask |
 			    SND_JACK_HEADSET);
 
+	mid_headset_report(0);
+
 	mutex_unlock(&wm8994->accdet_lock);
 }
 
