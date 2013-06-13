@@ -5159,14 +5159,23 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		dev_priv->tmds_clock_speed = adjusted_mode->clock;
 	}
 
+/* Currently reducing the wait for DPLL since it adds 2 sec delay for
+ * modeset in HDMI dual mode scenarios. There is no artifacts observed.
+ * It can speed up the clone/extended mode modeset scenarios.
+ * ToDo: Need further investigation and hw team feedbacks.
+ */
 	/* Wait for Phy status bits to go low */
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
-			if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 2000))
+			/* if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0),
+				2000)) */
+			if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 20))
 				DRM_ERROR("DPLL %x failed to lock\n",
 						I915_READ(DPLL(0)));
 		} else if (encoder->type == INTEL_OUTPUT_HDMI) {
-			if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 2000))
+			/* if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0),
+				2000)) */
+			if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 20))
 				DRM_ERROR("DPLL %x failed to lock\n",
 						I915_READ(DPLL(0)));
 		}
