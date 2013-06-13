@@ -179,7 +179,18 @@ int intel_scu_ipc_update_register(u16 addr, u8 data, u8 mask)
 	int ret;
 
 	mutex_lock(&pmic->io_lock);
-	ret = i2c_smbus_write_byte_data(pmic->i2c, addr, data & mask);
+
+	ret = i2c_smbus_read_byte_data(pmic->i2c, addr);
+	if (ret < 0)
+		goto err;
+
+	data &= mask;
+	ret &= ~mask;
+	ret |= data;
+
+	ret = i2c_smbus_write_byte_data(pmic->i2c, addr, ret);
+
+err:
 	mutex_unlock(&pmic->io_lock);
 	return ret;
 }
