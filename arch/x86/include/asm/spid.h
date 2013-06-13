@@ -327,6 +327,7 @@ enum {
 	CLVTP_PHONE_RSVD3,
 	CLVTP_PHONE_RSVD4,
 	CLVTP_PHONE_RHB_RDP,    /* Clovertrail RDP CLV+ B2 */
+	CLVTP_PHONE_RHB_VVLITE = 0x29, /* VV-Lite CLV+ B2 */
 	CLVTP_PHONE_RHB_RSVD,
 	CLVTP_PHONE_RHB_UNKNOWN = 0xFFFF
 };
@@ -335,7 +336,10 @@ enum {
 enum {
 	CLVTP_PHONE_VB_PR1A = 0x17,    /* Victoria Bay PR1 CLV+ B1 */
 	CLVTP_PHONE_VB_PR1B = 0x23,    /* Victoria Bay PR1 CLV+ B2 */
-	CLVTP_PHONE_VB_PR2 = 0x25,     /* Victoria Bay PR2 CLV+ */
+	CLVTP_PHONE_VB_PR20 = 0x25,    /* Victoria Bay PR2 CLV+ B2 */
+	CLVTP_PHONE_VB_PR21,           /* Victoria Bay PR2.1 CLV+ B2 */
+	CLVTP_PHONE_VB_PR30,           /* Victoria Bay PR3 B2 */
+	CLVTP_PHONE_VB_PR21NA,         /* Victoria Bay PR2.1 NA CLV+ B2 */
 	CLVTP_PHONE_VB_RSVD,
 	CLVTP_PHONE_VB_UNKNOWN = 0xFFFF
 };
