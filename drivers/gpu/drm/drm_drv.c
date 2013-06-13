@@ -432,6 +432,15 @@ long drm_ioctl(struct file *filp,
 	if (!func) {
 		DRM_DEBUG("no function\n");
 		retcode = -EINVAL;
+	} else if (((ioctl->flags & DRM_ROOT_ONLY) &&
+			     !capable(CAP_SYS_ADMIN)) ||
+			  (!(ioctl->flags & DRM_CONTROL_ALLOW) &&
+			   (file_priv->minor->type == DRM_MINOR_CONTROL))) {
+		retcode = -EACCES;
+		DRM_ERROR("Ioctl check failed for ioctl nr 0x%x"\
+				  "for process %s with pid=%d & is root=%d\n",
+				  nr, current->comm,
+				  task_pid_nr(current), capable(CAP_SYS_ADMIN));
 	} else {
 		if (cmd & (IOC_IN | IOC_OUT)) {
 			if (asize <= sizeof(stack_kdata)) {
