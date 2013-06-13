@@ -2667,7 +2667,7 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 	 * for turbo as a hack until IAFW adds support for this. */
 
 	/* Write 0x0 to P-Unit offset 0x6 to enable Turbo */
-	valleyview_punit_write(dev_priv, 0x6, 0);
+	/*valleyview_punit_write(dev_priv, 0x6, 0);*/
 
 	I915_WRITE(0xA000, 0x71388);
 	I915_WRITE(0xA080, 0x4);
