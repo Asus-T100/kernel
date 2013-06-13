@@ -1212,7 +1212,11 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 	int ret = 0;
 
 	dev_dbg(&chip->client->dev, "%s %d\n", __func__, psp);
-
+	if (mutex_is_locked(&chip->event_lock)) {
+		dev_dbg(&chip->client->dev,
+			"%s: mutex is already acquired",
+				__func__);
+	}
 	mutex_lock(&chip->event_lock);
 
 	switch (psp) {
@@ -1309,8 +1313,13 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 	enum bq24192_chrgr_stat charging;
 
 	dev_dbg(&chip->client->dev, "%s %d\n", __func__, psp);
-
-	mutex_lock(&chip->event_lock);
+	if (mutex_is_locked(&chip->event_lock)) {
+		dev_dbg(&chip->client->dev,
+			"%s : mutex is already acquired",
+				__func__);
+	}
+	if (!mutex_trylock(&chip->event_lock))
+		return -EBUSY;
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = (chip->cable_type !=
@@ -1506,7 +1515,8 @@ static void bq24192_task_worker(struct work_struct *work)
 		vbatt < INPUT_SRC_HIG_VBAT_LIMIT)
 		vindpm = INPUT_SRC_VOLT_LMT_468;
 
-	mutex_lock(&chip->event_lock);
+	if (!mutex_trylock(&chip->event_lock))
+		goto sched_task_work;
 	ret = bq24192_modify_vindpm(vindpm);
 	if (ret < 0)
 		dev_err(&chip->client->dev, "%s failed\n", __func__);
