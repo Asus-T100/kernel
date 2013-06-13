@@ -407,6 +407,9 @@ struct intel_msic_gpio_pdata {
 	int		can_sleep;
 };
 
+#define DISABLE_VCRIT	0x01
+#define DISABLE_VWARNB	0x02
+#define DISABLE_VWARNA	0x04
 /**
  * struct intel_msic_vdd_pdata - platform data for the MSIC VDD driver
  * @msi: MSI number used for VDD interrupts
@@ -416,6 +419,8 @@ struct intel_msic_gpio_pdata {
  */
 struct intel_msic_vdd_pdata {
 	unsigned	msi;
+	/* 1 = VCRIT, 2 = WARNB, 4 = WARNA */
+	u8 disable_unused_comparator;
 };
 
 /**
