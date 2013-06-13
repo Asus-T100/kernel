@@ -5233,7 +5233,7 @@ int intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
 	struct intel_crtc *intel_crtc;
 	u32 pipeconf;
 	int pipe;
-	u32 csc_reg;
+	u32 csc_reg = 0;
 	int i = 0, j = 0;
 
 	obj = drm_mode_object_find(dev, wgCSCCoeff->crtc_id,
@@ -7445,7 +7445,6 @@ static int display_disable_wq(struct drm_device *drm_dev)
 	/* Uncomment this once HDMI audio code is integrated */
 	/* cancel_work_sync(&dev_priv->hdmi_audio_wq); */
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
-		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
 			struct intel_dp *intel_dp = container_of(intel_encoder,
 					struct intel_dp, base);

@@ -370,8 +370,9 @@ static void intel_hdmi_set_spd_infoframe(struct drm_encoder *encoder)
 	spd_if.type = DIP_TYPE_SPD;
 	spd_if.ver = DIP_VERSION_SPD;
 	spd_if.len = DIP_LEN_SPD;
-	strcpy(spd_if.body.spd.vn, "Intel");
-	strcpy(spd_if.body.spd.pd, "Integrated gfx");
+	strncpy(spd_if.body.spd.vn, "Intel", sizeof(spd_if.body.spd.vn) - 1);
+	strncpy(spd_if.body.spd.pd, "Integrated gfx",
+		 sizeof(spd_if.body.spd.pd) - 1);
 	spd_if.body.spd.sdi = DIP_SPD_PC;
 
 	intel_set_infoframe(encoder, &spd_if);
@@ -1007,7 +1008,6 @@ intel_hdmi_add_properties(struct intel_hdmi *intel_hdmi, struct drm_connector *c
 /* Added for HDMI Audio */
 void i915_had_wq(struct work_struct *work)
 {
-	u8 data = 0;
 	struct drm_i915_private *dev_priv = container_of(work,
 		struct drm_i915_private, hdmi_audio_wq);
 

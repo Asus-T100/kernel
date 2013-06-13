@@ -117,7 +117,7 @@ static int intelfb_create(struct intel_fbdev *ifbdev,
 	ifbdev->helper.fb = fb;
 	ifbdev->helper.fbdev = info;
 
-	strcpy(info->fix.id, "inteldrmfb");
+	strncpy(info->fix.id, "inteldrmfb", sizeof(info->fix.id) - 1);
 
 	info->flags = FBINFO_DEFAULT | FBINFO_CAN_FORCE_OUTPUT;
 	info->fbops = &intelfb_ops;

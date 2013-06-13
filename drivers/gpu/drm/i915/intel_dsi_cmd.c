@@ -249,8 +249,8 @@ static int dsi_vc_generic_send_read_request(struct intel_dsi *intel_dsi,
 					    int channel, u8 *reqdata,
 					    int reqlen)
 {
-	u16 data;
-	u8 data_type;
+	u16 data = 0;
+	u8 data_type = 0;
 
 	switch (reqlen) {
 	case 0:

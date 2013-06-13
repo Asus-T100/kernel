@@ -2873,7 +2873,6 @@ i915_rpm_debug_read(struct file *filp,
 		   loff_t *ppos)
 {
 	struct drm_device *dev = filp->private_data;
-	drm_i915_private_t *dev_priv = dev->dev_private;
 
 	if (!(IS_VALLEYVIEW(dev)))
 		return -ENODEV;
@@ -2888,7 +2887,6 @@ i915_rpm_debug_write(struct file *filp,
 		  loff_t *ppos)
 {
 	struct drm_device *dev = filp->private_data;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	char buf[20];
 	long unsigned int val = 0;
 
