@@ -13,6 +13,7 @@ obj-y									+= platform_tc35876x.o
 obj-y									+= platform_ctp_audio.o
 obj-y									+= platform_sst_audio.o
 obj-y									+= platform_regulator.o
+obj-y									+= platform_soc_thermal.o
 obj-y									+= pci/
 obj-$(subst m,y,$(CONFIG_MSIC_GPADC))					+= platform_msic_adc.o
 obj-$(subst m,y,$(CONFIG_BATTERY_INTEL_MDF))				+= platform_msic_battery.o
