@@ -589,6 +589,7 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
+	.quirks2	= SDHCI_QUIRK2_BAD_SD_CD,
 	.allow_runtime_pm = true,
 	.suspend	= intel_mfld_clv_sd_suspend,
 	.resume		= intel_mfld_clv_sd_resume,
@@ -1542,6 +1543,13 @@ static int sdhci_pci_power_up_host(struct sdhci_host *host)
 static int sdhci_pci_get_cd(struct sdhci_host *host)
 {
 	bool present;
+	struct sdhci_pci_slot *slot = sdhci_priv(host);
+
+	if (host->quirks2 & SDHCI_QUIRK2_BAD_SD_CD) {
+		/* present doesn't work */
+		if (gpio_is_valid(slot->cd_gpio))
+			return gpio_get_value(slot->cd_gpio) ? 0 : 1;
+	}
 
 	/* If nonremovable or polling, assume that the card is always present */
 	if ((host->mmc->caps & MMC_CAP_NONREMOVABLE) ||
