@@ -76,16 +76,10 @@
 					    /* In dwords. On Merrifield the  */
 					    /* SCU trace buffer size is      */
 					    /* 4 dwords.                     */
-
-
-/* Size (bytes) of the default OSHOB structure. Includes the default OSNIB   */
-/* size.                                                                     */
-#define OSHOB_SIZE	(56 + (4*OSHOB_SCU_BUF_BASE_DW_SIZE)) /* In bytes.   */
-
-#define OSHOB_MRFLD_SIZE (56 + (4*OSHOB_SCU_BUF_MRFLD_DW_SIZE)) /* In bytes. */
-
-/* SCU buffer size is give in dwords. So it is x4 here to get the total      */
-/* number of bytes.                                                          */
+#define OSHOB_DEF_FABRIC_ERR_MRFLD_SIZE   50	/* In DWORDS. For Merrifield.*/
+					/* Fabric error log size (in DWORDS).*/
+					/* From offs 0x44 to 0x10C.          */
+					/* Used in default OSHOB.            */
 
 #define OSNIB_SIZE		32	/* Size (bytes) of the default OSNIB.*/
 
@@ -94,9 +88,31 @@
 #define OSNIB_OEM_RSVD_SIZE	10	/* Size (bytes) of OEM RESERVED      */
 					/* in OSNIB.                         */
 
-#define OSHOB_FABRIC_ERROR1_SIZE  12    /* 1st part of Fabric error dump     */
-#define OSHOB_FABRIC_ERROR2_SIZE  9     /* 2nd part of Fabric error dump     */
+#define OSHOB_DEF_FABRIC_ERR_SIZE   50	/* In DWORDS.                        */
+					/* Fabric error log size (in DWORDS).*/
+					/* From offs 0x44 to 0x10C.          */
+					/* Used in default OSHOB.            */
+
+#define OSHOB_FABRIC_ERROR1_SIZE  12    /* 1st part of Fabric error dump.    */
+					/* Used in extended OSHOB.           */
+
+#define OSHOB_FABRIC_ERROR2_SIZE  9     /* 2nd part of Fabric error dump.    */
+					/* Used in extended OSHOB.           */
+
 #define OSHOB_RESERVED_DEBUG_SIZE 5     /* Reserved for debug                */
+
+
+/* Size (bytes) of the default OSHOB structure. Includes the default OSNIB   */
+/* size.                                                                     */
+#define OSHOB_SIZE	(68 + (4*OSHOB_SCU_BUF_BASE_DW_SIZE) + \
+			    (4*OSHOB_DEF_FABRIC_ERR_SIZE))	/* In bytes. */
+
+#define OSHOB_MRFLD_SIZE (68 + (4*OSHOB_SCU_BUF_MRFLD_DW_SIZE) + \
+			    (4*OSHOB_DEF_FABRIC_ERR_MRFLD_SIZE))/* In bytes. */
+
+/* SCU buffer size is give in dwords. So it is x4 here to get the total      */
+/* number of bytes.                                                          */
+
 
 /* OSNIB allocation. */
 struct scu_ipc_osnib {
@@ -123,7 +139,8 @@ struct scu_ipc_oshob {
 	u32 pmit;               /* PMIT offset.                 */
 	u32 pemmcmhki;          /* PeMMCMHKI offset.            */
 	u32 osnibw_ptr;         /* OSNIB Write at offset 0x34.  */
-	u8 oshob_reserved;      /* First byte of RESERVED zone  */
+	u32 fab_err_log[OSHOB_DEF_FABRIC_ERR_SIZE]; /* Fabric   */
+				/* error log buffer.            */
 };
 
 struct scu_ipc_oshob scu_ipc_oshob_default;
@@ -1680,8 +1697,18 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_get_nvram_addr);
  */
 u32 intel_scu_ipc_get_fabricerror_buf1_offset(void)
 {
-	return offsetof(struct scu_ipc_oshob_extend,
-			fabricerrlog1);
+	if (oshob_info == NULL)
+		return 0;
+
+	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_CLOVERVIEW)
+		return offsetof(struct scu_ipc_oshob_extend, fabricerrlog1);
+	else if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER)
+		return offsetof(struct scu_ipc_oshob, fab_err_log) +
+				oshob_info->offs_add;
+	else {
+		pr_err("scu_ipc_get_fabricerror_buf_offset: platform not recognized!\n");
+		return 0;
+	}
 }
 
 /*
@@ -1689,8 +1716,15 @@ u32 intel_scu_ipc_get_fabricerror_buf1_offset(void)
  */
 u32 intel_scu_ipc_get_fabricerror_buf2_offset(void)
 {
-	return offsetof(struct scu_ipc_oshob_extend,
-			fabricerrlog2);
+	if (oshob_info == NULL)
+		return 0;
+
+	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_CLOVERVIEW)
+		return offsetof(struct scu_ipc_oshob_extend, fabricerrlog2);
+	else {
+		pr_warn("scu_ipc_get_fabricerror_buf2_offset: not supported for this platform!\n");
+		return 0;
+	}
 }
 
 
