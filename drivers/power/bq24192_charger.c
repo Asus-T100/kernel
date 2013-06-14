@@ -1083,6 +1083,7 @@ static inline int bq24192_enable_charging(
 			struct bq24192_chip *chip, bool val)
 {
 	int ret;
+	u8 regval;
 
 	dev_warn(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, val);
 
@@ -1090,6 +1091,22 @@ static inline int bq24192_enable_charging(
 	if (ret) {
 		dev_err(&chip->client->dev,
 				"program_timers failed: %d\n", ret);
+		return ret;
+	}
+
+	/*
+	 * Program the inlmt here in case we are asked to resume the charging
+	 * framework would send only set CC/CV commands and not the inlmt. This
+	 * would make sure that we program the last set inlmt into the register
+	 * in case for some reasons WDT expires
+	 */
+	regval = chrg_ilim_to_reg(chip->inlmt);
+
+	ret = bq24192_write_reg(chip->client, BQ24192_INPUT_SRC_CNTL_REG,
+				regval);
+	if (ret) {
+		dev_err(&chip->client->dev,
+				"inlmt programming failed: %d\n", ret);
 		return ret;
 	}
 
@@ -1115,10 +1132,6 @@ static inline int bq24192_enable_charging(
 		/* Schedule the charger task worker now */
 		schedule_delayed_work(&chip->chrg_task_wrkr,
 						0);
-	else {
-		/* Cancel the charger task worker now */
-		cancel_delayed_work_sync(&chip->chrg_task_wrkr);
-	}
 	return ret;
 }
 
