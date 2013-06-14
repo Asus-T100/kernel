@@ -329,10 +329,6 @@ static void read_scu_trace_hdr(struct scu_trace_hdr_t *hdr)
 
 	count = sizeof(struct scu_trace_hdr_t) / sizeof(u32);
 
-	if (!fabric_err_buf1) {
-		pr_err("Invalid Fabric Error buf1 offset");
-		return;
-	}
 	for (i = 0; i < count; i++)
 		*(buf + i)  = readl(fabric_err_buf1 + i * sizeof(u32));
 }
@@ -527,13 +523,9 @@ static void read_fwerr_log(u32 *buf, void __iomem *oshob_ptr)
 	void __iomem *fabric_err_dump_offset = oshob_ptr +
 		intel_scu_ipc_get_fabricerror_buf1_offset();
 
-	if (fabric_err_dump_offset == oshob_ptr) {
-		pr_err("Invalid Fabric error buf1 offset");
-		return;
-	}
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
 		for (count = 0; count < TOTAL_MAX_NUM_FABERR_DWORD; count++)
-			buf[count] = readl(fabric_err_dump_offset + \
+			buf[count] = readl(fabric_err_dump_offset + 12 + \
 					   count * sizeof(u32));
 	} else {
 		for (count = 0; count < MAX_NUM_LOGDWORDS; count++)
@@ -543,12 +535,6 @@ static void read_fwerr_log(u32 *buf, void __iomem *oshob_ptr)
 		/* Get 9 additional DWORDS */
 		fabric_err_dump_offset = oshob_ptr + \
 			intel_scu_ipc_get_fabricerror_buf2_offset();
-
-		if (fabric_err_dump_offset == oshob_ptr) {
-			/* Fabric error buf2 not available on all platforms. */
-			pr_warn("No Fabric Error buf2 offset available");
-			return;
-		}
 
 		for (count = 0; count < MAX_NUM_LOGDWORDS_EXTENDED; count++)
 			buf[count + MAX_NUM_LOGDWORDS] =
@@ -1150,19 +1136,8 @@ static int intel_fw_logging_init(void)
 
 	fabric_err_buf1 = oshob_base +
 		intel_scu_ipc_get_fabricerror_buf1_offset();
-
-	if (fabric_err_buf1 == oshob_base) {
-		pr_err("OSHOB Fabric error buf1 offset NULL");
-		goto err3;
-	}
-
 	fabric_err_buf2 = oshob_base +
 		intel_scu_ipc_get_fabricerror_buf2_offset();
-
-	if (fabric_err_buf2 == oshob_base) {
-		/* Fabric buffer buf2 not available on all plaforms. */
-		pr_warn("OSHOB Fabric error buf2 offset NULL");
-	}
 
 	/* Check and report existing error logs */
 	err = fw_logging_crash_on_boot();
