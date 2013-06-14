@@ -26,14 +26,8 @@
 #define FAB_ID_SECONDARY				2
 #define FAB_ID_GP					3
 #define FAB_ID_SC					4
-#define FAB_ID_SC1					5
-#define FAB_ID_UNKNOWN					6
+#define FAB_ID_UNKNOWN					5
 
 char *fabric_error_lookup(u32 fab_id, u32 error_index, int use_hidword);
-char *get_errortype_str(u16 error_type);
-int errorlog_element_type(u8 id_type);
-char *get_element_errorlog_detail(
-	u8 id, u32 first_dword, u32 second_dword, u32 third_dword);
-char *get_element_flagsts_detail(u8 id, u32 first_dword, u32 second_dword);
 
 #endif /* __INTEL_FABRICID_DEF_H */

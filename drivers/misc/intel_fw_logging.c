@@ -55,32 +55,13 @@
    The attribute of OS image is selected for Reboot/boot reason.
 */
 
-#define RECOVERABLE_FABERR_INT		9
 #define FID_MSB_MAPPING			32
 #define MAX_FID_REG_LEN			32
-
-/* In order to work for both the old fabric error structure and the    */
-/* new re-defined structure, we need to make sure the maximum amount   */
-/* internal buffer we allocated is big enough can hold both. Currently */
-/* the old fabric error loggin struct takes about 12 dwords of basic,  */
-/* and 9 more dwords. The new fabric error logging struct takes maxi-  */
-/* mum of 50 dwords, so the maximum buffer we need to allocate is 50   */
-/* dwords. Make sure adjust accordingly in the future if the maximum   */
-/* of dwords grow beyond 50 dwords - Winson Yung */
-
-#define TOTAL_MAX_NUM_FABERR_DWORD	50
 #define MAX_NUM_LOGDWORDS		12
 #define MAX_NUM_LOGDWORDS_EXTENDED      9
-#define TOTAL_NUM_PADDED_DWORDS		(TOTAL_MAX_NUM_FABERR_DWORD - \
-					MAX_NUM_LOGDWORDS - \
-					MAX_NUM_LOGDWORDS_EXTENDED)
-#define MAX_NUM_ALL_LOGDWORDS           (MAX_NUM_LOGDWORDS + \
-					MAX_NUM_LOGDWORDS_EXTENDED)
-#define MAX_NUM_ALL_LOGDWORDS_PADDED	(MAX_NUM_ALL_LOGDWORDS + \
-					TOTAL_NUM_PADDED_DWORDS)
-
+#define MAX_NUM_ALL_LOGDWORDS           (MAX_NUM_LOGDWORDS +		\
+					 MAX_NUM_LOGDWORDS_EXTENDED)
 #define FABERR_INDICATOR		0x15
-#define FABERR_INDICATOR1		0x0dec0ded
 #define FWERR_INDICATOR			0x7
 #define UNDEFLVL1ERR_IND		0x11
 #define UNDEFLVL2ERR_IND		0x22
@@ -102,14 +83,6 @@
 /* Special indexes in error data */
 #define FABRIC_ERR_STS_IDX		0
 #define FABRIC_ERR_SIGNATURE_IDX	10
-
-/* For new fabric error logging layout */
-#define FABRIC_ERR_HEADER		0
-#define FABRIC_ERR_SIGNATURE_IDX1	1
-#define FABRIC_ERR_SCU_VERSIONINFO	2
-#define FABRIC_ERR_ERRORTYPE		3
-#define FABRIC_ERR_MAXIMUM_TXT		2048
-#define FABRIC_ERR_ERRORTYPE_MASK	0xFFFF
 
 /* Timeout in ms we wait SCU to generate dump on panic */
 #define SCU_PANIC_DUMP_TOUT		1
@@ -164,38 +137,6 @@ union flag_status_hilo {
 	u32 data;
 };
 
-/* For new fabric error log format layout */
-
-union error_header {
-	struct {
-		u32 num_of_recv_err:6;
-		u32 recv_err_count_overflow:1;
-		u32 logging_buf_full:1;
-		u32 num_flag_regs:8;
-		u32 num_err_regs:8;
-		u32 checksum:8;
-	} fields;
-	u32 data;
-};
-
-union error_scu_version {
-	struct {
-		u32 scu_rt_minor_ver:16;
-		u32 scu_rt_major_ver:16;
-	} fields;
-	u32 data;
-};
-
-union reg_ids {
-	struct {
-		u32 reg_id0:8;
-		u32 reg_id1:8;
-		u32 reg_id2:8;
-		u32 reg_id3:8;
-	} fields;
-	u32 data;
-};
-
 static void __iomem *oshob_base;
 static u32 *log_buffer;
 static u32 log_buffer_sz;
@@ -210,7 +151,6 @@ static u32 *trace_buf;
 static int sram_buf_sz;
 
 static int irq;
-static int recoverable_irq;
 
 static struct rpmsg_instance *fw_logging_instance;
 
@@ -289,7 +229,7 @@ static irqreturn_t fw_logging_irq_thread(int irq, void *ignored)
 		i += snprintf(prefix + i, sizeof(prefix) - i, "ERROR");
 		break;
 	default:
-		pr_err("Invalid message ID!\n");
+		pr_err("Invalid message ID!");
 		break;
 	}
 	snprintf(prefix + i, sizeof(prefix) - i, ": ");
@@ -352,7 +292,7 @@ static irqreturn_t fw_logging_irq(int irq, void *ignored)
 
 	if (trace_hdr.magic != TRACE_MAGIC ||
 	    trace_hdr.offset + trace_hdr.size > sram_buf_sz) {
-		pr_err("Invalid SCU trace!\n");
+		pr_err("Invalid SCU trace!");
 		return IRQ_HANDLED;
 	}
 
@@ -365,29 +305,28 @@ static irqreturn_t fw_logging_irq(int irq, void *ignored)
 static void __iomem *get_oshob_addr(void)
 {
 	int ret;
-	u32 oshob_base_addr = 0;
+	u32 oshob_base = 0;
 	u16 oshob_size;
 	void __iomem *oshob_addr;
 
 	ret = rpmsg_send_command(fw_logging_instance,
-			IPCMSG_GET_HOBADDR, 0, NULL, &oshob_base_addr, 0, 1);
+			IPCMSG_GET_HOBADDR, 0, NULL, &oshob_base, 0, 1);
 
-	if (ret < 0 || oshob_base_addr == 0) {
+	if (ret < 0 || oshob_base == 0) {
 		pr_err("ipc_read_oshob address failed!!\n");
 		return NULL;
 	}
 
 	oshob_size = intel_scu_ipc_get_oshob_size();
 
-	pr_debug("OSHOB addr is 0x%x size is %d\n",
-		 oshob_base_addr, oshob_size);
+	pr_debug("OSHOB addr is 0x%x size is %d\n", oshob_base, oshob_size);
 
 	if (oshob_size == 0) {
 		pr_err("size of oshob is null!!\n");
 		return NULL;
 	}
 
-	oshob_addr = ioremap_nocache(oshob_base_addr, oshob_size);
+	oshob_addr = ioremap_nocache(oshob_base, oshob_size);
 
 	if (!oshob_addr) {
 		pr_err("ioremap of oshob address failed!!\n");
@@ -397,23 +336,16 @@ static void __iomem *get_oshob_addr(void)
 	return oshob_addr; /* Return OSHOB base address */
 }
 
-static int fw_error_found(int use_legacytype)
+static int fw_error_found(void)
 {
 	union error_log err_log;
 
-	if (use_legacytype) {
-		err_log.data = log_buffer[FABRIC_ERR_SIGNATURE_IDX];
+	err_log.data = log_buffer[FABRIC_ERR_SIGNATURE_IDX];
 
-		/* No SCU/fabric error if tenth
-		 * DW signature field is not 10101 */
-		if (err_log.fields.signature != FABERR_INDICATOR)
-			return 0;
-		return 1;
-	} else {
-		if (log_buffer[FABRIC_ERR_SIGNATURE_IDX1] != FABERR_INDICATOR1)
-			return 0;
-		return 1;
-	}
+	/* No SCU/fabric error if tenth DW signature field is not 10101 */
+	if (err_log.fields.signature != FABERR_INDICATOR)
+		return 0;
+	return 1;
 }
 
 static int get_fabric_error_cause_detail(char *buf, u32 size, u32 fabid,
@@ -523,24 +455,17 @@ static void read_fwerr_log(u32 *buf, void __iomem *oshob_ptr)
 	void __iomem *fabric_err_dump_offset = oshob_ptr +
 		intel_scu_ipc_get_fabricerror_buf1_offset();
 
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
-		for (count = 0; count < TOTAL_MAX_NUM_FABERR_DWORD; count++)
-			buf[count] = readl(fabric_err_dump_offset + 12 + \
-					   count * sizeof(u32));
-	} else {
-		for (count = 0; count < MAX_NUM_LOGDWORDS; count++)
-			buf[count] = readl(fabric_err_dump_offset + \
-					   count * sizeof(u32));
+	for (count = 0; count < MAX_NUM_LOGDWORDS; count++)
+		buf[count] = readl(fabric_err_dump_offset +
+					  count * sizeof(u32));
 
-		/* Get 9 additional DWORDS */
-		fabric_err_dump_offset = oshob_ptr + \
-			intel_scu_ipc_get_fabricerror_buf2_offset();
+	/* Get 9 additional DWORDS */
+	fabric_err_dump_offset = oshob_ptr +
+		intel_scu_ipc_get_fabricerror_buf2_offset();
 
-		for (count = 0; count < MAX_NUM_LOGDWORDS_EXTENDED; count++)
-			buf[count + MAX_NUM_LOGDWORDS] =
-				readl(fabric_err_dump_offset + \
-				      sizeof(u32) * count);
-	}
+	for (count = 0; count < MAX_NUM_LOGDWORDS_EXTENDED; count++)
+		buf[count + MAX_NUM_LOGDWORDS] =
+			readl(fabric_err_dump_offset + sizeof(u32) * count);
 }
 
 static int dump_fwerr_log(char *buf, int size)
@@ -707,246 +632,69 @@ static int dump_scu_extented_trace(char *buf, int size, int log_offset,
 	return ret;
 }
 
-static char *error_type_str[] = {
-	"",
-	"Unsupported Command",
-	"Address Hole",
-	"",
-	"Inband Error",
-	"",
-	"",
-	"Request Timeout, Not Accepted",
-	"Request Timeout, No Response",
-	"Request Timeout, Data not accepted",
-	"",
-	"",
-	"",
-	"",
-	"",
-	""
-};
-
-static int new_dump_fwerr_log(char *buf, int size)
-{
-	u8 id = 0;
-	char *ptr;
-	union error_header err_header;
-	union error_scu_version err_scu_ver;
-	int error_type;
-
-	u16 scu_minor_ver, scu_major_ver;
-	u32 reg_ids = 0, error_typ = log_buffer[FABRIC_ERR_ERRORTYPE];
-	int i, need_new_regid, num_flag_status, \
-		num_err_logs, offset, total, ret = 0;
-
-	err_header.data = log_buffer[FABRIC_ERR_HEADER];
-	err_scu_ver.data = log_buffer[FABRIC_ERR_SCU_VERSIONINFO];
-
-	scu_minor_ver = err_scu_ver.fields.scu_rt_minor_ver;
-	scu_major_ver = err_scu_ver.fields.scu_rt_major_ver;
-
-	error_typ &= FABRIC_ERR_ERRORTYPE_MASK;
-
-	output_str(ret, buf, size, "Fabric Error debug data:\n");
-	output_str(ret, buf, size, "========================\n");
-
-	num_flag_status = err_header.fields.num_flag_regs;
-	num_err_logs = err_header.fields.num_err_regs;
-
-	output_str(ret, buf, size, "SCU runtime major version: %X\n",
-		   scu_major_ver);
-	output_str(ret, buf, size, "SCU runtime minor version: %X\n",
-		   scu_minor_ver);
-
-	output_str(ret, buf, size, "Total Errlog reg recorded: %d\n",
-		   num_err_logs);
-	output_str(ret, buf, size, "Total Flag Status reg recorded: %d\n",
-		   num_flag_status);
-
-	output_str(ret, buf, size, "Recoverable error counter overflowed: %s\n",
-		   err_header.fields.recv_err_count_overflow ? "Yes" : "No");
-
-	output_str(ret, buf, size, "Logging structure ran out of space: %s\n",
-		   err_header.fields.logging_buf_full ? "Yes" : "No");
-
-	output_str(ret, buf, size,
-		   "# of recoverable error since last fatal: %d\n",
-		   err_header.fields.num_of_recv_err);
-
-	output_str(ret, buf, size, "Fabric error type: %s\n\n",
-		   get_errortype_str(error_typ));
-
-	output_str(ret, buf, size, "Summary of Fabric Error detail:\n");
-	output_str(ret, buf, size, "-------------------------------\n");
-
-	i = 0;
-	total = 0;
-	offset = 4;
-	need_new_regid = 1;
-
-	reg_ids = 0;
-	while ((num_flag_status + num_err_logs) > 0) {
-		if (!reg_ids)
-			reg_ids = log_buffer[offset++];
-		id = (reg_ids & 0xFF);
-		reg_ids >>= 8;
-		if (num_flag_status) {
-			ptr = get_element_flagsts_detail(
-				id, log_buffer[offset], log_buffer[offset+1]);
-			output_str(ret, buf, size, "* %s\n", ptr);
-			ret += get_fabric_error_cause_detail(
-				buf + ret, size - ret, id,
-				&log_buffer[offset], 0);
-			ret += get_fabric_error_cause_detail(
-				buf + ret, size - ret, id,
-				&log_buffer[offset+1], 1);
-			offset += 2;
-			num_flag_status--;
-		} else {
-			ptr = get_element_errorlog_detail(
-				id, log_buffer[offset], log_buffer[offset+1],
-				log_buffer[offset+2]);
-			output_str(ret, buf, size, "* %s\n", ptr);
-			output_str(ret, buf, size, "Lower ErrLog DW: 0x%08X\n",
-				   log_buffer[offset]);
-			error_type = (log_buffer[offset] >> 24) & 0xF;
-			output_str(ret, buf, size, "\tError Type: %s\n",
-				   error_type_str[error_type]);
-			output_str(ret, buf, size, "Upper ErrLog DW: 0x%08X\n",
-				   log_buffer[offset + 1]);
-			output_str(ret, buf, size,
-				   "Associated 32bit Address: 0x%08X\n\n",
-				   log_buffer[offset + 2]);
-			offset += 3;
-			num_err_logs--;
-		}
-	}
-
-	output_str(ret, buf, size, "\n\n");
-
-	for (i = 0; i < offset; i++)
-		output_str(ret, buf, size, "DW%d:0x%08x\n", i, log_buffer[i]);
-
-	return ret;
-}
-
 #ifdef CONFIG_PROC_FS
 struct proc_dir_entry *ipanic_faberr;
-struct proc_dir_entry *ipanic_faberr_recoverable;
-static int intel_fw_logging_recoverable_proc_read(char *buffer, char **start,
-						  off_t offset, int count,
-						  int *peof, void *data)
-{
-	if (offset > 0)
-		return 0; /* We have finished to read, return 0 */
-	else
-		return new_dump_fwerr_log(buffer, count);
-}
-
 static int intel_fw_logging_proc_read(char *buffer, char **start, off_t offset,
 					int count, int *peof, void *data)
 {
-	int ret = 0;
+	int ret;
 	u32 read;
 
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
-		if (!offset)
-			ret = new_dump_fwerr_log(buffer, count);
-		*peof = 1;
+	if (!offset) {
+		/* Fill the buffer, return the buffer size */
+		ret = dump_fwerr_log(buffer, count);
+		read = MAX_NUM_ALL_LOGDWORDS * sizeof(u32);
 	} else {
-		if (!offset) {
-			/* Fill the buffer, return the buffer size */
-			ret = dump_fwerr_log(buffer, count);
-			read = MAX_NUM_ALL_LOGDWORDS * sizeof(u32);
-		} else {
-			ret = dump_scu_extented_trace(buffer, count,
-						      offset, &read);
-			if (!read || offset + read > sram_buf_sz)
-				*peof = 1;
-		}
-		*start = (void *) read;
+		ret = dump_scu_extented_trace(buffer, count, offset, &read);
+		if (!read || offset + read > sram_buf_sz)
+			*peof = 1;
 	}
+	*start = (void *) read;
 
 	return ret;
 }
 #endif /* CONFIG_PROC_FS */
 
-static irqreturn_t recoverable_faberror_irq(int irq, void *ignored)
-{
-	int use_legacytype;
-	pr_err("A recoverable fabric error has been captured!!!\n");
-
-	read_fwerr_log(log_buffer, oshob_base);
-
-	use_legacytype = \
-		(intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_TANGIER);
-	if (!fw_error_found(use_legacytype)) {
-		pr_info("No stored new SCU errors found in SRAM, bogus interrupt\n");
-		return IRQ_HANDLED;
-	}
-
-	new_dump_fwerr_log(NULL, 0);
-
-	return IRQ_WAKE_THREAD;
-}
-
-static irqreturn_t recoverable_faberror_thread(int irq, void *dev_id)
-{
-	/* Clear fabric error region inside OSHOB if neccessary */
-	pr_info("recoverable_faberror_thread: IPCMSG_CLEAR_FABERROR\n");
-	rpmsg_send_simple_command(fw_logging_instance,
-		IPCMSG_CLEAR_FABERROR, 0);
-
-	return IRQ_HANDLED;
-}
-
 static int fw_logging_crash_on_boot(void)
 {
 	int length = 0;
 	int err = 0;
-	int use_legacytype;
 	u32 read;
 
-	log_buffer_sz = MAX_NUM_ALL_LOGDWORDS_PADDED * sizeof(u32) + \
-		sram_buf_sz;
+	log_buffer_sz = MAX_NUM_ALL_LOGDWORDS * sizeof(u32) + sram_buf_sz;
 	log_buffer = kzalloc(log_buffer_sz, GFP_KERNEL);
 	if (!log_buffer) {
-		pr_err("Failed to allocate memory for log buffer\n");
+		pr_err("Failed to allocate memory for log buffer");
 		err = -ENOMEM;
-		goto out;
+		goto err1;
 	}
 
 	read_fwerr_log(log_buffer, oshob_base);
-	use_legacytype = \
-		(intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_TANGIER);
-	if (!fw_error_found(use_legacytype)) {
-		pr_info("No stored legacy SCU errors found in SRAM\n");
+	if (!fw_error_found()) {
+		pr_info("No stored SCU errors found in SRAM");
+		kfree(log_buffer);
 		goto out;
 	}
-	if (use_legacytype) {
-		length = dump_fwerr_log(NULL, 0);
+	length = dump_fwerr_log(NULL, 0);
 
-		if (sram_trace_buf) {
-			/*
-			 * SCU gives pointer via oshob. Address is a physical
-			 * address somewhere in shared sram
-			 */
-			read_sram_trace_buf(
-				log_buffer + MAX_NUM_ALL_LOGDWORDS_PADDED,
-				sram_trace_buf, sram_buf_sz);
-
-			length += dump_scu_extented_trace(NULL, 0, 0, &read);
-		}
-	} else
-		length = new_dump_fwerr_log(NULL, 0);
+	if (sram_trace_buf) {
+		/*
+		 * SCU gives pointer via oshob. Address is a physical
+		 * address somewhere in shared sram
+		 */
+		read_sram_trace_buf(log_buffer + MAX_NUM_ALL_LOGDWORDS,
+				    sram_trace_buf, sram_buf_sz);
+		length += dump_scu_extented_trace(NULL, 0, 0, &read);
+	}
 
 #ifdef CONFIG_PROC_FS
+
 	ipanic_faberr = create_proc_entry("ipanic_fabric_err",
 					  S_IFREG | S_IRUGO, NULL);
 	if (ipanic_faberr == 0) {
-		pr_err("Fail creating procfile ipanic_fabric_err for fatal fabric err\n");
+		pr_err("Fail creating procfile ipanic_fabric_err\n");
 		err = -ENODEV;
-		goto out;
+		goto err2;
 	}
 
 	ipanic_faberr->read_proc = intel_fw_logging_proc_read;
@@ -955,6 +703,11 @@ static int fw_logging_crash_on_boot(void)
 #endif /* CONFIG_PROC_FS */
 
 out:
+	return err;
+
+err2:
+	kfree(log_buffer);
+err1:
 	return err;
 }
 
@@ -973,7 +726,7 @@ static int intel_fw_logging_panic_handler(struct notifier_block *this,
 		 timeout++ < SCU_PANIC_DUMP_RECHECK);
 
 	if (timeout > SCU_PANIC_DUMP_RECHECK) {
-		pr_info("Waiting for trace from SCU timed out!\n");
+		pr_info("Waiting for trace from SCU timed out!");
 		goto out;
 	}
 
@@ -1022,13 +775,13 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 	int err = 0;
 
 	if (!sram_trace_buf) {
-		pr_err("No sram trace buffer available, skip SCU tracing init\n");
+		pr_err("No sram trace buffer available, skip SCU tracing init");
 		err = -ENODEV;
 		goto err1;
 	}
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		pr_info("No irq available, SCU tracing not available\n");
+		pr_info("No irq available, SCU tracing not available");
 		err = irq;
 		goto err1;
 	}
@@ -1037,12 +790,12 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 		&panic_notifier_list,
 		&fw_logging_panic_notifier);
 	if (err) {
-		pr_err("Failed to register notifier!\n");
+		pr_err("Failed to register notifier!");
 		goto err1;
 	}
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		pr_info("No irq available, SCU tracing not available\n");
+		pr_info("No irq available, SCU tracing not available");
 		err = irq;
 		goto err2;
 	}
@@ -1052,7 +805,7 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 				   IRQF_ONESHOT, "fw_logging",
 				   &pdev->dev);
 	if (err) {
-		pr_err("Requesting irq for logging trace failed\n");
+		pr_err("Requesting irq failed");
 		goto err2;
 	}
 
@@ -1060,7 +813,6 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 		enable_irq(irq);
 
 	return err;
-
 err2:
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &fw_logging_panic_notifier);
@@ -1071,8 +823,6 @@ err1:
 static int intel_fw_logging_remove(struct platform_device *pdev)
 {
 	free_irq(irq, &pdev->dev);
-	free_irq(recoverable_irq, &pdev->dev);
-
 	return atomic_notifier_chain_unregister(&panic_notifier_list,
 						&fw_logging_panic_notifier);
 }
@@ -1094,14 +844,13 @@ static struct platform_driver intel_fw_logging_driver = {
 static int intel_fw_logging_init(void)
 {
 	u32 buffer;
-	int ioapic, err = 0;
-	struct io_apic_irq_attr irq_attr;
+	int err = 0;
 
 	oshob_base = get_oshob_addr();
 	if (oshob_base == NULL) {
-		pr_err("Failed to get OSHOB address\n");
+		pr_err("Failed to get OSHOB address");
 		err = -EINVAL;
-		goto err0;
+		goto err1;
 	}
 
 	buffer = intel_scu_ipc_get_scu_trace_buffer();
@@ -1112,26 +861,26 @@ static int intel_fw_logging_init(void)
 		 */
 		sram_buf_sz = intel_scu_ipc_get_scu_trace_buffer_size();
 		if (sram_buf_sz > MAX_SCU_EXTRA_DUMP_SIZE) {
-			pr_err("Failed to get scu trace buffer size\n");
+			pr_err("Failed to get scu trace buffer size");
 			err = -ENODEV;
 			goto err1;
 		}
 		/* Looks that we have valid buffer and size. */
 		sram_trace_buf = ioremap_nocache(buffer, sram_buf_sz);
 		if (!sram_trace_buf) {
-			pr_err("Failed to map scu trace buffer\n");
+			pr_err("Failed to map scu trace buffer");
 			err =  -ENOMEM;
 			goto err1;
 		}
 
 		trace_buf = kzalloc(sram_buf_sz, GFP_KERNEL);
 		if (!trace_buf) {
-			pr_err("Failed to allocate memory for trace buffer\n");
+			pr_err("Failed to allocate memory for trace buffer");
 			err = -ENOMEM;
 			goto err2;
 		}
 	} else {
-		pr_info("No extended trace buffer available\n");
+		pr_info("No extended trace buffer available");
 	}
 
 	fabric_err_buf1 = oshob_base +
@@ -1142,51 +891,9 @@ static int intel_fw_logging_init(void)
 	/* Check and report existing error logs */
 	err = fw_logging_crash_on_boot();
 	if (err) {
-		pr_err("Logging SCU errors stored in SRAM failed\n");
+		pr_err("Logging SCU errors stored in SRAM failed");
 		goto err3;
 	}
-
-	ioapic = mp_find_ioapic(RECOVERABLE_FABERR_INT);
-	if (ioapic < 0) {
-		pr_err("Finding ioapic for recoverable fabric error interrupt failed\n");
-		goto err3;
-	}
-
-	irq_attr.ioapic = ioapic;
-	irq_attr.ioapic_pin = RECOVERABLE_FABERR_INT;
-	irq_attr.trigger = 1;
-	irq_attr.polarity = 0; /* Active High */
-	io_apic_set_pci_routing(NULL, RECOVERABLE_FABERR_INT, &irq_attr);
-
-	recoverable_irq = RECOVERABLE_FABERR_INT;
-	err = request_threaded_irq(RECOVERABLE_FABERR_INT,
-				   recoverable_faberror_irq,
-				   recoverable_faberror_thread,
-				   IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-				   "faberr_int",
-				   0);
-	if (err) {
-		pr_err("Requesting irq for recoverable fabric error failed\n");
-		goto err3;
-	}
-
-	/* Create a permanent sysfs for hosting recoverable error log */
-#ifdef CONFIG_PROC_FS
-	ipanic_faberr_recoverable = create_proc_entry("ipanic_fabric_recv_err",
-						      S_IFREG | S_IRUGO, NULL);
-	if (ipanic_faberr_recoverable == 0) {
-		pr_err("Fail creating procfile ipanic_fabric_recv_err "\
-				"for recoverable fabric err\n");
-
-		err = -ENODEV;
-		goto err3;
-	}
-
-	ipanic_faberr_recoverable->read_proc = \
-		intel_fw_logging_recoverable_proc_read;
-	ipanic_faberr_recoverable->write_proc = NULL;
-	ipanic_faberr_recoverable->size = FABRIC_ERR_MAXIMUM_TXT;
-#endif /* CONFIG_PROC_FS */
 
 	/* Clear fabric error region inside OSHOB if neccessary */
 	rpmsg_send_simple_command(fw_logging_instance,
@@ -1194,12 +901,6 @@ static int intel_fw_logging_init(void)
 
 	err = platform_driver_register(&intel_fw_logging_driver);
 	if (err) {
-#ifdef CONFIG_PROC_FS
-		if (ipanic_faberr_recoverable) {
-			remove_proc_entry("ipanic_fabric_recv_err", NULL);
-			ipanic_faberr_recoverable = 0;
-		}
-#endif /* CONFIG_PROC_FS */
 		pr_err("Failed to register platform driver\n");
 		goto err3;
 	}
@@ -1209,8 +910,6 @@ err3:
 err2:
 	iounmap(sram_trace_buf);
 err1:
-	iounmap(oshob_base);
-err0:
 	return err;
 }
 
@@ -1218,18 +917,11 @@ static void intel_fw_logging_exit(void)
 {
 	platform_driver_unregister(&intel_fw_logging_driver);
 	kfree(trace_buf);
-
-	iounmap(oshob_base);
 	iounmap(sram_trace_buf);
-
 #ifdef CONFIG_PROC_FS
 	if (ipanic_faberr)
 		remove_proc_entry("ipanic_fabric_err", NULL);
-
-	if (ipanic_faberr_recoverable)
-		remove_proc_entry("ipanic_fabric_recv_err", NULL);
 #endif /* CONFIG_PROC_FS */
-
 	kfree(log_buffer);
 }
 
