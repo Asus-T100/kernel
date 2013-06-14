@@ -3084,29 +3084,25 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file)
 {
-	if (i915_psr_support) {
-		struct drm_i915_private *dev_priv = device->dev_private;
-		struct drm_connector *connector;
-		struct intel_dp *intel_dp;
-		struct drm_i915_edp_psr_ctl *edp_psr_ctl =
-					(struct drm_i915_edp_psr_ctl *)data;
-		connector = dev_priv->int_edp_connector;
+	struct drm_i915_private *dev_priv = device->dev_private;
+	struct drm_connector *connector;
+	struct intel_dp *intel_dp;
+	struct drm_i915_edp_psr_ctl *edp_psr_ctl =
+				(struct drm_i915_edp_psr_ctl *)data;
+	connector = dev_priv->int_edp_connector;
 
-		if (connector == NULL) {
-			DRM_ERROR("CTL : Connector is NULL");
+	if (connector == NULL) {
+		DRM_ERROR("CTL : Connector is NULL");
+	} else {
+		intel_dp = intel_attached_dp(connector);
+		if (intel_dp == NULL) {
+			DRM_ERROR("Intel Dp  = NULL");
 		} else {
-			intel_dp = intel_attached_dp(connector);
-			if (intel_dp == NULL) {
-				DRM_ERROR("Intel Dp  = NULL");
-			} else {
-				if (edp_psr_ctl->state == 1) {
-					intel_edp_enable_psr(intel_dp,
-						EDP_PSR_MODE,
+			if (edp_psr_ctl->state == 1) {
+				intel_edp_enable_psr(intel_dp, EDP_PSR_MODE,
 						edp_psr_ctl->idle_frames);
-				} else {
-					intel_edp_disable_psr(intel_dp,
-						EDP_PSR_MODE);
-				}
+			} else {
+				intel_edp_disable_psr(intel_dp, EDP_PSR_MODE);
 			}
 		}
 	}
@@ -3115,28 +3111,25 @@ void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 						struct drm_file *file)
 {
-	if (i915_psr_support) {
-		struct drm_i915_private *dev_priv = device->dev_private;
-		struct drm_connector *connector;
-		struct intel_dp *intel_dp;
-		connector = dev_priv->int_edp_connector;
+	struct drm_i915_private *dev_priv = device->dev_private;
+	struct drm_connector *connector;
+	struct intel_dp *intel_dp;
+	connector = dev_priv->int_edp_connector;
 
-		if (connector == NULL) {
-			DRM_ERROR("Exit : Connector is NULL");
+	if (connector == NULL) {
+		DRM_ERROR("Exit : Connector is NULL");
+	} else {
+		intel_dp = intel_attached_dp(connector);
+
+	if (intel_dp == NULL) {
+		DRM_ERROR("Intel Dp  = NULL");
 		} else {
-			intel_dp = intel_attached_dp(connector);
-
-		if (intel_dp == NULL) {
-			DRM_ERROR("Intel Dp  = NULL");
-			} else {
-				/* For SW Timer mode, exit and disable have
-				   the exact implementation, hence reusing */
-				if (EDP_PSR_MODE == EDP_PSR_HW_TIMER)
-					intel_edp_exit_psr(intel_dp);
-				else
-					intel_edp_disable_psr(intel_dp,
-						EDP_PSR_MODE);
-			}
+			/* For SW Timer mode, exit and disable have the exact
+				implementation, hence reusing */
+			if (EDP_PSR_MODE == EDP_PSR_HW_TIMER)
+				intel_edp_exit_psr(intel_dp);
+			else
+				intel_edp_disable_psr(intel_dp, EDP_PSR_MODE);
 		}
 	}
 }

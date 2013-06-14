@@ -1193,8 +1193,12 @@ static int intel_sst_runtime_idle(struct device *dev)
 */
 static void sst_shutdown(struct pci_dev *pci)
 {
-	pr_debug(" %s called\n", __func__);
-	disable_irq_nosync(pci->irq);
+	struct intel_sst_drv *ctx = pci_get_drvdata(pci);
+
+	/* suspend the device so that you won't get
+	further interrupts from LPE */
+	intel_sst_runtime_suspend(&pci->dev);
+	free_irq(pci->irq, ctx);
 }
 
 /**
@@ -1207,10 +1211,13 @@ static void sst_shutdown(struct pci_dev *pci)
 */
 static void sst_acpi_shutdown(struct platform_device *pdev)
 {
+	struct intel_sst_drv *ctx = platform_get_drvdata(pdev);
 	int irq = platform_get_irq(pdev, 0);
 
-	pr_debug(" %s called\n", __func__);
-	disable_irq_nosync(irq);
+	/* suspend the device so that you won't get
+	further interrupts from LPE */
+	intel_sst_runtime_suspend(&pdev->dev);
+	free_irq(irq, ctx);
 }
 
 static const struct dev_pm_ops intel_sst_pm = {
