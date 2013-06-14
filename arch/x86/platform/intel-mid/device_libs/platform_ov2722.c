@@ -101,7 +101,12 @@ static int ov2722_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			}
 		}
 		gp_camera1_power_down = pin;
-		ret = gpio_direction_output(pin, 1);
+
+		if (spid.hardware_id == BYT_TABLET_BLB_VV3)
+			ret = gpio_direction_output(pin, 0);
+		else
+			ret = gpio_direction_output(pin, 1);
+
 		if (ret) {
 			pr_err("%s: failed to set gpio(pin %d) direction\n",
 				__func__, pin);
@@ -110,13 +115,20 @@ static int ov2722_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		}
 	}
 	if (flag) {
-		gpio_set_value(gp_camera1_power_down, 1);
+		if (spid.hardware_id == BYT_TABLET_BLB_VV3)
+			gpio_set_value(gp_camera1_power_down, 0);
+		else
+			gpio_set_value(gp_camera1_power_down, 1);
+
 		gpio_set_value(gp_camera1_reset, 0);
 		msleep(20);
 		gpio_set_value(gp_camera1_reset, 1);
 	} else {
 		gpio_set_value(gp_camera1_reset, 0);
-		gpio_set_value(gp_camera1_power_down, 0);
+		if (spid.hardware_id == BYT_TABLET_BLB_VV3)
+			gpio_set_value(gp_camera1_power_down, 1);
+		else
+			gpio_set_value(gp_camera1_power_down, 0);
 	}
 
 	return 0;
