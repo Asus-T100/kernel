@@ -60,12 +60,22 @@ static struct sfi_table_oemb byt_oemb_table_blb = {
 };
 
 /* Baytrail devs table */
-static struct sfi_device_table_entry byt_devs_table[] = {
+static struct sfi_device_table_entry byt_ffrd10_devs_table[] = {
 	/*{bus_type, host_num, addr, irq, max_freq, name}*/
 	{SFI_DEV_TYPE_IPC, 0, 0, 0, 0, "vlv2_plat_clk"},
 	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
 	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
+	/* SD devices */
+	{SFI_DEV_TYPE_SD, 0, 0, 0, 0, "bcm43xx_vmmc"},
+};
+
+static struct sfi_device_table_entry byt_ffrd8_devs_table[] = {
+	/*{bus_type, host_num, addr, irq, max_freq, name}*/
+	{SFI_DEV_TYPE_IPC, 0, 0, 0, 0, "vlv2_plat_clk"},
+	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx134"},
+	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
+	{SFI_DEV_TYPE_I2C, 3, 0x53, 0x0, 0x0, "lm3554"},
 	/* SD devices */
 	{SFI_DEV_TYPE_SD, 0, 0, 0, 0, "bcm43xx_vmmc"},
 };
@@ -110,16 +120,29 @@ static struct sfi_table_header *get_devs_table(void)
 	int tot_len = 0;
 
 	if (INTEL_MID_BOARD(1, TABLET, BYT)) {
-		tot_len = sizeof(byt_devs_table) +
-				sizeof(struct sfi_table_header);
-		devs_table = kzalloc(tot_len, GFP_KERNEL);
-		if (!devs_table) {
-			pr_err("%s(): Error in kzalloc\n", __func__);
-			return NULL;
+		if (spid.hardware_id == BYT_TABLET_BLB_VV3) {
+			tot_len = sizeof(byt_ffrd8_devs_table) +
+					sizeof(struct sfi_table_header);
+			devs_table = kzalloc(tot_len, GFP_KERNEL);
+			if (!devs_table) {
+				pr_err("%s(): Error in kzalloc\n", __func__);
+				return NULL;
+			}
+			devs_table->header.len = tot_len;
+			memcpy(devs_table->pentry, byt_ffrd8_devs_table,
+			sizeof(byt_ffrd8_devs_table));
+		} else {
+			tot_len = sizeof(byt_ffrd10_devs_table) +
+					sizeof(struct sfi_table_header);
+			devs_table = kzalloc(tot_len, GFP_KERNEL);
+			if (!devs_table) {
+				pr_err("%s(): Error in kzalloc\n", __func__);
+				return NULL;
+			}
+			devs_table->header.len = tot_len;
+			memcpy(devs_table->pentry, byt_ffrd10_devs_table,
+			sizeof(byt_ffrd10_devs_table));
 		}
-		devs_table->header.len = tot_len;
-		memcpy(devs_table->pentry, byt_devs_table,
-			sizeof(byt_devs_table));
 	}
 
 	sfi_devs_table = (struct sfi_table_header *)devs_table;
