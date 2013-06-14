@@ -32,6 +32,7 @@
 #include <linux/semaphore.h>
 #include <linux/suspend.h>
 #include <linux/intel_mid_pm.h>
+#include <linux/time.h>
 
 #include "intel_soc_pmc.h"
 
@@ -176,13 +177,19 @@ static u32 pmc_register_read(int reg_offset)
 
 static void print_residency_per_state(struct seq_file *s, int state, u32 count)
 {
-	u32 rem, dividend;
-	dividend = count * 100;
-	if (residency_total)
-		dividend /= residency_total;
-	rem = count * 100 - dividend * residency_total;
-	seq_printf(s, "%s \t\t %u \t\t %5u.%03u\n", states[state],
-			count, dividend, rem);
+	u32 rem_time, rem_res = 0;
+	u64 rem_res_reduced = 0;
+	/* Counter increments every 32 us. */
+	u64 time = (u64)count << 5;
+	u64 residency = (u64)count * 100;
+	if (residency_total) {
+		rem_res = do_div(residency, residency_total);
+		rem_res_reduced = (u64)rem_res * 1000;
+		do_div(rem_res_reduced, residency_total);
+		}
+	rem_time = do_div(time, USEC_PER_SEC);
+	seq_printf(s, "%s \t\t %.6llu.%.6u \t\t %.2llu.%.3llu\n", states[state],
+			time, rem_time, residency, rem_res_reduced);
 }
 
 static int pmu_devices_state_show(struct seq_file *s, void *unused)
@@ -200,7 +207,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		residency_total += s0ix_residency[i];
 	}
 
-	seq_printf(s, "State \t\t Count \t\t Percentage\n");
+	seq_printf(s, "State \t\t Time[sec] \t\t Residency[%%]\n");
 	for (i = 0; i < MAX_PLATFORM_STATES; i++)
 		print_residency_per_state(s, i, s0ix_residency[i]);
 
