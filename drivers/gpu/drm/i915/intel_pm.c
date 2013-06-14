@@ -2786,8 +2786,10 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 	 * the IA firmware code, we are taking care of it in the driver
 	 * for turbo as a hack until IAFW adds support for this. */
 
-	/* Write 0x0 to P-Unit offset 0x6 to enable Turbo */
-	/*valleyview_punit_write(dev_priv, 0x6, 0);*/
+	/* Write 0 to 7th bit to P-Unit offset 0x6 to enable Turbo */
+	u32 bios_punit_val;
+	valleyview_punit_read(dev_priv, 0x6, &bios_punit_val);
+	valleyview_punit_write(dev_priv, 0x6, bios_punit_val & ~(1<<7));
 
 	I915_WRITE(0xA000, 0x71388);
 	I915_WRITE(0xA080, 0x4);
