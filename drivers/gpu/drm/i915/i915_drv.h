@@ -896,6 +896,7 @@ typedef struct drm_i915_private {
 	struct child_device_config *child_dev;
 	struct drm_connector *int_lvds_connector;
 	struct drm_connector *int_edp_connector;
+	struct drm_connector *int_mipi_connector;
 
 	bool mchbar_need_disable;
 

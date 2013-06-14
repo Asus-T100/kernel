@@ -515,20 +515,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	/* MIPI PORT Control register */
 	I915_WRITE(0x61190, 0x80010000);
 
-#ifdef CONFIG_CRYSTAL_COVE
-	/* Crystal cove PMIC is not there in Baytrail-M
-	 * XXX:
-	 * We need to fix for Backlight on Baytrail-M when
-	 * we start work on that
-	 */
-
-	/* enable panel backlight and pwm*/
-	/* need to do this as per panel enabling sequence */
-	intel_mid_pmic_writeb(0x4B, 0xFF);
-	intel_mid_pmic_writeb(0x4E, 0xFF);
-	intel_mid_pmic_writeb(0x51, 0x01);
-	intel_mid_pmic_writeb(0x52, 0x01);
-#endif
+	intel_panel_enable_backlight(dev, pipe);
 
 	dsi_config(encoder);
 
@@ -599,6 +586,7 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 {
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
+	int status;
 	DRM_DEBUG_KMS("\n");
 
 	/* Either eDP or MIPI will be there, so if eDP detect
@@ -608,8 +596,23 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 	if (dev_priv->is_edp) {
 		dev_priv->is_mipi = false;
 		return connector_status_disconnected;
-	} else
-		return intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
+	}
+
+	/* Don't call detect again and again. Once detected as connected
+	 * it will always be connected as this is supposed to be internal
+	 * panel
+	 */
+	if (dev_priv->is_mipi)
+		return connector_status_connected;
+
+	status =  intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
+	if (status == connector_status_connected) {
+		/* Enable backlight class driver */
+		dev_priv->int_mipi_connector = connector;
+		intel_panel_setup_backlight(dev_priv->dev);
+	}
+
+	return status;
 }
 
 static int intel_dsi_get_modes(struct drm_connector *connector)
@@ -644,6 +647,7 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 static void intel_dsi_destroy(struct drm_connector *connector)
 {
 	DRM_DEBUG_KMS("\n");
+	intel_panel_destroy_backlight(connector->dev);
 	drm_sysfs_connector_remove(connector);
 	drm_connector_cleanup(connector);
 	kfree(connector);
@@ -808,13 +812,7 @@ bool intel_dsi_init(struct drm_device *dev)
 
 	drm_sysfs_connector_add(connector);
 
-
-	/* FIXME: try to get a fixed mode. */
-
-	/* FIXME: if fail, try to get the current mode, if any */
-
 	return true;
-
 err:
 	drm_encoder_cleanup(&intel_encoder->base);
 	kfree(intel_dsi);
