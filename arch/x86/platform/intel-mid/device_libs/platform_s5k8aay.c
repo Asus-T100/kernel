@@ -72,27 +72,29 @@ static int s5k8aay_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
-
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 #ifdef CONFIG_BOARD_CTP
 	int reg_err;
 #endif
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
 		if (!camera_vemmc1_on) {
-
 			camera_vemmc1_on = 1;
 			reg_err = regulator_enable(vemmc1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT "Failed to enable regulator vemmc1\n");
+				dev_err(&client->dev, "Failed to enable regulator vemmc1\n");
 				return reg_err;
 			}
 		}
-		if (!camera_vprog1_on) {
 
+		/* Small waiting is needed between Vana and Vdig */
+		usleep_range(50, 50);
+
+		if (!camera_vprog1_on) {
 			camera_vprog1_on = 1;
 			reg_err = regulator_enable(vprog1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
+				dev_err(&client->dev, "Failed to enable regulator vprog1\n");
 				return reg_err;
 			}
 		}
@@ -117,21 +119,23 @@ static int s5k8aay_power_ctrl(struct v4l2_subdev *sd, int flag)
 #endif
 	} else {
 #ifdef CONFIG_BOARD_CTP
-		if (camera_vemmc1_on) {
-			camera_vemmc1_on = 0;
+		gpio_set_value(camera_power, 0);
 
-			reg_err = regulator_disable(vemmc1_reg);
-			if (reg_err) {
-				printk(KERN_ALERT "Failed to disable regulator vemmc1\n");
-				return reg_err;
-			}
-		}
 		if (camera_vprog1_on) {
 			camera_vprog1_on = 0;
 
 			reg_err = regulator_disable(vprog1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
+				dev_err(&client->dev, "Failed to disable regulator vprog1\n");
+				return reg_err;
+			}
+		}
+		if (camera_vemmc1_on) {
+			camera_vemmc1_on = 0;
+
+			reg_err = regulator_disable(vemmc1_reg);
+			if (reg_err) {
+				dev_err(&client->dev, "Failed to disable regulator vemmc1\n");
 				return reg_err;
 			}
 		}

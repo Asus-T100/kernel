@@ -535,10 +535,11 @@ static int bcove_gpadc_suspend(struct device *dev)
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct gpadc_info *info = iio_priv(indio_dev);
 
-	if (mutex_trylock(&info->lock))
-		return 0;
-	else
+	if (!mutex_trylock(&info->lock))
 		return -EBUSY;
+
+	gpadc_set_bits(MIRQLVL1, MIRQLVL1_ADC);
+	return 0;
 }
 
 static int bcove_gpadc_resume(struct device *dev)
@@ -546,6 +547,7 @@ static int bcove_gpadc_resume(struct device *dev)
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct gpadc_info *info = iio_priv(indio_dev);
 
+	gpadc_clear_bits(MIRQLVL1, MIRQLVL1_ADC);
 	mutex_unlock(&info->lock);
 	return 0;
 }

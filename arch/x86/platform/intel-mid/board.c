@@ -87,6 +87,7 @@
 #include "device_libs/platform_r69001.h"
 #include "device_libs/platform_wm5102.h"
 #include <asm/platform_cs42l73.h>
+#include "device_libs/platform_wm8994.h"
 
 /* SPI devices */
 #include "device_libs/platform_max3111.h"
@@ -173,6 +174,8 @@ struct devs_id __initconst device_ids[] = {
 						&ipc_device_handler},
 	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data,
 						&ipc_device_handler},
+	{"mrfld_wm8958", SFI_DEV_TYPE_IPC, 1, &merfld_wm8958_audio_platform_data,
+						&ipc_device_handler},
 	{"soc_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data,
 					&soc_thrm_device_handler},
 	{"vlv2_plat_clk", SFI_DEV_TYPE_IPC, 1,
@@ -216,6 +219,7 @@ struct devs_id __initconst device_ids[] = {
 	{"syn_3400_igzo", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},
 	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &r69001_platform_data, NULL},
 	{"wm5102", SFI_DEV_TYPE_I2C, 0, &wm5102_platform_data, NULL},
+	{"wm8958", SFI_DEV_TYPE_I2C, 0, &wm8994_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
@@ -267,7 +271,9 @@ struct devs_id __initconst device_ids[] = {
 		&sfi_handle_mdm},
 	{"RMC_CYGNUS", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
 		&sfi_handle_mdm},
-	{"RMC_CYGNUS_FFRD", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+	{"CYGNUS_FFRD_EU", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"CYGNUS_FFRD_NA", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
 		&sfi_handle_mdm},
 	{"RMC_CYGNUS_PCI", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
 		&sfi_handle_mdm},

@@ -200,8 +200,8 @@ static int r69001_ts_read_coordinates_data(struct r69001_ts_data *ts)
 {
 	struct r69001_ts_finger *finger = ts->finger;
 	u8 i;
-	u8 numt;
-	u8 data[ONE_SET_COORD_DATA_SIZE];
+	u8 numt = 0;
+	u8 data[ONE_SET_COORD_DATA_SIZE] = { 0 };
 	u8 lowreg[5] = {REG_DATA0, REG_DATA1, REG_DATA2, REG_DATA3, REG_DATA4};
 	int error;
 

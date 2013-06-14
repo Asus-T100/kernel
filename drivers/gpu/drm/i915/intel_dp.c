@@ -1036,8 +1036,8 @@ static void ironlake_edp_panel_vdd_on(struct intel_dp *intel_dp)
 		return;
 	DRM_DEBUG_KMS("Turn eDP VDD on\n");
 
-	WARN(intel_dp->want_panel_vdd,
-	     "eDP VDD already requested on\n");
+	if (intel_dp->want_panel_vdd)
+		DRM_DEBUG_KMS("eDP VDD is already requested on\n");
 
 	intel_dp->want_panel_vdd = true;
 
@@ -1114,7 +1114,8 @@ static void ironlake_edp_panel_vdd_off(struct intel_dp *intel_dp, bool sync)
 		return;
 
 	DRM_DEBUG_KMS("Turn eDP VDD off %d\n", intel_dp->want_panel_vdd);
-	WARN(!intel_dp->want_panel_vdd, "eDP VDD not forced on");
+	if (!intel_dp->want_panel_vdd)
+		DRM_DEBUG_KMS("eDP VDD not forced on");
 
 	intel_dp->want_panel_vdd = false;
 
@@ -2389,25 +2390,26 @@ intel_dp_link_down(struct intel_dp *intel_dp)
 static bool
 intel_dp_get_dpcd(struct intel_dp *intel_dp)
 {
+	ironlake_edp_panel_vdd_on(intel_dp);
 	if (intel_dp_aux_native_read_retry(intel_dp, 0x000, intel_dp->dpcd,
-					   sizeof(intel_dp->dpcd)) &&
-	    (intel_dp->dpcd[DP_DPCD_REV] == 0)) {
-		return false;
+			sizeof(intel_dp->dpcd)) &&
+			(intel_dp->dpcd[DP_DPCD_REV] != 0)) {
+		/* Check if the panel supports PSR */
+		memset(intel_dp->psr_dpcd, 0, EDP_PSR_RECEIVER_CAP_SIZE);
+		intel_dp_aux_native_read_retry(intel_dp, DP_PSR_SUPPORT,
+						intel_dp->psr_dpcd,
+						sizeof(intel_dp->psr_dpcd));
+
+		if (is_edp_psr(intel_dp)) {
+			DRM_DEBUG_KMS("Detected EDP PSR Panel.\n");
+			intel_dp_aux_native_write_1(intel_dp, DP_PSR_ESI, 0x1);
+		}
+		ironlake_edp_panel_vdd_off(intel_dp, false);
+		return true;
 	}
 
-	/* Check if the panel supports PSR */
-	memset(intel_dp->psr_dpcd, 0, EDP_PSR_RECEIVER_CAP_SIZE);
-	intel_dp_aux_native_read_retry(intel_dp, DP_PSR_SUPPORT,
-					intel_dp->psr_dpcd,
-					sizeof(intel_dp->psr_dpcd));
-
-	DRM_DEBUG_KMS("DPCD Revision = %d", intel_dp->dpcd[DP_DPCD_REV]);
-	if (is_edp_psr(intel_dp)) {
-		DRM_DEBUG_KMS("Detected EDP PSR Panel.\n");
-		intel_dp_aux_native_write_1(intel_dp, DP_PSR_ESI, 0x1);
-	}
-
-	return true;
+	ironlake_edp_panel_vdd_off(intel_dp, false);
+	return false;
 }
 
 static void
@@ -2556,9 +2558,13 @@ g4x_dp_detect(struct intel_dp *intel_dp)
 	val2 = I915_READ(PORT_HOTPLUG_STAT);
 	DRM_ERROR("hotplug_en = 0x%x, hotplug_hpd = 0x%x\n", val1, val2);
 
+	/* HOTPLUG Detect is not working in some of VLV A0
+	 * boards. For those boards enable this WA
+	 */
+#if 0
 	if ((I915_READ(PORT_HOTPLUG_STAT) & bit) == 0)
 		return connector_status_disconnected;
-
+#endif
 	return intel_dp_detect_dpcd(intel_dp);
 }
 
@@ -2618,6 +2624,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 {
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
 	struct drm_device *dev = intel_dp->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	enum drm_connector_status status;
 	struct edid *edid = NULL;
 
@@ -2633,15 +2640,12 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		      intel_dp->dpcd[3], intel_dp->dpcd[4], intel_dp->dpcd[5],
 		      intel_dp->dpcd[6], intel_dp->dpcd[7]);
 
-	/* HOTPLUG Detect is not working in some of VLV A0
-	 * boards. For those boards enable this WA
-	 */
-	if (IS_VALLEYVIEW(connector->dev))
-		status = connector_status_connected;
-
-	if (status != connector_status_connected)
+	if (status != connector_status_connected) {
+		dev_priv->is_edp = false;
 		return status;
+	}
 
+	dev_priv->is_edp = true;
 	intel_dp_probe_oui(intel_dp);
 
 	if (intel_dp->force_audio != HDMI_AUDIO_AUTO) {
@@ -3084,25 +3088,29 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file)
 {
-	struct drm_i915_private *dev_priv = device->dev_private;
-	struct drm_connector *connector;
-	struct intel_dp *intel_dp;
-	struct drm_i915_edp_psr_ctl *edp_psr_ctl =
-				(struct drm_i915_edp_psr_ctl *)data;
-	connector = dev_priv->int_edp_connector;
+	if (i915_psr_support) {
+		struct drm_i915_private *dev_priv = device->dev_private;
+		struct drm_connector *connector;
+		struct intel_dp *intel_dp;
+		struct drm_i915_edp_psr_ctl *edp_psr_ctl =
+					(struct drm_i915_edp_psr_ctl *)data;
+		connector = dev_priv->int_edp_connector;
 
-	if (connector == NULL) {
-		DRM_ERROR("CTL : Connector is NULL");
-	} else {
-		intel_dp = intel_attached_dp(connector);
-		if (intel_dp == NULL) {
-			DRM_ERROR("Intel Dp  = NULL");
+		if (connector == NULL) {
+			DRM_ERROR("CTL : Connector is NULL");
 		} else {
-			if (edp_psr_ctl->state == 1) {
-				intel_edp_enable_psr(intel_dp, EDP_PSR_MODE,
-						edp_psr_ctl->idle_frames);
+			intel_dp = intel_attached_dp(connector);
+			if (intel_dp == NULL) {
+				DRM_ERROR("Intel Dp  = NULL");
 			} else {
-				intel_edp_disable_psr(intel_dp, EDP_PSR_MODE);
+				if (edp_psr_ctl->state == 1) {
+					intel_edp_enable_psr(intel_dp,
+						EDP_PSR_MODE,
+						edp_psr_ctl->idle_frames);
+				} else {
+					intel_edp_disable_psr(intel_dp,
+						EDP_PSR_MODE);
+				}
 			}
 		}
 	}
@@ -3111,25 +3119,53 @@ void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 						struct drm_file *file)
 {
-	struct drm_i915_private *dev_priv = device->dev_private;
-	struct drm_connector *connector;
-	struct intel_dp *intel_dp;
-	connector = dev_priv->int_edp_connector;
+	if (i915_psr_support) {
+		struct drm_i915_private *dev_priv = device->dev_private;
+		struct drm_connector *connector;
+		struct intel_dp *intel_dp;
+		connector = dev_priv->int_edp_connector;
 
-	if (connector == NULL) {
-		DRM_ERROR("Exit : Connector is NULL");
-	} else {
-		intel_dp = intel_attached_dp(connector);
-
-	if (intel_dp == NULL) {
-		DRM_ERROR("Intel Dp  = NULL");
+		if (connector == NULL) {
+			DRM_ERROR("Exit : Connector is NULL");
 		} else {
-			/* For SW Timer mode, exit and disable have the exact
-				implementation, hence reusing */
-			if (EDP_PSR_MODE == EDP_PSR_HW_TIMER)
-				intel_edp_exit_psr(intel_dp);
+			intel_dp = intel_attached_dp(connector);
+
+		if (intel_dp == NULL) {
+			DRM_ERROR("Intel Dp  = NULL");
+			} else {
+				/* For SW Timer mode, exit and disable have
+				   the exact implementation, hence reusing */
+				if (EDP_PSR_MODE == EDP_PSR_HW_TIMER)
+					intel_edp_exit_psr(intel_dp);
+				else
+					intel_edp_disable_psr(intel_dp,
+						EDP_PSR_MODE);
+			}
+		}
+	}
+}
+
+void intel_edp_get_psr_support(struct drm_device *device, void *data,
+							struct drm_file *file)
+{
+	if (i915_psr_support) {
+		struct drm_i915_private *dev_priv = device->dev_private;
+		struct drm_connector *connector;
+		struct intel_dp *intel_dp;
+		bool *support = (bool *)data;
+
+		*support = false;
+		connector = dev_priv->int_edp_connector;
+
+		if (connector == NULL) {
+			DRM_ERROR("Support : Connector is NULL");
+		} else {
+			intel_dp = intel_attached_dp(connector);
+
+			if (intel_dp == NULL)
+				DRM_ERROR("Intel Dp  = NULL");
 			else
-				intel_edp_disable_psr(intel_dp, EDP_PSR_MODE);
+				*support = is_edp_psr(intel_dp);
 		}
 	}
 }

@@ -21,4 +21,5 @@ struct mrfld_audio_platform_data {
 };
 
 extern void __init *merfld_audio_platform_data(void *info) __attribute__((weak));
+extern void __init *merfld_wm8958_audio_platform_data(void *info) __attribute__((weak));
 #endif

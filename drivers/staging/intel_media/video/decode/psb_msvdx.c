@@ -303,6 +303,50 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 			break;
 		}
 
+#ifdef CONFIG_SLICE_HEADER_PARSING
+		/* VA_MSGID_NALU_EXTRACT start */
+		case MTX_MSGID_SLICE_HEADER_EXTRACT: {
+			struct fw_slice_header_extract_msg *extract_msg =
+				(struct fw_slice_header_extract_msg *)cmd;
+			PSB_DEBUG_MSVDX("send slice extract message.\n");
+
+			extract_msg->header.bits.msg_fence = sequence;
+
+			mmu_ptd = psb_get_default_pd_addr(dev_priv->mmu);
+			msvdx_mmu_invalid = atomic_cmpxchg(&dev_priv->msvdx_mmu_invaldc,
+							   1, 0);
+			if (msvdx_mmu_invalid == 1) {
+				extract_msg->flags.bits.flags |=
+						FW_INVALIDATE_MMU;
+#ifdef CONFIG_MDFD_GL3
+				gl3_invalidate();
+#endif
+				PSB_DEBUG_GENERAL("MSVDX:Set MMU invalidate\n");
+			}
+
+			extract_msg->mmu_context.bits.mmu_ptd = mmu_ptd >> 8;
+
+			PSB_DEBUG_MSVDX("Parse cmd msg size is %d,"
+				"type is 0x%x, fence is %d, flags is 0x%x, context is 0x%x,"
+				"mmu_ptd is 0x%x, src is 0x%x, src_size is %d, dst is 0x%x, dst_size is %d,"
+				"flag_bitfield is 0x%x, pic_param0 is 0x%x, pic_param1 is 0x%x.\n",
+			extract_msg->header.bits.msg_size,
+			extract_msg->header.bits.msg_type,
+			extract_msg->header.bits.msg_fence,
+			extract_msg->flags.bits.flags,
+			extract_msg->mmu_context.bits.context,
+			extract_msg->mmu_context.bits.mmu_ptd,
+			extract_msg->src,
+			extract_msg->src_size,
+			extract_msg->dst,
+			extract_msg->src_size,
+			extract_msg->flag_bitfield.value,
+			extract_msg->pic_param0.value,
+			extract_msg->pic_param1.value);
+			break;
+		}
+		/* VA_MSGID_NALU_EXTRACT end */
+#endif
 		default:
 			/* Msg not supported */
 			ret = -EINVAL;
@@ -798,8 +842,20 @@ loop: /* just for coding style check */
 				  panic_msg->be_status,
 				  panic_msg->mb.bits.reserved2,
 				  panic_msg->mb.bits.last_mb);
-		PSB_DEBUG_WARN("MSVDX: MSVDX_COMMS_ERROR_TRIG is 0x%x.\n",
-					PSB_RMSVDX32(MSVDX_COMMS_ERROR_TRIG));
+		/* If bit 8 of MSVDX_INTERRUPT_STATUS is set the fault was caused in the DMAC.
+		 * In this case you should check bits 20:22 of MSVDX_INTERRUPT_STATUS.
+		 * If bit 20 is set there was a problem DMAing the buffer back to host.
+		 * If bit 22 is set you'll need to get the value of MSVDX_DMAC_STREAM_STATUS (0x648).
+		 * If bit 1 is set then there was an issue DMAing the bitstream or termination code for parsing.*/
+		PSB_DEBUG_MSVDX("MSVDX: MSVDX_COMMS_ERROR_TRIG is 0x%x,"
+				"MSVDX_INTERRUPT_STATUS is 0x%x,"
+				"MSVDX_MMU_STATUS is 0x%x,"
+				"MSVDX_DMAC_STREAM_STATUS is 0x%x.\n",
+				PSB_RMSVDX32(MSVDX_COMMS_ERROR_TRIG),
+				PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS_OFFSET),
+				PSB_RMSVDX32(MSVDX_MMU_STATUS_OFFSET),
+				PSB_RMSVDX32(MSVDX_DMAC_STREAM_STATUS_OFFSET));
+
 		fence = panic_msg->header.bits.msg_fence;
 		last_mb = panic_msg->mb.bits.last_mb;
 
@@ -1004,7 +1060,19 @@ loop: /* just for coding style check */
 		break;
 	}
 #endif
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	/* extract done msg didn't return the msg id, which is not reasonable */
+	case MTX_MSGID_SLICE_HEADER_EXTRACT_DONE: {
+		struct fw_slice_header_extract_done_msg *extract_done_msg =
+			(struct fw_slice_header_extract_done_msg *)buf;
 
+		PSB_DEBUG_GENERAL("MSVDX:FW_VA_NALU_EXTRACT_DONE: "
+			"extract msg size: %d, extract msg type is: %d.\n",
+			extract_done_msg->header.bits.msg_size,
+			extract_done_msg->header.bits.msg_type);
+		break;
+	}
+#endif
 	default:
 		DRM_ERROR("ERROR: msvdx Unknown message from MTX, ID:0x%08x\n", MEMIO_READ_FIELD(buf, MTX_GENMSG_ID));
 		goto done;
@@ -1458,3 +1526,52 @@ void psb_msvdx_enableirq(struct drm_device *dev)
 	/* write in sysirq.c */
 	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
 }
+
+#ifdef CONFIG_SLICE_HEADER_PARSING
+int psb_allocate_term_buf(struct drm_device *dev,
+			    struct ttm_buffer_object **term_buf,
+			    uint32_t *base_addr, unsigned long size)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct ttm_bo_device *bdev = &dev_priv->bdev;
+	int ret;
+	struct ttm_bo_kmap_obj tmp_kmap;
+	bool is_iomem;
+	unsigned char *addr;
+	const unsigned char term_string[] = {
+		0x0, 0x0, 0x1, 0xff, 0x65, 0x6e, 0x64, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+
+	PSB_DEBUG_INIT("MSVDX: allocate termination buffer.\n");
+
+	ret = ttm_buffer_object_create(bdev, size,
+				       ttm_bo_type_kernel,
+				       DRM_PSB_FLAG_MEM_MMU |
+				       TTM_PL_FLAG_NO_EVICT, 0, 0, 0,
+				       NULL, term_buf);
+	if (ret) {
+		DRM_ERROR("MSVDX:failed to allocate termination buffer.\n");
+		*term_buf = NULL;
+		return 1;
+	}
+
+	ret = ttm_bo_kmap(*term_buf, 0, (*term_buf)->num_pages, &tmp_kmap);
+	if (ret) {
+		PSB_DEBUG_GENERAL("ttm_bo_kmap failed ret: %d\n", ret);
+		ttm_bo_unref(term_buf);
+		*term_buf = NULL;
+		return 1;
+	}
+
+	addr = (unsigned char *)ttm_kmap_obj_virtual(&tmp_kmap, &is_iomem);
+	memcpy(addr, term_string, TERMINATION_SIZE);
+	ttm_bo_kunmap(&tmp_kmap);
+
+	*base_addr = (*term_buf)->offset;
+	return 0;
+}
+#endif

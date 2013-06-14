@@ -36,6 +36,7 @@
 #include <media/v4l2-subdev.h>
 #include "imx175.h"
 #include "imx135.h"
+#include "imx135vb.h"
 
 #define I2C_MSG_LENGTH		0x2
 
@@ -49,6 +50,7 @@
 /*
  * imx System control registers
  */
+#define IMX_MASK_5BIT	0x1F
 #define IMX_MASK_4BIT	0xF
 #define IMX_MASK_2BIT	0x3
 #define IMX_MASK_11BIT	0x7FF
@@ -63,7 +65,11 @@
 #define IMX_OP_PIX_DIV			0x0309
 #define IMX_OP_SYS_DIV			0x030B
 #define IMX_FRAME_LENGTH_LINES		0x0340
-#define IMX_COARSE_INTG_TIME_MIN		0x1004
+#define IMX_LINE_LENGTH_PIXELS		0x0342
+#define IMX_COARSE_INTG_TIME_MIN	0x1004
+#define IMX_COARSE_INTG_TIME_MAX	0x1006
+#define IMX_BINNING_ENABLE		0x0390
+#define IMX_BINNING_TYPE		0x0391
 
 #define IMX_READ_MODE				0x0390
 
@@ -82,20 +88,43 @@
 #define IMX_SHORT_AGC_GAIN		0x0233
 #define IMX_DGC_ADJ		0x020E
 #define IMX_DGC_LEN		10
+#define IMX_MAX_EXPOSURE_SUPPORTED 0xff0b
+#define IMX_MAX_GLOBAL_GAIN_SUPPORTED 0x00ff
+#define IMX_MAX_DIGITAL_GAIN_SUPPORTED 0x0fff
 
 /* Defines for register writes and register array processing */
-#define IMX_BYTE_MAX	30
+#define IMX_BYTE_MAX	32 /* change to 32 as needed by otpdata */
 #define IMX_SHORT_MAX	16
 #define I2C_RETRY_COUNT		5
 #define IMX_TOK_MASK	0xfff0
 
+/* Defines for OTP Data Registers */
+#define IMX_OTP_START_ADDR		0x3B04
+#define IMX_OTP_DATA_SIZE		1280
+#define IMX_OTP_PAGE_SIZE		64
+#define IMX_OTP_READY_REG		0x3B01
+#define IMX_OTP_PAGE_REG		0x3B02
+#define IMX_OTP_MODE_REG		0x3B00
+#define IMX_OTP_PAGE_MAX		20
+#define IMX_OTP_READY_REG_DONE		1
+#define IMX_OTP_READ_ONETIME		32
+#define IMX_OTP_MODE_READ		1
+
 #define MAX_FMTS 1
 
-#define IMX_NAME	"imx175"
+#define IMX_SUBDEV_PREFIX "imx"
+#define IMX_DRIVER	"imx1x5"
+#define IMX_NAME_135	"imx135"
+#define IMX_NAME_175	"imx175"
 #define IMX175_ID	0x0175
-/* imx175 - use dw9714 vcm */
-#define IMX175_ID0	0x0176
 #define IMX135_ID	0x0135
+
+/* imx175 - use dw9714 vcm */
+#define IMX175_MERRFLD 0x175
+#define IMX175_VALLEYVIEW 0x176
+#define IMX135_SALTBAY 0x135
+#define IMX135_VICTORIABAY 0x136
+
 #define IMX_ID_DEFAULT	0x0000
 #define IMX175_CHIP_ID	0x0000
 #define IMX135_CHIP_ID	0x0016
@@ -116,6 +145,7 @@
 #define IMX_VCM_SLEW_TIME_MAX	0x1f
 
 #define IMX_BIN_FACTOR_MAX			4
+#define IMX_INTEGRATION_TIME_MARGIN	4
 /*
  * focal length bits definition:
  * bits 31-16: numerator, bits 15-0: denominator
@@ -160,10 +190,6 @@ struct max_res imx_max_res[] = {
 		.res_max_width = IMX175_RES_WIDTH_MAX,
 		.res_max_height = IMX175_RES_HEIGHT_MAX,
 	},
-	[IMX175_ID0] = {
-		.res_max_width = IMX175_RES_WIDTH_MAX,
-		.res_max_height = IMX175_RES_HEIGHT_MAX,
-	},
 	[IMX135_ID] = {
 		.res_max_width = IMX135_RES_WIDTH_MAX,
 		.res_max_height = IMX135_RES_HEIGHT_MAX,
@@ -181,7 +207,7 @@ struct imx_settings {
 };
 
 struct imx_settings imx_sets[] = {
-	[IMX175_ID] = {
+	[IMX175_MERRFLD] = {
 		.init_settings = imx175_init_settings,
 		.res_preview = imx175_res_preview,
 		.res_still = imx175_res_still,
@@ -190,7 +216,7 @@ struct imx_settings imx_sets[] = {
 		.n_res_still = ARRAY_SIZE(imx175_res_still),
 		.n_res_video = ARRAY_SIZE(imx175_res_video),
 	},
-	[IMX175_ID0] = {
+	[IMX175_VALLEYVIEW] = {
 		.init_settings = imx175_init_settings,
 		.res_preview = imx175_res_preview,
 		.res_still = imx175_res_still,
@@ -199,7 +225,7 @@ struct imx_settings imx_sets[] = {
 		.n_res_still = ARRAY_SIZE(imx175_res_still),
 		.n_res_video = ARRAY_SIZE(imx175_res_video),
 	},
-	[IMX135_ID] = {
+	[IMX135_SALTBAY] = {
 		.init_settings = imx135_init_settings,
 		.res_preview = imx135_res_preview,
 		.res_still = imx135_res_still,
@@ -207,6 +233,15 @@ struct imx_settings imx_sets[] = {
 		.n_res_preview = ARRAY_SIZE(imx135_res_preview),
 		.n_res_still = ARRAY_SIZE(imx135_res_still),
 		.n_res_video = ARRAY_SIZE(imx135_res_video),
+	},
+	[IMX135_VICTORIABAY] = {
+		.init_settings = imx135vb_init_settings,
+		.res_preview = imx135vb_res_preview,
+		.res_still = imx135vb_res_still,
+		.res_video = imx135vb_res_video,
+		.n_res_preview = ARRAY_SIZE(imx135vb_res_preview),
+		.n_res_still = ARRAY_SIZE(imx135vb_res_still),
+		.n_res_video = ARRAY_SIZE(imx135vb_res_video),
 	},
 };
 
@@ -318,6 +353,7 @@ struct imx_device {
 	u16 sensor_id;
 	u16 coarse_itg;
 	u16 fine_itg;
+	u16 digital_gain;
 	u16 gain;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
@@ -325,6 +361,11 @@ struct imx_device {
 	u8 res;
 	u8 type;
 	u8 sensor_revision;
+	u8 *otp_data;
+	struct imx_settings *mode_tables;
+	struct imx_vcm *vcm_driver;
+	const struct imx_resolution *curr_res_table;
+	int entries_curr_table;
 };
 
 #define to_imx_sensor(x) container_of(x, struct imx_device, sd)
@@ -435,11 +476,23 @@ extern int dw9714_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
 extern int dw9714_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
 extern int dw9714_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
 
+extern int dw9719_vcm_power_up(struct v4l2_subdev *sd);
+extern int dw9719_vcm_power_down(struct v4l2_subdev *sd);
+extern int dw9719_vcm_init(struct v4l2_subdev *sd);
+
+extern int dw9719_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
+extern int dw9719_t_focus_abs(struct v4l2_subdev *sd, s32 value);
+extern int dw9719_t_focus_rel(struct v4l2_subdev *sd, s32 value);
+extern int dw9719_q_focus_status(struct v4l2_subdev *sd, s32 *value);
+extern int dw9719_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
+extern int dw9719_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
+extern int dw9719_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
+
 extern int vcm_power_up(struct v4l2_subdev *sd);
 extern int vcm_power_down(struct v4l2_subdev *sd);
 
 struct imx_vcm imx_vcms[] = {
-	[IMX175_ID] = {
+	[IMX175_MERRFLD] = {
 		.power_up = drv201_vcm_power_up,
 		.power_down = drv201_vcm_power_down,
 		.init = drv201_vcm_init,
@@ -451,7 +504,7 @@ struct imx_vcm imx_vcms[] = {
 		.t_vcm_slew = drv201_t_vcm_slew,
 		.t_vcm_timing = drv201_t_vcm_timing,
 	},
-	[IMX175_ID0] = {
+	[IMX175_VALLEYVIEW] = {
 		.power_up = dw9714_vcm_power_up,
 		.power_down = dw9714_vcm_power_down,
 		.init = dw9714_vcm_init,
@@ -463,7 +516,7 @@ struct imx_vcm imx_vcms[] = {
 		.t_vcm_slew = dw9714_t_vcm_slew,
 		.t_vcm_timing = dw9714_t_vcm_timing,
 	},
-	[IMX135_ID] = {
+	[IMX135_SALTBAY] = {
 		.power_up = ad5816g_vcm_power_up,
 		.power_down = ad5816g_vcm_power_down,
 		.init = ad5816g_vcm_init,
@@ -474,6 +527,18 @@ struct imx_vcm imx_vcms[] = {
 		.q_focus_abs = ad5816g_q_focus_abs,
 		.t_vcm_slew = ad5816g_t_vcm_slew,
 		.t_vcm_timing = ad5816g_t_vcm_timing,
+	},
+	[IMX135_VICTORIABAY] = {
+		.power_up = dw9719_vcm_power_up,
+		.power_down = dw9719_vcm_power_down,
+		.init = dw9719_vcm_init,
+		.t_focus_vcm = dw9719_t_focus_vcm,
+		.t_focus_abs = dw9719_t_focus_abs,
+		.t_focus_rel = dw9719_t_focus_rel,
+		.q_focus_status = dw9719_q_focus_status,
+		.q_focus_abs = dw9719_q_focus_abs,
+		.t_vcm_slew = dw9719_t_vcm_slew,
+		.t_vcm_timing = dw9719_t_vcm_timing,
 	},
 	[IMX_ID_DEFAULT] = {
 		.power_up = vcm_power_up,

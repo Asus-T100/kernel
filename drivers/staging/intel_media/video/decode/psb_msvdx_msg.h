@@ -52,7 +52,9 @@ enum {
 	MTX_MSGID_INTRA_OOLD,
 	MTX_MSGID_DECODE_BE,
 	MTX_MSGID_HOST_BE_OPP,
-
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	MTX_MSGID_SLICE_HEADER_EXTRACT = 0x87,
+#endif
 	/*! Sent by the mtx firmware to itself.
 	 */
 	MTX_MSGID_RENDER_MC_INTERRUPT,
@@ -73,6 +75,9 @@ enum {
 	MTX_MSGID_FAILED,
 	MTX_MSGID_CONTIGUITY_WARNING,
 	MTX_MSGID_HW_PANIC,
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	MTX_MSGID_SLICE_HEADER_EXTRACT_DONE = 0xC9,
+#endif
 };
 
 #define MTX_GENMSG_SIZE_TYPE		uint8_t
@@ -112,6 +117,9 @@ struct fw_init_msg {
 		} bits;
 		uint32_t value;
 	} rendec_size;
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	uint32_t nalu_extract_term_buff_addr;
+#endif
 };
 
 struct fw_decode_msg {
@@ -269,6 +277,88 @@ struct fw_contiguity_msg {
 		} bits;
 		uint32_t value;
 	} mb;
+};
+
+struct fw_slice_header_extract_msg {
+	union {
+		struct {
+			uint32_t msg_size:8;
+			uint32_t msg_type:8;
+			uint32_t msg_fence:16;
+		} bits;
+		uint32_t value;
+	} header;
+
+	union {
+		struct {
+			uint32_t flags:16;
+			uint32_t res:16;
+		} bits;
+		uint32_t value;
+	} flags;
+
+	uint32_t src;
+
+	union {
+		struct {
+			uint32_t context:8;
+			uint32_t mmu_ptd:24;
+		} bits;
+		uint32_t value;
+	} mmu_context;
+
+	uint32_t dst;
+	uint32_t src_size;
+	uint32_t dst_size;
+
+	union {
+		struct {
+			uint32_t expected_pps_id:16;
+			uint32_t continue_parse_flag:1;
+			uint32_t frame_mbs_only_flag:1;
+			uint32_t pic_order_present_flag:1;
+			uint32_t delta_pic_order_always_zero_flag:1;
+			uint32_t redundant_pic_cnt_present_flag:1;
+			uint32_t weighted_pred_flag:1;
+			uint32_t entropy_coding_mode_flag:1;
+			uint32_t deblocking_filter_control_present_flag:1;
+			uint32_t weighted_bipred_idc:2;
+			uint32_t residual_colour_transform_flag:1;
+			uint32_t chroma_format_idc:2;
+		} bits;
+		uint32_t value;
+	} flag_bitfield;
+
+	union {
+		struct {
+			uint8_t num_slice_groups_minus1:8;
+			uint8_t slice_group_map_type:8;
+			uint8_t log2_slice_group_change_cycle:8;
+			uint8_t num_ref_idc_l0_active_minus1:8;
+		} bits;
+		uint32_t value;
+	} pic_param0;
+
+	union {
+		struct {
+			uint8_t log2_max_pic_order_cnt_lsb_minus4:8;
+			uint8_t pic_order_cnt_type:8;
+			uint8_t log2_max_frame_num_minus4:8;
+			uint8_t num_ref_idc_l1_active_minus1:8;
+		} bits;
+		uint32_t value;
+	} pic_param1;
+};
+
+struct fw_slice_header_extract_done_msg {
+	union {
+		struct {
+			uint32_t msg_size:8;
+			uint32_t msg_type:8;
+			uint32_t msg_fence:16;
+		} bits;
+		uint32_t value;
+	} header;
 };
 
 #endif

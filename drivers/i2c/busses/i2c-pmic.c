@@ -269,11 +269,14 @@ static int pmic_i2c_probe(struct platform_device *pdev)
 		goto ioremap_failed;
 	}
 	ret = request_threaded_irq(pmic_dev->irq, pmic_i2c_handler,
-					pmic_thread_handler, IRQF_SHARED,
+					pmic_thread_handler,
+					IRQF_SHARED|IRQF_NO_SUSPEND,
 					DRIVER_NAME, pmic_dev);
 	if (ret)
 		goto err_irq_request;
 
+	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
 	intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
 			PMIC_I2C_INTR_MASK);
 

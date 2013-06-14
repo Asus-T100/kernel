@@ -83,6 +83,7 @@ static void gfx_late_resume(struct early_suspend *h)
 	/* protect early_suspend with dpms and mode config */
 	mutex_lock(&dev->mode_config.mutex);
 
+	dev_priv->early_suspended = false;
 	ospm_power_resume();
 
 	list_for_each_entry(encoder,
@@ -104,8 +105,6 @@ static void gfx_late_resume(struct early_suspend *h)
 				mid_hdmi_audio_resume(dev);
 		}
 	}
-
-	dev_priv->early_suspended = false;
 
 	mutex_unlock(&dev->mode_config.mutex);
 }

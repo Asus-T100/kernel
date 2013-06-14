@@ -88,7 +88,14 @@ static struct resource thermal_resources[] = {
 		.flags = IORESOURCE_IRQ,
 	},
 };
-
+static struct resource bcu_resources[] = {
+	{
+		.name  = "BCU",
+		.start = BCU_IRQ,
+		.end   = BCU_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
 static struct mfd_cell crystal_cove_data[] = {
 	{
 		.name = "crystal_cove_pwrsrc",
@@ -107,6 +114,12 @@ static struct mfd_cell crystal_cove_data[] = {
 		.id = 0,
 		.num_resources = ARRAY_SIZE(thermal_resources),
 		.resources = thermal_resources,
+	},
+	{
+		.name = "crystal_cove_bcu",
+		.id = 0,
+		.num_resources = ARRAY_SIZE(bcu_resources),
+		.resources = bcu_resources,
 	},
 	{
 		.name = "crystal_cove_gpio",
@@ -217,6 +230,7 @@ int intel_mid_pmic_readb(int reg)
 	mutex_unlock(&pmic->io_lock);
 	return ret;
 }
+EXPORT_SYMBOL(intel_mid_pmic_readb);
 
 int intel_mid_pmic_writeb(int reg, u8 val)
 {
@@ -227,6 +241,7 @@ int intel_mid_pmic_writeb(int reg, u8 val)
 	mutex_unlock(&pmic->io_lock);
 	return ret;
 }
+EXPORT_SYMBOL(intel_mid_pmic_writeb);
 
 int intel_mid_pmic_setb(int reg, u8 mask)
 {

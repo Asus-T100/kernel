@@ -336,8 +336,8 @@
 #define FS_ADPI_MASK	(ADPIS_ADPRAMPI | ADPIS_SNSMISSI | ADPIS_PRBTRGI)
 
 /* define Data connect checking timeout and polling interval */
-#define DATACON_TIMEOUT		1000
-#define DATACON_INTERVAL	50
+#define DATACON_TIMEOUT		750
+#define DATACON_INTERVAL	20
 
 enum penwell_otg_timer_type {
 	TA_WAIT_VRISE_TMR,
@@ -440,6 +440,7 @@ struct intel_mid_otg_pdata {
 	int gpio_cs;
 	int gpio_reset;
 	int charging_compliance;
+	int hnp_poll_support;
 	unsigned power_budget;
 };
 

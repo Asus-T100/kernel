@@ -572,6 +572,15 @@ static int fsa9285_remove(struct i2c_client *client)
 	return 0;
 }
 
+static void fsa9285_shutdown(struct i2c_client *client)
+{
+	dev_dbg(&client->dev, "fsa9285 shutdown\n");
+
+	if (client->irq > 0)
+		disable_irq(client->irq);
+	return;
+}
+
 static int fsa9285_suspend(struct device *dev)
 {
 	dev_dbg(dev, "%s called\n", __func__);
@@ -625,6 +634,7 @@ static struct i2c_driver fsa9285_i2c_driver = {
 	.probe = fsa9285_probe,
 	.remove = fsa9285_remove,
 	.id_table = fsa9285_id,
+	.shutdown = fsa9285_shutdown,
 };
 
 /*

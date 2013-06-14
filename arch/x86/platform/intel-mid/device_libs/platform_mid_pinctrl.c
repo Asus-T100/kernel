@@ -41,6 +41,10 @@ static int __init intel_mid_pinctrl_init(void)
 {
 	int ret;
 	struct platform_device *pdev = NULL;
+	void *pdata = get_pinctrl_platform_data();
+
+	if (pdata == NULL)
+		return -EINVAL;
 
 	pdev = platform_device_alloc(PINCTRL_DEVICE_NAME, -1);
 	if (!pdev) {
@@ -50,7 +54,7 @@ static int __init intel_mid_pinctrl_init(void)
 		goto out;
 	}
 
-	pdev->dev.platform_data = get_pinctrl_platform_data();
+	pdev->dev.platform_data = pdata;
 
 	ret = platform_device_add(pdev);
 	if (ret) {

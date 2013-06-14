@@ -396,7 +396,7 @@ static void msvdx_rendec_init_by_reg(struct drm_device *dev)
 	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTROL0_OFFSET);
 }
 
-static int32_t msvdx_rendec_init_by_msg(struct drm_device *dev)
+int32_t msvdx_rendec_init_by_msg(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -410,6 +410,9 @@ static int32_t msvdx_rendec_init_by_msg(struct drm_device *dev)
 	init_msg.rendec_addr1 = msvdx_priv->base_addr1;
 	init_msg.rendec_size.bits.rendec_size0 = RENDEC_A_SIZE / (4 * 1024);
 	init_msg.rendec_size.bits.rendec_size1 = RENDEC_B_SIZE / (4 * 1024);
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	init_msg.nalu_extract_term_buff_addr = msvdx_priv->term_buf_addr;
+#endif
 	return psb_mtx_send(dev_priv, (void *)&init_msg);
 }
 
@@ -833,7 +836,9 @@ int psb_msvdx_init(struct drm_device *dev)
 		       " place when receiving user space commands\n");
 
 	if (!msvdx_priv->fw_loaded_by_punit) {
+#ifndef CONFIG_SLICE_HEADER_PARSING
 		msvdx_rendec_init_by_reg(dev);
+#endif
 		if (!msvdx_priv->fw) {
 			ret = psb_msvdx_alloc_fw_bo(dev_priv);
 			if (ret) {
@@ -880,6 +885,15 @@ int psb_msvdx_init(struct drm_device *dev)
 		PSB_WMSVDX32(cmd, VEC_SHIFTREG_CONTROL_OFFSET);
 	}
 
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	if (!msvdx_priv->term_buf) {
+		ret = psb_allocate_term_buf(dev, &msvdx_priv->term_buf,
+				    &msvdx_priv->term_buf_addr,
+				    TERMINATION_SIZE);
+		if (ret)
+			return 1;
+	}
+#endif
 	return 0;
 }
 
@@ -930,6 +944,16 @@ int psb_msvdx_init(struct drm_device *dev)
 	PSB_DEBUG_INIT("MSDVX:old clock gating disable = 0x%08x\n",
 		       PSB_RVDC32(PSB_MSVDX_CLOCKGATING));
 #endif
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	if (!msvdx_priv->term_buf) {
+		ret = psb_allocate_term_buf(dev, &msvdx_priv->term_buf,
+					    &msvdx_priv->term_buf_addr,
+					    TERMINATION_SIZE);
+		if (ret)
+			return 1;
+	}
+#endif
+
 	return 0;
 }
 
@@ -953,6 +977,13 @@ int psb_msvdx_uninit(struct drm_device *dev)
 		msvdx_free_ccb(&msvdx_priv->ccb0);
 	if (msvdx_priv->ccb1)
 		msvdx_free_ccb(&msvdx_priv->ccb1);
+
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	if (msvdx_priv && msvdx_priv->term_buf) {
+		ttm_bo_unref(&msvdx_priv->term_buf);
+		msvdx_priv->term_buf = NULL;
+	}
+#endif
 #ifdef PSB_MSVDX_FW_LOADED_BY_HOST
 	if (msvdx_priv->msvdx_fw)
 		kfree(msvdx_priv->msvdx_fw);

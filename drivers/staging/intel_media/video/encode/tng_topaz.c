@@ -1095,7 +1095,6 @@ static int32_t tng_restore_bias_table(
 	uint32_t size;
 	struct ttm_bo_kmap_obj tmp_kmap;
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 	int32_t ret = 0;
 
 	/*
@@ -1113,7 +1112,7 @@ static int32_t tng_restore_bias_table(
 	p_command += 32 * 1024 / 4;
 	*/
 
-	p_command = topaz_priv->mtx_reg_state + 32 * 1024 / 4;
+	p_command = video_ctx->mtx_reg_state + 32 * 1024 / 4;
 
 	size = *p_command++;
 
@@ -1290,7 +1289,7 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 	mtx_reg_state = (uint32_t *)ttm_kmap_obj_virtual(&tmp_kmap, &is_iomem);
 	*/
 
-	mtx_reg_state = (uint32_t *)topaz_priv->mtx_reg_state;
+	mtx_reg_state = (uint32_t *)video_ctx->mtx_reg_state;
 	/* restore register */
 	/* Saves 8 Registers of D0 Bank  */
 	/* DoRe0, D0Ar6, D0Ar4, D0Ar2, D0FrT, D0.5, D0.6 and D0.7 */
@@ -1421,7 +1420,7 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 	}
 
 	/* topaz_priv->topaz_mtx_saved = 0; */
-	PSB_DEBUG_TOPAZ("TOPAZ: Restore MTX status successfully\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Restore MTX status return\n");
 
 	video_ctx->status &= ~MASK_TOPAZ_CONTEXT_SAVED;
 
@@ -1569,7 +1568,7 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 	mtx_reg_state = (uint32_t *)ttm_kmap_obj_virtual(&tmp_kmap, &is_iomem);
 	*/
 
-	mtx_reg_state = (uint32_t *)topaz_priv->mtx_reg_state;
+	mtx_reg_state = (uint32_t *)video_ctx->mtx_reg_state;
 
 	/* Save MTX register states  */
 	/* Saves 8 Registers of D0 Bank  */
@@ -1703,7 +1702,7 @@ out:
 	spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
 #endif
 	/* topaz_priv->topaz_mtx_saved = 1; */
-	PSB_DEBUG_TOPAZ("TOPAZ: Save MTX status successfully\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Save MTX status return\n");
 	/* ttm_bo_kunmap(&tmp_kmap); */
 	return ret;
 }
@@ -1736,7 +1735,6 @@ static int tng_save_bias_table(
 	struct psb_video_ctx *video_ctx;
 	int32_t ret = 0;
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 
 	p_command = (uint32_t *)cmd;
 
@@ -1766,7 +1764,7 @@ static int tng_save_bias_table(
 	reg_saving_ptr += 32 * 1024 / 4;
 	*/
 
-	reg_saving_ptr = topaz_priv->mtx_reg_state + 32 * 1024 / 4;
+	reg_saving_ptr = video_ctx->mtx_reg_state + 32 * 1024 / 4;
 
 	p_command++;
 	/* Register count */
@@ -2013,22 +2011,62 @@ static int tng_context_switch(
 		return ret;
 	}
 
-	/* Continue doing other commands */
-	if ((topaz_priv->cur_context == video_ctx) &&
-		!(video_ctx->status & MASK_TOPAZ_CONTEXT_SAVED)) {
-		PSB_DEBUG_TOPAZ("TOPAZ: Current context equals " \
-			"incoming context %08x(%s) status %08x, " \
-			"continue doing other commands\n",
-			(unsigned int)video_ctx, codec_to_string(codec),\
-			video_ctx->status);
-		topaz_priv->cur_context = video_ctx;
-		topaz_priv->cur_codec = codec;
-		return ret;
+	if (topaz_priv->cur_context == video_ctx) {
+		if (video_ctx->status & MASK_TOPAZ_CONTEXT_SAVED) {
+			PSB_DEBUG_TOPAZ("TOPAZ: Restore context %08x(%s)" \
+				" status %08x\n", video_ctx, \
+				codec_to_string(video_ctx->codec), \
+				video_ctx->status);
+			/* Context switch */
+			topaz_priv->cur_context = video_ctx;
+			topaz_priv->cur_codec = codec;
+			ret = tng_topaz_restore_mtx_state(dev);
+			if (ret) {
+				DRM_ERROR("Failed to restore mtx status");
+				return ret;
+			}
+		} else {
+			PSB_DEBUG_TOPAZ("TOPAZ: Current context equals " \
+				"incoming context %08x(%s) status %08x, " \
+				"continue doing other commands\n",
+				(unsigned int)video_ctx, \
+				codec_to_string(codec),\
+				video_ctx->status);
+			topaz_priv->cur_context = video_ctx;
+			topaz_priv->cur_codec = codec;
+			return ret;
+		}
 	} else {
+		/* Current context already saved */
+		if (topaz_priv->cur_context->status & \
+		    MASK_TOPAZ_CONTEXT_SAVED) {
+			PSB_DEBUG_TOPAZ("TOPAZ: Context %08x(%s)" \
+				" status %08x already saved," \
+				" continue doing other commands\n", \
+				topaz_priv->cur_context, \
+				codec_to_string(topaz_priv->cur_context), \
+				topaz_priv->cur_context->status);
+		} else {
+			/* Save current context */
+			PSB_DEBUG_TOPAZ("TOPAZ: Context %08x(%s)" \
+				" status %08x not saved," \
+				" save it\n", \
+				topaz_priv->cur_context, \
+				codec_to_string( \
+				topaz_priv->cur_context->codec), \
+				topaz_priv->cur_context->status);
+			ret = tng_topaz_save_mtx_state(dev);
+			if (ret) {
+				DRM_ERROR("Failed to save mtx status");
+				return ret;
+			}
+		}
+
 		PSB_DEBUG_TOPAZ("TOPAZ: Restore context %08x(%s)" \
 			" status %08x\n", video_ctx, \
 			codec_to_string(video_ctx->codec), \
 			video_ctx->status);
+
 		/* Context switch */
 		topaz_priv->cur_context = video_ctx;
 		topaz_priv->cur_codec = codec;
@@ -2037,9 +2075,6 @@ static int tng_context_switch(
 			DRM_ERROR("Failed to restore mtx status");
 			return ret;
 		}
-
-		topaz_priv->cur_context = video_ctx;
-		topaz_priv->cur_codec = codec;
 	}
 
 	return ret;
@@ -2135,10 +2170,28 @@ static int tng_setup_new_context(
 	video_ctx->frame_count = 0;
 	video_ctx->handle_sequence_needed = false;
 
-	PSB_DEBUG_TOPAZ("TOPAZ: new context %08x(%s)\n",
-		(unsigned int)video_ctx, codec_to_string(codec));
+	PSB_DEBUG_TOPAZ("TOPAZ: new context %08x(%s)(cur context = %08x)\n",
+		(unsigned int)video_ctx, codec_to_string(codec), \
+		topaz_priv->cur_context);
 
 	if (video_ctx->codec != IMG_CODEC_JPEG) {
+
+		if (topaz_priv->cur_context &&
+		    topaz_priv->cur_context != video_ctx) {
+			if (topaz_priv->cur_context->status & \
+			    MASK_TOPAZ_CONTEXT_SAVED) {
+				PSB_DEBUG_TOPAZ("Context %08x(%s)" \
+					" has been saved, continue\n");
+			/* If the previous context not saved */
+			} else {
+				ret = tng_topaz_save_mtx_state(dev);
+				if (ret) {
+					DRM_ERROR("Failed to save mtx status");
+					goto out;
+				}
+			}
+		}
+
 		/* Register state BO */
 		video_ctx->reg_saving_bo = ttm_buffer_object_lookup(
 						tfile, *(cmd + 2));
@@ -2159,7 +2212,7 @@ static int tng_setup_new_context(
 
 		ret = ttm_bo_kmap(video_ctx->reg_saving_bo, 0,
 			video_ctx->reg_saving_bo->num_pages, \
-			&topaz_priv->reg_kmap);
+			&video_ctx->reg_kmap);
 
 		if (ret) {
 			DRM_ERROR("TOPAZ: Failed to map reg saving BO\n");
@@ -2167,8 +2220,8 @@ static int tng_setup_new_context(
 			return ret;
 		}
 
-		topaz_priv->mtx_reg_state = (uint32_t *)
-			ttm_kmap_obj_virtual(&topaz_priv->reg_kmap, &is_iomem);
+		video_ctx->mtx_reg_state = (uint32_t *)
+			ttm_kmap_obj_virtual(&video_ctx->reg_kmap, &is_iomem);
 
 		/* Data state BO */
 		video_ctx->data_saving_bo = ttm_buffer_object_lookup(
@@ -2637,7 +2690,7 @@ int tng_topaz_remove_ctx(
 
 	if (video_ctx->reg_saving_bo) {
 		PSB_DEBUG_TOPAZ("TOPAZ: unref reg saving bo\n");
-		ttm_bo_kunmap(&topaz_priv->reg_kmap);
+		ttm_bo_kunmap(&video_ctx->reg_kmap);
 		ttm_bo_unref(&video_ctx->reg_saving_bo);
 		video_ctx->reg_saving_bo = NULL;
 	}

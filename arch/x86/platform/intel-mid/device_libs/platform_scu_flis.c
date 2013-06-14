@@ -247,17 +247,20 @@ static int __init intel_scu_flis_init(void)
 	struct platform_device *pdev = NULL;
 	static struct intel_scu_flis_platform_data flis_pdata;
 
+	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
+		INTEL_MID_BOARD(1, TABLET, CLVT)) {
+		flis_pdata.pin_t = ctp_pin_table;
+		flis_pdata.pin_num = CTP_PIN_NUM;
+	} else {
+		/* currently runtime flis config is supported on CLV only */
+		return -EINVAL;
+	}
+
 	pdev = platform_device_alloc(FLIS_DEVICE_NAME, -1);
 	if (!pdev) {
 		pr_err("out of memory for platform dev %s\n", FLIS_DEVICE_NAME);
 		ret = -EINVAL;
 		goto out;
-	}
-
-	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
-		INTEL_MID_BOARD(1, TABLET, CLVT)) {
-		flis_pdata.pin_t = ctp_pin_table;
-		flis_pdata.pin_num = CTP_PIN_NUM;
 	}
 
 	pdev->dev.platform_data = &flis_pdata;

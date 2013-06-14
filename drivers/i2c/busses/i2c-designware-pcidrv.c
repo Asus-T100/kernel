@@ -813,6 +813,7 @@ const struct pci_device_id *id)
 	dev->use_dyn_clk = 0;
 	dev->reset = controller->reset;
 	dev->share_irq = controller->share_irq;
+	dev->abort = intel_mid_dw_i2c_abort;
 
 	pci_set_drvdata(pdev, dev);
 

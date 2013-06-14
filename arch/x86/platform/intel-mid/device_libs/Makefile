@@ -30,6 +30,7 @@ obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
 obj-$(subst m,y,$(CONFIG_IIO_BASINCOVE_GPADC))				+= platform_bcove_adc.o
 obj-$(subst m,y,$(CONFIG_VLV2_PLAT_CLK))				+= platform_vlv2_plat_clk.o
 # I2C Devices
+obj-$(subst m,y,$(CONFIG_I2C_DESIGNWARE_PCI))				+= platform_dw_i2c.o
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
 obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3LV02D))				+= platform_lis331.o
@@ -63,6 +64,7 @@ obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platfor
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_R69001_I2C))			+= platform_r69001.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_WM5102))				+= platform_wm5102.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_CS42L73))                              += platform_cs42l73.o
+obj-$(subst m,y,$(CONFIG_SND_SOC_WM8994))				+= platform_wm8994.o
 # Camera
 obj-$(subst m,y,$(CONFIG_VIDEO_ATOMISP))				+= platform_camera.o
 ifdef CONFIG_VIDEO_ATOMISP
@@ -71,8 +73,8 @@ obj-$(subst m,y,$(CONFIG_VIDEO_MT9D113))				+= platform_mt9d113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9M114))				+= platform_mt9m114.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9V113))				+= platform_mt9v113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV8830))					+= platform_ov8830.o
-obj-$(subst m,y,$(CONFIG_VIDEO_IMX175))					+= platform_imx175.o
-obj-$(subst m,y,$(CONFIG_VIDEO_IMXVB))					+= platform_imx135.o
+obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx175.o
+obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx135.o
 obj-$(subst m,y,$(CONFIG_VIDEO_S5K8AAY))				+= platform_s5k8aay.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV9724))					+= platform_ov9724.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV2722))					+= platform_ov2722.o

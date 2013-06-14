@@ -53,10 +53,6 @@
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
-#if defined(CONFIG_RAR_REGISTER)
-#include "../../rar_register/rar_register.h"
-#include "../../memrar/memrar.h"
-#endif
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel-mid.h>
@@ -91,6 +87,7 @@
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 int drm_psb_debug;
+int drm_decode_flag = 0x0;
 int drm_psb_enable_pr2_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
@@ -180,6 +177,7 @@ module_param_named(gfx_pm, drm_psb_gfx_pm, int, 0600);
 module_param_named(vsp_pm, drm_psb_vsp_pm, int, 0600);
 module_param_named(ved_pm, drm_psb_ved_pm, int, 0600);
 module_param_named(vec_pm, drm_psb_vec_pm, int, 0600);
+module_param_named(msvdx_tiling_memory, drm_psb_msvdx_tiling, int, 0600);
 module_param_named(rtpm, gfxrtdelay, int, 0600);
 module_param_named(topaz_clockgating, drm_psb_topaz_clockgating, int, 0600);
 module_param_named(PanelID, PanelID, int, 0600);
@@ -188,6 +186,9 @@ module_param_named(hdmi_state, hdmi_state, int, 0600);
 module_param_named(vblank_sync, drm_psb_3D_vblank, int, 0600);
 module_param_named(smart_vsync, drm_psb_smart_vsync, int, 0600);
 module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
+#ifdef CONFIG_SLICE_HEADER_PARSING
+module_param_named(decode_flag, drm_decode_flag, int, 0600);
+#endif
 
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly,
@@ -712,60 +713,6 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		psb_disable_ied_session_ioctl, DRM_AUTH),
 };
 
-#if KEEP_UNUSED_CODE
-static void get_ci_info(struct drm_psb_private *dev_priv)
-{
-	struct pci_dev *pdev;
-
-	pdev = pci_get_subsys(0x8086, 0x080b, 0, 0, NULL);
-	if (pdev == NULL) {
-		/* IF no pci_device we set size & addr to 0, no ci
-		 * share buffer can be created */
-		dev_priv->ci_region_start = 0;
-		dev_priv->ci_region_size = 0;
-		printk(KERN_ERR "can't find CI device, no ci share buffer\n");
-		return;
-	}
-
-	dev_priv->ci_region_start = pci_resource_start(pdev, 1);
-	dev_priv->ci_region_size = pci_resource_len(pdev, 1);
-
-	PSB_DEBUG_ENTRY("ci_region_start %x ci_region_size %d\n",
-			dev_priv->ci_region_start, dev_priv->ci_region_size);
-
-	pci_dev_put(pdev);
-
-	return;
-}
-#endif /* if KEEP_UNUSED_CODE */
-
-#if KEEP_UNUSED_CODE
-static void get_rar_info(struct drm_psb_private *dev_priv)
-{
-#if defined(CONFIG_RAR_REGISTER)
-	int ret;
-	dma_addr_t start_addr, end_addr;
-
-	dev_priv->rar_region_start = 0;
-	dev_priv->rar_region_size = 0;
-	end_addr = 0;
-	ret = 0;
-
-	ret = rar_get_address(RAR_TYPE_VIDEO, &start_addr, &end_addr);
-	if (ret) {
-		printk(KERN_ERR "failed to get rar region info\n");
-		return;
-	}
-	dev_priv->rar_region_start = (uint32_t) start_addr;
-	if ((!ret) && (start_addr != 0) && (end_addr != 0))
-		dev_priv->rar_region_size =
-		    end_addr - dev_priv->rar_region_start + 1;
-
-#endif
-	return;
-}
-#endif /* if KEEP_UNUSED_CODE */
-
 static void get_imr_info(struct drm_psb_private *dev_priv)
 {
 	u32 high, low, start, end;
@@ -868,14 +815,8 @@ static void psb_do_takedown(struct drm_device *dev)
 #ifdef SUPPORT_VSP
 	vsp_deinit(dev);
 #endif
-#ifdef MEDFIELD
-	if (IS_MDFLD(dev))
-		pnw_topaz_uninit(dev);
-#endif
-#ifdef MERRIFIELD
 	if (IS_MRFLD(dev))
 		tng_topaz_uninit(dev);
-#endif
 }
 
 #if KEEP_UNUSED_CODE
@@ -1385,6 +1326,7 @@ static int psb_do_init(struct drm_device *dev)
 	struct ttm_bo_device *bdev = &dev_priv->bdev;
 	struct psb_gtt *pg = dev_priv->pg;
 
+	uint32_t tmp;
 	uint32_t stolen_gtt;
 	uint32_t tt_start;
 	uint32_t tt_pages;
@@ -1422,20 +1364,11 @@ static int psb_do_init(struct drm_device *dev)
 	tt_pages -= tt_start >> PAGE_SHIFT;
 	dev_priv->sizes.ta_mem_size = 0;
 
-	/* since there is always rar region for video, it is ok */
-	if ((dev_priv->rar_region_size != 0) &&
-	    !ttm_bo_init_mm(bdev, TTM_PL_RAR,
-			    dev_priv->rar_region_size >> PAGE_SHIFT)) {
-		dev_priv->have_rar = 1;
-	}
-
 	/* TT region managed by TTM. */
 	if (!ttm_bo_init_mm(bdev, TTM_PL_TT,
 			    pg->gatt_pages -
-			    (pg->ci_start >> PAGE_SHIFT) -
-			    ((dev_priv->ci_region_size +
-			      dev_priv->rar_region_size)
-			     >> PAGE_SHIFT))) {
+			    (pg->gtt_video_start >> PAGE_SHIFT)
+			    )) {
 
 		dev_priv->have_tt = 1;
 		dev_priv->sizes.tt_size =
@@ -1443,9 +1376,20 @@ static int psb_do_init(struct drm_device *dev)
 	}
 
 	if (!ttm_bo_init_mm(bdev,
-			    DRM_PSB_MEM_MMU, PSB_MEM_TT_START >> PAGE_SHIFT)) {
+			    DRM_PSB_MEM_MMU,
+			    PSB_MEM_MMU_TILING_START >> PAGE_SHIFT)) {
 		dev_priv->have_mem_mmu = 1;
-		dev_priv->sizes.mmu_size = PSB_MEM_TT_START / (1024 * 1024);
+		dev_priv->sizes.mmu_size =
+			PSB_MEM_MMU_TILING_START / (1024 * 1024);
+	}
+
+	if (IS_MSVDX_MEM_TILE(dev)) {
+		/* Create tiling MMU region managed by TTM */
+		tmp = (PSB_MEM_IMR_START -
+			PSB_MEM_MMU_TILING_START) >> PAGE_SHIFT;
+		printk(KERN_INFO "init tiling heap, 0x%08x in pages\n", tmp);
+		if (!ttm_bo_init_mm(bdev, DRM_PSB_MEM_MMU_TILING, tmp))
+			dev_priv->have_mem_mmu_tiling = 1;
 	}
 
 	PSB_DEBUG_INIT("Init MSVDX\n");
@@ -1458,15 +1402,8 @@ static int psb_do_init(struct drm_device *dev)
 #endif
 
 	PSB_DEBUG_INIT("Init Topaz\n");
-	/* for sku100L and sku100M, VEC is disabled in fuses */
-#ifdef MEDFIELD
-	if (IS_MDFLD(dev))
-		pnw_topaz_init(dev);
-#endif
-#ifdef MERRIFIELD
 	if (IS_MRFLD(dev))
 		tng_topaz_init(dev);
-#endif
 	return 0;
  out_err:
 	psb_do_takedown(dev);
@@ -1504,11 +1441,6 @@ static int psb_driver_unload(struct drm_device *dev)
 						    pg->mmu_gatt_start,
 						    pg->vram_stolen_size >>
 						    PAGE_SHIFT);
-			if (pg->ci_stolen_size != 0)
-				psb_mmu_remove_pfn_sequence
-				    (psb_mmu_get_default_pd(dev_priv->mmu),
-				     pg->ci_start,
-				     pg->ci_stolen_size >> PAGE_SHIFT);
 			if (pg->rar_stolen_size != 0)
 				psb_mmu_remove_pfn_sequence
 				    (psb_mmu_get_default_pd(dev_priv->mmu),
@@ -1529,12 +1461,6 @@ static int psb_driver_unload(struct drm_device *dev)
 				(dev_priv->vsp_mmu),
 				pg->mmu_gatt_start,
 				pg->vram_stolen_size >> PAGE_SHIFT);
-			if (pg->ci_stolen_size != 0)
-				psb_mmu_remove_pfn_sequence(
-					psb_mmu_get_default_pd
-					(dev_priv->vsp_mmu),
-					pg->ci_start,
-					pg->ci_stolen_size >> PAGE_SHIFT);
 			if (pg->rar_stolen_size != 0)
 				psb_mmu_remove_pfn_sequence(
 					psb_mmu_get_default_pd
@@ -1841,39 +1767,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	    (pg->gatt_pages) : PSB_TT_PRIV0_PLIMIT;
 
 	/* CI/RAR use the lower half of TT. */
-	pg->ci_start = (tt_pages / 2) << PAGE_SHIFT;
-	pg->rar_start = pg->ci_start + pg->ci_stolen_size;
-
-	/*
-	 * Make MSVDX/TOPAZ MMU aware of the CI stolen memory area.
-	 */
-	if (dev_priv->pg->ci_stolen_size != 0) {
-		down_read(&pg->sem);
-		ret = psb_mmu_insert_pfn_sequence(psb_mmu_get_default_pd
-						  (dev_priv->mmu),
-						  dev_priv->ci_region_start >>
-						  PAGE_SHIFT,
-						  pg->mmu_gatt_start +
-						  pg->ci_start,
-						  pg->ci_stolen_size >>
-						  PAGE_SHIFT, 0);
-		up_read(&pg->sem);
-		if (ret)
-			goto out_err;
-
-#ifdef SUPPORT_VSP
-		down_read(&pg->sem);
-		ret = psb_mmu_insert_pfn_sequence(
-			psb_mmu_get_default_pd
-			(dev_priv->vsp_mmu),
-			dev_priv->ci_region_start >> PAGE_SHIFT,
-			pg->mmu_gatt_start + pg->ci_start,
-			pg->ci_stolen_size >> PAGE_SHIFT, 0);
-		up_read(&pg->sem);
-		if (ret)
-			goto out_err;
-#endif
-	}
+	pg->gtt_video_start = (tt_pages / 2) << PAGE_SHIFT;
+	pg->rar_start = pg->gtt_video_start;
 
 	/*
 	 * Make MSVDX/TOPAZ MMU aware of the rar stolen memory area.

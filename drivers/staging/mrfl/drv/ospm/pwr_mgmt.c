@@ -329,7 +329,13 @@ bool power_island_get(u32 hw_island)
 	u32 i = 0;
 	bool ret = true;
 	struct ospm_power_island *p_island;
+	struct drm_psb_private *dev_priv = g_ospm_data->dev->dev_private;
 	unsigned long flags;
+
+	if (dev_priv->early_suspended) {
+		OSPM_DPF("Resuming PCI\n");
+		ospm_resume_pci(g_ospm_data->dev);
+	}
 
 	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
 
@@ -362,7 +368,9 @@ bool power_island_put(u32 hw_island)
 {
 	bool ret = true;
 	u32 i = 0;
+	struct drm_psb_private *dev_priv = g_ospm_data->dev->dev_private;
 	struct ospm_power_island *p_island;
+	u32 pwr_count = 0;
 	unsigned long flags;
 
 	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
@@ -378,10 +386,19 @@ bool power_island_put(u32 hw_island)
 				goto out_err;
 			}
 		}
+
+		/* if all the islands are down we can suspend PCI */
+		pwr_count += atomic_read(&island_list[i].ref_count);
 	}
 
 out_err:
 	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
+
+	/* Check to see if we need to suspend PCI */
+	if ((dev_priv->early_suspended) && (!pwr_count)) {
+		OSPM_DPF("Suspending PCI\n");
+		ospm_suspend_pci(g_ospm_data->dev);
+	}
 
 	return ret;
 }

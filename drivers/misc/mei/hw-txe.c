@@ -369,11 +369,13 @@ static bool mei_txe_pending_interrupts(struct mei_device *dev)
 {
 
 	struct mei_txe_hw *hw = to_txe_hw(dev);
-	bool ret = (hw->intr_cause &
-		(TXE_INTR_ALIVENESS | TXE_INTR_IN_READY | TXE_INTR_OUT_DB));
+	bool ret = (hw->intr_cause & (TXE_INTR_READINESS |
+				      TXE_INTR_ALIVENESS |
+				      TXE_INTR_IN_READY  |
+				      TXE_INTR_OUT_DB));
 
 	if (ret) {
-		dev_err(&dev->pdev->dev,
+		dev_dbg(&dev->pdev->dev,
 			"Pending Interrupts InReady=%01d Readiness=%01d, Aliveness=%01d, OutDoor=%01d\n",
 			!!(hw->intr_cause & TXE_INTR_IN_READY),
 			!!(hw->intr_cause & TXE_INTR_READINESS),
@@ -844,18 +846,13 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 	s32 slots;
 	int rets;
 
-	/* Cannot print in IRQ Level */
-	dev_dbg(&dev->pdev->dev,
-		"Interrupt was generated (%02X|%04X|%02X) InReady=%d, Readiness=%d, Aliveness=%d, OutputDoorbell=%d\n",
+	dev_dbg(&dev->pdev->dev, "Interrupt Registers HHISR|HISR|SEC=%02X|%04X|%02X\n",
 		mei_txe_br_reg_read(hw, HHISR_REG),
 		mei_txe_br_reg_read(hw, HISR_REG),
-		mei_txe_sec_reg_read_silent(hw, SEC_IPC_HOST_INT_STATUS_REG),
-		!!(hw->intr_cause & TXE_INTR_IN_READY),
-		!!(hw->intr_cause & TXE_INTR_READINESS),
-		!!(hw->intr_cause & TXE_INTR_ALIVENESS),
-		!!(hw->intr_cause & TXE_INTR_OUT_DB));
+		mei_txe_sec_reg_read_silent(hw, SEC_IPC_HOST_INT_STATUS_REG));
 
-again:
+	mei_txe_pending_interrupts(dev);
+
 	dev_dbg(&dev->pdev->dev, "function called after ISR to handle the interrupt processing.\n");
 	/* initialize our complete list */
 	mutex_lock(&dev->device_lock);
@@ -924,7 +921,7 @@ again:
 		clear_bit(TXE_INTR_OUT_DB_BIT, &hw->intr_cause);
 	}
 	/* Input Ready: Detection if host can write to SeC */
-	else if (test_and_clear_bit(TXE_INTR_IN_READY_BIT, &hw->intr_cause))
+	if (test_and_clear_bit(TXE_INTR_IN_READY_BIT, &hw->intr_cause))
 		dev->hbuf_is_ready = true;
 
 	if (hw->aliveness && dev->hbuf_is_ready) {
@@ -946,8 +943,6 @@ again:
 
 	mei_irq_compl_handler(dev, &complete_list);
 
-	if (mei_txe_pending_interrupts(dev))
-		goto again;
 out:
 	mei_enable_interrupts(dev);
 	return IRQ_HANDLED;

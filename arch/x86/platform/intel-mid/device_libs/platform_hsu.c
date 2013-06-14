@@ -235,7 +235,9 @@ hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 			[hsu_port1] = {
 				.id = 1,
 				.name = HSU_GPS_PORT,
-				.wake_gpio = 128,
+				.wake_gpio = 130,
+				.rx_gpio = 130,
+				.rx_alt = 1,
 				.cts_gpio = 128,
 				.cts_alt = 1,
 				.rts_gpio = 129,
@@ -265,6 +267,9 @@ hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 			[hsu_port1] = {
 				.id = 1,
 				.name = HSU_GPS_PORT,
+				.wake_gpio = 74,
+				.rx_gpio = 74,
+				.rx_alt = 1,
 				.rts_gpio = 76,
 				.rts_alt = 1,
 			},
@@ -503,7 +508,7 @@ static void hsu_port_enable(int port)
 		gpio_direction_input(info->rx_gpio);
 	}
 	if (info->tx_gpio) {
-		gpio_direction_output(info->tx_gpio, 0);
+		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
 
 	}
@@ -526,8 +531,8 @@ static void hsu_port_disable(int port)
 		gpio_direction_input(info->rx_gpio);
 	}
 	if (info->tx_gpio) {
+		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, LNW_GPIO);
-		gpio_direction_input(info->tx_gpio);
 	}
 	if (info->cts_gpio) {
 		lnw_gpio_set_alt(info->cts_gpio, LNW_GPIO);
@@ -571,7 +576,7 @@ void intel_mid_hsu_resume(int port, struct device *dev)
 		gpio_direction_input(info->rx_gpio);
 	}
 	if (info->tx_gpio) {
-		gpio_direction_output(info->tx_gpio, 0);
+		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
 
 	}

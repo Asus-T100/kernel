@@ -1325,6 +1325,8 @@ extern int drm_psb_udelaydivider;
 extern int drm_psb_gl3_enable;
 extern int drm_psb_topaz_clockgating;
 
+extern int drm_decode_flag;
+
 extern char HDMI_EDID[20];
 extern int hdmi_state;
 

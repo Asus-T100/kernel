@@ -1472,6 +1472,21 @@ ov9724_g_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int ov9724_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	struct ov9724_device *dev = to_ov9724_sensor(sd);
+
+	mutex_lock(&dev->input_lock);
+	*frames = ov9724_res[dev->fmt_idx].skip_frames;
+	mutex_unlock(&dev->input_lock);
+
+	return 0;
+}
+
+static const struct v4l2_subdev_sensor_ops ov9724_sensor_ops = {
+	.g_skip_frames = ov9724_g_skip_frames,
+};
+
 static const struct v4l2_subdev_video_ops ov9724_video_ops = {
 	.try_mbus_fmt = ov9724_try_mbus_fmt,
 	.s_mbus_fmt = ov9724_set_mbus_fmt,
@@ -1505,6 +1520,7 @@ static const struct v4l2_subdev_ops ov9724_ops = {
 	.core = &ov9724_core_ops,
 	.video = &ov9724_video_ops,
 	.pad = &ov9724_pad_ops,
+	.sensor = &ov9724_sensor_ops,
 };
 
 static const struct media_entity_operations ov9724_entity_ops = {

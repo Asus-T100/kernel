@@ -66,10 +66,42 @@ static struct intel_mid_thermal_sensor mrfl_sensors[] = {
 	},
 };
 
+/* Bodegabay - PRh thermal sensor list */
+static struct intel_mid_thermal_sensor bdgb_sensors[] = {
+	{
+		.name = SKIN0_NAME,
+		.index = SYS0,
+		.slope = 410,
+		.intercept = 16808,
+		.temp_correlation = linear_temp_correlation,
+		.direct = false,
+	},
+	{
+		.name = SKIN1_NAME,
+		.index = SYS0,
+		.slope = 665,
+		.intercept = 8375,
+		.temp_correlation = linear_temp_correlation,
+		.direct = false,
+	},
+	{
+		.name = MSIC_DIE_NAME,
+		.index = PMIC_DIE,
+		.slope = 1000,
+		.intercept = 0,
+		.temp_correlation = linear_temp_correlation,
+		.direct = true,
+	},
+};
+
 static struct intel_mid_thermal_platform_data pdata[] = {
 	[mrfl_thermal] = {
 		.num_sensors = 3,
 		.sensors = mrfl_sensors,
+	},
+	[bdgb_thermal] = {
+		.num_sensors = 3,
+		.sensors = bdgb_sensors,
 	},
 };
 
@@ -93,7 +125,11 @@ void __init *mrfl_thermal_platform_data(void *info)
 		return NULL;
 	}
 
-	pdev->dev.platform_data = &pdata[mrfl_thermal];
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, ENG) ||
+			(INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO)))
+		pdev->dev.platform_data = &pdata[bdgb_thermal];
+	else
+		pdev->dev.platform_data = &pdata[mrfl_thermal];
 
 	install_irq_resource(pdev, entry->irq);
 	register_rpmsg_service("rpmsg_mrfl_thermal", RPROC_SCU,

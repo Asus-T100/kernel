@@ -35,6 +35,7 @@ struct ulpmc_platform_data {
 	int cc_lim1;	/* charge current limit 1 */
 	int cc_lim2;	/* charge current limit 2 */
 	int cc_lim3;	/* charge current limit 3 */
+	int rbatt;	/* Rbatt in milli Ohms */
 	enum ulpmc_chip_version version;
 	char extcon_devname[EXTCON_NAME_LEN];
 };

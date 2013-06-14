@@ -174,6 +174,7 @@ struct st_data_s {
 	struct tty_struct *tty;
 	struct device *tty_dev;
 	int is_awake;
+	spinlock_t pm_lock;
 };
 
 /*

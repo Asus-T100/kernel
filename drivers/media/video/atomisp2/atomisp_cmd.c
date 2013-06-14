@@ -855,6 +855,11 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 
 			pipe->buffers_in_css--;
 			frame = buffer.css_buffer.data.frame;
+			if (!frame) {
+				WARN_ON(1);
+				break;
+			}
+
 			if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 				if (frame->flash_state
 				    == CSS_FRAME_FLASH_STATE_PARTIAL)
@@ -880,6 +885,11 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			}
 			pipe->buffers_in_css--;
 			frame = buffer.css_buffer.data.frame;
+			if (!frame) {
+				WARN_ON(1);
+				break;
+			}
+
 			vb = atomisp_css_frame_to_vbuf(pipe, frame);
 			if (!vb) {
 				WARN_ON(1);
@@ -3001,7 +3011,10 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 		enable, isp->isp_subdev.continuous_raw_buffer_size->val,
 		!isp->isp_subdev.continuous_viewfinder->val);
 	atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_PRIMARY);
-	atomisp_css_capture_enable_online(isp, !enable);
+
+	/* in case of ANR, force capture pipe to offline mode */
+	atomisp_css_capture_enable_online(isp,
+			isp->params.low_light ? false : !enable);
 	atomisp_css_preview_enable_online(isp, !enable);
 	atomisp_css_enable_continuous(isp, enable);
 	atomisp_css_enable_cont_capt(enable,
@@ -3171,14 +3184,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (format->sh_fmt == CSS_FRAME_FORMAT_RAW) {
 			atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_RAW);
 			atomisp_css_enable_dz(isp, false);
-		} else {
-			atomisp_css_capture_set_mode(isp,
-						CSS_CAPTURE_MODE_PRIMARY);
 		}
 
 		if (!isp->isp_subdev.continuous_mode->val)
+			/* in case of ANR, force capture pipe to offline mode */
 			atomisp_css_capture_enable_online(isp,
-					isp->params.online_process);
+					isp->params.low_light ?
+					false : isp->params.online_process);
 
 		configure_output = atomisp_css_capture_configure_output;
 		get_frame_info = atomisp_css_capture_get_output_frame_info;

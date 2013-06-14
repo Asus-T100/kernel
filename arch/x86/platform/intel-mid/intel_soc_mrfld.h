@@ -150,5 +150,7 @@
 #define LPMP3_TARGET_SSS0 (0xFFC3FFFF)
 
 extern int intel_scu_ipc_simple_command(int, int);
+extern void log_wakeup_irq(void);
+extern void s0ix_complete(void);
 
 #endif

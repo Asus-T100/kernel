@@ -203,6 +203,7 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 	int pipe = intel_plane->pipe;
 	int plane = intel_plane->plane;
 	u32 sprctl;
+	bool rotate = false;
 	unsigned long sprsurf_offset, linear_offset;
 	int pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 
@@ -260,6 +261,9 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 
 	sprctl |= SP_ENABLE;
 
+	if (sprctl & DISPPLANE_180_ROTATION_ENABLE)
+		rotate = true;
+
 	/* Sizes are 0 based */
 	src_w--;
 	src_h--;
@@ -267,9 +271,13 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 	crtc_h--;
 
 	intel_update_sprite_watermarks(dev, pipe, crtc_w, pixel_size);
-
 	I915_WRITE(SPSTRIDE(pipe, plane), fb->pitches[0]);
-	I915_WRITE(SPPOS(pipe, plane), (crtc_y << 16) | crtc_x);
+	if (rotate)
+		I915_WRITE(SPPOS(pipe, plane), ((rot_mode.vdisplay -
+			(crtc_y + crtc_h + 1)) << 16) |
+				(rot_mode.hdisplay - (crtc_x + crtc_w + 1)));
+	else
+		I915_WRITE(SPPOS(pipe, plane), (crtc_y << 16) | crtc_x);
 
 	linear_offset = y * fb->pitches[0] + x * pixel_size;
 	sprsurf_offset = intel_gen4_compute_page_offset(&x, &y,
@@ -278,12 +286,24 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 							fb->pitches[0]);
 	linear_offset -= sprsurf_offset;
 
-	if (obj->tiling_mode != I915_TILING_NONE)
-		I915_WRITE(SPTILEOFF(pipe, plane), (y << 16) | x);
-	else
-		I915_WRITE(SPLINOFF(pipe, plane), linear_offset);
-
+	if (obj->tiling_mode != I915_TILING_NONE) {
+		if (rotate) {
+			I915_WRITE(SPTILEOFF(pipe, plane),
+				(((crtc_h + 1) << 16) | (crtc_w + 1)));
+		} else
+			I915_WRITE(SPTILEOFF(pipe, plane), (y << 16) | x);
+	} else {
+		if (rotate) {
+			I915_WRITE(SPLINOFF(pipe, plane),
+				(((crtc_h + 1) * (crtc_w + 1) *
+				pixel_size)) - pixel_size);
+		} else
+			I915_WRITE(SPLINOFF(pipe, plane), linear_offset);
+	}
 	I915_WRITE(SPSIZE(pipe, plane), (crtc_h << 16) | crtc_w);
+	if (rotate)
+		sprctl |= DISPPLANE_180_ROTATION_ENABLE;
+
 	I915_WRITE(SPCNTR(pipe, plane), sprctl);
 	I915_MODIFY_DISPBASE(SPSURF(pipe, plane), obj->gtt_offset +
 			     sprsurf_offset);
@@ -813,13 +833,6 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 		goto out;
 
 	/*
-	 * We can take a larger source and scale it down, but
-	 * only so much...  16x is the max on SNB.
-	 */
-	if (((src_w * src_h) / (crtc_w * crtc_h)) > intel_plane->max_downscale)
-		return -EINVAL;
-
-	/*
 	 * If the sprite is completely covering the primary plane,
 	 * we can disable the primary and save power.
 	 */
@@ -856,16 +869,19 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
 	/* Unpin old obj after new one is active to avoid ugliness */
 	if (old_obj) {
-		/*
-		 * It's fairly common to simply update the position of
-		 * an existing object.  In that case, we don't need to
-		 * wait for vblank to avoid ugliness, we only need to
-		 * do the pin & ref bookkeeping.
-		 */
-		if (old_obj != obj) {
-			mutex_unlock(&dev->struct_mutex);
-			intel_wait_for_vblank(dev, to_intel_crtc(crtc)->pipe);
-			mutex_lock(&dev->struct_mutex);
+		if (!IS_VALLEYVIEW(dev)) {
+			/*
+			 * It's fairly common to simply update the position of
+			 * an existing object.  In that case, we don't need to
+			 * wait for vblank to avoid ugliness, we only need to
+			 * do the pin & ref bookkeeping.
+			 */
+			if (old_obj != obj) {
+				mutex_unlock(&dev->struct_mutex);
+				intel_wait_for_vblank(dev,
+					to_intel_crtc(crtc)->pipe);
+				mutex_lock(&dev->struct_mutex);
+			}
 		}
 		intel_unpin_fb_obj(old_obj);
 	}
@@ -885,6 +901,7 @@ intel_disable_plane(struct drm_plane *plane)
 
 	if (plane->crtc)
 		intel_enable_primary(plane->crtc);
+
 	intel_plane->disable_plane(plane);
 
 	if (!intel_plane->obj)

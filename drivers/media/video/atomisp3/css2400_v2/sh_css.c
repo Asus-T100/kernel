@@ -7839,7 +7839,7 @@ ia_css_pipe_get_info(const struct ia_css_pipe *pipe,
 			"ia_css_pipe_get_info: pipe_info cannot be NULL\n");
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
 	}
-	if (pipe->old_pipe->stream == NULL) {
+	if (pipe == NULL || pipe->old_pipe->stream == NULL) {
 		sh_css_dtrace(SH_DBG_ERROR,
 			"ia_css_pipe_get_info: ia_css_stream_create needs to"
 			" be called before ia_css_[stream/pipe]_get_info\n");

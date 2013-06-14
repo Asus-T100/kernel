@@ -80,6 +80,10 @@ struct mmc_ios {
 #define MMC_SET_DRIVER_TYPE_D	3
 };
 
+#define mmc_tuning_timing(mmc)	((mmc->ios.timing == MMC_TIMING_UHS_SDR50) ||\
+				(mmc->ios.timing == MMC_TIMING_MMC_HS200) ||\
+				(mmc->ios.timing == MMC_TIMING_UHS_SDR104))
+
 struct mmc_panic_host;
 
 struct mmc_host_panic_ops {

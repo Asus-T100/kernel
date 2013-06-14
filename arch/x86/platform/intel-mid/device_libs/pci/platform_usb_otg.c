@@ -66,6 +66,7 @@ static struct intel_mid_otg_pdata otg_pdata = {
 	.gpio_cs = 0,
 	.gpio_reset = 0,
 	.charging_compliance = 0,
+	.hnp_poll_support = 0,
 	.power_budget = 500
 };
 

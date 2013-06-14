@@ -37,6 +37,7 @@
 #include "dx_init_cc_abi.h"
 #include "sep_sw_desc.h"
 #include "dx_sep_kapi.h"
+#include <linux/delay.h>
 
 #define SEP_STATE_CHANGE_TIMEOUT_MSEC 2500
 /**
@@ -272,11 +273,28 @@ static int process_activate_req(void)
 {
 	enum dx_sep_state sep_state;
 	int rc;
+	int count = 0;
 
 	sep_state = GET_SEP_STATE(power_control.drvdata);
 	if ((sep_state == DX_SEP_STATE_DONE_FW_INIT) && is_desc_qs_active()) {
 		SEP_LOG_INFO("Requested activation when in active state\n");
 		return 0;	/* Already in this state */
+	}
+
+	/* make sure Sep is not off before restore IMR */
+	if (sep_state == DX_SEP_STATE_OFF) {
+		while (count < SEP_POWERON_TIMEOUT) {
+			sep_state = GET_SEP_STATE(power_control.drvdata);
+			if (sep_state != DX_SEP_STATE_OFF)
+				break;
+			usleep_range(100, 100);
+			count++;
+		}
+		if (count >= SEP_TIMEOUT) {
+			SEP_LOG_INFO("Timeout while waiting SEP poweron\n");
+			return -ETIME;
+		}
+
 	}
 	/* SeP may have been reset - restore IMR if SeP is not off */
 	/* This must be done before dx_sep_wait_for_state() */

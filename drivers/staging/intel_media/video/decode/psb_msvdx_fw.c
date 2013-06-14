@@ -536,10 +536,15 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_WMSVDX32(0, MSVDX_COMMS_TO_MTX_RD_INDEX);
 	PSB_WMSVDX32(0, MSVDX_COMMS_TO_MTX_WRT_INDEX);
 	PSB_WMSVDX32(0, MSVDX_COMMS_FW_STATUS);
+#ifndef CONFIG_SLICE_HEADER_PARSING
 	PSB_WMSVDX32(DSIABLE_IDLE_GPIO_SIG
 		| DSIABLE_Auto_CLOCK_GATING
 		| RETURN_VDEB_DATA_IN_COMPLETION,
 			MSVDX_COMMS_OFFSET_FLAGS);
+#else
+	/* decode flag should be set as 0 according to IMG's said */
+	PSB_WMSVDX32(drm_decode_flag, MSVDX_COMMS_OFFSET_FLAGS);
+#endif
 	PSB_WMSVDX32(0, MSVDX_COMMS_SIGNATURE);
 
 	/* read register bank size */
@@ -686,7 +691,9 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_DEBUG_GENERAL("MSVDX: MTX Initial indications OK\n");
 	PSB_DEBUG_GENERAL("MSVDX: MSVDX_COMMS_AREA_ADDR = %08x\n",
 			  MSVDX_COMMS_AREA_ADDR);
-
+#ifdef CONFIG_SLICE_HEADER_PARSING
+	msvdx_rendec_init_by_msg(dev);
+#endif
 out:
 	return ret;
 }

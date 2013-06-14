@@ -30,6 +30,8 @@
 
 #include <linux/dmaengine.h>
 #include <linux/intel_mid_dma.h>
+#include <linux/lnw_gpio.h>
+#include <asm/platform_sst.h>
 
 #define SST_DRIVER_VERSION "3.0.8"
 #define SST_VERSION_NUM 0x2004
@@ -356,11 +358,6 @@ enum snd_sst_bytes_type {
 	SND_SST_BYTES_GET = 0x2,
 };
 
-struct snd_ssp_config {
-	int size;
-	char bytes[0];
-};
-
 struct snd_sst_bytes {
 	u8 type;
 	u8 ipc_msg;
@@ -477,6 +474,7 @@ struct sst_shim_regs64 {
  * @mailbox : SST mailbox pointer
  * @iram : SST IRAM pointer
  * @dram : SST DRAM pointer
+ * @pdata : SST info passed as a part of pci platform data
  * @shim_phy_add : SST shim phy addr
  * @shim_regs64: Struct to save shim registers
  * @ipc_dispatch_list : ipc messages dispatched
@@ -526,7 +524,7 @@ struct intel_sst_drv {
 	struct sst_shim_regs64	*shim_regs64;
 	struct list_head        block_list;
 	struct list_head	ipc_dispatch_list;
-	struct snd_ssp_config   *ssp_config;
+	struct sst_pci_info     *pdata;
 	struct work_struct	ipc_post_msg_wq;
 	struct sst_ipc_msg_wq	ipc_process_msg;
 	struct sst_ipc_msg_wq	ipc_process_reply;
@@ -596,6 +594,14 @@ extern struct intel_sst_drv *sst_drv_ctx;
 
 /* misc definitions */
 #define FW_DWNL_ID 0xFF
+
+struct sst_fill_config {
+	u32 sign;
+	struct sst_board_config_data sst_bdata;
+	struct sst_platform_config_data sst_pdata;
+	u32 shim_phy_add;
+	u32 mailbox_add;
+};
 
 struct intel_sst_ops {
 	irqreturn_t (*interrupt) (int, void *);
@@ -805,6 +811,14 @@ static inline void sst_init_stream(struct stream_info *stream,
 	stream->status = STREAM_INIT;
 	stream->prev = STREAM_UN_INIT;
 	stream->ops = ops;
+}
+
+static inline void sst_set_gpio_conf(struct sst_gpio_config *gpio_conf)
+{
+	lnw_gpio_set_alt(gpio_conf->i2s_rx_alt, gpio_conf->alt_function);
+	lnw_gpio_set_alt(gpio_conf->i2s_tx_alt, gpio_conf->alt_function);
+	lnw_gpio_set_alt(gpio_conf->i2s_frame, gpio_conf->alt_function);
+	lnw_gpio_set_alt(gpio_conf->i2s_clock, gpio_conf->alt_function);
 }
 
 

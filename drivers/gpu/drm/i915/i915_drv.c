@@ -105,6 +105,12 @@ MODULE_PARM_DESC(vbt_sdvo_panel_type,
 		"Override/Ignore selection of SDVO panel mode in the VBT "
 		"(-2=ignore, -1=auto [default], index in VBT BIOS table)");
 
+int i915_mipi_panel_id __read_mostly = -1;
+module_param_named(mipi_panel_id, i915_mipi_panel_id, int, 0600);
+MODULE_PARM_DESC(mipi_panel_id,
+		"MIPI Panel selection in case MIPI block is not present in VBT "
+		"(-1=auto [default], mipi panel id)");
+
 static bool i915_try_reset __read_mostly = true;
 module_param_named(reset, i915_try_reset, bool, 0600);
 MODULE_PARM_DESC(reset, "Attempt GPU resets (default: true)");
@@ -125,6 +131,12 @@ int i915_enable_turbo __read_mostly = 1;
 module_param_named(i915_enable_turbo, i915_enable_turbo, int, 0600);
 MODULE_PARM_DESC(i915_enable_turbo,
 		"Enable VLV Turbo (default: true)");
+
+int i915_psr_support __read_mostly = 1;
+module_param_named(psr_support, i915_psr_support, int, 0400);
+MODULE_PARM_DESC(psr_support,
+		"Specify PSR support parameter "
+		"1 = supported [default], 0 = not supported");
 
 static struct drm_driver driver;
 extern int intel_agp_enabled;
@@ -1099,7 +1111,7 @@ static void __exit i915_exit(void)
 	drm_pci_exit(&driver, &i915_pci_driver);
 }
 
-module_init(i915_init);
+device_initcall_sync(i915_init);
 module_exit(i915_exit);
 
 MODULE_AUTHOR(DRIVER_AUTHOR);
@@ -1194,15 +1206,13 @@ static bool IS_DISPLAYREG(u32 reg)
 	case IVB_CHICKEN3:
 	case GEN7_HALF_SLICE_CHICKEN1:
 	case GEN7_COMMON_SLICE_CHICKEN1:
-	case GEN7_L3CNTLREG1:
-	case GEN7_L3_CHICKEN_MODE_REGISTER:
 	case GEN7_ROW_CHICKEN2:
-	case GEN7_L3SQCREG4:
 	case GEN7_SQ_CHICKEN_MBCUNIT_CONFIG:
 	case GEN6_MBCTL:
 	case GEN6_UCGCTL2:
 	case GEN7_UCGCTL4:
 	case GEN7_CXT_SIZE:
+	case GEN7_CACHE_MODE_0:
 	/* TBD: Clean this up after Turbo registers are added */
 	case VLV_RENDER_C_STATE_CONTROL_1_REG:
 	case VLV_RC6_WAKE_RATE_LIMIT_REG:
@@ -1302,6 +1312,44 @@ __i915_write(16, w)
 __i915_write(32, l)
 __i915_write(64, q)
 #undef __i915_write
+
+#define __i915_write_bits(x, y) \
+void i915_write_bits##x(struct drm_i915_private *dev_priv,\
+		u32 reg, u##x val, u##x mask, bool trace) \
+{ \
+	u32 __fifo_ret = 0; \
+	u##x tmp; \
+	if (trace) \
+		trace_i915_reg_rw(true, reg, val, sizeof(val)); \
+	if (NEEDS_FORCE_WAKE((dev_priv), (reg)) && (trace)) {	\
+		__fifo_ret = __gen6_gt_wait_for_fifo(dev_priv); \
+	} \
+	if (IS_VALLEYVIEW(dev_priv->dev) && IS_DISPLAYREG(reg)) { \
+		\
+		tmp = read##y(dev_priv->regs + reg + 0x180000);		\
+		tmp = tmp & ~mask;		\
+		val = val & mask;		\
+		tmp = val | tmp;		\
+		write##y(tmp, dev_priv->regs + reg + 0x180000);		\
+		if (/*0 &&*/ (reg != 0x70040) && (reg != 0x71040)) {	\
+			DRM_ERROR("Writing 0x%x val 0x%x\n", reg, val); \
+		}	\
+	} else {							\
+		tmp = read##y(dev_priv->regs + reg);		\
+		tmp = tmp & ~mask;		\
+		val = val & mask;		\
+		tmp = val | tmp;		\
+		write##y(tmp, dev_priv->regs + reg);		\
+	}								\
+	if (unlikely(__fifo_ret) && trace) { \
+		gen6_gt_check_fifodbg(dev_priv); \
+	} \
+}
+__i915_write_bits(8, b)
+__i915_write_bits(16, w)
+__i915_write_bits(32, l)
+__i915_write_bits(64, q)
+#undef __i915_write_bits
 
 static const struct register_whitelist {
 	uint64_t offset;

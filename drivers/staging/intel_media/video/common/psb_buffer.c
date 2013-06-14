@@ -554,13 +554,8 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->available_caching = TTM_PL_FLAG_CACHED |
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
-#if defined(MERRIFIELD)
 		man->gpu_offset =
-		    pg->mmu_gatt_start + (pg->rar_start +
-					  dev_priv->rar_region_size);
-#else
-		man->gpu_offset = pg->mmu_gatt_start + pg->ci_start + pg->ci_stolen_size;
-#endif
+		    pg->mmu_gatt_start + pg->gtt_video_start;
 		break;
 
 	case DRM_PSB_MEM_MMU_TILING:

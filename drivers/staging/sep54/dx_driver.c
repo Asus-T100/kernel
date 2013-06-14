@@ -4120,7 +4120,7 @@ static int rpmb_agent(void *unused)
 	u8 in_buf[RPMB_FRAME_LENGTH];
 	u8 *out_buf = NULL;
 	u32 in_buf_size = RPMB_FRAME_LENGTH;
-	u32 timeout = msecs_to_jiffies(AGENT_TIMEOUT_MS);
+	u32 timeout = MAX_SCHEDULE_TIMEOUT;
 	/* structure to pass to the eMMC driver's RPMB API */
 	struct mmc_ioc_rpmb_req req2emmc;
 

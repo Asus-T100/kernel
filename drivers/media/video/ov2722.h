@@ -176,6 +176,7 @@ struct ov2722_resolution {
 	int height;
 	int fps;
 	int pix_clk_freq;
+	u32 skip_frames;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
 	u8 bin_factor_x;
@@ -1013,6 +1014,7 @@ struct ov2722_resolution ov2722_res_preview[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_1M3_30fps,
 	},
 	{
@@ -1027,6 +1029,7 @@ struct ov2722_resolution ov2722_res_preview[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_1080p_30fps,
 	},
 };
@@ -1046,6 +1049,7 @@ struct ov2722_resolution ov2722_res_still[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_1M3_30fps,
 	},
 	{
@@ -1060,6 +1064,7 @@ struct ov2722_resolution ov2722_res_still[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_1080p_30fps,
 	},
 };
@@ -1078,6 +1083,7 @@ struct ov2722_resolution ov2722_res_video[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_QCIF_30fps,
 	},
 	{
@@ -1092,6 +1098,7 @@ struct ov2722_resolution ov2722_res_video[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_QVGA_30fps,
 	},
 	{
@@ -1106,6 +1113,7 @@ struct ov2722_resolution ov2722_res_video[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_CIF_30fps,
 	},
 	{
@@ -1120,6 +1128,7 @@ struct ov2722_resolution ov2722_res_video[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_VGA_30fps,
 	},
 	{
@@ -1134,6 +1143,7 @@ struct ov2722_resolution ov2722_res_video[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_720p_30fps,
 	},
 	{
@@ -1148,6 +1158,7 @@ struct ov2722_resolution ov2722_res_video[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_1M3_30fps,
 	},
 	{
@@ -1162,6 +1173,7 @@ struct ov2722_resolution ov2722_res_video[] = {
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.bin_mode = 0,
+		.skip_frames = 3,
 		.regs = ov2722_1080p_30fps,
 	},
 };

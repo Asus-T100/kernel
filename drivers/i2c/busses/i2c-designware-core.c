@@ -506,6 +506,8 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	if (timeout == 0) {
 		dev_WARN(dev->dev, "controller timed out\n");
 		i2c_dw_dump(dev);
+		if (dev->abort)
+			dev->abort(adap->nr);
 		i2c_dw_init(dev);
 		ret = -ETIMEDOUT;
 		goto done;

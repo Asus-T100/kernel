@@ -63,5 +63,39 @@ extern void sh_css_debug_pipe_graph_dump_sp_raw_copy(
 		struct sh_css_frame *cc_frame);
 
 
+/**
+ * @brief Internal debug support for constructing a pipe graph.
+ * @param[in]	width		Width as produced by sensor.
+ * @param[in]	height		Height as produced by sensor
+ *
+ * @return	None
+ */
+extern void
+sh_css_debug_pipe_graph_dump_input_set_resolution
+(unsigned int width, unsigned int height);
+
+/**
+ * @brief Internal debug support for constructing a pipe graph.
+ * @param[in]	width		Width as input to ISP.
+ * @param[in]	height		Height as input to ISP
+ *
+ * @return	None
+ *
+ * @return	None
+ */
+extern void
+sh_css_debug_pipe_graph_dump_input_set_effective_resolution
+(unsigned int effective_width, unsigned int effective_height);
+
+/**
+ * @brief Internal debug support for constructing a pipe graph.
+ * @param[in]	format		format as produced by sensor
+ *
+ * @return	None
+ */
+extern void
+sh_css_debug_pipe_graph_dump_input_set_format
+(enum sh_css_input_format input_format);
+
 
 #endif /* _SH_CSS_DEBUG_INTERNAL_H_ */

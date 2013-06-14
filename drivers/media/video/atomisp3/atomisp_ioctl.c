@@ -479,13 +479,17 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 				uint16_t source_pad,
 				struct ia_css_frame_info *frame_info)
 {
+	enum ia_css_err ret;
 	struct ia_css_pipe_info info;
 	int pipe_index = atomisp_get_pipe_index(isp, source_pad);
 
 	if (pipe_index >= IA_CSS_PIPE_ID_NUM)
 		return -EINVAL;
 
-	ia_css_pipe_get_info(isp->css2_basis.pipes[pipe_index], &info);
+	ret = ia_css_pipe_get_info(isp->css2_basis.pipes[pipe_index], &info);
+	if (ret != IA_CSS_SUCCESS)
+		return -EINVAL;
+
 	switch (source_pad) {
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		*frame_info = info.output_info;
@@ -1422,8 +1426,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 		isp->wdt_duration = ATOMISP_ISP_FILE_TIMEOUT_DURATION;
 	else
 		isp->wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
-	if (atomisp_buffers_queued(isp))
-		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
 	isp->params.dvs_proj_data_valid = false;
@@ -1460,11 +1462,8 @@ start_sensor:
 	/* stream on the sensor */
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 			       video, s_stream, 1);
-	if (ret) {
-		atomisp_reset(isp);
-		ret = -EINVAL;
-	}
-
+	if (atomisp_buffers_queued(isp))
+		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 out:
 	mutex_unlock(&isp->mutex);
 	return ret;

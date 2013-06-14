@@ -1242,6 +1242,21 @@ static int ov2722_set_pad_format(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int ov2722_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+
+	mutex_lock(&dev->input_lock);
+	*frames = ov2722_res[dev->fmt_idx].skip_frames;
+	mutex_unlock(&dev->input_lock);
+
+	return 0;
+}
+
+static const struct v4l2_subdev_sensor_ops ov2722_sensor_ops = {
+	.g_skip_frames	= ov2722_g_skip_frames,
+};
+
 static const struct v4l2_subdev_video_ops ov2722_video_ops = {
 	.s_stream = ov2722_s_stream,
 	.g_parm = ov2722_g_parm,
@@ -1274,6 +1289,7 @@ static const struct v4l2_subdev_ops ov2722_ops = {
 	.core = &ov2722_core_ops,
 	.video = &ov2722_video_ops,
 	.pad = &ov2722_pad_ops,
+	.sensor = &ov2722_sensor_ops,
 };
 
 static int ov2722_remove(struct i2c_client *client)

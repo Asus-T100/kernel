@@ -42,13 +42,13 @@ static int st_chip_disable(struct kim_data_s *s)
 static int st_chip_awake(struct kim_data_s *s)
 {
 	struct st_data_s *st = s->core_data;
+	unsigned long flags;
 
 	/* Tell PM runtime to power on the tty device and block S3 */
-	if (!st->is_awake) {
-		pm_runtime_get(st->tty_dev);
-		wake_lock(&st->wake_lock);
-		st->is_awake = 1;
-	}
+	spin_lock_irqsave(&st->pm_lock, flags);
+	pm_runtime_get(st->tty_dev);
+	wake_lock(&st->wake_lock);
+	spin_unlock_irqrestore(&st->pm_lock, flags);
 
 	return 0;
 }
@@ -56,13 +56,22 @@ static int st_chip_awake(struct kim_data_s *s)
 static int st_chip_asleep(struct kim_data_s *s)
 {
 	struct st_data_s *st = s->core_data;
+	unsigned long flags;
 
-	/* Tell PM runtime to release tty device and allow S3 */
-	if (st->is_awake) {
-		pm_runtime_put(st->tty_dev);
-		wake_unlock(&st->wake_lock);
-		st->is_awake = 0;
-	}
+	/* Tell PM runtime to release tty device and allow S3.
+	 * PM runtime for the underlying tty device is modified from different
+	 * sources (HSU driver, ST core, ST_ll, st kim). To release the device,
+	 * The safe way would be to use pm_runtime_put_noidle() to avoid
+	 * inconsistent runtime_usage ref counter ( < 0 ) and to schedule the
+	 * idle() that will be handled by the hsu driver.
+	 */
+	spin_lock_irqsave(&st->pm_lock, flags);
+	pm_runtime_put_noidle(st->tty_dev);
+	if (!pm_runtime_suspended(st->tty_dev))
+		__pm_runtime_idle(st->tty_dev, RPM_ASYNC);
+
+	wake_unlock(&st->wake_lock);
+	spin_unlock_irqrestore(&st->pm_lock, flags);
 
 	return 0;
 }

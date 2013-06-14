@@ -268,6 +268,16 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.step = 1,
 		.default_value = 1,
 	},
+	{
+		.id = V4L2_CID_3A_LOCK,
+		.type = V4L2_CTRL_TYPE_BITMASK,
+		.name = "3a lock",
+		.minimum = 0,
+		.maximum = V4L2_LOCK_EXPOSURE | V4L2_LOCK_WHITE_BALANCE
+			 | V4L2_LOCK_FOCUS,
+		.step = 1,
+		.default_value = 0,
+	},
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
 
@@ -1341,9 +1351,17 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+		struct v4l2_mbus_framefmt *sink;
+
+		sink = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+				       V4L2_SUBDEV_FORMAT_ACTIVE,
+				       ATOMISP_SUBDEV_PAD_SINK);
+
 		INIT_COMPLETION(isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
 		queue_work(isp->delayed_init_workq, &isp->delayed_init_work);
+		atomisp_css_set_cont_prev_start_time(isp,
+				ATOMISP_CALC_CSS_PREV_OVERLAP(sink->height));
 	}
 
 	/* Make sure that update_isp_params is called at least once.*/
@@ -1632,6 +1650,7 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_CONTRAST:
 	case V4L2_CID_SATURATION:
 	case V4L2_CID_SHARPNESS:
+	case V4L2_CID_3A_LOCK:
 		mutex_unlock(&isp->mutex);
 		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, g_ctrl, control);
@@ -1700,6 +1719,7 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 	case V4L2_CID_CONTRAST:
 	case V4L2_CID_SATURATION:
 	case V4L2_CID_SHARPNESS:
+	case V4L2_CID_3A_LOCK:
 		mutex_unlock(&isp->mutex);
 		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_ctrl, control);
@@ -1781,6 +1801,7 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_FNUMBER_ABSOLUTE:
 		case V4L2_CID_BIN_FACTOR_HORZ:
 		case V4L2_CID_BIN_FACTOR_VERT:
+		case V4L2_CID_3A_LOCK:
 			/*
 			 * Exposure related control will be handled by sensor
 			 * driver
@@ -1883,6 +1904,7 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_VCM_TIMEING:
 		case V4L2_CID_VCM_SLEW:
 		case V4L2_CID_TEST_PATTERN:
+		case V4L2_CID_3A_LOCK:
 			ret = v4l2_subdev_call(
 				isp->inputs[isp->input_curr].camera,
 				core, s_ctrl, &ctrl);

@@ -90,11 +90,16 @@
 #define INTEL_OUTPUT_HDMI 6
 #define INTEL_OUTPUT_DISPLAYPORT 7
 #define INTEL_OUTPUT_EDP 8
+#define INTEL_OUTPUT_DSI 9
+#define INTEL_OUTPUT_UNKNOWN 10
 
 #define INTEL_DVO_CHIP_NONE 0
 #define INTEL_DVO_CHIP_LVDS 1
 #define INTEL_DVO_CHIP_TMDS 2
 #define INTEL_DVO_CHIP_TVOUT 4
+
+#define INTEL_DSI_COMMAND_MODE 0
+#define INTEL_DSI_VIDEO_MODE   1
 
 /* drm_display_mode->private_flags */
 #define INTEL_MODE_PIXEL_MULTIPLIER_SHIFT (0x0)
@@ -402,6 +407,7 @@ extern void intel_mark_fb_idle(struct drm_i915_gem_object *obj);
 extern bool intel_lvds_init(struct drm_device *dev);
 extern void intel_dp_init(struct drm_device *dev, int output_reg,
 			  enum port port);
+extern bool intel_dsi_init(struct drm_device *dev);
 void
 intel_dp_set_m_n(struct drm_crtc *crtc, struct drm_display_mode *mode,
 		 struct drm_display_mode *adjusted_mode);
@@ -433,6 +439,7 @@ extern enum drm_connector_status intel_panel_detect(struct drm_device *dev);
 extern void intel_crtc_load_lut(struct drm_crtc *crtc);
 extern void intel_encoder_prepare(struct drm_encoder *encoder);
 extern void intel_encoder_commit(struct drm_encoder *encoder);
+extern void intel_encoder_noop(struct drm_encoder *encoder);
 extern void intel_encoder_destroy(struct drm_encoder *encoder);
 
 static inline struct intel_encoder *intel_attached_encoder(struct drm_connector *connector)
@@ -531,7 +538,7 @@ extern int intel_sprite_set_colorkey(struct drm_device *dev, void *data,
 extern int intel_sprite_get_colorkey(struct drm_device *dev, void *data,
 				     struct drm_file *file_priv);
 
-extern u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
+extern u32 intel_dpio_read(struct drm_i915_private *dev_priv, u32 reg);
 
 /* Power-related functions, located in intel_pm.c */
 extern void intel_init_pm(struct drm_device *dev);
@@ -565,6 +572,8 @@ extern void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file_priv);
 extern void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file_priv);
+extern void intel_edp_get_psr_support(struct drm_device *device, void *data,
+					struct drm_file *file);
 
 /* VLV LP clock bending */
 extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,

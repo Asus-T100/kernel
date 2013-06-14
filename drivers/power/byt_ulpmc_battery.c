@@ -63,9 +63,6 @@
 #define ULPMC_FG_REG_SOH		0x28 /* State Of Health */
 #define ULPMC_FG_REG_CYCT		0x2A /* Cycle count total */
 #define ULPMC_FG_REG_SOC		0x2C /* State Of Charge */
-#define ULPMC_FG_REG_SOH_V4		0x1C /* State Of Health */
-#define ULPMC_FG_REG_CYCT_V4		0x1E /* Cycle count total */
-#define ULPMC_FG_REG_SOC_V4		0x20 /* State Of Charge */
 
 /* capacity interrupt trigger delta in perc (8-bit) */
 #define ULPMC_SOC_INT_TRIG_REG		0x4C
@@ -304,7 +301,7 @@ static short adjust_sign_value(int value)
 	return result;
 }
 
-static int bc_reg_to_cur(u8 reg)
+static int bc_reg_to_cur(int reg)
 {
 	/*
 	 * D0, D1 bits of charge current
@@ -546,14 +543,11 @@ batt_stat_report:
 	return ret;
 }
 
-static int ulpmc_get_capacity(struct ulpmc_chip_info *chip)
+static inline int ulpmc_get_capacity(struct ulpmc_chip_info *chip)
 {
 	int ret;
 
-	if (chip->pdata->version == BYTULPMCFGV3)
-		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC);
-	else
-		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC_V4);
+	ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC);
 
 	return ret;
 }
@@ -562,7 +556,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 					enum power_supply_property psp,
 					union power_supply_propval *val)
 {
-	int ret = 0, batt_volt;
+	int ret = 0, batt_volt, cur_avg;
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, bat);
 	mutex_lock(&chip->lock);
@@ -622,8 +616,18 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 				ret = batt_volt;
 				goto i2c_read_err;
 			}
+			cur_avg = ulpmc_read_reg16(chip->client,
+							ULPMC_FG_REG_AI);
+			if (cur_avg < 0) {
+				ret = cur_avg;
+				goto i2c_read_err;
+			}
+			cur_avg = ((int)adjust_sign_value(cur_avg));
+			/* compensate for the IR drop */
+			batt_volt = batt_volt - ((cur_avg *
+						chip->pdata->rbatt) / 1000);
 			/* set capacity to 0% in case crit batt threshold */
-			if (batt_volt < chip->pdata->volt_sh_min)
+			if ((batt_volt) < chip->pdata->volt_sh_min)
 				ret = 0;
 		}
 		val->intval = ret;
@@ -662,11 +666,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		val->intval = ret * 1000;
 		break;
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
-		if (chip->pdata->version == BYTULPMCFGV3)
-			ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_CYCT);
-		else
-			ret = ulpmc_read_reg16(chip->client,
-							ULPMC_FG_REG_CYCT_V4);
+		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_CYCT);
 		if (ret < 0)
 			goto i2c_read_err;
 		val->intval = ret;
@@ -920,7 +920,7 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 		dev_info(&chip->client->dev, "spurious event!!!\n");
 	}
 
-	if (conn_evt) {
+	if (conn_evt && !chip->block_sdp) {
 		mutex_lock(&chip->lock);
 		ulpmc_throttle_chrg_cur(chip, chip->cur_throttle_state);
 		mutex_unlock(&chip->lock);
@@ -1277,7 +1277,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	mutex_init(&chip->lock);
 	chip_ptr = chip;
 
-	chip->bat.name = "byt-battery";
+	chip->bat.name = "byt_battery";
 	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
 	chip->bat.properties = ulpmc_battery_props;
 	chip->bat.num_properties = ARRAY_SIZE(ulpmc_battery_props);
@@ -1288,7 +1288,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 		goto probe_failed_1;
 	}
 
-	chip->chrg.name = "byt-charger";
+	chip->chrg.name = "byt_charger";
 	chip->chrg.type = POWER_SUPPLY_TYPE_USB;
 	chip->chrg.properties = ulpmc_charger_properties;
 	chip->chrg.num_properties = ARRAY_SIZE(ulpmc_charger_properties);
@@ -1318,6 +1318,11 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	pm_runtime_put_noidle(&chip->client->dev);
 	pm_schedule_suspend(&chip->client->dev, MSEC_PER_SEC);
 
+	/* set charge current to default value */
+	ret = ulpmc_write_reg8(client, ULPMC_BC_CHRG_CUR_CNTL_REG,
+			cur_to_cc_reg(chip->pdata->cc_lim0));
+	if (ret < 0)
+		dev_err(&client->dev, "I2C write error:%d\n", ret);
 	/* check battery presence */
 	check_battery_presence(chip);
 	/* clear pending interrupts */
@@ -1351,6 +1356,16 @@ static int ulpmc_battery_remove(struct i2c_client *client)
 	kfree(chip);
 
 	return 0;
+}
+
+static void ulpmc_battery_shutdown(struct i2c_client *client)
+{
+	dev_dbg(&client->dev, "ulpmc battery shutdown\n");
+
+	if (client->irq > 0)
+		disable_irq(client->irq);
+
+	return;
 }
 
 static int ulpmc_suspend(struct device *dev)
@@ -1424,6 +1439,7 @@ static struct i2c_driver ulpmc_battery_driver = {
 	.probe = ulpmc_battery_probe,
 	.remove = ulpmc_battery_remove,
 	.id_table = ulpmc_id,
+	.shutdown = ulpmc_battery_shutdown,
 };
 
 /*

@@ -335,6 +335,7 @@ enum {
 enum {
 	CLVTP_PHONE_VB_PR1A = 0x17,    /* Victoria Bay PR1 CLV+ B1 */
 	CLVTP_PHONE_VB_PR1B = 0x23,    /* Victoria Bay PR1 CLV+ B2 */
+	CLVTP_PHONE_VB_PR2 = 0x25,     /* Victoria Bay PR2 CLV+ */
 	CLVTP_PHONE_VB_RSVD,
 	CLVTP_PHONE_VB_UNKNOWN = 0xFFFF
 };
@@ -375,6 +376,8 @@ enum {
 	MRFL_PHONE_SB_PR2,  /* Salt Bay PR2-FF (B0) */
 	MRFL_PHONE_SB_PR3M, /* Salt Bay PR3-Macro (B0) */
 	MRFL_PHONE_SB_PR3,  /* Salt Bay PR3-FF (B0) */
+	MRFL_PHONE_SB_PR11,  /* Salt Bay PR1.1-FF (A0) */
+	MRFL_PHONE_SB_PR11M,  /* Salt Bay PR1.1-Macro (A0) */
 	MRFL_PHONE_SB_RSVD,
 	MRFL_PHONE_SB_UNKNOWN = 0xFFFF
 };

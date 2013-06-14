@@ -35,6 +35,12 @@
 
 #include <asm/intel-mid.h>
 
+/*
+ * to serialize MMIO access , this is due to ISP2400 silicon issue Sighting
+ * #4684168, if concurrency access happened, system may hard hang.
+ */
+static DEFINE_SPINLOCK(mmio_lock);
+
 enum frame_info_type {
 	ATOMISP_CSS_VF_FRAME,
 	ATOMISP_CSS_OUTPUT_FRAME,
@@ -86,32 +92,61 @@ static ia_css_ptr atomisp_css2_mm_mmap(const void *ptr, const size_t size,
 
 void atomisp_css2_hw_store_8(hrt_address addr, uint8_t data)
 {
+	unsigned long flags;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	_hrt_master_port_store_8(addr, data);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
 static void atomisp_css2_hw_store_16(hrt_address addr, uint16_t data)
 {
+	unsigned long flags;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	_hrt_master_port_store_16(addr, data);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
 static void atomisp_css2_hw_store_32(hrt_address addr, uint32_t data)
 {
+	unsigned long flags;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	_hrt_master_port_store_32(addr, data);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
 static uint8_t atomisp_css2_hw_load_8(hrt_address addr)
 {
-	return _hrt_master_port_load_8(addr);
+	unsigned long flags;
+	uint8_t ret;
+
+	spin_lock_irqsave(&mmio_lock, flags);
+	ret = _hrt_master_port_load_8(addr);
+	spin_unlock_irqrestore(&mmio_lock, flags);
+	return ret;
 }
 
-static uint16_t atomisp_css2_hw_load_16(hrt_address addr)
+uint16_t atomisp_css2_hw_load_16(hrt_address addr)
 {
-	return _hrt_master_port_load_16(addr);
-}
+	unsigned long flags;
+	uint16_t ret;
 
-static uint32_t atomisp_css2_hw_load_32(hrt_address addr)
+	spin_lock_irqsave(&mmio_lock, flags);
+	ret = _hrt_master_port_load_16(addr);
+	spin_unlock_irqrestore(&mmio_lock, flags);
+	return ret;
+}
+uint32_t atomisp_css2_hw_load_32(hrt_address addr)
 {
-	return _hrt_master_port_load_32(addr);
+	unsigned long flags;
+	uint32_t ret;
+
+	spin_lock_irqsave(&mmio_lock, flags);
+	ret = _hrt_master_port_load_32(addr);
+	spin_unlock_irqrestore(&mmio_lock, flags);
+	return ret;
 }
 
 static void atomisp_css2_hw_store(hrt_address addr,
@@ -2000,4 +2035,12 @@ void atomisp_css_get_morph_table(struct atomisp_device *isp,
 void atomisp_css_morph_table_free(struct atomisp_css_morph_table *table)
 {
 	ia_css_morph_table_free(table);
+}
+
+void atomisp_css_set_cont_prev_start_time(struct atomisp_device *isp,
+					unsigned int overlap)
+{
+	/* CSS 2.0 doesn't support this API. */
+	dev_info(isp->dev, "set cont prev start time is not supported.\n");
+	return;
 }
