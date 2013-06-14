@@ -67,11 +67,13 @@
 #define INPUT_SRC_VOLT_LMT_DEF                 (3 << 4)
 #define INPUT_SRC_VOLT_LMT_444                 (7 << 3)
 #define INPUT_SRC_VOLT_LMT_468                 (5 << 4)
+#define INPUT_SRC_VOLT_LMT_476                 (0xB << 3)
 
 #define INPUT_SRC_VINDPM_MASK                  (0xF << 3)
 #define INPUT_SRC_LOW_VBAT_LIMIT               3600
-#define INPUT_SRC_MID_VBAT_LIMIT               4000
-#define INPUT_SRC_HIG_VBAT_LIMIT               4350
+#define INPUT_SRC_MIDL_VBAT_LIMIT              4000
+#define INPUT_SRC_MIDH_VBAT_LIMIT              4200
+#define INPUT_SRC_HIGH_VBAT_LIMIT              4350
 
 /* D0, D1, D2 represent the input current limit */
 #define INPUT_SRC_CUR_LMT0		0x0	/* 100mA */
@@ -1472,7 +1474,7 @@ static void bq24192_task_worker(struct work_struct *work)
 	struct bq24192_chip *chip =
 	    container_of(work, struct bq24192_chip, chrg_task_wrkr.work);
 	int ret, jiffy = CHARGER_TASK_JIFFIES, vbatt = 0;
-	u8 vindpm = 0;
+	u8 vindpm = INPUT_SRC_VOLT_LMT_DEF;
 
 	dev_info(&chip->client->dev, "%s\n", __func__);
 
@@ -1508,12 +1510,19 @@ static void bq24192_task_worker(struct work_struct *work)
 	vbatt /= 1000;
 	dev_warn(&chip->client->dev, "vbatt = %d\n", vbatt);
 
+	/* If vbatt <= 3600mV, leave the VINDPM settings to default */
+	if (vbatt <= INPUT_SRC_LOW_VBAT_LIMIT)
+		goto sched_task_work;
+
 	if (vbatt > INPUT_SRC_LOW_VBAT_LIMIT &&
-		vbatt < INPUT_SRC_MID_VBAT_LIMIT)
+		vbatt < INPUT_SRC_MIDL_VBAT_LIMIT)
 		vindpm = INPUT_SRC_VOLT_LMT_444;
-	else if (vbatt > INPUT_SRC_MID_VBAT_LIMIT &&
-		vbatt < INPUT_SRC_HIG_VBAT_LIMIT)
+	else if (vbatt > INPUT_SRC_MIDL_VBAT_LIMIT &&
+		vbatt < INPUT_SRC_MIDH_VBAT_LIMIT)
 		vindpm = INPUT_SRC_VOLT_LMT_468;
+	else if (vbatt > INPUT_SRC_MIDH_VBAT_LIMIT &&
+		vbatt < INPUT_SRC_HIGH_VBAT_LIMIT)
+		vindpm = INPUT_SRC_VOLT_LMT_476;
 
 	if (!mutex_trylock(&chip->event_lock))
 		goto sched_task_work;
