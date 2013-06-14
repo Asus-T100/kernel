@@ -1414,25 +1414,18 @@ static int imx_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		return -ENODEV;
 
 	/* check sensor chip ID	 */
-	if (imx_read_reg(client, IMX_16BIT, IMX175_CHIP_ID, id)) {
+	if (imx_read_reg(client, IMX_16BIT, IMX132_175_CHIP_ID, id)) {
 		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	if (*id == IMX175_ID)
+	if (*id == IMX132_ID || *id == IMX175_ID)
 		goto found;
 
-	/* check sensor chip ID	 */
-	if (imx_read_reg(client, IMX_16BIT, IMX132_CHIP_ID, id)) {
+	if (imx_read_reg(client, IMX_16BIT, IMX134_135_CHIP_ID, id)) {
 		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	if (*id == IMX132_ID)
-		goto found;
-	if (imx_read_reg(client, IMX_16BIT, IMX135_CHIP_ID, id)) {
-		v4l2_err(client, "sensor_id = 0x%x\n", *id);
-		return -ENODEV;
-	}
-	if (*id != IMX135_ID) {
+	if (*id != IMX134_ID && *id != IMX135_ID) {
 		v4l2_err(client, "no imx sensor found\n");
 		return -ENODEV;
 	}
@@ -1832,10 +1825,14 @@ static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
 			dev->vcm_driver = &imx_vcms[IMX135_SALTBAY];
 		}
 		break;
+	case IMX134_ID:
+		dev->mode_tables = &imx_sets[IMX134_VALLEYVIEW];
+		dev->vcm_driver = &imx_vcms[IMX134_VALLEYVIEW];
+		break;
 	case IMX132_ID:
 		dev->mode_tables = &imx_sets[IMX132_SALTBAY];
 		dev->vcm_driver = NULL;
-		break;
+		return 0;
 	default:
 		return -EINVAL;
 	}
@@ -1904,6 +1901,7 @@ out_free:
 static const struct i2c_device_id imx_ids[] = {
 	{IMX_NAME_175, IMX175_ID},
 	{IMX_NAME_135, IMX135_ID},
+	{IMX_NAME_134, IMX134_ID},
 	{IMX_NAME_132, IMX132_ID},
 	{}
 };
