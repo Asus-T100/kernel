@@ -26,6 +26,7 @@ struct power_supply_charger {
 	struct list_head evt_queue;
 	struct work_struct algo_trigger_work;
 	struct mutex evt_lock;
+	wait_queue_head_t wait_chrg_enable;
 };
 
 struct charger_cable {
@@ -683,6 +684,12 @@ static int trigger_algo(struct power_supply *psy)
 	return 0;
 }
 
+static inline void wait_for_charging_enabled(struct power_supply *psy)
+{
+	wait_event_timeout(psy_chrgr.wait_chrg_enable,
+			(IS_CHARGING_ENABLED(psy)), HZ);
+}
+
 static inline void enable_supplied_by_charging
 		(struct power_supply *psy, bool is_enable)
 {
@@ -700,9 +707,10 @@ static inline void enable_supplied_by_charging
 	while (cnt--) {
 		if (!IS_PRESENT(chrgr_lst[cnt]))
 			continue;
-		if (is_enable && IS_CHARGING_CAN_BE_ENABLED(chrgr_lst[cnt]))
+		if (is_enable && IS_CHARGING_CAN_BE_ENABLED(chrgr_lst[cnt])) {
 			enable_charging(chrgr_lst[cnt]);
-		else
+			wait_for_charging_enabled(chrgr_lst[cnt]);
+		} else
 			disable_charging(chrgr_lst[cnt]);
 	}
 }
@@ -723,7 +731,6 @@ static void __power_supply_trigger_charging_handler(struct power_supply *psy)
 			else
 				enable_supplied_by_charging(psy, true);
 
-
 		} else if (IS_CHARGER(psy)) {
 			for (i = 0; i < psy->num_supplicants; i++) {
 				psb =
@@ -737,11 +744,11 @@ static void __power_supply_trigger_charging_handler(struct power_supply *psy)
 					} else if (IS_CHARGING_CAN_BE_ENABLED
 								(psy)) {
 						enable_charging(psy);
+						wait_for_charging_enabled(psy);
 					}
 				}
 			}
 		}
-
 		update_battery_status(psy);
 		power_supply_changed(psy);
 	}
@@ -785,6 +792,8 @@ void power_supply_trigger_charging_handler(struct power_supply *psy)
 
 	if (!psy_chrgr.is_cable_evt_reg || !is_cable_connected())
 		return;
+
+	wake_up(&psy_chrgr.wait_chrg_enable);
 
 	if (psy)
 		__power_supply_trigger_charging_handler(psy);
@@ -988,6 +997,7 @@ int power_supply_register_charger(struct power_supply *psy)
 
 	if (!psy_chrgr.is_cable_evt_reg) {
 		mutex_init(&psy_chrgr.evt_lock);
+		init_waitqueue_head(&psy_chrgr.wait_chrg_enable);
 		init_charger_cables(cable_list, ARRAY_SIZE(cable_list));
 		INIT_LIST_HEAD(&psy_chrgr.chrgr_cache_lst);
 		INIT_LIST_HEAD(&psy_chrgr.batt_cache_lst);

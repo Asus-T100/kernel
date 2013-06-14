@@ -283,6 +283,7 @@ struct bq24261_charger {
 	struct work_struct irq_work;
 	struct list_head otg_queue;
 	struct list_head irq_queue;
+	wait_queue_head_t wait_ready;
 	spinlock_t otg_queue_lock;
 	void __iomem *irq_iomap;
 
@@ -591,6 +592,31 @@ static inline int bq24261_enable_charging(
 {
 	u8 reg_val;
 	int ret;
+	bool is_ready;
+
+	ret = bq24261_read_reg(chip->client,
+					BQ24261_STAT_CTRL0_ADDR);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"Error(%d) in reading BQ24261_STAT_CTRL0_ADDR\n", ret);
+	}
+
+	is_ready =  (ret & BQ24261_STAT_MASK) != BQ24261_STAT_FAULT;
+
+	/* If status is fault, wait for READY before enabling the charging */
+
+	if (!is_ready) {
+		ret = wait_event_timeout(chip->wait_ready,
+			(chip->chrgr_stat != BQ24261_CHRGR_STAT_READY),
+				HZ);
+		dev_info(&chip->client->dev,
+			"chrgr_stat=%x\n", chip->chrgr_stat);
+		if (ret == 0) {
+			dev_err(&chip->client->dev,
+				"Waiting for Charger Ready Failed.Enabling charging anyway\n");
+		}
+	}
+
 
 	if (chip->pdata->enable_charging)
 		chip->pdata->enable_charging(val);
@@ -1280,7 +1306,6 @@ static void bq24261_exception_mon_work(struct work_struct *work)
 static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 {
 	struct i2c_client *client = chip->client;
-	int ret;
 	bool notify = true;
 
 	dev_info(&client->dev, "%s:%d stat=0x%x\n",
@@ -1292,6 +1317,7 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Ready\n");
+		notify = false;
 		break;
 	case BQ24261_STAT_CHRG_PRGRSS:
 		chip->chrgr_stat = BQ24261_CHRGR_STAT_CHARGING;
@@ -1378,6 +1404,8 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		if (chip->chrgr_stat == BQ24261_CHRGR_STAT_FAULT && notify)
 			bq24261_dump_regs(dump_master);
 	}
+
+	wake_up(&chip->wait_ready);
 
 	chip->is_vsys_on = bq24261_is_vsys_on(chip);
 	if (notify)
@@ -1577,6 +1605,7 @@ static int bq24261_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
+	init_waitqueue_head(&chip->wait_ready);
 	i2c_set_clientdata(client, chip);
 	chip->pdata = client->dev.platform_data;
 
