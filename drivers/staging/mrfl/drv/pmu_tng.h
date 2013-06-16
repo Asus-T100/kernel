@@ -166,10 +166,4 @@
 #define DEBUG_PM_CMD 1
 #endif
 
-int pmu_set_power_state_tng(u32 reg_pm0, u32 si_mask, u32 ns_mask);
-
-#if (defined DEBUG_PM_CMD) && DEBUG_PM_CMD
-const char *pm_cmd_reg_name(u32 reg_addr);
-#endif
-
 #endif /* ifndef _PMU_TNG_H_ */

@@ -54,7 +54,7 @@ static bool vsp_power_up(struct drm_device *dev,
 #endif
 	pm_ret = pmu_nc_set_power_state(PMU_VPP, OSPM_ISLAND_UP, VSP_SS_PM0);
 	if (pm_ret) {
-		PSB_DEBUG_PM("VSP: pmu_set_power_state_tng ON failed!\n");
+		PSB_DEBUG_PM("VSP: pmu_nc_set_power_state ON failed!\n");
 		return false;
 	}
 
@@ -84,7 +84,7 @@ static bool vsp_power_down(struct drm_device *dev,
 
 	pm_ret = pmu_nc_set_power_state(PMU_VPP, OSPM_ISLAND_DOWN, VSP_SS_PM0);
 	if (pm_ret) {
-		PSB_DEBUG_PM("VSP: pmu_set_power_state_tng OFF failed!\n");
+		PSB_DEBUG_PM("VSP: pmu_nc_set_power_state OFF failed!\n");
 		return false;
 	}
 
