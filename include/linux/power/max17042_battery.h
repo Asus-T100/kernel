@@ -34,7 +34,8 @@
 /* fuel gauge table type for DV10 platfrom */
 #define MAX17042_TBL_TYPE_DV10	0xff
 
-#if !defined(CONFIG_X86_MRFLD) && !defined(CONFIG_BOARD_CTP)
+#if !defined(CONFIG_X86_MRFLD) && !defined(CONFIG_BOARD_CTP) \
+		&& !defined(CONFIG_BYT_FFRD8_CHARGER)
 struct max17042_config_data {
 	/*
 	 * if config_init is 0, which means new
