@@ -763,8 +763,6 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	int err;
 	unsigned long irqflags;
 	struct ia_css_frame *frame = NULL;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (buf_type != IA_CSS_BUFFER_TYPE_3A_STATISTICS &&
 	    buf_type != IA_CSS_BUFFER_TYPE_DIS_STATISTICS &&
@@ -801,13 +799,12 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			break;
 		}
 		/* update the 3A data to ISP context */
-		if (isp_subdev->params.s3a_user_stat &&
-			isp_subdev->params.s3a_output_bytes && !error) {
+		if (isp->params.s3a_user_stat &&
+			isp->params.s3a_output_bytes && !error) {
 			/* To avoid racing with atomisp_3a_stat() */
-			ia_css_get_3a_statistics(
-					isp_subdev->params.s3a_user_stat,
+			ia_css_get_3a_statistics(isp->params.s3a_user_stat,
 						 buffer.data.stats_3a);
-			isp_subdev->params.s3a_buf_data_valid = true;
+			isp->params.s3a_buf_data_valid = true;
 		}
 		isp->s3a_bufs_in_css[css_pipe_id]--;
 		atomisp_3a_stats_ready_event(isp);
@@ -819,11 +816,11 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			isp->sw_contex.invalid_dis = 0;
 			break;
 		}
-		if (isp_subdev->params.dvs_stat && !error) {
+		if (isp->params.dvs_stat && !error) {
 			/* To avoid racing with atomisp_get_dis_stat()*/
-			ia_css_get_dvs_statistics(isp_subdev->params.dvs_stat,
+			ia_css_get_dvs_statistics(isp->params.dvs_stat,
 						  buffer.data.stats_dvs);
-			isp_subdev->params.dvs_proj_data_valid = true;
+			isp->params.dvs_proj_data_valid = true;
 		}
 		isp->dis_bufs_in_css--;
 		break;
@@ -837,7 +834,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 		pipe->buffers_in_css--;
 		frame = buffer.data.frame;
 
-		if (isp_subdev->params.flash_state == ATOMISP_FLASH_ONGOING) {
+		if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 			if (frame->flash_state
 			    == IA_CSS_FRAME_FLASH_STATE_PARTIAL)
 					dev_dbg(isp->dev, "%s thumb partially "
@@ -871,7 +868,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 
 		frame = buffer.data.frame;
 
-		if (isp_subdev->params.flash_state == ATOMISP_FLASH_ONGOING) {
+		if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 			if (frame->flash_state
 			    == IA_CSS_FRAME_FLASH_STATE_PARTIAL) {
 				isp->frame_status[vb->i] =
@@ -883,7 +880,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 				   == IA_CSS_FRAME_FLASH_STATE_FULL) {
 				isp->frame_status[vb->i] =
 				    ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
-				isp_subdev->params.num_flash_frames--;
+				isp->params.num_flash_frames--;
 					dev_dbg(isp->dev,
 						 "%s completely flashed\n",
 						 __func__);
@@ -897,14 +894,12 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 
 				/* Check if flashing sequence is done */
 				if (isp->frame_status[vb->i] == ATOMISP_FRAME_STATUS_FLASH_EXPOSED)
-					isp_subdev->params.flash_state =
-					    ATOMISP_FLASH_DONE;
+					isp->params.flash_state = ATOMISP_FLASH_DONE;
 			} else {
 				isp->frame_status[vb->i] = ATOMISP_FRAME_STATUS_OK;
 			}
 
-			isp_subdev->params.last_frame_status =
-			    isp->frame_status[vb->i];
+			isp->params.last_frame_status = isp->frame_status[vb->i];
 
 			break;
 		default:
@@ -1102,14 +1097,11 @@ void atomisp_wdt(unsigned long isp_addr)
 
 void atomisp_setup_flash(struct atomisp_device *isp)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
-	if (isp_subdev->params.flash_state != ATOMISP_FLASH_REQUESTED &&
-	    isp_subdev->params.flash_state != ATOMISP_FLASH_DONE)
+	if (isp->params.flash_state != ATOMISP_FLASH_REQUESTED &&
+	    isp->params.flash_state != ATOMISP_FLASH_DONE)
 		return;
 
-	if (isp_subdev->params.num_flash_frames) {
+	if (isp->params.num_flash_frames) {
 		struct v4l2_control ctrl;
 
 		/* make sure the timeout is set before setting flash mode */
@@ -1121,95 +1113,92 @@ void atomisp_setup_flash(struct atomisp_device *isp)
 			return;
 		}
 		ia_css_stream_request_flash(isp->css2_basis.stream);
-		isp_subdev->params.flash_state = ATOMISP_FLASH_ONGOING;
+		isp->params.flash_state = ATOMISP_FLASH_ONGOING;
 	} else {
 		/* Flashing all frames is done */
-		isp_subdev->params.flash_state = ATOMISP_FLASH_IDLE;
+		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 	}
 }
 void atomisp_ISP_parameters_clean_up(struct atomisp_device *isp,
 				     struct ia_css_isp_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config->wb_config) {
-		memset(isp_subdev->params.config.wb_config, 0 ,
+		memset(isp->params.config.wb_config, 0 ,
 		       sizeof(struct ia_css_wb_config));
 		config->wb_config = NULL;
 	}
 	if (config->cc_config) {
-		memset(isp_subdev->params.config.cc_config, 0 ,
+		memset(isp->params.config.cc_config, 0 ,
 		       sizeof(struct ia_css_cc_config));
 		config->cc_config = NULL;
 	}
 	if (config->tnr_config) {
-		memset(isp_subdev->params.config.tnr_config, 0 ,
+		memset(isp->params.config.tnr_config, 0 ,
 		       sizeof(struct ia_css_tnr_config));
 		config->tnr_config = NULL;
 	}
 	if (config->ob_config) {
-		memset(isp_subdev->params.config.ob_config, 0 ,
+		memset(isp->params.config.ob_config, 0 ,
 		       sizeof(struct ia_css_ob_config));
 		config->ob_config = NULL;
 	}
 	if (config->nr_config) {
-		memset(isp_subdev->params.config.nr_config, 0 ,
+		memset(isp->params.config.nr_config, 0 ,
 		       sizeof(struct ia_css_nr_config));
 		config->nr_config = NULL;
 	}
 	if (config->ee_config) {
-		memset(isp_subdev->params.config.ee_config, 0 ,
+		memset(isp->params.config.ee_config, 0 ,
 		       sizeof(struct ia_css_ee_config));
 		config->ee_config = NULL;
 	}
 	if (config->de_config) {
-		memset(isp_subdev->params.config.de_config, 0 ,
+		memset(isp->params.config.de_config, 0 ,
 		       sizeof(struct ia_css_de_config));
 		config->de_config = NULL;
 	}
 	if (config->gc_config) {
-		memset(isp_subdev->params.config.gc_config, 0 ,
+		memset(isp->params.config.gc_config, 0 ,
 		       sizeof(struct ia_css_gc_config));
 		config->gc_config = NULL;
 	}
 	if (config->ecd_config) {
-		memset(isp_subdev->params.config.ecd_config, 0 ,
+		memset(isp->params.config.ecd_config, 0 ,
 		       sizeof(struct ia_css_ecd_config));
 		config->ecd_config = NULL;
 	}
 	if (config->ynr_config) {
-		memset(isp_subdev->params.config.ynr_config, 0 ,
+		memset(isp->params.config.ynr_config, 0 ,
 		       sizeof(struct ia_css_ynr_config));
 		config->ynr_config = NULL;
 	}
 	if (config->fc_config) {
-		memset(isp_subdev->params.config.fc_config, 0 ,
+		memset(isp->params.config.fc_config, 0 ,
 		       sizeof(struct ia_css_fc_config));
 		config->fc_config = NULL;
 	}
 	if (config->cnr_config) {
-		memset(isp_subdev->params.config.cnr_config, 0 ,
+		memset(isp->params.config.cnr_config, 0 ,
 		       sizeof(struct ia_css_cnr_config));
 		config->cnr_config = NULL;
 	}
 	if (config->macc_config) {
-		memset(isp_subdev->params.config.macc_config, 0 ,
+		memset(isp->params.config.macc_config, 0 ,
 		       sizeof(struct ia_css_macc_config));
 		config->macc_config = NULL;
 	}
 	if (config->ctc_config) {
-		memset(isp_subdev->params.config.ctc_config, 0 ,
+		memset(isp->params.config.ctc_config, 0 ,
 		       sizeof(struct ia_css_ctc_config));
 		config->ctc_config = NULL;
 	}
 	if (config->aa_config) {
-		memset(isp_subdev->params.config.aa_config, 0 ,
+		memset(isp->params.config.aa_config, 0 ,
 		       sizeof(struct ia_css_aa_config));
 		config->aa_config = NULL;
 	}
 	if (config->ce_config) {
-		memset(isp_subdev->params.config.ce_config, 0 ,
+		memset(isp->params.config.ce_config, 0 ,
 		       sizeof(struct ia_css_ce_config));
 		config->ce_config = NULL;
 	}
@@ -1217,67 +1206,67 @@ void atomisp_ISP_parameters_clean_up(struct atomisp_device *isp,
 		config->dvs_6axis_config = NULL;
 	}
 	if (config->yuv2rgb_cc_config) {
-		memset(isp_subdev->params.config.yuv2rgb_cc_config, 0 ,
+		memset(isp->params.config.yuv2rgb_cc_config, 0 ,
 		       sizeof(struct ia_css_yuv2rgb_cc_config));
 		config->yuv2rgb_cc_config = NULL;
 	}
 	if (config->rgb2yuv_cc_config) {
-		memset(isp_subdev->params.config.rgb2yuv_cc_config, 0 ,
+		memset(isp->params.config.rgb2yuv_cc_config, 0 ,
 		       sizeof(struct ia_css_rgb2yuv_cc_config));
 		config->rgb2yuv_cc_config = NULL;
 	}
 	if (config->anr_config) {
-		memset(isp_subdev->params.config.anr_config, 0 ,
+		memset(isp->params.config.anr_config, 0 ,
 		       sizeof(struct ia_css_anr_config));
 		config->anr_config = NULL;
 	}
 	if (config->s3a_config) {
-		memset(isp_subdev->params.config.s3a_config, 0 ,
+		memset(isp->params.config.s3a_config, 0 ,
 		       sizeof(struct ia_css_3a_config));
 		config->s3a_config = NULL;
 	}
 	if (config->macc_table) {
-		memset(isp_subdev->params.config.macc_table, 0 ,
+		memset(isp->params.config.macc_table, 0 ,
 		       sizeof(struct ia_css_macc_table));
 		config->macc_table = NULL;
 	}
 	if (config->gamma_table) {
-		memset(isp_subdev->params.config.gamma_table, 0 ,
+		memset(isp->params.config.gamma_table, 0 ,
 		       sizeof(struct ia_css_gamma_table));
 		config->gamma_table = NULL;
 	}
 	if (config->ctc_table) {
-		memset(isp_subdev->params.config.ctc_table, 0 ,
+		memset(isp->params.config.ctc_table, 0 ,
 		       sizeof(struct ia_css_ctc_table));
 		config->ctc_table = NULL;
 	}
 	if (config->xnr_table) {
-		memset(isp_subdev->params.config.xnr_table, 0 ,
+		memset(isp->params.config.xnr_table, 0 ,
 		       sizeof(struct ia_css_xnr_table));
 		config->xnr_table = NULL;
 	}
 	if (config->r_gamma_table) {
-		memset(isp_subdev->params.config.r_gamma_table, 0 ,
+		memset(isp->params.config.r_gamma_table, 0 ,
 		       sizeof(struct ia_css_rgb_gamma_table));
 		config->r_gamma_table = NULL;
 	}
 	if (config->g_gamma_table) {
-		memset(isp_subdev->params.config.g_gamma_table, 0 ,
+		memset(isp->params.config.g_gamma_table, 0 ,
 		       sizeof(struct ia_css_rgb_gamma_table));
 		config->g_gamma_table = NULL;
 	}
 	if (config->b_gamma_table) {
-		memset(isp_subdev->params.config.b_gamma_table, 0 ,
+		memset(isp->params.config.b_gamma_table, 0 ,
 		       sizeof(struct ia_css_rgb_gamma_table));
 		config->b_gamma_table = NULL;
 	}
 	if (config->dz_config) {
-		memset(isp_subdev->params.config.dz_config, 0 ,
+		memset(isp->params.config.dz_config, 0 ,
 		       sizeof(struct ia_css_dz_config));
 		config->dz_config = NULL;
 	}
 	if (config->motion_vector) {
-		memset(isp_subdev->params.config.motion_vector, 0 ,
+		memset(isp->params.config.motion_vector, 0 ,
 		       sizeof(struct ia_css_vector));
 		config->motion_vector = NULL;
 	}
@@ -1301,8 +1290,6 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	bool frame_done_found = false;
 	bool css_pipe_done = false;
 	bool reset_wdt_timer = false;
-	/* FIXME: CSS2.0 will tell which stream has the buffer */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
 
 	dev_dbg(isp->dev, ">%s\n", __func__);
@@ -1377,12 +1364,10 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	}
 
 	if (frame_done_found &&
-	    isp_subdev->params.css_update_params_needed) {
-		ia_css_stream_set_isp_config(isp->css2_basis.stream,
-					     &isp_subdev->params.config);
-		atomisp_ISP_parameters_clean_up(isp,
-						&isp_subdev->params.config);
-		isp_subdev->params.css_update_params_needed = false;
+	    isp->params.css_update_params_needed) {
+		ia_css_stream_set_isp_config(isp->css2_basis.stream, &isp->params.config);
+		atomisp_ISP_parameters_clean_up(isp, &isp->params.config);
+		isp->params.css_update_params_needed = false;
 		frame_done_found = false;
 	}
 	atomisp_setup_flash(isp);
@@ -1599,8 +1584,6 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
 {
 	struct ia_css_isp_config isp_config;
 	enum ia_css_capture_mode capture_mode;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!isp->css2_basis.stream) {
 		v4l2_err(&atomisp_dev,
@@ -1609,19 +1592,18 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
 		return;
 	}
 	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
-	isp_config.capture_config = &isp_subdev->params.capture_config;
+	isp_config.capture_config = &isp->params.capture_config;
 	ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
 
-	if (isp_subdev->params.low_light)
+	if (isp->params.low_light)
 		capture_mode = IA_CSS_CAPTURE_MODE_LOW_LIGHT;
-	else if (isp_subdev->params.gdc_cac_en)
+	else if (isp->params.gdc_cac_en)
 		capture_mode = IA_CSS_CAPTURE_MODE_ADVANCED;
 	else
 		capture_mode = IA_CSS_CAPTURE_MODE_PRIMARY;
-	if (capture_mode != isp_subdev->params.capture_config.mode) {
-		isp_subdev->params.capture_config.mode = capture_mode;
-		isp_subdev->params.config.capture_config =
-		    &isp_subdev->params.capture_config;
+	if (capture_mode != isp->params.capture_config.mode) {
+		isp->params.capture_config.mode = capture_mode;
+		isp->params.config.capture_config = &isp->params.capture_config;
 	}
 }
 
@@ -1631,19 +1613,15 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
  */
 int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (flag == 0) {
-		*value = isp_subdev->params.gdc_cac_en;
+		*value = isp->params.gdc_cac_en;
 		return 0;
 	}
 
-	isp_subdev->params.gdc_cac_en = !!*value;
-	if (isp_subdev->params.gdc_cac_en) {
-		isp_subdev->params.config.morph_table =
-		    isp->inputs[isp->input_curr].morph_table;
-		isp_subdev->params.css_update_params_needed = true;
+	isp->params.gdc_cac_en = !!*value;
+	if (isp->params.gdc_cac_en) {
+		isp->params.config.morph_table = isp->inputs[isp->input_curr].morph_table;
+		isp->params.css_update_params_needed = true;
 		atomisp_update_capture_mode(isp);
 	}
 	return 0;
@@ -1654,15 +1632,12 @@ int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
  */
 int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (flag == 0) {
-		*value = isp_subdev->params.low_light;
+		*value = isp->params.low_light;
 		return 0;
 	}
 
-	isp_subdev->params.low_light = (*value != 0);
+	isp->params.low_light = (*value != 0);
 	atomisp_update_capture_mode(isp);
 	return 0;
 }
@@ -1673,20 +1648,17 @@ int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value)
  */
 int atomisp_xnr(struct atomisp_device *isp, int flag, int *xnr_enable)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (!xnr_enable)
 		return 0;
 
 	if (flag == 0) {
-		*xnr_enable = isp_subdev->params.xnr_en;
+		*xnr_enable = isp->params.xnr_en;
 		return 0;
 	}
 
-	if (isp_subdev->params.capture_config.enable_xnr != !!*xnr_enable) {
-		isp_subdev->params.capture_config.enable_xnr = !!*xnr_enable;
-		isp_subdev->params.xnr_en = !!*xnr_enable;
+	if (isp->params.capture_config.enable_xnr != !!*xnr_enable) {
+		isp->params.capture_config.enable_xnr = !!*xnr_enable;
+		isp->params.xnr_en = !!*xnr_enable;
 	}
 
 	return 0;
@@ -1698,13 +1670,10 @@ int atomisp_xnr(struct atomisp_device *isp, int flag, int *xnr_enable)
 int atomisp_nr(struct atomisp_device *isp, int flag,
 	       struct atomisp_nr_config *arg)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (arg == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(*isp_subdev->params.config.nr_config)) {
+	if (sizeof(*arg) != sizeof(*isp->params.config.nr_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1729,12 +1698,11 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
 		memcpy(arg, &nr_config, sizeof(*arg));
 	} else {
 		/* Set nr config to isp parameters */
-		if (!isp_subdev->params.config.nr_config)
-			isp_subdev->params.config.nr_config =
-			    &isp_subdev->params.nr_config;
-		memcpy(isp_subdev->params.config.nr_config, arg,
+		if (!isp->params.config.nr_config)
+			isp->params.config.nr_config = &isp->params.nr_config;
+		memcpy(isp->params.config.nr_config, arg,
 			sizeof(struct ia_css_nr_config));
-		isp_subdev->params.css_update_params_needed = true;
+		isp->params.css_update_params_needed = true;
 	}
 	return 0;
 }
@@ -1745,13 +1713,10 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
 int atomisp_tnr(struct atomisp_device *isp, int flag,
 		struct atomisp_tnr_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.tnr_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.tnr_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1776,13 +1741,12 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 		/* Get tnr config from current setup */
 		memcpy(config, isp_config.tnr_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.tnr_config)
-			isp_subdev->params.config.tnr_config =
-			    &isp_subdev->params.tnr_config;
+		if (!isp->params.config.tnr_config)
+			isp->params.config.tnr_config = &isp->params.tnr_config;
 		/* Set tnr config to isp parameters */
-		memcpy(isp_subdev->params.config.tnr_config, config,
+		memcpy(isp->params.config.tnr_config, config,
 			sizeof(struct ia_css_tnr_config));
-		isp_subdev->params.css_update_params_needed = true;
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -1794,13 +1758,10 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 int atomisp_black_level(struct atomisp_device *isp, int flag,
 			struct atomisp_ob_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.ob_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.ob_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1822,13 +1783,12 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
 		memcpy(config, &ob_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.ob_config)
-			isp_subdev->params.config.ob_config =
-			    &isp_subdev->params.ob_config;
+		if (!isp->params.config.ob_config)
+			isp->params.config.ob_config = &isp->params.ob_config;
 		/* Set ob config to isp parameters */
-		memcpy(isp_subdev->params.config.ob_config, config,
+		memcpy(isp->params.config.ob_config, config,
 			sizeof(struct ia_css_ob_config));
-		isp_subdev->params.css_update_params_needed = true;
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -1840,13 +1800,10 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 int atomisp_ee(struct atomisp_device *isp, int flag,
 	       struct atomisp_ee_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.ee_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.ee_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1868,13 +1825,12 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
 		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
 		memcpy(config, &ee_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.ee_config)
-			isp_subdev->params.config.ee_config =
-			    &isp_subdev->params.ee_config;
+		if (!isp->params.config.ee_config)
+			isp->params.config.ee_config = &isp->params.ee_config;
 		/* Set ee config to isp parameters */
-		memcpy(isp_subdev->params.config.ee_config, config,
-		       sizeof(*isp_subdev->params.config.ee_config));
-		isp_subdev->params.css_update_params_needed = true;
+		memcpy(isp->params.config.ee_config, config,
+		       sizeof(*isp->params.config.ee_config));
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -1886,13 +1842,10 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
 int atomisp_gamma(struct atomisp_device *isp, int flag,
 		  struct atomisp_gamma_table *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.gamma_table)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.gamma_table)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1914,12 +1867,11 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
 		memcpy(config, &tab, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.gamma_table)
-			isp_subdev->params.config.gamma_table =
-			    &isp_subdev->params.gamma_table;
+		if (!isp->params.config.gamma_table)
+			isp->params.config.gamma_table = &isp->params.gamma_table;
 		/* Set gamma table to isp parameters */
-		memcpy(isp_subdev->params.config.gamma_table, config,
-		       sizeof(*isp_subdev->params.config.gamma_table));
+		memcpy(isp->params.config.gamma_table, config,
+		       sizeof(*isp->params.config.gamma_table));
 	}
 
 	return 0;
@@ -1931,13 +1883,10 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 int atomisp_ctc(struct atomisp_device *isp, int flag,
 		struct atomisp_ctc_table *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.ctc_table)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.ctc_table)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1959,12 +1908,11 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
 		memcpy(config, &tab, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.ctc_table)
-			isp_subdev->params.config.ctc_table =
-			    &isp_subdev->params.ctc_table;
+		if (!isp->params.config.ctc_table)
+			isp->params.config.ctc_table = &isp->params.ctc_table;
 		/* Set ctc table to isp parameters */
-		memcpy(isp_subdev->params.config.ctc_table, config,
-			sizeof(*isp_subdev->params.config.ctc_table));
+		memcpy(isp->params.config.ctc_table, config,
+			sizeof(*isp->params.config.ctc_table));
 	}
 
 	return 0;
@@ -1976,10 +1924,8 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 	struct atomisp_gc_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.gc_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.gc_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -2001,13 +1947,11 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 		/* Get gamma correction params from current setup */
 		memcpy(config, &gc_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.gc_config)
-			isp_subdev->params.config.gc_config =
-			    &isp_subdev->params.gc_config;
+		if (!isp->params.config.gc_config)
+			isp->params.config.gc_config = &isp->params.gc_config;
 		/* Set gamma correction params to isp parameters */
-		memcpy(isp_subdev->params.config.gc_config, config,
-		       sizeof(*config));
-		isp_subdev->params.css_update_params_needed = true;
+		memcpy(isp->params.config.gc_config, config, sizeof(*config));
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -2030,34 +1974,31 @@ void atomisp_free_internal_buffers(struct atomisp_device *isp)
 
 void atomisp_free_3a_dvs_buffers(struct atomisp_device *isp)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	struct atomisp_s3a_buf *s3a_buf, *_s3a_buf;
 	struct atomisp_dvs_buf *dvs_buf, *_dvs_buf;
 
 	/* 3A statistics use vmalloc, DIS use kmalloc */
-	if (isp_subdev->params.curr_grid_info.dvs_grid.enable) {
-		ia_css_dvs_coefficients_free(isp_subdev->params.dvs_coeff);
-		ia_css_dvs_statistics_free(isp_subdev->params.dvs_stat);
-		isp_subdev->params.dvs_coeff = NULL;
-		isp_subdev->params.dvs_stat = NULL;
-		isp_subdev->params.dvs_hor_proj_bytes = 0;
-		isp_subdev->params.dvs_ver_proj_bytes = 0;
-		isp_subdev->params.dvs_hor_coef_bytes = 0;
-		isp_subdev->params.dvs_ver_coef_bytes = 0;
-		isp_subdev->params.dvs_proj_data_valid = false;
+	if (isp->params.curr_grid_info.dvs_grid.enable) {
+		ia_css_dvs_coefficients_free(isp->params.dvs_coeff);
+		ia_css_dvs_statistics_free(isp->params.dvs_stat);
+		isp->params.dvs_coeff = NULL;
+		isp->params.dvs_stat = NULL;
+		isp->params.dvs_hor_proj_bytes = 0;
+		isp->params.dvs_ver_proj_bytes = 0;
+		isp->params.dvs_hor_coef_bytes = 0;
+		isp->params.dvs_ver_coef_bytes = 0;
+		isp->params.dvs_proj_data_valid = false;
 		list_for_each_entry_safe(dvs_buf, _dvs_buf, &isp->dvs_stats, list) {
 			ia_css_isp_dvs_statistics_free(dvs_buf->dvs_stat);
 			list_del(&dvs_buf->list);
 			kfree(dvs_buf);
 		}
 	}
-	if (isp_subdev->params.curr_grid_info.s3a_grid.enable) {
-		ia_css_3a_statistics_free(isp_subdev->params.s3a_user_stat);
-		isp_subdev->params.s3a_user_stat = NULL;
-		isp_subdev->params.s3a_buf_data_valid = false;
-		isp_subdev->params.s3a_output_bytes = 0;
+	if (isp->params.curr_grid_info.s3a_grid.enable) {
+		ia_css_3a_statistics_free(isp->params.s3a_user_stat);
+		isp->params.s3a_user_stat = NULL;
+		isp->params.s3a_buf_data_valid = false;
+		isp->params.s3a_output_bytes = 0;
 		list_for_each_entry_safe(s3a_buf, _s3a_buf, &isp->s3a_stats, list) {
 			ia_css_isp_3a_statistics_free(s3a_buf->s3a_stat);
 			list_del(&s3a_buf->list);
@@ -2068,9 +2009,6 @@ void atomisp_free_3a_dvs_buffers(struct atomisp_device *isp)
 
 static void atomisp_update_grid_info(struct atomisp_device *isp)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	int err;
 	struct ia_css_pipe_info p_info;
 	struct ia_css_grid_info old_info = {0};
@@ -2078,19 +2016,17 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 	memset(&p_info, 0, sizeof(struct ia_css_pipe_info));
 	ia_css_pipe_get_info(isp->css2_basis.pipes[isp->css2_basis.curr_pipe],
 			     &p_info);
-	memcpy(&old_info, &isp_subdev->params.curr_grid_info,
-	       sizeof(struct ia_css_grid_info));
-	memcpy(&isp_subdev->params.curr_grid_info, &p_info.grid_info,
+	memcpy(&old_info,&isp->params.curr_grid_info,sizeof(struct ia_css_grid_info));
+	memcpy(&isp->params.curr_grid_info, &p_info.grid_info,
 			sizeof(struct ia_css_grid_info));
 
 	/* If the grid info has not changed and the buffers for 3A and
 	 * DIS statistics buffers are allocated or buffer size would be zero
 	 * then no need to do anything. */
-	if ((!memcmp(&old_info, &isp_subdev->params.curr_grid_info,
-		     sizeof(old_info)) &&
-	    isp_subdev->params.s3a_user_stat && isp_subdev->params.dvs_stat) ||
-		isp_subdev->params.curr_grid_info.s3a_grid.width == 0 ||
-		isp_subdev->params.curr_grid_info.s3a_grid.height == 0)
+	if ((!memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info)) &&
+	    isp->params.s3a_user_stat && isp->params.dvs_stat) ||
+		isp->params.curr_grid_info.s3a_grid.width == 0 ||
+		isp->params.curr_grid_info.s3a_grid.height == 0)
 		return;
 
 	/* We must free all buffers because they no longer match
@@ -2102,58 +2038,55 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 		dev_err(isp->dev, "stat_buf allocate error\n");
 		goto err_3a;
 	}
-	isp_subdev->params.s3a_user_stat =
-	    ia_css_3a_statistics_allocate(
-				&isp_subdev->params.curr_grid_info.s3a_grid);
-	if (!isp_subdev->params.s3a_user_stat)
+	isp->params.s3a_user_stat =
+	    ia_css_3a_statistics_allocate(&isp->params.curr_grid_info.s3a_grid);
+	if (!isp->params.s3a_user_stat)
 		goto err_3a;
 	/* 3A statistics. These can be big, so we use vmalloc. */
-	isp_subdev->params.s3a_output_bytes =
-	    isp_subdev->params.curr_grid_info.s3a_grid.width *
-	    isp_subdev->params.curr_grid_info.s3a_grid.height *
-	    sizeof(*isp_subdev->params.s3a_user_stat->data);
+	isp->params.s3a_output_bytes =
+	    isp->params.curr_grid_info.s3a_grid.width *
+	    isp->params.curr_grid_info.s3a_grid.height *
+	    sizeof(*isp->params.s3a_user_stat->data);
 
-	isp_subdev->params.s3a_buf_data_valid = false;
-	if (isp_subdev->params.curr_grid_info.dvs_grid.enable) {
+	isp->params.s3a_buf_data_valid = false;
+	if (isp->params.curr_grid_info.dvs_grid.enable) {
 		/* DIS coefficients. */
-		isp_subdev->params.dvs_coeff =
+		isp->params.dvs_coeff =
 		    ia_css_dvs_coefficients_allocate(
-				&isp_subdev->params.curr_grid_info.dvs_grid);
-		if (!isp_subdev->params.dvs_coeff)
+				&isp->params.curr_grid_info.dvs_grid);
+		if (!isp->params.dvs_coeff)
 			goto err_dvs;
 
-		isp_subdev->params.dvs_hor_coef_bytes =
-		    isp_subdev->params.curr_grid_info.dvs_grid.num_hor_coefs*
+		isp->params.dvs_hor_coef_bytes =
+		    isp->params.curr_grid_info.dvs_grid.num_hor_coefs*
 		    IA_CSS_DVS_NUM_COEF_TYPES *
-		    sizeof(*isp_subdev->params.dvs_coeff->hor_coefs);
+		    sizeof(*isp->params.dvs_coeff->hor_coefs);
 
-		isp_subdev->params.dvs_ver_coef_bytes =
-		    isp_subdev->params.curr_grid_info.dvs_grid.num_ver_coefs *
+		isp->params.dvs_ver_coef_bytes =
+		    isp->params.curr_grid_info.dvs_grid.num_ver_coefs *
 		    IA_CSS_DVS_NUM_COEF_TYPES *
-		    sizeof(*isp_subdev->params.dvs_coeff->ver_coefs);
+		    sizeof(*isp->params.dvs_coeff->ver_coefs);
 
 		/* DIS projections. */
-		isp_subdev->params.dvs_proj_data_valid = false;
-		isp_subdev->params.dvs_stat =
-		    ia_css_dvs_statistics_allocate(
-				&isp_subdev->params.curr_grid_info.dvs_grid);
-		if (!isp_subdev->params.dvs_stat)
+		isp->params.dvs_proj_data_valid = false;
+		isp->params.dvs_stat = ia_css_dvs_statistics_allocate(&isp->params.curr_grid_info.dvs_grid);
+		if (!isp->params.dvs_stat)
 			goto err_dvs;
-		isp_subdev->params.dvs_hor_proj_bytes =
-		    isp_subdev->params.curr_grid_info.dvs_grid.aligned_height *
+		isp->params.dvs_hor_proj_bytes =
+		    isp->params.curr_grid_info.dvs_grid.aligned_height *
 		    IA_CSS_DVS_NUM_COEF_TYPES *
-		    sizeof(*isp_subdev->params.dvs_stat->hor_proj);
+		    sizeof(*isp->params.dvs_stat->hor_proj);
 
-		isp_subdev->params.dvs_ver_proj_bytes =
-		    isp_subdev->params.curr_grid_info.dvs_grid.aligned_width *
+		isp->params.dvs_ver_proj_bytes =
+		    isp->params.curr_grid_info.dvs_grid.aligned_width *
 		    IA_CSS_DVS_NUM_COEF_TYPES *
-		    sizeof(*isp_subdev->params.dvs_stat->ver_proj);
+		    sizeof(*isp->params.dvs_stat->ver_proj);
 	}
 	return;
 
 	/* Failure for 3A buffers does not influence DIS buffers */
 err_3a:
-	if (isp_subdev->params.s3a_output_bytes != 0) {
+	if (isp->params.s3a_output_bytes != 0) {
 		/* For SOC sensor happens s3a_output_bytes == 0,
 		*  using if condition to exclude false error log */
 		dev_err(isp->dev, "Failed allocate memory for 3A statistics\n");
@@ -2169,38 +2102,29 @@ err_dvs:
 static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 				    struct atomisp_grid_info *info)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 #ifndef ATOMISP_CSS2
-	info->isp_in_width          =
-	    isp_subdev->params.curr_grid_info.isp_in_width;
-	info->isp_in_height         =
-	    isp_subdev->params.curr_grid_info.isp_in_height;
-	info->s3a_width             =
-	    isp_subdev->params.curr_grid_info.s3a_grid.width;
+	info->isp_in_width          = isp->params.curr_grid_info.isp_in_width;
+	info->isp_in_height         = isp->params.curr_grid_info.isp_in_height;
+	info->s3a_width             = isp->params.curr_grid_info.s3a_grid.width;
 	info->s3a_height            =
-		isp_subdev->params.curr_grid_info.s3a_grid.height;
+		isp->params.curr_grid_info.s3a_grid.height;
 	info->s3a_bqs_per_grid_cell =
-		isp_subdev->params.curr_grid_info.s3a_grid.bqs_per_grid_cell;
+		isp->params.curr_grid_info.s3a_grid.bqs_per_grid_cell;
 
-	info->dis_width          =
-	    isp_subdev->params.curr_grid_info.dvs_grid.width;
+	info->dis_width          = isp->params.curr_grid_info.dvs_grid.width;
 	info->dis_aligned_width  =
-		isp_subdev->params.curr_grid_info.dvs_grid.aligned_width;
-	info->dis_height         =
-	    isp_subdev->params.curr_grid_info.dvs_grid.height;
+		isp->params.curr_grid_info.dvs_grid.aligned_width;
+	info->dis_height         = isp->params.curr_grid_info.dvs_grid.height;
 	info->dis_aligned_height =
-		isp_subdev->params.curr_grid_info.dvs_grid.aligned_height;
+		isp->params.curr_grid_info.dvs_grid.aligned_height;
 	info->dis_bqs_per_grid_cell =
-		isp_subdev->params.curr_grid_info.dvs_grid.bqs_per_grid_cell;
+		isp->params.curr_grid_info.dvs_grid.bqs_per_grid_cell;
 	info->dis_hor_coef_num      =
-		isp_subdev->params.curr_grid_info.dvs_grid.num_hor_coefs;
+		isp->params.curr_grid_info.dvs_grid.num_hor_coefs;
 	info->dis_ver_coef_num      =
-		isp_subdev->params.curr_grid_info.dvs_grid.num_ver_coefs;
+		isp->params.curr_grid_info.dvs_grid.num_ver_coefs;
 #else
-	memcpy(info, &isp_subdev->params.curr_grid_info.s3a_grid,
-	       sizeof(struct ia_css_3a_grid_info));
+	memcpy(info, &isp->params.curr_grid_info.s3a_grid, sizeof(struct ia_css_3a_grid_info));
 
 #endif
 }
@@ -2222,8 +2146,6 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 {
 	int ret;
 	int i;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (flag == 0) {
 		struct ia_css_morph_table tab;
@@ -2237,9 +2159,8 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 			return -EINVAL;
 		}
 		/* Get gdc table from current setup */
-		isp_subdev->params.config.morph_table = &tab;
-		ia_css_stream_get_isp_config(isp->css2_basis.stream,
-					     &isp_subdev->params.config);
+		isp->params.config.morph_table = &tab;
+		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp->params.config);
 
 		config->width = tab.width;
 		config->height = tab.height;
@@ -2306,8 +2227,8 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 			}
 		}
 		isp->inputs[isp->input_curr].morph_table = table;
-		if (isp_subdev->params.gdc_cac_en)
-			isp_subdev->params.config.morph_table = table;
+		if (isp->params.gdc_cac_en)
+			isp->params.config.morph_table = table;
 	}
 
 	return 0;
@@ -2319,8 +2240,6 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	struct ia_css_macc_table *macc_table;
 	struct ia_css_macc_table tmp_macc_table;
 	struct ia_css_isp_config isp_config;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (config == NULL)
 		return -EINVAL;
@@ -2362,8 +2281,8 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	} else {
 		memcpy(macc_table, &config->table,
 		       sizeof(struct ia_css_macc_table));
-		if (config->color_effect == isp_subdev->params.color_effect)
-			isp_subdev->params.config.macc_table = macc_table;
+		if (config->color_effect == isp->params.color_effect)
+			isp->params.config.macc_table = macc_table;
 	}
 
 	return 0;
@@ -2372,20 +2291,17 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 int atomisp_set_dis_vector(struct atomisp_device *isp,
 			   struct atomisp_dis_vector *vector)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	if (!isp->params.config.motion_vector)
+		isp->params.config.motion_vector =
+			&isp->params.motion_vector;
 
-	if (!isp_subdev->params.config.motion_vector)
-		isp_subdev->params.config.motion_vector =
-			&isp_subdev->params.motion_vector;
-
-	memset(isp_subdev->params.config.motion_vector,
+	memset(isp->params.config.motion_vector,
 			0, sizeof(struct ia_css_vector));
-	isp_subdev->params.motion_vector.x = vector->x;
-	isp_subdev->params.motion_vector.y = vector->y;
+	isp->params.motion_vector.x = vector->x;
+	isp->params.motion_vector.y = vector->y;
 
-	isp_subdev->params.dvs_proj_data_valid = false;
-	isp_subdev->params.css_update_params_needed = true;
+	isp->params.dvs_proj_data_valid = false;
+	isp->params.css_update_params_needed = true;
 	return 0;
 }
 
@@ -2397,13 +2313,11 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 {
 	unsigned long flags;
 	int error;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (stats->vertical_projections   == NULL ||
 	    stats->horizontal_projections == NULL ||
-	    isp_subdev->params.dvs_stat->hor_proj == NULL ||
-	    isp_subdev->params.dvs_stat->ver_proj == NULL)
+	    isp->params.dvs_stat->hor_proj == NULL ||
+	    isp->params.dvs_stat->ver_proj == NULL)
 		return -EINVAL;
 
 	/* isp needs to be streaming to get DIS statistics */
@@ -2414,7 +2328,7 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	}
 	spin_unlock_irqrestore(&isp->lock, flags);
 
-	if (!isp_subdev->params.video_dis_en)
+	if (!isp->params.video_dis_en)
 		return -EINVAL;
 
 	if (atomisp_compare_grid(isp, &stats->grid_info) != 0)
@@ -2423,16 +2337,16 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 		   try again. */
 		return -EAGAIN;
 
-	if (!isp_subdev->params.dvs_proj_data_valid)
+	if (!isp->params.dvs_proj_data_valid)
 		return -EBUSY;
 
 	error = copy_to_user(stats->vertical_projections,
-			     isp_subdev->params.dvs_stat->ver_proj,
-			     isp_subdev->params.dvs_ver_proj_bytes);
+			     isp->params.dvs_stat->ver_proj,
+			     isp->params.dvs_ver_proj_bytes);
 
 	error |= copy_to_user(stats->horizontal_projections,
-			     isp_subdev->params.dvs_stat->hor_proj,
-			     isp_subdev->params.dvs_hor_proj_bytes);
+			     isp->params.dvs_stat->hor_proj,
+			     isp->params.dvs_hor_proj_bytes);
 
 	if (error)
 		return -EFAULT;
@@ -2444,27 +2358,25 @@ int atomisp_set_dis_coefs(struct atomisp_device *isp,
 			  struct atomisp_dis_coefficients *coefs)
 {
 	int error;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (coefs->horizontal_coefficients == NULL ||
 	    coefs->vertical_coefficients   == NULL ||
-	    isp_subdev->params.dvs_coeff->hor_coefs == NULL ||
-	    isp_subdev->params.dvs_coeff->ver_coefs == NULL)
+	    isp->params.dvs_coeff->hor_coefs == NULL ||
+	    isp->params.dvs_coeff->ver_coefs == NULL)
 		return -EINVAL;
 
-	error = copy_from_user(isp_subdev->params.dvs_coeff->hor_coefs,
+	error = copy_from_user(isp->params.dvs_coeff->hor_coefs,
 			       coefs->horizontal_coefficients,
-			       isp_subdev->params.dvs_hor_coef_bytes);
+			       isp->params.dvs_hor_coef_bytes);
 	if (error)
 		return -EFAULT;
-	error = copy_from_user(isp_subdev->params.dvs_coeff->ver_coefs,
+	error = copy_from_user(isp->params.dvs_coeff->ver_coefs,
 			       coefs->vertical_coefficients,
-			       isp_subdev->params.dvs_ver_coef_bytes);
+			       isp->params.dvs_ver_coef_bytes);
 	if (error)
 		return -EFAULT;
-	isp_subdev->params.config.dvs_coefs = isp_subdev->params.dvs_coeff;
-	isp_subdev->params.dvs_proj_data_valid = false;
+	isp->params.config.dvs_coefs = isp->params.dvs_coeff;
+	isp->params.dvs_proj_data_valid = false;
 
 	return 0;
 }
@@ -2476,14 +2388,12 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		    struct atomisp_3a_statistics *config)
 {
 	unsigned long ret;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (flag != 0)
 		return -EINVAL;
 
 	/* sanity check to avoid writing into unallocated memory. */
-	if (isp_subdev->params.s3a_output_bytes == 0)
+	if (isp->params.s3a_output_bytes == 0)
 		return -EINVAL;
 
 	if (atomisp_compare_grid(isp, &config->grid_info) != 0) {
@@ -2494,14 +2404,14 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 	}
 
 	/* This is done in the atomisp_s3a_buf_done() */
-	if (!isp_subdev->params.s3a_buf_data_valid) {
+	if(!isp->params.s3a_buf_data_valid) {
 		dev_err(isp->dev, "3a statistics is not valid.\n");
 		return -EAGAIN;
 	}
 
 	ret = copy_to_user(config->data,
-			   isp_subdev->params.s3a_user_stat->data,
-			   isp_subdev->params.s3a_output_bytes);
+			   isp->params.s3a_user_stat->data,
+			   isp->params.s3a_output_bytes);
 	if (ret) {
 		dev_err(isp->dev, "copy to user failed: copied %lu bytes\n",
 				ret);
@@ -2513,383 +2423,357 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 					struct atomisp_parameters *arg)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	/* TODO: add cnr_config and ctc_config when they're ready */
 	if (arg->wb_config) {
-		if (!isp_subdev->params.config.wb_config)
-			isp_subdev->params.config.wb_config =
-				&isp_subdev->params.wb_config;
-		memset(isp_subdev->params.config.wb_config, 0 ,
+		if (!isp->params.config.wb_config)
+			isp->params.config.wb_config =
+				&isp->params.wb_config;
+		memset(isp->params.config.wb_config, 0 ,
 				sizeof(struct ia_css_wb_config));
-		if (copy_from_user(isp_subdev->params.config.wb_config,
-				   arg->wb_config,
+		if (copy_from_user(isp->params.config.wb_config, arg->wb_config,
 				   sizeof(struct ia_css_wb_config))) {
-			isp_subdev->params.config.wb_config = NULL;
+			isp->params.config.wb_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->cc_config) {
-		if (!isp_subdev->params.config.cc_config)
-			isp_subdev->params.config.cc_config =
-			    &isp_subdev->params.cc_config;
-		memset(isp_subdev->params.config.cc_config, 0 ,
+		if (!isp->params.config.cc_config)
+			isp->params.config.cc_config = &isp->params.cc_config;
+		memset(isp->params.config.cc_config, 0 ,
 				sizeof(struct ia_css_cc_config));
-		if (copy_from_user(isp_subdev->params.config.cc_config,
-				   arg->cc_config,
+		if (copy_from_user(isp->params.config.cc_config, arg->cc_config,
 				   sizeof(struct ia_css_cc_config))) {
-			isp_subdev->params.config.cc_config = NULL;
+			isp->params.config.cc_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->tnr_config) {
-		if (!isp_subdev->params.config.tnr_config)
-			isp_subdev->params.config.tnr_config =
-			    &isp_subdev->params.tnr_config;
-		memset(isp_subdev->params.config.tnr_config, 0 ,
+		if (!isp->params.config.tnr_config)
+			isp->params.config.tnr_config = &isp->params.tnr_config;
+		memset(isp->params.config.tnr_config, 0 ,
 				sizeof(struct ia_css_tnr_config));
-		if (copy_from_user(isp_subdev->params.config.tnr_config,
+		if (copy_from_user(isp->params.config.tnr_config,
 					arg->tnr_config,
 					sizeof(struct ia_css_tnr_config))) {
-			isp_subdev->params.config.tnr_config = NULL;
+			isp->params.config.tnr_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->ecd_config) {
-		if (!isp_subdev->params.config.ecd_config)
-			isp_subdev->params.config.ecd_config =
-			    &isp_subdev->params.ecd_config;
-		memset(isp_subdev->params.config.ecd_config, 0 ,
+		if (!isp->params.config.ecd_config)
+			isp->params.config.ecd_config = &isp->params.ecd_config;
+		memset(isp->params.config.ecd_config, 0 ,
 				sizeof(struct ia_css_ecd_config));
-		if (copy_from_user(isp_subdev->params.config.ecd_config,
+		if (copy_from_user(isp->params.config.ecd_config,
 					arg->ecd_config,
 					sizeof(struct ia_css_ecd_config))) {
-			isp_subdev->params.config.ecd_config = NULL;
+			isp->params.config.ecd_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->ynr_config) {
-		if (!isp_subdev->params.config.ynr_config)
-			isp_subdev->params.config.ynr_config =
-			    &isp_subdev->params.ynr_config;
-		memset(isp_subdev->params.config.ynr_config, 0 ,
+		if (!isp->params.config.ynr_config)
+			isp->params.config.ynr_config = &isp->params.ynr_config;
+		memset(isp->params.config.ynr_config, 0 ,
 				sizeof(struct ia_css_ynr_config));
-		if (copy_from_user(isp_subdev->params.config.ynr_config,
+		if (copy_from_user(isp->params.config.ynr_config,
 					arg->ynr_config,
 					sizeof(struct ia_css_ynr_config))) {
-			isp_subdev->params.config.ynr_config = NULL;
+			isp->params.config.ynr_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->fc_config) {
-		if (!isp_subdev->params.config.fc_config)
-			isp_subdev->params.config.fc_config =
-			    &isp_subdev->params.fc_config;
-		memset(isp_subdev->params.config.fc_config, 0 ,
+		if (!isp->params.config.fc_config)
+			isp->params.config.fc_config = &isp->params.fc_config;
+		memset(isp->params.config.fc_config, 0 ,
 				sizeof(struct ia_css_fc_config));
-		if (copy_from_user(isp_subdev->params.config.fc_config,
+		if (copy_from_user(isp->params.config.fc_config,
 					arg->fc_config,
 					sizeof(struct ia_css_fc_config))) {
-			isp_subdev->params.config.fc_config = NULL;
+			isp->params.config.fc_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->macc_config) {
-		if (!isp_subdev->params.config.macc_config)
-			isp_subdev->params.config.macc_config =
-					&isp_subdev->params.macc_config;
-		memset(isp_subdev->params.config.macc_config, 0 ,
+		if (!isp->params.config.macc_config)
+			isp->params.config.macc_config =
+					&isp->params.macc_config;
+		memset(isp->params.config.macc_config, 0 ,
 				sizeof(struct ia_css_macc_config));
-		if (copy_from_user(isp_subdev->params.config.macc_config,
+		if (copy_from_user(isp->params.config.macc_config,
 				   arg->macc_config,
 				   sizeof(struct ia_css_macc_config))) {
-			isp_subdev->params.config.macc_config = NULL;
+			isp->params.config.macc_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->aa_config) {
-		if (!isp_subdev->params.config.aa_config)
-			isp_subdev->params.config.aa_config =
-			    &isp_subdev->params.aa_config;
-		memset(isp_subdev->params.config.aa_config, 0 ,
+		if (!isp->params.config.aa_config)
+			isp->params.config.aa_config = &isp->params.aa_config;
+		memset(isp->params.config.aa_config, 0 ,
 				sizeof(struct ia_css_aa_config));
-		if (copy_from_user(isp_subdev->params.config.aa_config,
+		if (copy_from_user(isp->params.config.aa_config,
 					arg->aa_config,
 					sizeof(struct ia_css_aa_config))) {
-			isp_subdev->params.config.aa_config = NULL;
+			isp->params.config.aa_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->ce_config) {
-		if (!isp_subdev->params.config.ce_config)
-			isp_subdev->params.config.ce_config =
-			    &isp_subdev->params.ce_config;
-		memset(isp_subdev->params.config.ce_config, 0 ,
+		if (!isp->params.config.ce_config)
+			isp->params.config.ce_config = &isp->params.ce_config;
+		memset(isp->params.config.ce_config, 0 ,
 				sizeof(struct ia_css_ce_config));
-		if (copy_from_user(isp_subdev->params.config.ce_config,
+		if (copy_from_user(isp->params.config.ce_config,
 					arg->ce_config,
 					sizeof(struct ia_css_ce_config))) {
-			isp_subdev->params.config.ce_config = NULL;
+			isp->params.config.ce_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->ob_config) {
-		if (!isp_subdev->params.config.ob_config)
-			isp_subdev->params.config.ob_config =
-			    &isp_subdev->params.ob_config;
-		memset(isp_subdev->params.config.ob_config, 0 ,
+		if (!isp->params.config.ob_config)
+			isp->params.config.ob_config = &isp->params.ob_config;
+		memset(isp->params.config.ob_config, 0 ,
 				sizeof(struct ia_css_ob_config));
-		if (copy_from_user(isp_subdev->params.config.ob_config,
+		if (copy_from_user(isp->params.config.ob_config,
 					arg->ob_config,
 					sizeof(struct ia_css_ob_config))) {
-			isp_subdev->params.config.ob_config = NULL;
+			isp->params.config.ob_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->dp_config) {
-		if (!isp_subdev->params.config.dp_config)
-			isp_subdev->params.config.dp_config =
-			    &isp_subdev->params.dp_config;
-		memset(isp_subdev->params.config.dp_config, 0 ,
+		if (!isp->params.config.dp_config)
+			isp->params.config.dp_config = &isp->params.dp_config;
+		memset(isp->params.config.dp_config, 0 ,
 				sizeof(struct ia_css_dp_config));
-		if (copy_from_user(isp_subdev->params.config.dp_config,
+		if (copy_from_user(isp->params.config.dp_config,
 					arg->dp_config,
 					sizeof(struct ia_css_dp_config))) {
-			isp_subdev->params.config.dp_config = NULL;
+			isp->params.config.dp_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->nr_config) {
-		if (!isp_subdev->params.config.nr_config)
-			isp_subdev->params.config.nr_config =
-			    &isp_subdev->params.nr_config;
-		memset(isp_subdev->params.config.nr_config, 0 ,
+		if (!isp->params.config.nr_config)
+			isp->params.config.nr_config = &isp->params.nr_config;
+		memset(isp->params.config.nr_config, 0 ,
 				sizeof(struct ia_css_nr_config));
-		if (copy_from_user(isp_subdev->params.config.nr_config,
+		if (copy_from_user(isp->params.config.nr_config,
 					arg->nr_config,
 					sizeof(struct ia_css_nr_config))) {
-			isp_subdev->params.config.nr_config = NULL;
+			isp->params.config.nr_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->ee_config) {
-		if (!isp_subdev->params.config.ee_config)
-			isp_subdev->params.config.ee_config =
-			    &isp_subdev->params.ee_config;
-		memset(isp_subdev->params.config.ee_config, 0 ,
+		if (!isp->params.config.ee_config)
+			isp->params.config.ee_config = &isp->params.ee_config;
+		memset(isp->params.config.ee_config, 0 ,
 				sizeof(struct ia_css_ee_config));
-		if (copy_from_user(isp_subdev->params.config.ee_config,
+		if (copy_from_user(isp->params.config.ee_config,
 					arg->ee_config,
 					sizeof(struct ia_css_ee_config))) {
-			isp_subdev->params.config.ee_config = NULL;
+			isp->params.config.ee_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->de_config) {
-		if (!isp_subdev->params.config.de_config)
-			isp_subdev->params.config.de_config =
-			    &isp_subdev->params.de_config;
-		memset(isp_subdev->params.config.de_config, 0 ,
+		if (!isp->params.config.de_config)
+			isp->params.config.de_config = &isp->params.de_config;
+		memset(isp->params.config.de_config, 0 ,
 				sizeof(struct ia_css_de_config));
-		if (copy_from_user(isp_subdev->params.config.de_config,
+		if (copy_from_user(isp->params.config.de_config,
 					arg->de_config,
 					sizeof(struct ia_css_de_config))) {
-			isp_subdev->params.config.de_config = NULL;
+			isp->params.config.de_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->gc_config) {
-		if (!isp_subdev->params.config.gc_config)
-			isp_subdev->params.config.gc_config =
-			    &isp_subdev->params.gc_config;
-		memset(isp_subdev->params.config.gc_config, 0 ,
+		if (!isp->params.config.gc_config)
+			isp->params.config.gc_config = &isp->params.gc_config;
+		memset(isp->params.config.gc_config, 0 ,
 				sizeof(struct ia_css_gc_config));
-		if (copy_from_user(isp_subdev->params.config.gc_config,
+		if (copy_from_user(isp->params.config.gc_config,
 					arg->gc_config,
 					sizeof(struct ia_css_gc_config))) {
-			isp_subdev->params.config.gc_config = NULL;
+			isp->params.config.gc_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->anr_config) {
-		if (!isp_subdev->params.config.anr_config)
-			isp_subdev->params.config.anr_config =
-			    &isp_subdev->params.anr_config;
-		memset(isp_subdev->params.config.anr_config, 0 ,
+		if (!isp->params.config.anr_config)
+			isp->params.config.anr_config = &isp->params.anr_config;
+		memset(isp->params.config.anr_config, 0 ,
 				sizeof(struct ia_css_anr_config));
-		if (copy_from_user(isp_subdev->params.config.anr_config,
+		if (copy_from_user(isp->params.config.anr_config,
 					arg->anr_config,
 					sizeof(struct ia_css_anr_config))) {
-			isp_subdev->params.config.anr_config = NULL;
+			isp->params.config.anr_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->a3a_config) {
-		if (!isp_subdev->params.config.s3a_config)
-			isp_subdev->params.config.s3a_config =
-			    &isp_subdev->params.s3a_config;
-		memset(isp_subdev->params.config.s3a_config, 0 ,
+		if (!isp->params.config.s3a_config)
+			isp->params.config.s3a_config = &isp->params.s3a_config;
+		memset(isp->params.config.s3a_config, 0 ,
 				sizeof(struct ia_css_3a_config));
-		if (copy_from_user(isp_subdev->params.config.s3a_config,
+		if (copy_from_user(isp->params.config.s3a_config,
 					arg->a3a_config,
 					sizeof(struct ia_css_3a_config))) {
-			isp_subdev->params.config.s3a_config = NULL;
+			isp->params.config.s3a_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->xnr_config) {
-		if (!isp_subdev->params.config.xnr_config)
-			isp_subdev->params.config.xnr_config =
-			    &isp_subdev->params.xnr_config;
-		memset(isp_subdev->params.config.xnr_config, 0 ,
+		if (!isp->params.config.xnr_config)
+			isp->params.config.xnr_config = &isp->params.xnr_config;
+		memset(isp->params.config.xnr_config, 0 ,
 				sizeof(struct ia_css_xnr_config));
-		if (copy_from_user(isp_subdev->params.config.xnr_config,
+		if (copy_from_user(isp->params.config.xnr_config,
 					arg->xnr_config,
 					sizeof(struct ia_css_xnr_config))) {
-			isp_subdev->params.config.xnr_config = NULL;
+			isp->params.config.xnr_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->yuv2rgb_cc_config) {
-		if (!isp_subdev->params.config.yuv2rgb_cc_config)
-			isp_subdev->params.config.yuv2rgb_cc_config =
-				&isp_subdev->params.yuv2rgb_cc_config;
-		memset(isp_subdev->params.config.yuv2rgb_cc_config, 0 ,
+		if (!isp->params.config.yuv2rgb_cc_config)
+			isp->params.config.yuv2rgb_cc_config =
+				&isp->params.yuv2rgb_cc_config;
+		memset(isp->params.config.yuv2rgb_cc_config, 0 ,
 				sizeof(struct ia_css_yuv2rgb_cc_config));
-		if (copy_from_user(isp_subdev->params.config.yuv2rgb_cc_config,
+		if (copy_from_user(isp->params.config.yuv2rgb_cc_config,
 				   arg->yuv2rgb_cc_config,
 				   sizeof(struct ia_css_yuv2rgb_cc_config))) {
-			isp_subdev->params.config.yuv2rgb_cc_config = NULL;
+			isp->params.config.yuv2rgb_cc_config = NULL;
 			return -EFAULT;
 		}
 	}
 	if (arg->rgb2yuv_cc_config) {
-		if (!isp_subdev->params.config.rgb2yuv_cc_config)
-			isp_subdev->params.config.rgb2yuv_cc_config =
-				&isp_subdev->params.rgb2yuv_cc_config;
-		memset(isp_subdev->params.config.rgb2yuv_cc_config, 0 ,
+		if (!isp->params.config.rgb2yuv_cc_config)
+			isp->params.config.rgb2yuv_cc_config =
+				&isp->params.rgb2yuv_cc_config;
+		memset(isp->params.config.rgb2yuv_cc_config, 0 ,
 				sizeof(struct ia_css_rgb2yuv_cc_config));
-		if (copy_from_user(isp_subdev->params.config.rgb2yuv_cc_config,
+		if (copy_from_user(isp->params.config.rgb2yuv_cc_config,
 				   arg->rgb2yuv_cc_config,
 				   sizeof(struct ia_css_rgb2yuv_cc_config))) {
-			isp_subdev->params.config.rgb2yuv_cc_config = NULL;
+			isp->params.config.rgb2yuv_cc_config = NULL;
 			return -EFAULT;
 		}
 	}
 	if (arg->macc_table) {
-		if (!isp_subdev->params.config.macc_table)
-			isp_subdev->params.config.macc_table =
-			    &isp_subdev->params.macc_table;
-		memset(isp_subdev->params.config.macc_table, 0 ,
+		if (!isp->params.config.macc_table)
+			isp->params.config.macc_table = &isp->params.macc_table;
+		memset(isp->params.config.macc_table, 0 ,
 				sizeof(struct ia_css_macc_table));
-		if (copy_from_user(isp_subdev->params.config.macc_table,
+		if (copy_from_user(isp->params.config.macc_table,
 				   arg->macc_table,
 				   sizeof(struct ia_css_macc_table))) {
-			isp_subdev->params.config.macc_table = NULL;
+			isp->params.config.macc_table = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->ctc_table) {
-		if (!isp_subdev->params.config.ctc_table)
-			isp_subdev->params.config.ctc_table =
-			    &isp_subdev->params.ctc_table;
-		memset(isp_subdev->params.config.ctc_table, 0 ,
+		if (!isp->params.config.ctc_table)
+			isp->params.config.ctc_table = &isp->params.ctc_table;
+		memset(isp->params.config.ctc_table, 0 ,
 				sizeof(struct ia_css_ctc_table));
-		if (copy_from_user(isp_subdev->params.config.ctc_table,
-				   arg->ctc_table,
+		if (copy_from_user(isp->params.config.ctc_table, arg->ctc_table,
 				   sizeof(struct ia_css_ctc_table))) {
-			isp_subdev->params.config.ctc_table = NULL;
+			isp->params.config.ctc_table = NULL;
 			return -EFAULT;
 		}
 
 	}
 
 	if (arg->xnr_table) {
-		if (!isp_subdev->params.config.xnr_table)
-			isp_subdev->params.config.xnr_table =
-			    &isp_subdev->params.xnr_table;
-		memset(isp_subdev->params.config.xnr_table, 0 ,
+		if (!isp->params.config.xnr_table)
+			isp->params.config.xnr_table = &isp->params.xnr_table;
+		memset(isp->params.config.xnr_table, 0 ,
 				sizeof(struct ia_css_xnr_table));
-		if (copy_from_user(isp_subdev->params.config.xnr_table,
-				   arg->xnr_table,
+		if (copy_from_user(isp->params.config.xnr_table, arg->xnr_table,
 				   sizeof(struct ia_css_xnr_table))) {
-			isp_subdev->params.config.xnr_config = NULL;
+			isp->params.config.xnr_config = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->r_gamma_table) {
-		if (!isp_subdev->params.config.r_gamma_table)
-			isp_subdev->params.config.r_gamma_table =
-					&isp_subdev->params.r_gamma_table;
-		memset(isp_subdev->params.config.r_gamma_table, 0 ,
+		if (!isp->params.config.r_gamma_table)
+			isp->params.config.r_gamma_table =
+					&isp->params.r_gamma_table;
+		memset(isp->params.config.r_gamma_table, 0 ,
 				sizeof(struct ia_css_rgb_gamma_table));
-		if (copy_from_user(isp_subdev->params.config.r_gamma_table,
+		if (copy_from_user(isp->params.config.r_gamma_table,
 				   arg->r_gamma_table,
 				sizeof(struct ia_css_rgb_gamma_table))) {
-				isp_subdev->params.config.r_gamma_table = NULL;
+				isp->params.config.r_gamma_table = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->g_gamma_table) {
-		if (!isp_subdev->params.config.g_gamma_table)
-			isp_subdev->params.config.g_gamma_table =
-					&isp_subdev->params.g_gamma_table;
-		memset(isp_subdev->params.config.g_gamma_table, 0 ,
+		if (!isp->params.config.g_gamma_table)
+			isp->params.config.g_gamma_table =
+					&isp->params.g_gamma_table;
+		memset(isp->params.config.g_gamma_table, 0 ,
 				sizeof(struct ia_css_rgb_gamma_table));
-		if (copy_from_user(isp_subdev->params.config.g_gamma_table,
+		if (copy_from_user(isp->params.config.g_gamma_table,
 				arg->g_gamma_table,
 				sizeof(struct ia_css_rgb_gamma_table))) {
-			isp_subdev->params.config.g_gamma_table = NULL;
+			isp->params.config.g_gamma_table = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->b_gamma_table) {
-		if (!isp_subdev->params.config.b_gamma_table)
-			isp_subdev->params.config.b_gamma_table =
-					&isp_subdev->params.b_gamma_table;
-		memset(isp_subdev->params.config.b_gamma_table, 0 ,
+		if (!isp->params.config.b_gamma_table)
+			isp->params.config.b_gamma_table =
+					&isp->params.b_gamma_table;
+		memset(isp->params.config.b_gamma_table, 0 ,
 				sizeof(struct ia_css_rgb_gamma_table));
-		if (copy_from_user(isp_subdev->params.config.b_gamma_table,
+		if (copy_from_user(isp->params.config.b_gamma_table,
 				arg->b_gamma_table,
 				sizeof(struct ia_css_rgb_gamma_table))) {
-			isp_subdev->params.config.b_gamma_table = NULL;
+			isp->params.config.b_gamma_table = NULL;
 			return -EFAULT;
 		}
 	}
 
 	if (arg->anr_thres) {
-		if (!isp_subdev->params.config.anr_thres)
-			isp_subdev->params.config.anr_thres =
-					&isp_subdev->params.anr_thres;
-		memset(isp_subdev->params.config.anr_thres, 0 ,
+		if (!isp->params.config.anr_thres)
+			isp->params.config.anr_thres =
+					&isp->params.anr_thres;
+		memset(isp->params.config.anr_thres, 0 ,
 				sizeof(struct ia_css_anr_thres));
-		if (copy_from_user(isp_subdev->params.config.anr_thres,
+		if (copy_from_user(isp->params.config.anr_thres,
 				arg->anr_thres,
 				sizeof(struct ia_css_anr_thres))) {
-			isp_subdev->params.config.anr_thres = NULL;
+			isp->params.config.anr_thres= NULL;
 			return -EFAULT;
 		}
 	}
@@ -2897,11 +2781,9 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 	if (isp->css2_basis.stream
 		&& isp->isp_subdev.run_mode->val
 			== ATOMISP_RUN_MODE_STILL_CAPTURE) {
-		ia_css_stream_set_isp_config(isp->css2_basis.stream,
-					     &isp_subdev->params.config);
-		atomisp_ISP_parameters_clean_up(isp,
-						&isp_subdev->params.config);
-		isp_subdev->params.css_update_params_needed = false;
+		ia_css_stream_set_isp_config(isp->css2_basis.stream, &isp->params.config);
+		atomisp_ISP_parameters_clean_up(isp, &isp->params.config);
+		isp->params.css_update_params_needed = false;
 	}
 
 	return 0;
@@ -2914,8 +2796,6 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 	unsigned int len_table;
 	struct ia_css_shading_table *shading_table;
 	struct ia_css_shading_table *old_shading_table;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!user_st)
 		return 0;
@@ -2960,8 +2840,8 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 set_lsc:
 	/* set LSC to CSS */
 	isp->inputs[isp->input_curr].shading_table = shading_table;
-	isp_subdev->params.config.shading_table = shading_table;
-	isp_subdev->params.sc_en = shading_table != NULL;
+	isp->params.config.shading_table = shading_table;
+	isp->params.sc_en = shading_table != NULL;
 
 	if (old_shading_table)
 		ia_css_shading_table_free(old_shading_table);
@@ -2976,8 +2856,6 @@ static int __atomisp_set_morph_table(struct atomisp_device *isp,
 	unsigned int i;
 	struct ia_css_morph_table *morph_table;
 	struct ia_css_morph_table *old_morph_table;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!user_morph_table)
 		return 0;
@@ -3004,8 +2882,8 @@ static int __atomisp_set_morph_table(struct atomisp_device *isp,
 	}
 
 	isp->inputs[isp->input_curr].morph_table = morph_table;
-	if (isp_subdev->params.gdc_cac_en)
-		isp_subdev->params.config.morph_table = morph_table;
+	if (isp->params.gdc_cac_en)
+		isp->params.config.morph_table = morph_table;
 
 	if (old_morph_table)
 		ia_css_morph_table_free(old_morph_table);
@@ -3025,8 +2903,6 @@ int atomisp_set_parameters(struct atomisp_device *isp,
 			struct atomisp_parameters *arg)
 {
 	int ret;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	ret = __atomisp_set_general_isp_parameters(isp, arg);
 	if (ret)
@@ -3041,7 +2917,7 @@ int atomisp_set_parameters(struct atomisp_device *isp,
 		return ret;
 
 	/* indicate to CSS that we have parametes to be updated */
-	isp_subdev->params.css_update_params_needed = true;
+	isp->params.css_update_params_needed = true;
 
 	return 0;
 }
@@ -3052,9 +2928,6 @@ int atomisp_set_parameters(struct atomisp_device *isp,
 int atomisp_param(struct atomisp_device *isp, int flag,
 		  struct atomisp_parm *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	/* Read parameter for 3A binary info */
 	if (flag == 0) {
 		if (&config->info == NULL) {
@@ -3065,62 +2938,54 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 		return 0;
 	}
 
-	if (sizeof(config->wb_config) !=
-	    sizeof(*isp_subdev->params.config.wb_config))
+	if (sizeof(config->wb_config) != sizeof(*isp->params.config.wb_config))
 		goto INVALID_PARM;
-	if (sizeof(config->cc_config) !=
-	    sizeof(*isp_subdev->params.config.cc_config))
+	if (sizeof(config->cc_config) != sizeof(*isp->params.config.cc_config))
 		goto INVALID_PARM;
-	if (sizeof(config->ob_config) !=
-	    sizeof(*isp_subdev->params.config.ob_config))
+	if (sizeof(config->ob_config) != sizeof(*isp->params.config.ob_config))
 		goto INVALID_PARM;
-	if (sizeof(config->de_config) !=
-	    sizeof(*isp_subdev->params.config.de_config))
+	if (sizeof(config->de_config) != sizeof(*isp->params.config.de_config))
 		goto INVALID_PARM;
-	if (sizeof(config->ce_config) !=
-	    sizeof(*isp_subdev->params.config.ce_config))
+	if (sizeof(config->ce_config) != sizeof(*isp->params.config.ce_config))
 		goto INVALID_PARM;
-	if (sizeof(config->dp_config) !=
-	    sizeof(*isp_subdev->params.config.dp_config))
+	if (sizeof(config->dp_config) != sizeof(*isp->params.config.dp_config))
 		goto INVALID_PARM;
-	if (sizeof(config->nr_config) !=
-	    sizeof(*isp_subdev->params.config.nr_config))
+	if (sizeof(config->nr_config) != sizeof(*isp->params.config.nr_config))
 		goto INVALID_PARM;
-	if (sizeof(config->ee_config) !=
-	    sizeof(*isp_subdev->params.config.ee_config))
+	if (sizeof(config->ee_config) != sizeof(*isp->params.config.ee_config))
 		goto INVALID_PARM;
-	if (sizeof(config->tnr_config) !=
-	    sizeof(*isp_subdev->params.config.tnr_config))
+	if (sizeof(config->tnr_config)
+	    != sizeof(*isp->params.config.tnr_config))
 		goto INVALID_PARM;
 
-	memcpy(&isp_subdev->params.wb_config, &config->wb_config,
+	memcpy(&isp->params.wb_config, &config->wb_config,
 	       sizeof(struct ia_css_wb_config));
-	memcpy(&isp_subdev->params.ob_config, &config->ob_config,
+	memcpy(&isp->params.ob_config, &config->ob_config,
 	       sizeof(struct ia_css_ob_config));
-	memcpy(&isp_subdev->params.dp_config, &config->dp_config,
+	memcpy(&isp->params.dp_config, &config->dp_config,
 	       sizeof(struct ia_css_dp_config));
-	memcpy(&isp_subdev->params.de_config, &config->de_config,
+	memcpy(&isp->params.de_config, &config->de_config,
 	       sizeof(struct ia_css_de_config));
-	memcpy(&isp_subdev->params.ce_config, &config->ce_config,
+	memcpy(&isp->params.ce_config, &config->ce_config,
 	       sizeof(struct ia_css_ce_config));
-	memcpy(&isp_subdev->params.nr_config, &config->nr_config,
+	memcpy(&isp->params.nr_config, &config->nr_config,
 	       sizeof(struct ia_css_nr_config));
-	memcpy(&isp_subdev->params.ee_config, &config->ee_config,
+	memcpy(&isp->params.ee_config, &config->ee_config,
 	       sizeof(struct ia_css_ee_config));
-	memcpy(&isp_subdev->params.tnr_config, &config->tnr_config,
+	memcpy(&isp->params.tnr_config, &config->tnr_config,
 	       sizeof(struct ia_css_tnr_config));
 
-	isp_subdev->params.config.wb_config = &isp_subdev->params.wb_config;
-	isp_subdev->params.config.cc_config = &isp_subdev->params.cc_config;
-	isp_subdev->params.config.ob_config = &isp_subdev->params.ob_config;
-	isp_subdev->params.config.dp_config = &isp_subdev->params.dp_config;
-	isp_subdev->params.config.de_config = &isp_subdev->params.de_config;
-	isp_subdev->params.config.ce_config = &isp_subdev->params.ce_config;
-	isp_subdev->params.config.nr_config = &isp_subdev->params.nr_config;
-	isp_subdev->params.config.ee_config = &isp_subdev->params.ee_config;
-	isp_subdev->params.config.tnr_config = &isp_subdev->params.tnr_config;
+	isp->params.config.wb_config = &isp->params.wb_config;
+	isp->params.config.cc_config = &isp->params.cc_config;
+	isp->params.config.ob_config = &isp->params.ob_config;
+	isp->params.config.dp_config = &isp->params.dp_config;
+	isp->params.config.de_config = &isp->params.de_config;
+	isp->params.config.ce_config = &isp->params.ce_config;
+	isp->params.config.nr_config = &isp->params.nr_config;
+	isp->params.config.ee_config = &isp->params.ee_config;
+	isp->params.config.tnr_config = &isp->params.tnr_config;
 
-	if (isp_subdev->params.color_effect == V4L2_COLORFX_NEGATIVE) {
+	if (isp->params.color_effect == V4L2_COLORFX_NEGATIVE) {
 		config->cc_config.matrix[3] = -config->cc_config.matrix[3];
 		config->cc_config.matrix[4] = -config->cc_config.matrix[4];
 		config->cc_config.matrix[5] = -config->cc_config.matrix[5];
@@ -3129,15 +2994,14 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 		config->cc_config.matrix[8] = -config->cc_config.matrix[8];
 	}
 
-	if (isp_subdev->params.color_effect != V4L2_COLORFX_SEPIA &&
-	    isp_subdev->params.color_effect != V4L2_COLORFX_BW) {
-		memcpy(&isp_subdev->params.cc_config, &config->cc_config,
+	if (isp->params.color_effect != V4L2_COLORFX_SEPIA &&
+	    isp->params.color_effect != V4L2_COLORFX_BW) {
+		memcpy(&isp->params.cc_config, &config->cc_config,
 		       sizeof(struct ia_css_cc_config));
-		isp_subdev->params.config.cc_config =
-		    &isp_subdev->params.cc_config;
+		isp->params.config.cc_config = &isp->params.cc_config;
 	}
 
-	isp_subdev->params.css_update_params_needed = true;
+	isp->params.css_update_params_needed = true;
 
 	return 0;
 
@@ -3157,11 +3021,9 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	struct ia_css_ctc_table *ctc_table = NULL;
 	int ret = 0;
 	struct v4l2_control control;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (flag == 0) {
-		*effect = isp_subdev->params.color_effect;
+		*effect = isp->params.color_effect;
 		return 0;
 	}
 
@@ -3175,24 +3037,24 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	 * 0 directly.
 	 */
 	if (!ret) {
-		isp_subdev->params.color_effect = (u32)*effect;
+		isp->params.color_effect = (u32)*effect;
 		return 0;
 	}
 
-	if (*effect == isp_subdev->params.color_effect)
+	if (*effect == isp->params.color_effect)
 		return 0;
 
 	/*
 	 * set macc enable to false by default:
 	 * when change from macc to sepia/mono,
-	 * isp_subdev->params.macc_en should be set to false.
+	 * isp->params.macc_en should be set to false.
 	 */
-	isp_subdev->params.macc_en = false;
+	isp->params.macc_en = false;
 
 	switch (*effect) {
 	case V4L2_COLORFX_NONE:
 		macc_table = NULL;
-		isp_subdev->params.macc_en = true;
+		isp->params.macc_en = true;
 		break;
 	case V4L2_COLORFX_SEPIA:
 		cc_config = &sepia_cc_config;
@@ -3205,23 +3067,23 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 		break;
 	case V4L2_COLORFX_SKY_BLUE:
 		macc_table = &blue_macc_table;
-		isp_subdev->params.macc_en = true;
+		isp->params.macc_en = true;
 		break;
 	case V4L2_COLORFX_GRASS_GREEN:
 		macc_table = &green_macc_table;
-		isp_subdev->params.macc_en = true;
+		isp->params.macc_en = true;
 		break;
 	case V4L2_COLORFX_SKIN_WHITEN_LOW:
 		macc_table = &skin_low_macc_table;
-		isp_subdev->params.macc_en = true;
+		isp->params.macc_en = true;
 		break;
 	case V4L2_COLORFX_SKIN_WHITEN:
 		macc_table = &skin_medium_macc_table;
-		isp_subdev->params.macc_en = true;
+		isp->params.macc_en = true;
 		break;
 	case V4L2_COLORFX_SKIN_WHITEN_HIGH:
 		macc_table = &skin_high_macc_table;
-		isp_subdev->params.macc_en = true;
+		isp->params.macc_en = true;
 		break;
 	case V4L2_COLORFX_VIVID:
 		ctc_table = &vivid_ctc_table;
@@ -3232,13 +3094,13 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	atomisp_update_capture_mode(isp);
 
 	if (cc_config)
-		isp_subdev->params.config.cc_config = cc_config;
+		isp->params.config.cc_config = cc_config;
 	if (macc_table)
-		isp_subdev->params.config.macc_table = macc_table;
+		isp->params.config.macc_table = macc_table;
 	if (ctc_table)
-		isp_subdev->params.config.ctc_table = ctc_table;
-	isp_subdev->params.color_effect = (u32)*effect;
-	isp_subdev->params.css_update_params_needed = true;
+		isp->params.config.ctc_table = ctc_table;
+	isp->params.color_effect = (u32)*effect;
+	isp->params.css_update_params_needed = true;
 	return 0;
 }
 
@@ -3247,14 +3109,12 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
  */
 int atomisp_bad_pixel(struct atomisp_device *isp, int flag, __s32 *value)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (flag == 0) {
-		*value = isp_subdev->params.bad_pixel_en;
+		*value = isp->params.bad_pixel_en;
 		return 0;
 	}
-	isp_subdev->params.bad_pixel_en = !!*value;
+	isp->params.bad_pixel_en = !!*value;
 
 	return 0;
 }
@@ -3265,13 +3125,10 @@ int atomisp_bad_pixel(struct atomisp_device *isp, int flag, __s32 *value)
 int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 			    struct atomisp_dp_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.dp_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.dp_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -3291,16 +3148,13 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 		isp_config.dp_config = &dp_config;
 		ia_css_stream_get_isp_config(isp->css2_basis.stream, &isp_config);
 		/* Get bad pixel from current setup */
-		memcpy(config, isp_subdev->params.config.dp_config,
-		       sizeof(*config));
+		memcpy(config, isp->params.config.dp_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.dp_config)
-			isp_subdev->params.config.dp_config =
-			    &isp_subdev->params.dp_config;
+		if (!isp->params.config.dp_config)
+			isp->params.config.dp_config = &isp->params.dp_config;
 		/* Set bad pixel to isp parameters */
-		memcpy(isp_subdev->params.config.dp_config, config,
-		       sizeof(*config));
-		isp_subdev->params.css_update_params_needed = true;
+		memcpy(isp->params.config.dp_config, config, sizeof(*config));
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -3311,13 +3165,10 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
  */
 int atomisp_video_stable(struct atomisp_device *isp, int flag, __s32 * value)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (flag == 0)
-		*value = isp_subdev->params.video_dis_en;
+		*value = isp->params.video_dis_en;
 	else
-		isp_subdev->params.video_dis_en = !!*value;
+		isp->params.video_dis_en = !!*value;
 
 	return 0;
 }
@@ -3327,16 +3178,14 @@ int atomisp_video_stable(struct atomisp_device *isp, int flag, __s32 * value)
  */
 int atomisp_fixed_pattern(struct atomisp_device *isp, int flag, __s32 * value)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (flag == 0) {
-		*value = isp_subdev->params.fpn_en;
+		*value = isp->params.fpn_en;
 		return 0;
 	}
 
 	if (*value == 0) {
-		isp_subdev->params.fpn_en = 0;
+		isp->params.fpn_en = 0;
 		return 0;
 	}
 
@@ -3456,26 +3305,22 @@ int atomisp_fixed_pattern_table(struct atomisp_device *isp,
  */
 int atomisp_false_color(struct atomisp_device *isp, int flag, __s32 *value)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	/* Get nr config from current setup */
 	if (flag == 0) {
-		*value = isp_subdev->params.false_color;
+		*value = isp->params.false_color;
 		return 0;
 	}
 
 	/* Set nr config to isp parameters */
 	if (*value) {
-		isp_subdev->params.config.de_config = NULL;
+		isp->params.config.de_config = NULL;
 	} else {
-		if (!isp_subdev->params.config.de_config)
-			isp_subdev->params.config.de_config =
-			    &isp_subdev->params.de_config;
-		isp_subdev->params.config.de_config->pixelnoise = 0;
+		if (!isp->params.config.de_config)
+			isp->params.config.de_config = &isp->params.de_config;
+		isp->params.config.de_config->pixelnoise = 0;
 	}
-	isp_subdev->params.css_update_params_needed = true;
-	isp_subdev->params.false_color = *value;
+	isp->params.css_update_params_needed = true;
+	isp->params.false_color = *value;
 	return 0;
 }
 
@@ -3485,13 +3330,10 @@ int atomisp_false_color(struct atomisp_device *isp, int flag, __s32 *value)
 int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 			      struct atomisp_de_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.de_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.de_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -3513,13 +3355,11 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 		/* Get false color from current setup */
 		memcpy(config, &de_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.de_config)
-			isp_subdev->params.config.de_config =
-			    &isp_subdev->params.de_config;
+		if (!isp->params.config.de_config)
+			isp->params.config.de_config = &isp->params.de_config;
 		/* Set false color to isp parameters */
-		memcpy(isp_subdev->params.config.de_config, config,
-		       sizeof(*config));
-		isp_subdev->params.css_update_params_needed = true;
+		memcpy(isp->params.config.de_config, config, sizeof(*config));
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -3531,13 +3371,10 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 	struct atomisp_wb_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.wb_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.wb_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -3559,13 +3396,11 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 		/* Get white balance from current setup */
 		memcpy(config, &wb_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.wb_config)
-			isp_subdev->params.config.wb_config =
-			    &isp_subdev->params.wb_config;
+		if (!isp->params.config.wb_config)
+			isp->params.config.wb_config = &isp->params.wb_config;
 		/* Set white balance to isp parameters */
-		memcpy(isp_subdev->params.config.wb_config, config,
-		       sizeof(*config));
-		isp_subdev->params.css_update_params_needed = true;
+		memcpy(isp->params.config.wb_config, config, sizeof(*config));
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -3574,14 +3409,11 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 			    struct atomisp_3a_config *config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s %d\n", __func__, flag);
 	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*config) != sizeof(*isp_subdev->params.config.s3a_config)) {
+	if (sizeof(*config) != sizeof(*isp->params.config.s3a_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -3603,14 +3435,12 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 		/* Get white balance from current setup */
 		memcpy(config, &s3a_config, sizeof(*config));
 	} else {
-		if (!isp_subdev->params.config.s3a_config)
-			isp_subdev->params.config.s3a_config =
-			    &isp_subdev->params.s3a_config;
+		if (!isp->params.config.s3a_config)
+			isp->params.config.s3a_config = &isp->params.s3a_config;
 		/* Set white balance to isp parameters */
-		memcpy(isp_subdev->params.config.s3a_config, config,
-		       sizeof(*config));
-		isp_subdev->params.css_update_params_needed = true;
-		/* isp_subdev->params.s3a_buf_data_valid = false; */
+		memcpy(isp->params.config.s3a_config, config, sizeof(*config));
+		isp->params.css_update_params_needed = true;
+		/* isp->params.s3a_buf_data_valid = false; */
 	}
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, "<%s %d\n", __func__, flag);
@@ -3623,21 +3453,18 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 				       __s32 *value)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (flag == 0) {
-		*value = isp_subdev->params.sc_en;
+		*value = isp->params.sc_en;
 		return 0;
 	}
 
 	if (*value == 0)
-		isp_subdev->params.config.shading_table = NULL;
+		isp->params.config.shading_table = NULL;
 	else
-		isp_subdev->params.config.shading_table =
+		isp->params.config.shading_table =
 		    isp->inputs[isp->input_curr].shading_table;
 
-	isp_subdev->params.sc_en = *value;
+	isp->params.sc_en = *value;
 
 	return 0;
 }
@@ -3650,8 +3477,6 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 	u32 zoom;
 	unsigned int max_zoom =
 		IS_ISP2400 ? MRFLD_MAX_ZOOM_FACTOR : MFLD_MAX_ZOOM_FACTOR;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (flag == 0) {
 		struct ia_css_dz_config dz_config;  /**< Digital Zoom */
@@ -3673,21 +3498,19 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 
 		zoom = max_zoom - min_t(u32, max_zoom, (*value));
 
-		if (!isp_subdev->params.config.dz_config)
-			isp_subdev->params.config.dz_config =
-			    &isp_subdev->params.dz_config;
+		if (!isp->params.config.dz_config)
+			isp->params.config.dz_config = &isp->params.dz_config;
 
-		if (zoom == isp_subdev->params.config.dz_config->dx &&
-			 zoom == isp_subdev->params.config.dz_config->dy) {
+		if (zoom == isp->params.config.dz_config->dx &&
+			 zoom == isp->params.config.dz_config->dy) {
 			v4l2_dbg(5, dbg_level, &atomisp_dev, "same zoom scale. skipped.\n");
 			return 0;
 		}
 
-		memset(isp_subdev->params.config.dz_config, 0,
-		       sizeof(struct ia_css_dz_config));
-		isp_subdev->params.dz_config.dx = zoom;
-		isp_subdev->params.dz_config.dy = zoom;
-		isp_subdev->params.css_update_params_needed = true;
+		memset(isp->params.config.dz_config, 0, sizeof(struct ia_css_dz_config));
+		isp->params.dz_config.dx = zoom;
+		isp->params.dz_config.dy = zoom;
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -3945,8 +3768,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 					      unsigned int height) =
 		configure_pp_input_nop;
 	int ret;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	isp_sink_crop = atomisp_subdev_get_rect(
 		&isp->isp_subdev.subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
@@ -4057,13 +3878,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 		if (!isp->isp_subdev.continuous_mode->val)
 			ia_css_capture_enable_online(isp,
-					isp_subdev->params.online_process);
+					isp->params.online_process);
 
 		configure_output = ia_css_capture_configure_output;
 		get_frame_info = ia_css_capture_get_output_frame_info;
 		configure_pp_input = ia_css_capture_configure_pp_input;
 
-		if (!isp_subdev->params.online_process &&
+		if (!isp->params.online_process &&
 		    !isp->isp_subdev.continuous_mode->val)
 			if (ia_css_capture_get_output_raw_frame_info(isp,
 						raw_output_info))
@@ -4108,8 +3929,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	isp->raw_output_frame = NULL;
 
 	if (!isp->isp_subdev.continuous_mode->val &&
-		!isp_subdev->params.online_process &&
-		!isp->sw_contex.file_input &&
+		!isp->params.online_process && !isp->sw_contex.file_input &&
 	    ia_css_frame_allocate_from_info(&isp->raw_output_frame,
 					       raw_output_info))
 		return -ENOMEM;
@@ -4122,14 +3942,11 @@ static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 			    unsigned int *dvs_env_w,
 			    unsigned int *dvs_env_h)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	/* if subdev type is SOC camera,we do not need to set DVS */
 	if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
-		isp_subdev->params.video_dis_en = 0;
+		isp->params.video_dis_en = 0;
 
-	if (isp_subdev->params.video_dis_en &&
+	if (isp->params.video_dis_en &&
 	    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		/* envelope is 20% of the output resolution */
 		/*
@@ -4140,8 +3957,8 @@ static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 		*dvs_env_h = rounddown(height / 5, ATOM_ISP_STEP_HEIGHT);
 	}
 
-	isp_subdev->params.dvs_proj_data_valid = false;
-	isp_subdev->params.css_update_params_needed = true;
+	isp->params.dvs_proj_data_valid = false;
+	isp->params.css_update_params_needed = true;
 }
 
 static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
@@ -4199,8 +4016,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_rect isp_sink_crop;
 	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret;
-	/* FIXME: isp_subdev should be derived from pipe */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	dev_dbg(isp->dev, "setting resolution %ux%u on pad %u\n",
 		f->fmt.pix.width, f->fmt.pix.height, source_pad);
@@ -4284,9 +4099,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* V4L2_BUF_TYPE_PRIVATE will set offline processing */
 	if (f->type == V4L2_BUF_TYPE_PRIVATE)
-		isp_subdev->params.online_process = 0;
+		isp->params.online_process = 0;
 	else
-		isp_subdev->params.online_process = 1;
+		isp->params.online_process = 1;
 
 	/* Pipeline configuration done through subdevs. Bail out now. */
 	if (!isp->isp_subdev.fmt_auto->val)
@@ -4515,20 +4330,18 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	unsigned int len_table;
 	int i;
 	int ret = 0;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!user_shading_table)
 		return -EINVAL;
 
 	if (user_shading_table->flags & ATOMISP_SC_FLAG_QUERY) {
-		user_shading_table->enable = isp_subdev->params.sc_en;
+		user_shading_table->enable = isp->params.sc_en;
 		return 0;
 	}
 
 	if (!user_shading_table->enable) {
-		isp_subdev->params.config.shading_table = NULL;
-		isp_subdev->params.sc_en = 0;
+		isp->params.config.shading_table = NULL;
+		isp->params.sc_en = 0;
 		return 0;
 	}
 
@@ -4565,8 +4378,8 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 
 	free_table = isp->inputs[isp->input_curr].shading_table;
 	isp->inputs[isp->input_curr].shading_table = shading_table;
-	isp_subdev->params.config.shading_table = shading_table;
-	isp_subdev->params.sc_en = 1;
+	isp->params.config.shading_table = shading_table;
+	isp->params.sc_en = 1;
 
 out:
 	if (free_table != NULL)
@@ -4682,16 +4495,13 @@ int atomisp_exif_makernote(struct atomisp_device *isp,
 int atomisp_offline_capture_configure(struct atomisp_device *isp,
 			      struct atomisp_cont_capture_conf *cvf_config)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	isp->params.offline_parm = *cvf_config;
 
-	isp_subdev->params.offline_parm = *cvf_config;
-
-	if (isp_subdev->params.offline_parm.num_captures) {
+	if (isp->params.offline_parm.num_captures) {
 		if (isp->streaming == ATOMISP_DEVICE_STREAMING_DISABLED) {
 			int num_raw_frames =
 				min_t(int, ATOMISP_CONT_RAW_FRAMES,
-				isp_subdev->params.offline_parm.num_captures
+				      isp->params.offline_parm.num_captures
 				      + 3);
 
 			/* TODO: remove this if FW limitation is removed*/
@@ -4719,24 +4529,20 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 
 int atomisp_flash_enable(struct atomisp_device *isp, int num_frames)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (num_frames < 0) {
 		dev_dbg(isp->dev, "%s ERROR: num_frames: %d\n", __func__,
 				num_frames);
 		return -EINVAL;
 	}
 	/* a requested flash is still in progress. */
-	if (num_frames && isp_subdev->params.flash_state !=
-	    ATOMISP_FLASH_IDLE) {
+	if (num_frames && isp->params.flash_state != ATOMISP_FLASH_IDLE) {
 		dev_dbg(isp->dev, "%s flash busy: %d frames left: %d\n",
-				__func__, isp_subdev->params.flash_state,
-				isp_subdev->params.num_flash_frames);
+				__func__, isp->params.flash_state,
+				isp->params.num_flash_frames);
 		return -EBUSY;
 	}
 
-	isp_subdev->params.num_flash_frames = num_frames;
-	isp_subdev->params.flash_state = ATOMISP_FLASH_REQUESTED;
+	isp->params.num_flash_frames = num_frames;
+	isp->params.flash_state = ATOMISP_FLASH_REQUESTED;
 	return 0;
 }

@@ -865,14 +865,12 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
 	struct atomisp_dvs_buf *dvs_buf = NULL;
 	/* 2 css pipes consuming 3a buffers */
 	int count = ATOMISP_CSS_Q_DEPTH * 2;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!list_empty(&isp->s3a_stats) && !list_empty(&isp->dvs_stats))
 		return 0;
 
 	while (count--) {
-		if (isp_subdev->params.curr_grid_info.s3a_grid.enable) {
+		if (isp->params.curr_grid_info.s3a_grid.enable) {
 			v4l2_dbg(5, dbg_level, &atomisp_dev,
 				 "allocating %d 3a buffers\n", count);
 			s3a_buf = kzalloc(sizeof(struct atomisp_s3a_buf), GFP_KERNEL);
@@ -882,8 +880,7 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
 			}
 
 			s3a_buf->s3a_stat =
-			    ia_css_isp_3a_statistics_allocate(
-				&isp_subdev->params.curr_grid_info.s3a_grid);
+			    ia_css_isp_3a_statistics_allocate(&isp->params.curr_grid_info.s3a_grid);
 			if (!s3a_buf->s3a_stat) {
 				v4l2_err(&atomisp_dev,
 					 "3a stat buf allocation failed\n");
@@ -893,7 +890,7 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
 			list_add_tail(&s3a_buf->list, &isp->s3a_stats);
 		}
 
-		if (isp_subdev->params.curr_grid_info.dvs_grid.enable) {
+		if (isp->params.curr_grid_info.dvs_grid.enable) {
 			v4l2_dbg(5, dbg_level, &atomisp_dev,
 				 "allocating %d dvs buffers\n", count);
 			dvs_buf = kzalloc(sizeof(struct atomisp_dvs_buf), GFP_KERNEL);
@@ -903,8 +900,7 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
 			}
 
 			dvs_buf->dvs_stat =
-			    ia_css_isp_dvs_statistics_allocate(
-				&isp_subdev->params.curr_grid_info.dvs_grid);
+			    ia_css_isp_dvs_statistics_allocate(&isp->params.curr_grid_info.dvs_grid);
 			if (!dvs_buf->dvs_stat) {
 				v4l2_err(&atomisp_dev,
 					 "dvs stat buf allocation failed\n");
@@ -1321,9 +1317,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 #ifdef PUNIT_CAMERA_BUSY
 	u32 msg_ret;
 #endif
-	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_dbg(isp->dev, "unsupported v4l2 buf type\n");
 		return -EINVAL;
@@ -1372,10 +1365,10 @@ static int atomisp_streamon(struct file *file, void *fh,
 				mutex_lock(&isp->mutex);
 			}
 			ret = ia_css_stream_capture(
-				isp->css2_basis.stream,
-				isp_subdev->params.offline_parm.num_captures,
-				isp_subdev->params.offline_parm.skip_frames,
-				isp_subdev->params.offline_parm.offset);
+					isp->css2_basis.stream,
+					isp->params.offline_parm.num_captures,
+					isp->params.offline_parm.skip_frames,
+					isp->params.offline_parm.offset);
 			if (ret) {
 				ret = -EINVAL;
 				goto out;
@@ -1423,7 +1416,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 
 	/* Make sure that update_isp_params is called at least once.*/
-	isp_subdev->params.css_update_params_needed = true;
+	isp->params.css_update_params_needed = true;
 	isp->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
 	atomic_set(&isp->sof_count, -1);
 	atomic_set(&isp->sequence, -1);
@@ -1435,7 +1428,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		isp->wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
-	isp_subdev->params.dvs_proj_data_valid = false;
+	isp->params.dvs_proj_data_valid = false;
 
 	atomisp_qbuffers_to_css(isp);
 
@@ -1446,8 +1439,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 start_sensor:
 	if (isp->flash) {
 		ret += v4l2_subdev_call(isp->flash, core, s_power, 1);
-		isp_subdev->params.num_flash_frames = 0;
-		isp_subdev->params.flash_state = ATOMISP_FLASH_IDLE;
+		isp->params.num_flash_frames = 0;
+		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 		atomisp_setup_flash(isp);
 	}
 
@@ -1491,8 +1484,6 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 #ifdef PUNIT_CAMERA_BUSY
 	u32 msg_ret;
 #endif
-	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	BUG_ON(!mutex_is_locked(&isp->mutex));
 	BUG_ON(!mutex_is_locked(&isp->streamoff_mutex));
@@ -1514,7 +1505,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		/* stop continuous still capture if needed */
 		if (atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
-		    isp_subdev->params.offline_parm.num_captures == -1)
+		    isp->params.offline_parm.num_captures == -1)
 			ia_css_stream_capture(isp->css2_basis.stream,
 					0, 0, 0);
 		/*
@@ -1627,8 +1618,8 @@ stopsensor:
 
 	if (isp->flash) {
 		ret += v4l2_subdev_call(isp->flash, core, s_power, 0);
-		isp_subdev->params.num_flash_frames = 0;
-		isp_subdev->params.flash_state = ATOMISP_FLASH_IDLE;
+		isp->params.num_flash_frames = 0;
+		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 	}
 
 #ifdef PUNIT_CAMERA_BUSY
@@ -1945,8 +1936,6 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 	struct v4l2_control ctrl;
 	int i;
 	int ret = 0;
-	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	for (i = 0; i < c->count; i++) {
 		struct v4l2_ctrl *ctr;
@@ -1991,9 +1980,8 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 				/* When flash mode is changed we need to reset
 				 * flash state */
 				if (ctrl.id == V4L2_CID_FLASH_MODE) {
-					isp_subdev->params.flash_state =
-					    ATOMISP_FLASH_IDLE;
-					isp_subdev->params.num_flash_frames = 0;
+					isp->params.flash_state = ATOMISP_FLASH_IDLE;
+					isp->params.num_flash_frames = 0;
 				}
 			}
 			mutex_unlock(&isp->mutex);

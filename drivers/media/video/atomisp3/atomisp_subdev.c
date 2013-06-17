@@ -355,9 +355,9 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 		/* if subdev type is SOC camera,we do not need to set DVS */
 		if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
-			isp_sd->params.video_dis_en = 0;
+			isp->params.video_dis_en = 0;
 
-		if (isp_sd->params.video_dis_en &&
+		if (isp->params.video_dis_en &&
 		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			/* This resolution contains 20 % of DVS slack
 			 * (of the desired captured image before
@@ -387,7 +387,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		if (which == V4L2_SUBDEV_FORMAT_TRY)
 			break;
 
-		if (isp_sd->params.video_dis_en &&
+		if (isp->params.video_dis_en &&
 		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			dvs_w = rounddown(crop[pad]->width / 5,
 					  ATOM_ISP_STEP_WIDTH);
@@ -408,9 +408,9 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 		if (crop[ATOMISP_SUBDEV_PAD_SINK]->width == r->width
 		    && crop[ATOMISP_SUBDEV_PAD_SINK]->height == r->height)
-			isp_sd->params.yuv_ds_en = false;
+			isp->params.yuv_ds_en = false;
 		else
-			isp_sd->params.yuv_ds_en = true;
+			isp->params.yuv_ds_en = true;
 
 		comp[pad]->width = r->width;
 		comp[pad]->height = r->height;

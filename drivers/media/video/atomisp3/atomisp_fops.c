@@ -217,8 +217,6 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	struct atomisp_video_pipe *capture_pipe = NULL;
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!isp->isp_subdev.enable_vfpp->val) {
 		preview_pipe = &isp->isp_subdev.video_out_capture;
@@ -268,14 +266,14 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 					 css_preview_pipe_id);
 	}
 
-	if (isp_subdev->params.curr_grid_info.s3a_grid.enable) {
+	if (isp->params.curr_grid_info.s3a_grid.enable) {
 		if (css_capture_pipe_id < IA_CSS_PIPE_ID_NUM)
 			atomisp_q_s3a_buffers_to_css(isp, css_capture_pipe_id);
 		if (css_preview_pipe_id < IA_CSS_PIPE_ID_NUM)
 			atomisp_q_s3a_buffers_to_css(isp, css_preview_pipe_id);
 	}
 
-	if (isp_subdev->params.curr_grid_info.dvs_grid.enable)
+	if (isp->params.curr_grid_info.dvs_grid.enable)
 		atomisp_q_dis_buffers_to_css(isp, css_capture_pipe_id);
 
 	return 0;
@@ -384,27 +382,24 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 int atomisp_init_struct(struct atomisp_device *isp)
 {
 	int i = 0;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-
 	if (isp == NULL)
 		return -EINVAL;
 
 	v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode,
 			 ATOMISP_RUN_MODE_STILL_CAPTURE);
-	isp_subdev->params.color_effect = V4L2_COLORFX_NONE;
-	isp_subdev->params.bad_pixel_en = 1;
-	isp_subdev->params.gdc_cac_en = 0;
-	isp_subdev->params.video_dis_en = 0;
-	isp_subdev->params.sc_en = 0;
-	isp_subdev->params.fpn_en = 0;
-	isp_subdev->params.xnr_en = 0;
-	isp_subdev->params.false_color = 0;
-	isp_subdev->params.online_process = 1;
-	isp_subdev->params.yuv_ds_en = 0;
-	isp_subdev->params.offline_parm.num_captures = 1;
-	isp_subdev->params.offline_parm.skip_frames = 0;
-	isp_subdev->params.offline_parm.offset = 0;
+	isp->params.color_effect = V4L2_COLORFX_NONE;
+	isp->params.bad_pixel_en = 1;
+	isp->params.gdc_cac_en = 0;
+	isp->params.video_dis_en = 0;
+	isp->params.sc_en = 0;
+	isp->params.fpn_en = 0;
+	isp->params.xnr_en = 0;
+	isp->params.false_color = 0;
+	isp->params.online_process = 1;
+	isp->params.yuv_ds_en = 0;
+	isp->params.offline_parm.num_captures = 1;
+	isp->params.offline_parm.skip_frames = 0;
+	isp->params.offline_parm.offset = 0;
 	isp->sw_contex.file_input = 0;
 	isp->need_gfx_throttle = true;
 	isp->isp_fatal_error = false;
@@ -576,8 +571,6 @@ static int atomisp_release(struct file *file)
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct v4l2_requestbuffers req;
 	int ret = 0;
-	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	dev_dbg(isp->dev, "release device %s\n", vdev->name);
 
@@ -638,8 +631,8 @@ static int atomisp_release(struct file *file)
 				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 	}
 
-	atomisp_ISP_parameters_clean_up(isp, &isp_subdev->params.config);
-	isp_subdev->params.css_update_params_needed = false;
+	atomisp_ISP_parameters_clean_up(isp, &isp->params.config);
+	isp->params.css_update_params_needed = false;
 
 	del_timer_sync(&isp->wdt);
 	atomisp_acc_release(isp);
@@ -807,8 +800,6 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	u32 size = end - start;
 	u32 origin_size, new_size;
 	int ret;
-	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!(vma->vm_flags & (VM_WRITE | VM_READ)))
 		return -EACCES;
@@ -823,7 +814,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	if (atomisp_subdev_source_pad(vdev)
 	    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 	    vma->vm_pgoff == (ISP_PARAM_MMAP_OFFSET >> PAGE_SHIFT)) {
-		if (isp_subdev->params.online_process != 0) {
+		if (isp->params.online_process != 0) {
 			ret = -EINVAL;
 			goto error;
 		}
