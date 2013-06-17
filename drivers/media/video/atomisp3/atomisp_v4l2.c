@@ -397,7 +397,7 @@ static int atomisp_suspend(struct device *dev)
 	 * FIXME: Suspend is not supported by sensors. Abort if any video
 	 * node was opened.
 	 */
-	if (atomisp_users(isp_subdev))
+	if (atomisp_users(isp))
 		return -EBUSY;
 
 	spin_lock_irqsave(&isp->lock, flags);

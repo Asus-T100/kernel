@@ -36,7 +36,7 @@ const struct atomisp_format_bridge *atomisp_get_format_bridge(
 const struct atomisp_format_bridge *atomisp_get_format_bridge_from_mbus(
 	enum v4l2_mbus_pixelcode mbus_code);
 
-int atomisp_alloc_css_stat_bufs(struct atomisp_sub_device *isp_subdev);
+int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp);
 
 int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type);
 int __atomisp_reqbufs(struct file *file, void *fh,
@@ -45,8 +45,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 int atomisp_reqbufs(struct file *file, void *fh,
 			struct v4l2_requestbuffers *req);
 
-enum ia_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_sub_device
-					    *isp_subdev);
+enum ia_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
 
 void atomisp_videobuf_free_buf(struct videobuf_buffer *vb);
 

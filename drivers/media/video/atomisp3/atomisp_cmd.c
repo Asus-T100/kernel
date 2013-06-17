@@ -952,7 +952,7 @@ static void atomisp_buf_done(struct atomisp_sub_device *isp_subdev, int error,
 		return;
 	}
 	if (!error && q_buffers)
-		atomisp_qbuffers_to_css(isp_subdev);
+		atomisp_qbuffers_to_css(isp);
 }
 
 void atomisp_delayed_init_work(struct work_struct *work)
@@ -2090,7 +2090,7 @@ static void atomisp_update_grid_info(struct atomisp_sub_device *isp_subdev)
 	   the grid size. */
 	atomisp_free_3a_dvs_buffers(isp_subdev);
 
-	err = atomisp_alloc_css_stat_bufs(isp_subdev);
+	err = atomisp_alloc_css_stat_bufs(isp);
 	if (err) {
 		dev_err(isp->dev, "stat_buf allocate error\n");
 		goto err_3a;
@@ -4563,9 +4563,6 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	int timeout = 100;
 	bool idle;
 	u32 reg;
-	/* FIXME: currently only use subdev[0] in single stream mode */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 
 	dev_dbg(isp->dev, "%s\n", __func__);
 
@@ -4573,7 +4570,7 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	if (isp->isp_timeout)
 		goto done;
 
-	if (!atomisp_users(isp_subdev))
+	if (!atomisp_users(isp))
 		goto done;
 
 	idle = sh_css_hrt_system_is_idle();
