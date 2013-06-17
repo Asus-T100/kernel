@@ -320,33 +320,6 @@ static enum ia_css_err __create_stream(struct atomisp_device *isp)
 	return ia_css_stream_create(s_config, pipe_index, multi_pipes,
 				    &isp->css2_basis.stream);
 }
-
-enum ia_css_err ia_css_update_stream(struct atomisp_device *isp)
-{
-	enum ia_css_err ret;
-
-	if (__destroy_stream(isp, true) != IA_CSS_SUCCESS)
-		dev_warn(isp->dev, "destroy stream failed.\n");
-
-	if (__destroy_pipes(isp, true) != IA_CSS_SUCCESS)
-		dev_warn(isp->dev, "destroy pipe failed.\n");
-
-	ret = __create_pipe(isp);
-	if (ret != IA_CSS_SUCCESS) {
-		dev_err(isp->dev, "create pipe failed.\n");
-		return ret;
-	}
-
-	ret = __create_stream(isp);
-	if (ret != IA_CSS_SUCCESS) {
-		dev_warn(isp->dev, "create stream failed.\n");
-		__destroy_pipes(isp, true);
-		return ret;
-	}
-
-	return ret;
-}
-
 static enum ia_css_err __get_frame_info(struct atomisp_device *isp,
 				struct ia_css_frame_info *info,
 				enum frame_info_type type)
