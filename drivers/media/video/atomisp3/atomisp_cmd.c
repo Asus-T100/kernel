@@ -1391,11 +1391,6 @@ out:
 		v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				video, s_stream, 1);
 
-	if (isp->acc.pipeline && css_pipe_done) {
-		complete(&isp->acc.acc_done);
-		dev_dbg(isp->dev, "%s: acc pipeline finished\n", __func__);
-	}
-
 	dev_dbg(isp->dev, "<%s\n", __func__);
 
 	return IRQ_HANDLED;

@@ -100,29 +100,14 @@ static struct atomisp_map *acc_get_map(struct atomisp_device *isp,
 	return NULL;
 }
 
-static int acc_stop_acceleration(struct atomisp_device *isp)
+static void acc_stop_acceleration(struct atomisp_device *isp)
 {
 	void *acc_stages;
 
-	dev_dbg(isp->dev, ">%s\n", __func__);
 	if (!isp->acc.pipeline) {
 		dev_dbg(isp->dev, "<%s: no acc pipe to stop\n", __func__);
-		return -ENOENT;
+		return ;
 	}
-
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
-		dev_dbg(isp->dev, "<%s: acc stream not started\n", __func__);
-		return -ENOENT;
-	}
-
-	if (wait_for_completion_interruptible(&isp->acc.acc_done) != 0) {
-		dev_dbg(isp->dev, "<%s: completion interrupted\n", __func__);
-		return -ERESTARTSYS;
-	}
-	dev_dbg(isp->dev, "wait for acc pipeline done finished\n");
-
-	del_timer_sync(&isp->wdt);
-	cancel_work_sync(&isp->wdt_work);
 
 	/*
 	 * back up the acc stages pointer and release the memory
@@ -130,13 +115,10 @@ static int acc_stop_acceleration(struct atomisp_device *isp)
 	 */
 	acc_stages =
 		isp->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC].acc_stages;
-	ia_css_stop(isp, false);
-	isp->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
+	ia_css_stop(isp, true);
 	kfree(acc_stages);
 
 	isp->acc.pipeline = NULL;
-	dev_dbg(isp->dev, "<%s\n", __func__);
-	return 0;
 }
 
 void atomisp_acc_init(struct atomisp_device *isp)
@@ -313,30 +295,11 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 			&isp->css2_basis.stream_config;
 	int ret = 0;
 
-	dev_dbg(isp->dev, ">%s\n", __func__);
 	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
 
 	/* Invalidate caches. FIXME: should flush only necessary buffers */
 	wbinvd();
-
-	if (isp->css2_basis.stream) {
-		dev_dbg(isp->dev, "%s: destroy basis stream\n", __func__);
-		if (isp->css2_basis.stream_state == CSS2_STREAM_STARTED) {
-			ret = ia_css_stream_stop(isp->css2_basis.stream);
-			if (ret != IA_CSS_SUCCESS) {
-				dev_err(isp->dev, "stop stream failed.\n");
-				return -EBUSY;
-			}
-		}
-
-		ret = ia_css_stream_destroy(isp->css2_basis.stream);
-		if (ret != IA_CSS_SUCCESS) {
-			dev_err(isp->dev, "destroy stream failed.\n");
-			return -EBUSY;
-		}
-		isp->css2_basis.stream = NULL;
-	}
 
 	pipe_config = &isp->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC];
 	ia_css_pipe_config_defaults(pipe_config);
@@ -358,7 +321,6 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		pipe_config->acc_stages[pipe_config->num_acc_stages++] =
 								acc_fw->fw;
 		if (acc_set_parameters(acc_fw)) {
-			dev_err(isp->dev, "acc_set_parameters failed\n");
 			ret = -EINVAL;
 			goto err;
 		}
@@ -393,7 +355,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		err = -EINVAL;
 		goto err;
 	}
-	dev_dbg(isp->dev, ">ia_css_start\n");
+
 	err = ia_css_start(isp, false);
 	if (err != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "%s: start css error %d.\n", __func__, err);
@@ -404,31 +366,26 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		err = -EINVAL;
 		goto err;
 	}
-	dev_dbg(isp->dev, "<ia_css_start\n");
 
-	isp->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
-	init_completion(&isp->acc.acc_done);
-	atomic_set(&isp->wdt_count, 0);
-	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
-	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
-	isp->sw_contex.invalid_frame = false;
-	isp->params.dvs_proj_data_valid = false;
 	isp->acc.pipeline = isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC];
-
-	dev_dbg(isp->dev, "<%s\n", __func__);
 	return 0;
 err:
 	kfree(pipe_config->acc_stages);
-	dev_dbg(isp->dev, "<%s err %d\n", __func__, ret);
 	return ret;
 }
 
 int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 {
+	if (!isp->acc.pipeline)
+		return -ENOENT;
+
 	if (*handle && !acc_get_fw(isp, *handle))
 		return -EINVAL;
 
-	return acc_stop_acceleration(isp);
+	sh_css_acc_wait();
+	acc_stop_acceleration(isp);
+
+	return 0;
 }
 
 int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
@@ -459,8 +416,6 @@ int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	atomisp_map->length = map->length;
 	list_add(&atomisp_map->list, &isp->acc.memory_maps);
 
-	dev_dbg(isp->dev, "%s: userptr 0x%x, css_address 0x%x, size %d\n",
-		__func__, (unsigned int)map->user_ptr, cssptr, map->length);
 	map->css_ptr = cssptr;
 	return 0;
 }
@@ -510,8 +465,6 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 	acc_fw->args[arg->memory].length = arg->length;
 	acc_fw->args[arg->memory].css_ptr = arg->css_ptr;
 
-	dev_dbg(isp->dev, "%s: mem %d, address 0x%x, size %d\n",
-		__func__, arg->memory, (unsigned int)arg->css_ptr, arg->length);
 	return 0;
 }
 

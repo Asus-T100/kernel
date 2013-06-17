@@ -631,7 +631,7 @@ enum ia_css_err ia_css_start(struct atomisp_device *isp, bool in_reset)
 		goto start_err;
 	}
 
-	isp->css2_basis.stream_state = CSS2_STREAM_STARTED;
+	isp->css2_basis.stream_state = CSS2_STREAM_CREATED;
 	return IA_CSS_SUCCESS;
 
 start_err:
