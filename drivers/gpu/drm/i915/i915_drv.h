@@ -1032,8 +1032,13 @@ struct drm_i915_gem_object {
 	 *
 	 * In the worst case this is 1 + 1 + 1 + 2*2 = 7. That would fit into 3
 	 * bits with absolutely no headroom. So use 4 bits. */
-	unsigned int pin_count:4;
-#define DRM_I915_GEM_OBJECT_MAX_PIN_COUNT 0xf
+	/**
+	 * But somehow VLV manages to exceed this counter, especially
+	 * in Widi case, so time being use 5 bits to provide aditional headroom.
+	 * Todo, understand that why 4 bits are proving insufficient
+	 */
+	unsigned int pin_count:5;
+#define DRM_I915_GEM_OBJECT_MAX_PIN_COUNT 0x1f
 
 	/**
 	 * Is the object at the current location in the gtt mappable and
