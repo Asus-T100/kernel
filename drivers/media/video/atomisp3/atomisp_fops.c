@@ -653,14 +653,14 @@ static int atomisp_release(struct file *file)
 				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 	}
 
-	atomisp_ISP_parameters_clean_up(isp_subdev, &isp_subdev->params.config);
+	atomisp_ISP_parameters_clean_up(isp, &isp_subdev->params.config);
 	isp_subdev->params.css_update_params_needed = false;
 
 	del_timer_sync(&isp->wdt);
 	atomisp_acc_release(isp);
-	atomisp_free_3a_dvs_buffers(isp_subdev);
+	atomisp_free_3a_dvs_buffers(isp);
 	atomisp_free_all_shading_tables(isp);
-	atomisp_free_internal_buffers(isp_subdev);
+	atomisp_free_internal_buffers(isp);
 	ia_css_uninit();
 	hrt_isp_css_mm_clear();
 
