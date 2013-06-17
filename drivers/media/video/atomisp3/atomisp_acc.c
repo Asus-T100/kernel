@@ -103,9 +103,6 @@ static struct atomisp_map *acc_get_map(struct atomisp_device *isp,
 static int acc_stop_acceleration(struct atomisp_device *isp)
 {
 	void *acc_stages;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 
 	dev_dbg(isp->dev, ">%s\n", __func__);
 	if (!isp->acc.pipeline) {
@@ -132,8 +129,7 @@ static int acc_stop_acceleration(struct atomisp_device *isp)
 	 * after css stop.
 	 */
 	acc_stages =
-		isp_subdev->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC].
-		acc_stages;
+		isp->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC].acc_stages;
 	ia_css_stop(isp, false);
 	isp->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
 	kfree(acc_stages);
@@ -313,10 +309,10 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	struct atomisp_acc_fw *acc_fw;
 	enum ia_css_err err;
 	struct ia_css_pipe_config *pipe_config;
+	const struct ia_css_stream_config *s_config =
+			&isp->css2_basis.stream_config;
 	/* FIXME: Function should take isp_subdev as parameter */
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-	const struct ia_css_stream_config *s_config =
-			&isp_subdev->css2_basis.stream_config;
 	int ret = 0;
 
 	dev_dbg(isp->dev, ">%s\n", __func__);
@@ -326,26 +322,25 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	/* Invalidate caches. FIXME: should flush only necessary buffers */
 	wbinvd();
 
-	if (isp_subdev->css2_basis.stream) {
+	if (isp->css2_basis.stream) {
 		dev_dbg(isp->dev, "%s: destroy basis stream\n", __func__);
-		if (isp_subdev->css2_basis.stream_state ==
-		    CSS2_STREAM_STARTED) {
-			ret = ia_css_stream_stop(isp_subdev->css2_basis.stream);
+		if (isp->css2_basis.stream_state == CSS2_STREAM_STARTED) {
+			ret = ia_css_stream_stop(isp->css2_basis.stream);
 			if (ret != IA_CSS_SUCCESS) {
 				dev_err(isp->dev, "stop stream failed.\n");
 				return -EBUSY;
 			}
 		}
 
-		ret = ia_css_stream_destroy(isp_subdev->css2_basis.stream);
+		ret = ia_css_stream_destroy(isp->css2_basis.stream);
 		if (ret != IA_CSS_SUCCESS) {
 			dev_err(isp->dev, "destroy stream failed.\n");
 			return -EBUSY;
 		}
-		isp_subdev->css2_basis.stream = NULL;
+		isp->css2_basis.stream = NULL;
 	}
 
-	pipe_config = &isp_subdev->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC];
+	pipe_config = &isp->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC];
 	ia_css_pipe_config_defaults(pipe_config);
 	pipe_config->acc_stages = kzalloc(MAX_ACC_STAGES *
 				sizeof(struct ia_css_fw_info *), GFP_KERNEL);
@@ -379,7 +374,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	}
 
 	err = ia_css_pipe_create(pipe_config,
-			&isp_subdev->css2_basis.pipes[IA_CSS_PIPE_ID_ACC]);
+			&isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC]);
 	if (err) {
 		dev_err(isp->dev, "%s: ia_css_pipe_create failed %d\n",
 				__func__, err);
@@ -387,18 +382,16 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		goto err;
 	}
 
-	memset(&isp_subdev->css2_basis.stream_config, 0,
+	memset(&isp->css2_basis.stream_config, 0,
 		sizeof(struct ia_css_stream_config));
 	err = ia_css_stream_create(s_config, 1,
-				&isp_subdev->css2_basis.
-				pipes[IA_CSS_PIPE_ID_ACC],
-				&isp_subdev->css2_basis.stream);
+				&isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC],
+				&isp->css2_basis.stream);
 	if (err != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "%s: create stream error %d.\n",
 			__func__, err);
-		ia_css_pipe_destroy(isp_subdev->css2_basis.
-				    pipes[IA_CSS_PIPE_ID_ACC]);
-		isp_subdev->css2_basis.pipes[IA_CSS_PIPE_ID_ACC] = NULL;
+		ia_css_pipe_destroy(isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC]);
+		isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC] = NULL;
 		err = -EINVAL;
 		goto err;
 	}
@@ -406,11 +399,10 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	err = ia_css_start(isp, false);
 	if (err != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "%s: start css error %d.\n", __func__, err);
-		ret = ia_css_stream_destroy(isp_subdev->css2_basis.stream);
-		isp_subdev->css2_basis.stream = NULL;
-		ia_css_pipe_destroy(isp_subdev->css2_basis.
-				    pipes[IA_CSS_PIPE_ID_ACC]);
-		isp_subdev->css2_basis.pipes[IA_CSS_PIPE_ID_ACC] = NULL;
+		ret = ia_css_stream_destroy(isp->css2_basis.stream);
+		isp->css2_basis.stream = NULL;
+		ia_css_pipe_destroy(isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC]);
+		isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC] = NULL;
 		err = -EINVAL;
 		goto err;
 	}
@@ -423,7 +415,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
 	isp_subdev->params.dvs_proj_data_valid = false;
-	isp->acc.pipeline = isp_subdev->css2_basis.pipes[IA_CSS_PIPE_ID_ACC];
+	isp->acc.pipeline = isp->css2_basis.pipes[IA_CSS_PIPE_ID_ACC];
 
 	dev_dbg(isp->dev, "<%s\n", __func__);
 	return 0;
@@ -532,9 +524,6 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 int atomisp_acc_load_extensions(struct atomisp_device *isp)
 {
 	struct atomisp_acc_fw *acc_fw;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	int ret, i;
 
 	if (isp->acc.pipeline || isp->acc.extension_mode)
@@ -553,12 +542,10 @@ int atomisp_acc_load_extensions(struct atomisp_device *isp)
 				unsigned int pipe_id =
 					acc_flag_to_pipe[i].pipe_id;
 				struct ia_css_pipe_config *pipe_cfg =
-					&isp_subdev->css2_basis.
-					pipe_configs[pipe_id];
+					&isp->css2_basis.pipe_configs[pipe_id];
 
 				pipe_cfg->acc_extension = acc_fw->fw;
-				isp_subdev->css2_basis.update_pipe[pipe_id] =
-				    true;
+				isp->css2_basis.update_pipe[pipe_id] = true;
 			}
 		}
 
@@ -586,7 +573,7 @@ error:
 			unsigned int pipe_id =
 				acc_flag_to_pipe[i].pipe_id;
 			struct ia_css_pipe_config *pipe_cfg =
-				&isp_subdev->css2_basis.pipe_configs[pipe_id];
+				&isp->css2_basis.pipe_configs[pipe_id];
 
 			if  (acc_fw->flags & acc_flag_to_pipe[i].flag)
 				pipe_cfg->acc_extension = NULL;
@@ -598,9 +585,6 @@ error:
 void atomisp_acc_unload_extensions(struct atomisp_device *isp)
 {
 	struct atomisp_acc_fw *acc_fw;
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	int i;
 
 	if (!isp->acc.extension_mode)
@@ -615,7 +599,7 @@ void atomisp_acc_unload_extensions(struct atomisp_device *isp)
 			unsigned int pipe_id =
 				acc_flag_to_pipe[i].pipe_id;
 			struct ia_css_pipe_config *pipe_cfg =
-				&isp_subdev->css2_basis.pipe_configs[pipe_id];
+				&isp->css2_basis.pipe_configs[pipe_id];
 
 			if  (acc_fw->flags & acc_flag_to_pipe[i].flag)
 				pipe_cfg->acc_extension = NULL;
