@@ -856,19 +856,16 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
 	/* Unpin old obj after new one is active to avoid ugliness */
 	if (old_obj) {
-		if (!IS_VALLEYVIEW(dev)) {
-			/*
-			 * It's fairly common to simply update the position of
-			 * an existing object.  In that case, we don't need to
-			 * wait for vblank to avoid ugliness, we only need to
-			 * do the pin & ref bookkeeping.
-			 */
-			if (old_obj != obj) {
-				mutex_unlock(&dev->struct_mutex);
-				intel_wait_for_vblank(dev,
-					to_intel_crtc(crtc)->pipe);
-				mutex_lock(&dev->struct_mutex);
-			}
+		/*
+		 * It's fairly common to simply update the position of
+		 * an existing object.  In that case, we don't need to
+		 * wait for vblank to avoid ugliness, we only need to
+		 * do the pin & ref bookkeeping.
+		 */
+		if (old_obj != obj) {
+			mutex_unlock(&dev->struct_mutex);
+			intel_wait_for_vblank(dev, to_intel_crtc(crtc)->pipe);
+			mutex_lock(&dev->struct_mutex);
 		}
 		intel_unpin_fb_obj(old_obj);
 	}
