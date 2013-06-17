@@ -49,7 +49,7 @@ static void file_work(struct work_struct *work)
 	unsigned short *buf = videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 
-	if (isp->isp_subdev[0].streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 		return;
 
 	dev_dbg(isp->dev, ">%s: ready to start streaming\n", __func__);
@@ -72,8 +72,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 
 	dev_dbg(isp->dev, "%s: enable %d\n", __func__, enable);
 	if (enable) {
-		if (isp->isp_subdev[0].streaming !=
-		    ATOMISP_DEVICE_STREAMING_ENABLED)
+		if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 			return 0;
 
 		queue_work(file_dev->work_queue, &file_dev->work);

@@ -148,16 +148,16 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
 	/* FIXME: Function should take isp_subdev as parameter */
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	if (list_empty(&isp_subdev->s3a_stats)) {
+	if (list_empty(&isp->s3a_stats)) {
 		WARN(1, "%s: No s3a buffers available!\n", __func__);
 		return -EINVAL;
 	}
 
-	while (isp_subdev->s3a_bufs_in_css[css_pipe_id] < ATOMISP_CSS_Q_DEPTH) {
+	while (isp->s3a_bufs_in_css[css_pipe_id] < ATOMISP_CSS_Q_DEPTH) {
 		struct ia_css_buffer buffer = {0};
-		s3a_buf = list_entry(isp_subdev->s3a_stats.next,
+		s3a_buf = list_entry(isp->s3a_stats.next,
 				struct atomisp_s3a_buf, list);
-		list_move_tail(&s3a_buf->list, &isp_subdev->s3a_stats);
+		list_move_tail(&s3a_buf->list, &isp->s3a_stats);
 
 		buffer.type = IA_CSS_BUFFER_TYPE_3A_STATISTICS;
 		buffer.data.stats_3a = s3a_buf->s3a_stat;
@@ -168,7 +168,7 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
 			return -EINVAL;
 		}
 		v4l2_dbg(5, dbg_level, &atomisp_dev, "q s3a buffer into css pipe[%d].\n", pipe_index);
-		isp_subdev->s3a_bufs_in_css[css_pipe_id]++;
+		isp->s3a_bufs_in_css[css_pipe_id]++;
 	}
 	return 0;
 }
@@ -180,16 +180,16 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 	/* FIXME: Function should take isp_subdev as parameter */
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	if (list_empty(&isp_subdev->dvs_stats)) {
+	if (list_empty(&isp->dvs_stats)) {
 		WARN(1, "%s: No dis buffers available!\n", __func__);
 		return -EINVAL;
 	}
 
-	while (isp_subdev->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
+	while (isp->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
 		struct ia_css_buffer buffer = {0};
-		dvs_buf = list_entry(isp_subdev->dvs_stats.next,
+		dvs_buf = list_entry(isp->dvs_stats.next,
 				struct atomisp_dvs_buf, list);
-		list_move_tail(&dvs_buf->list, &isp_subdev->dvs_stats);
+		list_move_tail(&dvs_buf->list, &isp->dvs_stats);
 
 		buffer.type = IA_CSS_BUFFER_TYPE_DIS_STATISTICS;
 		buffer.data.stats_dvs = dvs_buf->dvs_stat;
@@ -199,7 +199,7 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 			dev_err(isp->dev, "failed to q dvs stat buffer\n");
 			return -EINVAL;
 		}
-		isp_subdev->dis_bufs_in_css++;
+		isp->dis_bufs_in_css++;
 		dvs_buf = NULL;
 	}
 	return 0;
@@ -445,7 +445,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 
 	/* Add for channel */
 	if (isp->inputs[0].camera)
-		isp_subdev->input_curr = 0;
+		isp->input_curr = 0;
 
 	return 0;
 }
@@ -664,7 +664,7 @@ static int atomisp_release(struct file *file)
 	ia_css_uninit();
 	hrt_isp_css_mm_clear();
 
-	ret = v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
+	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_power, 0);
 	if (ret)
 		dev_warn(isp->dev, "Failed to power-off sensor\n");
@@ -842,7 +842,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 			ret = -EINVAL;
 			goto error;
 		}
-		raw_virt_addr = isp_subdev->raw_output_frame;
+		raw_virt_addr = isp->raw_output_frame;
 		if (raw_virt_addr == NULL) {
 			dev_err(isp->dev, "Failed to request RAW frame\n");
 			ret = -EINVAL;

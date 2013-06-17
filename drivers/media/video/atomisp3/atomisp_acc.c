@@ -113,7 +113,7 @@ static int acc_stop_acceleration(struct atomisp_device *isp)
 		return -ENOENT;
 	}
 
-	if (isp_subdev->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
 		dev_dbg(isp->dev, "<%s: acc stream not started\n", __func__);
 		return -ENOENT;
 	}
@@ -135,7 +135,7 @@ static int acc_stop_acceleration(struct atomisp_device *isp)
 		isp_subdev->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC].
 		acc_stages;
 	ia_css_stop(isp, false);
-	isp_subdev->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
+	isp->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
 	kfree(acc_stages);
 
 	isp->acc.pipeline = NULL;
@@ -416,7 +416,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	}
 	dev_dbg(isp->dev, "<ia_css_start\n");
 
-	isp_subdev->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
+	isp->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
 	init_completion(&isp->acc.acc_done);
 	atomic_set(&isp->wdt_count, 0);
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);

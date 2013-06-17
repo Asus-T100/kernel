@@ -241,20 +241,6 @@ struct atomisp_sub_device {
 
 	struct atomisp_css_params params;
 	struct atomisp_css2_basis css2_basis;
-
-	unsigned int s3a_bufs_in_css[IA_CSS_PIPE_ID_NUM];
-	unsigned int dis_bufs_in_css;
-
-	struct list_head s3a_stats;
-	struct list_head dvs_stats;
-
-	struct ia_css_frame *vf_frame; /* TODO: needed? */
-	struct ia_css_frame *raw_output_frame;
-	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
-
-	int input_curr;
-
-	unsigned int streaming; /* Hold both mutex and lock to change this */
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];
