@@ -57,6 +57,8 @@
 
 #define TJMAX_TEMP		90
 #define TJMAX_CODE		0x7F
+
+/* Default hysteresis values in C */
 #define DEFAULT_C2H_HYST	3
 #define DEFAULT_H2C_HYST	3
 
@@ -72,10 +74,8 @@
 #define ENABLE_AUX_INTRPT	0x0F
 #define ENABLE_CPU0		(1 << 16)
 #define RTE_ENABLE		(1 << 9)
-#define AUX0_EVENT		(1 << 0)
-#define AUX1_EVENT		(1 << 1)
-#define AUX2_EVENT		(1 << 2)
-#define AUX3_EVENT		(1 << 3)
+
+static DEFINE_MUTEX(thrm_update_lock);
 
 struct platform_soc_data {
 	struct thermal_zone_device *tzd[SOC_THERMAL_SENSORS];
@@ -358,48 +358,112 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	return 0;
 }
 
+static void notify_thermal_event(struct thermal_zone_device *tzd,
+				long temp, int event, int level)
+{
+	char *thermal_event[5];
+
+	pr_info("Thermal Event: sensor: %s, cur_temp: %ld, event: %d, level: %d\n",
+				tzd->type, temp, event, level);
+
+	thermal_event[0] = kasprintf(GFP_KERNEL, "NAME=%s", tzd->type);
+	thermal_event[1] = kasprintf(GFP_KERNEL, "TEMP=%ld", temp);
+	thermal_event[2] = kasprintf(GFP_KERNEL, "EVENT=%d", event);
+	thermal_event[3] = kasprintf(GFP_KERNEL, "LEVEL=%d", level);
+	thermal_event[4] = NULL;
+
+	kobject_uevent_env(&tzd->device.kobj, KOBJ_CHANGE, thermal_event);
+
+	kfree(thermal_event[3]);
+	kfree(thermal_event[2]);
+	kfree(thermal_event[1]);
+	kfree(thermal_event[0]);
+
+	return;
+}
+
+static int get_max_temp(struct platform_soc_data *pdata, long *cur_temp)
+{
+	int i, ret;
+	long temp;
+
+	/*
+	 * The SoC has two or more DTS placed, to determine the
+	 * temperature of the SoC. The hardware actions are taken
+	 * using T(DTS) which is MAX(T(DTS0), T(DTS1), ... T(DTSn))
+	 *
+	 * Do not report error, as long as we can read at least
+	 * one DTS correctly.
+	 */
+	ret = show_temp(pdata->tzd[0], cur_temp);
+	if (ret)
+		return ret;
+
+	for (i = 1; i < SOC_THERMAL_SENSORS; i++) {
+		ret = show_temp(pdata->tzd[i], &temp);
+		if (ret)
+			goto fail_safe;
+
+		if (temp > *cur_temp)
+			*cur_temp = temp;
+	}
+
+fail_safe:
+	/*
+	 * We have one valid DTS temperature; Use that,
+	 * instead of reporting error.
+	 */
+	return 0;
+}
+
 static irqreturn_t soc_dts_intrpt(int irq, void *dev_data)
 {
-	u32 irq_sts;
+	u32 irq_sts, cur_sts;
+	int i, ret, event, level = -1;
+	long cur_temp;
 	struct thermal_zone_device *tzd;
-	char *event;
-	bool valid = true;
 	struct platform_soc_data *pdata = (struct platform_soc_data *)dev_data;
 
 	if (!pdata || !pdata->tzd[0])
 		return IRQ_NONE;
 
+	mutex_lock(&thrm_update_lock);
+
 	tzd = pdata->tzd[0];
 
 	irq_sts = read_soc_reg(TRIP_STATUS_RW);
+	cur_sts = read_soc_reg(TRIP_STATUS_RO);
 
-	/* The status bit is cleared by writing 1 to the bit */
-	if (irq_sts & AUX0_EVENT) {
-		event = "aux0_event";
-		irq_sts |= AUX0_EVENT;
-	} else if (irq_sts & AUX1_EVENT) {
-		event = "aux1_event";
-		irq_sts |= AUX1_EVENT;
-	} else if (irq_sts & AUX2_EVENT) {
-		event = "aux2_event";
-		irq_sts |= AUX2_EVENT;
-	} else if (irq_sts & AUX3_EVENT) {
-		event = "aux3_event";
-		irq_sts |= AUX3_EVENT;
-	} else {
-		event = "invalid_event";
-		valid = false;
+	for (i = 0; i < SOC_THERMAL_TRIPS; i++) {
+		if (irq_sts & (1 << i)) {
+			level = i;
+			event = !!(cur_sts & (1 << i));
+			/* Clear the status bit by writing 1 */
+			irq_sts |= (1 << i);
+			break;
+		}
 	}
 
-	dev_info(&tzd->device, "SoC DTS %s occurred\n", event);
-
-	/* Notify using UEvent, if it is a valid event */
-	if (valid) {
-		kobject_uevent(&tzd->device.kobj, KOBJ_CHANGE);
-		/* Clear the status bits */
-		write_soc_reg(TRIP_STATUS_RW, irq_sts);
+	/* level == -1, indicates an invalid event */
+	if (level == -1) {
+		dev_err(&tzd->device, "Invalid event from SoC DTS\n");
+		goto exit;
 	}
 
+	ret = get_max_temp(pdata, &cur_temp);
+	if (ret) {
+		dev_err(&tzd->device, "Cannot read SoC DTS temperature\n");
+		goto exit;
+	}
+
+	/* Notify using UEvent */
+	notify_thermal_event(tzd, cur_temp, event, level);
+
+	/* Clear the status bits */
+	write_soc_reg(TRIP_STATUS_RW, irq_sts);
+
+exit:
+	mutex_unlock(&thrm_update_lock);
 	return IRQ_HANDLED;
 }
 
