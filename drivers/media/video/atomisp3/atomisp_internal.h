@@ -261,12 +261,8 @@ struct atomisp_device {
 	unsigned int dis_bufs_in_css;
 	struct ia_css_fw css_fw;
 
-	/*
-	 * ISP modules
-	 * Multple streams are represents by multiple
-	 * atomisp_sub_device instances
-	 */
-	struct atomisp_sub_device *isp_subdev;
+	/* ISP modules */
+	struct atomisp_sub_device isp_subdev;
 	/*
 	 * MRFLD has 3 CSI ports, while MFLD has only 2.
 	 */
@@ -324,11 +320,6 @@ struct atomisp_device {
 	struct workqueue_struct *delayed_init_workq;
 	unsigned int delayed_init;
 	struct work_struct delayed_init_work;
-
-	/*
-	 * CSS2.0 supports multiple streams
-	 */
-	unsigned int num_of_streams;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \

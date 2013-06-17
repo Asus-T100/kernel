@@ -200,12 +200,9 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 static int atomisp_get_css_buf_type(struct atomisp_device *isp,
 				    uint16_t source_pad)
 {
-	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE ||
 	    (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW &&
-	     isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO))
+	     isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO))
 		return IA_CSS_BUFFER_TYPE_OUTPUT_FRAME;
 	else
 		return IA_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
@@ -221,32 +218,32 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
-	if (!isp_subdev->enable_vfpp->val) {
-		preview_pipe = &isp_subdev->video_out_capture;
+	if (!isp->isp_subdev.enable_vfpp->val) {
+		preview_pipe = &isp->isp_subdev.video_out_capture;
 		css_preview_pipe_id = IA_CSS_PIPE_ID_VIDEO;
-	} else if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
-		capture_pipe = &isp_subdev->video_out_capture;
-		preview_pipe = &isp_subdev->video_out_preview;
+	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+		capture_pipe = &isp->isp_subdev.video_out_capture;
+		preview_pipe = &isp->isp_subdev.video_out_preview;
 		css_capture_pipe_id = IA_CSS_PIPE_ID_VIDEO;
 		css_preview_pipe_id = IA_CSS_PIPE_ID_VIDEO;
-	} else if (isp_subdev->continuous_mode->val) {
-		capture_pipe = &isp_subdev->video_out_capture;
-		vf_pipe = &isp_subdev->video_out_vf;
-		preview_pipe = &isp_subdev->video_out_preview;
+	} else if (isp->isp_subdev.continuous_mode->val) {
+		capture_pipe = &isp->isp_subdev.video_out_capture;
+		vf_pipe = &isp->isp_subdev.video_out_vf;
+		preview_pipe = &isp->isp_subdev.video_out_preview;
 		css_capture_pipe_id = IA_CSS_PIPE_ID_CAPTURE;
 		css_preview_pipe_id = IA_CSS_PIPE_ID_PREVIEW;
-	} else if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_PREVIEW) {
-		preview_pipe = &isp_subdev->video_out_preview;
+	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_PREVIEW) {
+		preview_pipe = &isp->isp_subdev.video_out_preview;
 		css_preview_pipe_id = IA_CSS_PIPE_ID_PREVIEW;
 	} else {
 		/* ATOMISP_RUN_MODE_STILL_CAPTURE */
-		capture_pipe = &isp_subdev->video_out_capture;
+		capture_pipe = &isp->isp_subdev.video_out_capture;
 		if (!atomisp_is_mbuscode_raw(
-			    isp_subdev->
-			    fmt[isp_subdev->capture_pad].fmt.code))
-			vf_pipe = &isp_subdev->video_out_vf;
+			    isp->isp_subdev.
+			    fmt[isp->isp_subdev.capture_pad].fmt.code))
+			vf_pipe = &isp->isp_subdev.video_out_vf;
 		css_capture_pipe_id = IA_CSS_PIPE_ID_CAPTURE;
 	}
 
@@ -388,12 +385,12 @@ int atomisp_init_struct(struct atomisp_device *isp)
 {
 	int i = 0;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (isp == NULL)
 		return -EINVAL;
 
-	v4l2_ctrl_s_ctrl(isp_subdev->run_mode,
+	v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode,
 			 ATOMISP_RUN_MODE_STILL_CAPTURE);
 	isp_subdev->params.color_effect = V4L2_COLORFX_NONE;
 	isp_subdev->params.bad_pixel_en = 1;
@@ -456,13 +453,10 @@ static void *my_kernel_malloc(size_t bytes, bool zero_mem)
  */
 unsigned int atomisp_users(struct atomisp_device *isp)
 {
-	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
-	return isp_subdev->video_out_preview.users +
-	       isp_subdev->video_out_vf.users +
-	       isp_subdev->video_out_capture.users +
-	       isp_subdev->video_in.users;
+	return isp->isp_subdev.video_out_preview.users +
+	       isp->isp_subdev.video_out_vf.users +
+	       isp->isp_subdev.video_out_capture.users +
+	       isp->isp_subdev.video_in.users;
 }
 int atomisp_css2_dbg_print(const char *fmt, va_list args)
 {
@@ -583,7 +577,7 @@ static int atomisp_release(struct file *file)
 	struct v4l2_requestbuffers req;
 	int ret = 0;
 	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	dev_dbg(isp->dev, "release device %s\n", vdev->name);
 
@@ -625,10 +619,10 @@ static int atomisp_release(struct file *file)
 	 * The sink pad setting can only be cleared when all device nodes
 	 * get released.
 	 */
-	if (!isp->sw_contex.file_input && isp_subdev->fmt_auto->val) {
+	if (!isp->sw_contex.file_input && isp->isp_subdev.fmt_auto->val) {
 		struct v4l2_mbus_framefmt isp_sink_fmt = { 0 };
 		atomisp_subdev_set_ffmt(
-			&isp_subdev->subdev, NULL,
+			&isp->isp_subdev.subdev, NULL,
 			V4L2_SUBDEV_FORMAT_ACTIVE, ATOMISP_SUBDEV_PAD_SINK,
 			&isp_sink_fmt);
 	}
@@ -637,9 +631,9 @@ static int atomisp_release(struct file *file)
 		goto done;
 
 	/* clear the sink pad for file input */
-	if (isp->sw_contex.file_input && isp_subdev->fmt_auto->val) {
+	if (isp->sw_contex.file_input && isp->isp_subdev.fmt_auto->val) {
 		struct v4l2_mbus_framefmt isp_sink_fmt = { 0 };
-		atomisp_subdev_set_ffmt(&isp_subdev->subdev, NULL,
+		atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 	}
@@ -814,7 +808,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	u32 origin_size, new_size;
 	int ret;
 	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!(vma->vm_flags & (VM_WRITE | VM_READ)))
 		return -EACCES;

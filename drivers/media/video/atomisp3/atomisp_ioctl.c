@@ -452,25 +452,22 @@ const struct atomisp_format_bridge *atomisp_get_format_bridge_from_mbus(
 unsigned int atomisp_get_pipe_index(struct atomisp_device *isp,
 					uint16_t source_pad)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
 	switch (source_pad) {
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
-		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
-		    || !isp_subdev->enable_vfpp->val)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || !isp->isp_subdev.enable_vfpp->val)
 			return (unsigned int) IA_CSS_PIPE_ID_VIDEO;
 		else
 			return (unsigned int) IA_CSS_PIPE_ID_CAPTURE;
 	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
-		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			return (unsigned int) IA_CSS_PIPE_ID_VIDEO;
 		else if (!atomisp_is_mbuscode_raw(
-				 isp_subdev->
-				 fmt[isp_subdev->capture_pad].fmt.code))
+				 isp->isp_subdev.
+				 fmt[isp->isp_subdev.capture_pad].fmt.code))
 			return (unsigned int) IA_CSS_PIPE_ID_CAPTURE;
 	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
-		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			return (unsigned int) IA_CSS_PIPE_ID_VIDEO;
 		else
 			return (unsigned int) IA_CSS_PIPE_ID_PREVIEW;
@@ -485,8 +482,6 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 	enum ia_css_err ret;
 	struct ia_css_pipe_info info;
 	int pipe_index = atomisp_get_pipe_index(isp, source_pad);
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (pipe_index >= IA_CSS_PIPE_ID_NUM)
 		return -EINVAL;
@@ -503,7 +498,7 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 		*frame_info = info.vf_output_info;
 		break;
 	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
-		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			*frame_info = info.vf_output_info;
 		else
 			*frame_info = info.output_info;
@@ -611,12 +606,9 @@ static int atomisp_enum_input(struct file *file, void *fh,
 
 static unsigned int atomisp_streaming_count(struct atomisp_device *isp)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
-	return isp_subdev->video_out_preview.capq.streaming
-		+ isp_subdev->video_out_capture.capq.streaming
-		+ isp_subdev->video_in.capq.streaming;
+	return isp->isp_subdev.video_out_preview.capq.streaming
+		+ isp->isp_subdev.video_out_capture.capq.streaming
+		+ isp->isp_subdev.video_in.capq.streaming;
 }
 
 /*
@@ -874,7 +866,7 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
 	/* 2 css pipes consuming 3a buffers */
 	int count = ATOMISP_CSS_Q_DEPTH * 2;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (!list_empty(&isp->s3a_stats) && !list_empty(&isp->dvs_stats))
 		return 0;
@@ -1279,17 +1271,14 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 enum ia_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
-	if (isp_subdev->continuous_mode->val &&
-	    isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO)
+	if (isp->isp_subdev.continuous_mode->val &&
+	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return IA_CSS_PIPE_ID_PREVIEW;
 
-	if (!isp_subdev->enable_vfpp->val)
+	if (!isp->isp_subdev.enable_vfpp->val)
 		return IA_CSS_PIPE_ID_CAPTURE;
 
-	switch (isp_subdev->run_mode->val) {
+	switch (isp->isp_subdev.run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:
 		return IA_CSS_PIPE_ID_PREVIEW;
 	case ATOMISP_RUN_MODE_VIDEO:
@@ -1303,18 +1292,15 @@ enum ia_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 
 static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
-
-	if (!isp_subdev->enable_vfpp->val)
+	if (!isp->isp_subdev.enable_vfpp->val)
 		return 1;
 
-	if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
-	    (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
+	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
+	    (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
 	     !atomisp_is_mbuscode_raw(
-		     isp_subdev->fmt[
-			     isp_subdev->capture_pad].fmt.code) &&
-	     !isp_subdev->continuous_mode->val))
+		     isp->isp_subdev.fmt[
+			     isp->isp_subdev.capture_pad].fmt.code) &&
+	     !isp->isp_subdev.continuous_mode->val))
 		return 2;
 	else
 		return 1;
@@ -1336,7 +1322,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	u32 msg_ret;
 #endif
 	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	if (type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_dbg(isp->dev, "unsupported v4l2 buf type\n");
@@ -1373,10 +1359,10 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	if (atomisp_streaming_count(isp) > sensor_start_stream) {
 		/* trigger still capture */
-		if (isp_subdev->continuous_mode->val &&
+		if (isp->isp_subdev.continuous_mode->val &&
 		    atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
-		    isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE) {
 				flush_work_sync(&isp->delayed_init_work);
 				mutex_unlock(&isp->mutex);
@@ -1429,8 +1415,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 		ret = -EINVAL;
 		goto out;
 	}
-	if (isp_subdev->continuous_mode->val &&
-	    isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+	if (isp->isp_subdev.continuous_mode->val &&
+	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 		INIT_COMPLETION(isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
 		queue_work(isp->delayed_init_workq, &isp->delayed_init_work);
@@ -1506,7 +1492,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	u32 msg_ret;
 #endif
 	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	BUG_ON(!mutex_is_locked(&isp->mutex));
 	BUG_ON(!mutex_is_locked(&isp->streamoff_mutex));
@@ -1520,8 +1506,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	 * do only videobuf_streamoff for capture & vf pipes in
 	 * case of continuous capture
 	 */
-	if (isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp_subdev->continuous_mode->val &&
+	if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
+	    isp->isp_subdev.continuous_mode->val &&
 	    atomisp_subdev_source_pad(vdev)
 	    != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
 
@@ -1603,16 +1589,16 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	}
 
 	/* cancel work queue*/
-	if (isp_subdev->video_out_capture.users) {
-		capture_pipe = &isp_subdev->video_out_capture;
+	if (isp->isp_subdev.video_out_capture.users) {
+		capture_pipe = &isp->isp_subdev.video_out_capture;
 		wake_up_interruptible(&capture_pipe->capq.wait);
 	}
-	if (isp_subdev->video_out_vf.users) {
-		vf_pipe = &isp_subdev->video_out_vf;
+	if (isp->isp_subdev.video_out_vf.users) {
+		vf_pipe = &isp->isp_subdev.video_out_vf;
 		wake_up_interruptible(&vf_pipe->capq.wait);
 	}
-	if (isp_subdev->video_out_preview.users) {
-		preview_pipe = &isp_subdev->video_out_preview;
+	if (isp->isp_subdev.video_out_preview.users) {
+		preview_pipe = &isp->isp_subdev.video_out_preview;
 		wake_up_interruptible(&preview_pipe->capq.wait);
 	}
 	ret = videobuf_streamoff(&pipe->capq);
@@ -1960,7 +1946,7 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 	int i;
 	int ret = 0;
 	/* FIXME: isp_subdev should be get from pipe  */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
 
 	for (i = 0; i < c->count; i++) {
 		struct v4l2_ctrl *ctr;
@@ -2018,7 +2004,7 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 			mutex_unlock(&isp->mutex);
 			break;
 		default:
-			ctr = v4l2_ctrl_find(&isp_subdev->ctrl_handler,
+			ctr = v4l2_ctrl_find(&isp->isp_subdev.ctrl_handler,
 					     ctrl.id);
 			if (ctr)
 				ret = v4l2_ctrl_s_ctrl(ctr, ctrl.value);
@@ -2069,8 +2055,6 @@ static int atomisp_g_parm(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	/* FIXME: isp_subdev should be get from pipe */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		v4l2_err(&atomisp_dev,
@@ -2079,7 +2063,7 @@ static int atomisp_g_parm(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
-	parm->parm.capture.capturemode = isp_subdev->run_mode->val;
+	parm->parm.capture.capturemode = isp->isp_subdev.run_mode->val;
 	mutex_unlock(&isp->mutex);
 
 	return 0;
@@ -2092,8 +2076,6 @@ static int atomisp_s_parm(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int mode;
 	int rval;
-	/* FIXME: isp_subdev should be get from pipe */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		v4l2_err(&atomisp_dev,
@@ -2132,7 +2114,7 @@ static int atomisp_s_parm(struct file *file, void *fh,
 		goto out;
 	}
 
-	rval = v4l2_ctrl_s_ctrl(isp_subdev->run_mode, mode);
+	rval = v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode, mode);
 
 out:
 	mutex_unlock(&isp->mutex);
