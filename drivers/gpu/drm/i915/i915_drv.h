@@ -515,6 +515,8 @@ typedef struct drm_i915_private {
 	u32 gt_irq_mask;
 	u32 pch_irq_mask;
 
+	bool perfmon_interrupt_enabled;
+
 	u32 hotplug_supported_mask;
 	struct work_struct hotplug_work;
 
@@ -892,6 +894,9 @@ typedef struct drm_i915_private {
 	wait_queue_head_t pending_flip_queue;
 
 	struct intel_pch_pll pch_plls[I915_NUM_PLLS];
+
+	wait_queue_head_t perfmon_buffer_queue;
+	atomic_t perfmon_buffer_interrupts;
 
 	/* Reclocking support */
 	bool render_reclock_avail;
