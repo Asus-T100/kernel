@@ -377,6 +377,131 @@ static void notify_ring(struct drm_device *dev,
 	wake_up_all(&ring->irq_queue);
 }
 
+/**
+ * vlv_calc_delay_from_C0_counters - Increase/Decrease freq based on GPU
+ * busy-ness calculated from C0 counters of render & media power wells
+ * @dev_priv: DRM device private
+ *
+ * UP-Threshold will be calculated on every interrupt where as Down threshold
+ * will be calculated once in 5 interrupts. If either render or media power
+ * well is in C0 for 90% or above of EI period, then increace freq by one step
+ * If both render and media are in C0 for less than 70% of 5 continuous EI
+ * periods, then decrease the freq by one step
+ */
+static u32 vlv_calc_delay_from_C0_counters(struct drm_i915_private *dev_priv)
+{
+	u32 cz_ts = 0;
+	u32 render_count = 0, media_count = 0;
+	u32 elapsed_render = 0, elapsed_media = 0;
+	u32 elapsed_time = 0;
+	u32 residency_C0_up = 0, residency_C0_down = 0;
+	u8 new_delay;
+
+	dev_priv->rps.ei_interrupt_count++;
+
+	/* read the CZ clock time stamp from P-unint &
+	 * render/media C0 counters from MMIO reg
+	 */
+	valleyview_punit_read(dev_priv, PUNIT_REG_CZ_TIMESTAMP, &cz_ts);
+
+	render_count = I915_READ(VLV_RENDER_C0_COUNT_REG);
+	media_count = I915_READ(VLV_MEDIA_C0_COUNT_REG);
+
+	/* If this is the very first call, save the counters and
+	 * apply the current delay itself
+	 */
+	if (0 == dev_priv->rps.cz_ts_up_EI) {
+
+		dev_priv->rps.cz_ts_up_EI = dev_priv->rps.cz_ts_down_EI = cz_ts;
+		dev_priv->rps.render_up_EI_C0 = dev_priv->rps.render_down_EI_C0
+						= render_count;
+		dev_priv->rps.media_up_EI_C0 = dev_priv->rps.media_down_EI_C0
+						= media_count;
+
+		return dev_priv->rps.cur_delay;
+	}
+
+	/* Calculate Elapsed time and render/media counters. Since all
+	* variables used are of type unsigned, standard C compiler will
+	* will take care of roll-off scenario with subtractions
+	*/
+	elapsed_time = cz_ts - dev_priv->rps.cz_ts_up_EI;
+	dev_priv->rps.cz_ts_up_EI = cz_ts;
+
+	elapsed_render = render_count - dev_priv->rps.render_up_EI_C0;
+	dev_priv->rps.render_up_EI_C0 = render_count;
+
+	elapsed_media = media_count - dev_priv->rps.media_up_EI_C0;
+	dev_priv->rps.media_up_EI_C0 = media_count;
+
+	/* Convert all the counters into common unit of milli sec */
+	elapsed_time /= VLV_CZ_CLOCK_TO_MILLI_SEC;
+	elapsed_render /= (dev_priv->rps.cz_freq / 1000);
+	elapsed_media /= (dev_priv->rps.cz_freq / 1000);
+
+	/* Calculate overall C0 residency percentage only
+	 * if elapsed time is non zero
+	 */
+	if (elapsed_time) {
+		residency_C0_up = ((max(elapsed_render, elapsed_media)
+						* 100) / elapsed_time);
+	}
+
+	/* To down throttle, C0 residency should be less down threshold
+	 * for continous EI intervals. So calculate down EI counters
+	 * once in VLV_INT_COUNT_FOR_DOWN_EI
+	 */
+	if (VLV_INT_COUNT_FOR_DOWN_EI == dev_priv->rps.ei_interrupt_count) {
+
+		dev_priv->rps.ei_interrupt_count = 0;
+
+		elapsed_time = cz_ts - dev_priv->rps.cz_ts_down_EI;
+		dev_priv->rps.cz_ts_down_EI = cz_ts;
+
+		elapsed_render = render_count - dev_priv->rps.render_down_EI_C0;
+		dev_priv->rps.render_down_EI_C0 = render_count;
+
+		elapsed_media = media_count - dev_priv->rps.media_down_EI_C0;
+		dev_priv->rps.media_down_EI_C0 = media_count;
+
+		/* Convert all the counters into common unit of milli sec */
+		elapsed_time /= 100000;
+		elapsed_render /= (dev_priv->rps.cz_freq / 1000);
+		elapsed_media /= (dev_priv->rps.cz_freq / 1000);
+
+		/* Calculate overall C0 residency percentage only
+		 * if elapsed time is non zero
+		 */
+		if (elapsed_time) {
+			residency_C0_down =
+				((max(elapsed_render, elapsed_media) * 100)
+							/ elapsed_time);
+		}
+
+	}
+
+	new_delay = dev_priv->rps.cur_delay;
+
+	/* C0 residency is greater than UP threshold. Increase Frequency */
+	if (residency_C0_up >= VLV_RP_UP_EI_THRESHOLD) {
+
+		if (dev_priv->rps.cur_delay < dev_priv->rps.max_delay)
+			new_delay = dev_priv->rps.cur_delay + 1;
+
+		atomic_inc(&dev_priv->turbodebug.up_threshold);
+
+	} else if (residency_C0_down &&
+			(residency_C0_down < VLV_RP_DOWN_EI_THRESHOLD)) {
+
+		if (dev_priv->rps.cur_delay > dev_priv->rps.min_delay)
+			new_delay = dev_priv->rps.cur_delay - 1;
+
+		atomic_inc(&dev_priv->turbodebug.down_threshold);
+	}
+
+	return new_delay;
+}
+
 static void gen6_pm_rps_work(struct work_struct *work)
 {
 	drm_i915_private_t *dev_priv = container_of(work, drm_i915_private_t,
@@ -391,7 +516,7 @@ static void gen6_pm_rps_work(struct work_struct *work)
 	I915_WRITE(GEN6_PMIMR, 0);
 	spin_unlock_irq(&dev_priv->rps.lock);
 
-	if ((pm_iir & GEN6_PM_DEFERRED_EVENTS) == 0)
+	if ((pm_iir & (GEN6_PM_DEFERRED_EVENTS | VLV_PM_DEFERRED_EVENTS)) == 0)
 		return;
 
 	mutex_lock(&dev_priv->dev->struct_mutex);
@@ -404,7 +529,7 @@ static void gen6_pm_rps_work(struct work_struct *work)
 		valleyview_update_cur_delay(dev_priv->dev);
 
 	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD) {
-		if (dev_priv->rps.cur_delay > dev_priv->rps.max_delay) {
+		if (dev_priv->rps.cur_delay >= dev_priv->rps.max_delay) {
 			I915_WRITE(GEN6_PMINTRMSK,
 					I915_READ(GEN6_PMINTRMSK) | 1 << 5);
 			dev_priv->rps.rp_up_masked = 1;
@@ -413,11 +538,14 @@ static void gen6_pm_rps_work(struct work_struct *work)
 			new_delay = dev_priv->rps.cur_delay + 1;
 		}
 		if (dev_priv->rps.rp_down_masked) {
-			I915_WRITE(GEN6_PMINTRMSK, 0);
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) & ~(1 << 4));
 			dev_priv->rps.rp_down_masked = 0;
 		}
 		atomic_inc(&dev_priv->turbodebug.up_threshold);
-	} else {
+	} else if (pm_iir & GEN6_PM_RP_UP_EI_EXPIRED)
+		new_delay = vlv_calc_delay_from_C0_counters(dev_priv);
+	else {
 		if (dev_priv->rps.cur_delay <= dev_priv->rps.min_delay) {
 			I915_WRITE(GEN6_PMINTRMSK,
 					I915_READ(GEN6_PMINTRMSK) | 1 << 4);
@@ -427,7 +555,8 @@ static void gen6_pm_rps_work(struct work_struct *work)
 			new_delay = dev_priv->rps.cur_delay - 1;
 		}
 		if (dev_priv->rps.rp_up_masked) {
-			I915_WRITE(GEN6_PMINTRMSK, 0);
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) & ~(1 << 5));
 			dev_priv->rps.rp_up_masked = 0;
 		}
 		atomic_inc(&dev_priv->turbodebug.down_threshold);
@@ -656,7 +785,7 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 		if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
 			blc_event = true;
 
-		if (pm_iir & GEN6_PM_DEFERRED_EVENTS)
+		if (pm_iir & (GEN6_PM_DEFERRED_EVENTS | VLV_PM_DEFERRED_EVENTS))
 			gen6_queue_rps_work(dev_priv, pm_iir);
 
 		I915_WRITE(GTIIR, gt_iir);

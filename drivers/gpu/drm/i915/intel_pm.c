@@ -2879,6 +2879,10 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	u32 val = 0;
 	unsigned long flags;
 
+	/* Setting RC0 mode by default on VLV. Make this 0
+	 * to fall back to normla turbo mode
+	 */
+	dev_priv->use_RC0_residency_for_turbo = 1;
 
 	I915_WRITE(GEN6_RP_UP_THRESHOLD, 59400);
 	I915_WRITE(GEN6_RP_DOWN_THRESHOLD, 245000);
@@ -2914,22 +2918,23 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	DRM_DEBUG_DRIVER("DDR speed: ");
 	switch (((val >> 6) & 3)) {
 	case 0:
+	case 1:
 		dev_priv->mem_freq = 800;
 		dev_priv->rps.lowest_delay = VLV_LOWEST_FREQ_GPLL_DDR_MODE_800;
+		dev_priv->rps.cz_freq = VLV_CZ_CLOCK_FREQ_DDR_MODE_800;
 		DRM_DEBUG_DRIVER("800 MHz\n");
 		break;
-	case 1:
+	case 2:
 		DRM_DEBUG_DRIVER("1066 MHz\n");
 		dev_priv->mem_freq = 1066;
 		dev_priv->rps.lowest_delay = VLV_LOWEST_FREQ_GPLL_DDR_MODE_1066;
+		dev_priv->rps.cz_freq = VLV_CZ_CLOCK_FREQ_DDR_MODE_1066;
 		break;
-	case 2:
+	case 3:
 		DRM_DEBUG_DRIVER("1333 MHz\n");
 		dev_priv->mem_freq = 1333;
 		dev_priv->rps.lowest_delay = VLV_LOWEST_FREQ_GPLL_DDR_MODE_1333;
-		break;
-	case 3:
-		DRM_DEBUG_DRIVER("invalid\n");
+		dev_priv->rps.cz_freq = VLV_CZ_CLOCK_FREQ_DDR_MODE_1333;
 		break;
 	}
 	DRM_DEBUG_DRIVER("GPLL enabled? %s\n", val & 8 ? "yes" : "no");
@@ -2950,15 +2955,21 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	valleyview_set_rps(dev_priv->dev, dev_priv->rps.min_delay);
 	DRM_DEBUG_DRIVER("setting GPU freq to %d\n", dev_priv->rps.min_delay);
 
-	/* requires MSI enabled */
-	I915_WRITE(GEN6_PMIER, GEN6_PM_DEFERRED_EVENTS);
+	/* Clear out any stale interrupts first */
 	spin_lock_irqsave(&dev_priv->rps.lock, flags);
 	WARN_ON(dev_priv->rps.pm_iir != 0);
+	I915_WRITE(GEN6_PMIIR, I915_READ(GEN6_PMIIR));
 	I915_WRITE(GEN6_PMIMR, 0);
 	spin_unlock_irqrestore(&dev_priv->rps.lock, flags);
-	/* enable all PM interrupts */
-	I915_WRITE(GEN6_PMINTRMSK, 0);
 
+	/* Use RC0 residency method for rps control as WA */
+	if (dev_priv->use_RC0_residency_for_turbo) {
+		I915_WRITE(GEN6_PMIER, VLV_PM_DEFERRED_EVENTS);
+		I915_WRITE(GEN6_PMINTRMSK, ~VLV_PM_DEFERRED_EVENTS);
+	} else {
+		I915_WRITE(GEN6_PMIER, GEN6_PM_DEFERRED_EVENTS);
+		I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
+	}
 
 	return 1;
 }

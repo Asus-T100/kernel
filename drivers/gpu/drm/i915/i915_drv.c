@@ -1443,6 +1443,8 @@ static bool IS_DISPLAYREG(u32 reg)
 	case GTFIFODBG:
 	case GEN7_MISCCPCTL:
 	case VLV_GTICZPMW:
+	case VLV_RENDER_C0_COUNT_REG:
+	case VLV_MEDIA_C0_COUNT_REG:
 		return false;
 	default:
 		break;

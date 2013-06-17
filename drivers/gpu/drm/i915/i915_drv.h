@@ -913,6 +913,17 @@ typedef struct drm_i915_private {
 
 		u8 rp_up_masked;
 		u8 rp_down_masked;
+
+		u32 cz_freq;
+		u32 ei_interrupt_count;
+
+		u32 cz_ts_up_EI;
+		u32 render_up_EI_C0;
+		u32 media_up_EI_C0;
+		u32 cz_ts_down_EI;
+		u32 render_down_EI_C0;
+		u32 media_down_EI_C0;
+
 	} rps;
 
 	u8 cur_delay;
@@ -920,6 +931,9 @@ typedef struct drm_i915_private {
 	u8 max_delay;
 	u8 fmax;
 	u8 fstart;
+
+	/* Adding this to fallback to normal Turbo logic */
+	bool use_RC0_residency_for_turbo;
 
 	struct {
 		atomic_t up_threshold;
