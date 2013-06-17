@@ -509,7 +509,8 @@ static int atomisp_open(struct file *file)
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	int ret, mmu_base_addr;
-	struct atomisp_sub_device *isp_subdev = atomisp_to_sub_device(pipe);
+	/* FIXME: currently only use subdev[0] in single stream mode */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 
 	dev_dbg(isp->dev, "open device %s\n", vdev->name);
@@ -582,7 +583,8 @@ static int atomisp_release(struct file *file)
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct v4l2_requestbuffers req;
 	int ret = 0;
-	struct atomisp_sub_device *isp_subdev = atomisp_to_sub_device(pipe);
+	/* FIXME: isp_subdev should be get from pipe  */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	dev_dbg(isp->dev, "release device %s\n", vdev->name);
 
@@ -812,7 +814,8 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	u32 size = end - start;
 	u32 origin_size, new_size;
 	int ret;
-	struct atomisp_sub_device *isp_subdev = atomisp_to_sub_device(pipe);
+	/* FIXME: isp_subdev should be get from pipe  */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!(vma->vm_flags & (VM_WRITE | VM_READ)))
 		return -EACCES;
