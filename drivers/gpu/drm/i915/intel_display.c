@@ -3735,12 +3735,6 @@ static void vlv_pll_enable_reset(struct drm_crtc *crtc)
 		val |= (1<<20);
 		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
 
-		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
-		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8200, 0x10080);
-		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
-
 		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
 		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
 		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
@@ -3750,6 +3744,8 @@ static void vlv_pll_enable_reset(struct drm_crtc *crtc)
 		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
 		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
 
+		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
+		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
 	}
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
 	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
@@ -3762,9 +3758,6 @@ static void vlv_pll_enable_reset(struct drm_crtc *crtc)
 
 		intel_dpio_write(dev_priv, 0x8438, 0x00760018);
 		intel_dpio_write(dev_priv, 0x845c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8400, 0x10080);
-		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
 	}
 }
 
@@ -3840,13 +3833,6 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	intel_disable_plane(dev_priv, plane, pipe);
 	intel_disable_pipe(dev_priv, pipe);
-	intel_disable_pll(dev_priv, pipe);
-
-	intel_crtc->active = false;
-	if (dev_priv->disp_pm_in_progress == true)
-		intel_crtc->disp_suspend_state = true;
-	intel_update_fbc(dev);
-	intel_update_watermarks(dev);
 
 	/*Reset lane for VLV platform*/
 	if (IS_VALLEYVIEW(dev)) {
@@ -3854,10 +3840,15 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 			intel_dpio_write(dev_priv, 0x8200, 0x00000000);
 			intel_dpio_write(dev_priv, 0x8204, 0x00e00060);
 		}
-
-		if (pipe)
-			vlv_init_dpio(dev);
 	}
+
+	intel_disable_pll(dev_priv, pipe);
+
+	intel_crtc->active = false;
+	if (dev_priv->disp_pm_in_progress == true)
+		intel_crtc->disp_suspend_state = true;
+	intel_update_fbc(dev);
+	intel_update_watermarks(dev);
 }
 
 static void i9xx_crtc_dpms(struct drm_crtc *crtc, int mode)
@@ -4455,13 +4446,14 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 
 	if (pipe) {
 		u32 reg_val;
-
 		reg_val = intel_dpio_read(dev_priv, 0x8064);
-		reg_val &= 0xffffff30;
+		reg_val &= 0xffffff00;
+		reg_val |= 0x30;
 		intel_dpio_write(dev_priv, 0x8064, reg_val);
 
 		reg_val = intel_dpio_read(dev_priv, 0x80ac);
-		reg_val &= 0x8cffffff;
+		reg_val &= 0x00ffffff;
+		reg_val |= 0x8c000000;
 		intel_dpio_write(dev_priv, 0x80ac, reg_val);
 
 		reg_val = intel_dpio_read(dev_priv, 0x8064);
@@ -4469,10 +4461,13 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		intel_dpio_write(dev_priv, 0x8064, reg_val);
 
 		reg_val = intel_dpio_read(dev_priv, 0x80ac);
-		reg_val &= 0xb0ffffff;
+		reg_val &= 0x00ffffff;
+		reg_val |= 0xb0000000;
 		intel_dpio_write(dev_priv, 0x80ac, reg_val);
 	}
+
 	intel_dpio_write(dev_priv, 0xc044, 0x0100000f);
+
 	if (pipe) {
 		u32 reg_val;
 		reg_val = intel_dpio_read(dev_priv, 0x8060);
@@ -4485,22 +4480,38 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		intel_dpio_write(dev_priv, 0x8040, reg_val);
 	}
 
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+		intel_dpio_write(dev_priv, 0x8200, 0x10080);
+		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
+
+		intel_dpio_write(dev_priv, 0x8230, 0x00750f00);
+		intel_dpio_write(dev_priv, 0x82AC, 0x00001500);
+		intel_dpio_write(dev_priv, 0x82B8, 0x40400000);
+	} else if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
+		|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		intel_dpio_write(dev_priv, 0x8400, 0x10080);
+		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
+
+		intel_dpio_write(dev_priv, 0x8430, 0x00750f00);
+		intel_dpio_write(dev_priv, 0x84AC, 0x00001500);
+		intel_dpio_write(dev_priv, 0x84B8, 0x40400000);
+	}
+
 	intel_dpio_write(dev_priv, DPIO_FASTCLK_DISABLE, 0x610);
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
-			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
 		if (adjusted_mode->clock == 162000)
 			intel_dpio_write(dev_priv,
 					DPIO_LFP_COEFF(pipe), 0x009f0003);
 		else
 			intel_dpio_write(dev_priv,
 					DPIO_LFP_COEFF(pipe), 0x00d0000f);
-
 	} else
-		intel_dpio_write(dev_priv, DPIO_LFP_COEFF(pipe), 0x009f0003);
+		intel_dpio_write(dev_priv, DPIO_LFP_COEFF(pipe), 0x005f0021);
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
-			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
 		if (!pipe)
 			intel_dpio_write(dev_priv,
 					DPIO_REFSFR(pipe), 0x0df40000);
@@ -4565,7 +4576,7 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 	vlv_pll_enable_reset(crtc);
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
-	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
+		intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 		intel_dp_set_m_n(crtc, mode, adjusted_mode);
 }
 
@@ -5201,28 +5212,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	if (IS_VALLEYVIEW(dev) && intel_pipe_has_type(crtc,
 		INTEL_OUTPUT_HDMI)) {
 		dev_priv->tmds_clock_speed = adjusted_mode->clock;
-	}
-
-/* Currently reducing the wait for DPLL since it adds 2 sec delay for
- * modeset in HDMI dual mode scenarios. There is no artifacts observed.
- * It can speed up the clone/extended mode modeset scenarios.
- * ToDo: Need further investigation and hw team feedbacks.
- */
-	/* Wait for Phy status bits to go low */
-	for_each_encoder_on_crtc(dev, crtc, encoder) {
-		if (encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
-			/* if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0),
-				2000)) */
-			if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 20))
-				DRM_ERROR("DPLL %x failed to lock\n",
-						I915_READ(DPLL(0)));
-		} else if (encoder->type == INTEL_OUTPUT_HDMI) {
-			/* if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0),
-				2000)) */
-			if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 20))
-				DRM_ERROR("DPLL %x failed to lock\n",
-						I915_READ(DPLL(0)));
-		}
 	}
 	return ret;
 }

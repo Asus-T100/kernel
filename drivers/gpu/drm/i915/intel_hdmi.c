@@ -734,6 +734,12 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	I915_WRITE(intel_hdmi->sdvox_reg, temp);
 	POSTING_READ(intel_hdmi->sdvox_reg);
 
+	if (mode == DRM_MODE_DPMS_ON) {
+		if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 40))
+			DRM_ERROR("DPLL %x failed to lock\n",
+					I915_READ(DPLL(0)));
+	}
+
 	/* HW workaround, need to write this twice for issue that may result
 	 * in first write getting masked.
 	 */
