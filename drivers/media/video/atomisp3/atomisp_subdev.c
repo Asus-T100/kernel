@@ -399,8 +399,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			dvs_w = dvs_h = 0;
 		}
 
-		ia_css_video_set_dis_envelope(isp_sd, dvs_w, dvs_h);
-		ia_css_input_set_effective_resolution(isp_sd, crop[pad]->width,
+		ia_css_video_set_dis_envelope(isp, dvs_w, dvs_h);
+		ia_css_input_set_effective_resolution(isp, crop[pad]->width,
 						      crop[pad]->height);
 
 		break;
@@ -518,12 +518,11 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 				     V4L2_SEL_TGT_CROP, 0);
 
 		if (which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-			ia_css_input_set_resolution(isp_sd, ffmt->width,
-						    ffmt->height);
-			ia_css_input_set_binning_factor(isp_sd,
+			ia_css_input_set_resolution(isp, ffmt->width, ffmt->height);
+			ia_css_input_set_binning_factor(isp,
 				atomisp_get_sensor_bin_factor(isp));
-			ia_css_input_set_bayer_order(isp_sd, fc->bayer_order);
-			ia_css_input_set_format(isp_sd, fc->in_sh_fmt);
+			ia_css_input_set_bayer_order(isp, fc->bayer_order);
+			ia_css_input_set_format(isp, fc->in_sh_fmt);
 		}
 
 		break;

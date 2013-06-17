@@ -1440,7 +1440,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto out;
 	}
 
-	ret = ia_css_start(isp_subdev, false);
+	ret = ia_css_start(isp, false);
 	if (ret != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "ia_css_start fails: %d\n", ret);
 		ret = -EINVAL;
@@ -1613,7 +1613,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 	}
 
-	ret = ia_css_stop(isp_subdev, false);
+	ret = ia_css_stop(isp, false);
 	if (ret) {
 		v4l2_err(&atomisp_dev, "stop css failed, ret=%d.\n", ret);
 		return ret;
