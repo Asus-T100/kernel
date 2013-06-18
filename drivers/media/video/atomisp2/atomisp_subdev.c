@@ -357,9 +357,9 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 		/* if subdev type is SOC camera,we do not need to set DVS */
 		if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
-			isp->params.video_dis_en = 0;
+			isp_sd->params.video_dis_en = 0;
 
-		if (isp->params.video_dis_en &&
+		if (isp_sd->params.video_dis_en &&
 		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			/* This resolution contains 20 % of DVS slack
 			 * (of the desired captured image before
@@ -389,7 +389,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		if (which == V4L2_SUBDEV_FORMAT_TRY)
 			break;
 
-		if (isp->params.video_dis_en &&
+		if (isp_sd->params.video_dis_en &&
 		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			dvs_w = rounddown(crop[pad]->width / 5,
 					  ATOM_ISP_STEP_WIDTH);
@@ -399,8 +399,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			dvs_w = dvs_h = 0;
 		}
 
-		atomisp_css_video_set_dis_envelope(isp, dvs_w, dvs_h);
-		atomisp_css_input_set_effective_resolution(isp,
+		atomisp_css_video_set_dis_envelope(isp_sd, dvs_w, dvs_h);
+		atomisp_css_input_set_effective_resolution(isp_sd,
 					crop[pad]->width, crop[pad]->height);
 
 		break;
@@ -416,9 +416,9 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 		if (crop[ATOMISP_SUBDEV_PAD_SINK]->width == r->width
 		    && crop[ATOMISP_SUBDEV_PAD_SINK]->height == r->height)
-			isp->params.yuv_ds_en = false;
+			isp_sd->params.yuv_ds_en = false;
 		else
-			isp->params.yuv_ds_en = true;
+			isp_sd->params.yuv_ds_en = true;
 
 		comp[pad]->width = r->width;
 		comp[pad]->height = r->height;
@@ -523,11 +523,12 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 				     V4L2_SEL_TGT_CROP, 0);
 
 		if (which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-			atomisp_css_input_set_resolution(isp, ffmt);
-			atomisp_css_input_set_binning_factor(isp,
+			atomisp_css_input_set_resolution(isp_sd, ffmt);
+			atomisp_css_input_set_binning_factor(isp_sd,
 				atomisp_get_sensor_bin_factor(isp));
-			atomisp_css_input_set_bayer_order(isp, fc->bayer_order);
-			atomisp_css_input_set_format(isp, fc->in_sh_fmt);
+			atomisp_css_input_set_bayer_order(isp_sd,
+							  fc->bayer_order);
+			atomisp_css_input_set_format(isp_sd, fc->in_sh_fmt);
 		}
 
 		break;
@@ -852,11 +853,12 @@ static const struct v4l2_ctrl_config ctrl_continuous_viewfinder = {
 	.def = 0,
 };
 
-static void atomisp_init_subdev_pipe(struct atomisp_device *isp,
+static void atomisp_init_subdev_pipe(struct atomisp_sub_device *isp_subdev,
 		struct atomisp_video_pipe *pipe, enum v4l2_buf_type buf_type)
 {
 	pipe->type = buf_type;
-	pipe->isp = isp;
+	pipe->isp_subdev = isp_subdev;
+	pipe->isp = isp_subdev->isp;
 	spin_lock_init(&pipe->irq_lock);
 	INIT_LIST_HEAD(&pipe->activeq);
 	INIT_LIST_HEAD(&pipe->activeq_out);
@@ -902,19 +904,19 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	if (ret < 0)
 		return ret;
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
+	atomisp_init_subdev_pipe(isp_subdev,
 			&isp_subdev->video_in,
 			V4L2_BUF_TYPE_VIDEO_OUTPUT);
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
+	atomisp_init_subdev_pipe(isp_subdev,
 			&isp_subdev->video_out_preview,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
+	atomisp_init_subdev_pipe(isp_subdev,
 			&isp_subdev->video_out_vf,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
+	atomisp_init_subdev_pipe(isp_subdev,
 			&isp_subdev->video_out_capture,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 

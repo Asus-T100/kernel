@@ -60,7 +60,7 @@ static void file_work(struct work_struct *work)
 	while (!atomisp_css_isp_has_started())
 		usleep_range(1000, 1500);
 
-	atomisp_css_send_input_frame(isp, buf, isp_sink_fmt.width,
+	atomisp_css_send_input_frame(&isp->isp_subdev, buf, isp_sink_fmt.width,
 					isp_sink_fmt.height);
 	dev_dbg(isp->dev, "<%s: streaming done\n", __func__);
 }

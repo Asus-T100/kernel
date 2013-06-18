@@ -116,6 +116,7 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_MIPI_FRAME_BUFFER_SIZE_2	0x80000
 
 struct atomisp_device;
+struct atomisp_sub_device;
 
 /*
  * These are used to indicate the css stream state, corresponding
@@ -128,9 +129,7 @@ enum atomisp_css_stream_state {
 	CSS_STREAM_STOPPED,
 };
 
-struct atomisp_css_env {
-	struct ia_css_env isp_css_env;
-	struct ia_css_fw isp_css_fw;
+struct atomisp_stream_env {
 	struct ia_css_stream *stream;
 	struct ia_css_stream_config stream_config;
 	struct ia_css_pipe *pipes[IA_CSS_PIPE_ID_NUM];
@@ -139,6 +138,11 @@ struct atomisp_css_env {
 	struct ia_css_pipe_extra_config pipe_extra_configs[IA_CSS_PIPE_ID_NUM];
 	bool update_pipe[IA_CSS_PIPE_ID_NUM];
 	enum atomisp_css_stream_state stream_state;
+};
+
+struct atomisp_css_env {
+	struct ia_css_env isp_css_env;
+	struct ia_css_fw isp_css_fw;
 };
 
 struct atomisp_s3a_buf {
@@ -160,45 +164,45 @@ struct atomisp_css_event {
 	struct ia_css_event event;
 };
 
-void atomisp_css_set_macc_config(struct atomisp_device *isp,
+void atomisp_css_set_macc_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_macc_config *macc_config);
 
-void atomisp_css_set_ecd_config(struct atomisp_device *isp,
+void atomisp_css_set_ecd_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_ecd_config *ecd_config);
 
-void atomisp_css_set_ynr_config(struct atomisp_device *isp,
+void atomisp_css_set_ynr_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_ynr_config *ynr_config);
 
-void atomisp_css_set_fc_config(struct atomisp_device *isp,
+void atomisp_css_set_fc_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_fc_config *fc_config);
 
-void atomisp_css_set_aa_config(struct atomisp_device *isp,
+void atomisp_css_set_aa_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_aa_config *aa_config);
 
-void atomisp_css_set_anr_config(struct atomisp_device *isp,
+void atomisp_css_set_anr_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_anr_config *anr_config);
 
-void atomisp_css_set_xnr_config(struct atomisp_device *isp,
+void atomisp_css_set_xnr_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_xnr_config *xnr_config);
 
-void atomisp_css_set_yuv2rgb_cc_config(struct atomisp_device *isp,
+void atomisp_css_set_yuv2rgb_cc_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_cc_config *yuv2rgb_cc_config);
 
-void atomisp_css_set_rgb2yuv_cc_config(struct atomisp_device *isp,
+void atomisp_css_set_rgb2yuv_cc_config(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_cc_config *rgb2yuv_cc_config);
 
-void atomisp_css_set_xnr_table(struct atomisp_device *isp,
+void atomisp_css_set_xnr_table(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_xnr_table *xnr_table);
 
-void atomisp_css_set_r_gamma_table(struct atomisp_device *isp,
+void atomisp_css_set_r_gamma_table(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_rgb_gamma_table *r_gamma_table);
 
-void atomisp_css_set_g_gamma_table(struct atomisp_device *isp,
+void atomisp_css_set_g_gamma_table(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_rgb_gamma_table *g_gamma_table);
 
-void atomisp_css_set_b_gamma_table(struct atomisp_device *isp,
+void atomisp_css_set_b_gamma_table(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_rgb_gamma_table *b_gamma_table);
 
-void atomisp_css_set_anr_thres(struct atomisp_device *isp,
+void atomisp_css_set_anr_thres(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_css_anr_thres *anr_thres);
 #endif

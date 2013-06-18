@@ -66,6 +66,8 @@ struct atomisp_in_fmt_conv {
 	enum atomisp_css_bayer_order bayer_order;
 };
 
+struct atomisp_sub_device;
+
 struct atomisp_video_pipe {
 	struct video_device vdev;
 	enum v4l2_buf_type type;
@@ -85,12 +87,152 @@ struct atomisp_video_pipe {
 	struct atomisp_device *isp;
 	struct v4l2_pix_format pix;
 	uint32_t sh_fmt;
+
+	struct atomisp_sub_device *isp_subdev;
 };
 
 struct atomisp_pad_format {
 	struct v4l2_mbus_framefmt fmt;
 	struct v4l2_rect crop;
 	struct v4l2_rect compose;
+};
+
+/* Internal states for flash process */
+enum atomisp_flash_state {
+	ATOMISP_FLASH_IDLE,
+	ATOMISP_FLASH_REQUESTED,
+	ATOMISP_FLASH_ONGOING,
+	ATOMISP_FLASH_DONE
+};
+
+struct atomisp_css_params {
+	int online_process;
+	int yuv_ds_en;
+	unsigned int color_effect;
+	bool gdc_cac_en;
+	bool macc_en;
+	bool bad_pixel_en;
+	bool video_dis_en;
+	bool sc_en;
+	bool fpn_en;
+	bool xnr_en;
+	bool low_light;
+	int false_color;
+	unsigned int histogram_elenum;
+
+	/* Current grid info */
+	struct atomisp_css_grid_info curr_grid_info;
+
+	int s3a_output_bytes;
+	bool s3a_buf_data_valid;
+
+	bool dis_proj_data_valid;
+
+	/* current configurations */
+	/* Dead Pixel config */
+	struct atomisp_css_dp_config   dp_config;
+	/* White Balance config */
+	struct atomisp_css_wb_config   wb_config;
+	/* Color Correction config */
+	struct atomisp_css_cc_config   cc_config;
+	/* Noise Reduction config */
+	struct atomisp_css_nr_config   nr_config;
+	/* Edge Enhancement config */
+	struct atomisp_css_ee_config   ee_config;
+	/* Objective Black config */
+	struct atomisp_css_ob_config   ob_config;
+	/* Demosaic config */
+	struct atomisp_css_de_config   de_config;
+	struct atomisp_css_ce_config   ce_config;
+	/* Gamma Correction config */
+	struct atomisp_css_gc_config   gc_config;
+	/* Temporal Noise Reduction */
+	struct atomisp_css_tnr_config  tnr_config;
+	/* 3A Statistics config */
+	struct atomisp_css_3a_config   s3a_config;
+	struct atomisp_css_gamma_table gamma_table;
+	struct atomisp_css_ctc_table   ctc_table;
+	struct atomisp_css_macc_table  macc_table;
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_css_macc_config	macc_config;
+	/* Eigen Color Demosaicing */
+	struct atomisp_css_ecd_config	ecd_config;
+	/* Y(Luma) Noise Reduction */
+	struct atomisp_css_ynr_config	ynr_config;
+	/* Fringe Control */
+	struct atomisp_css_fc_config	fc_config;
+	/* Anti-Aliasing */
+	struct atomisp_css_aa_config	aa_config;
+	/* Advanced Noise Reduction */
+	struct atomisp_css_anr_config	anr_config;
+	/* eXtra Noise Reduction */
+	struct atomisp_css_xnr_config	xnr_config;
+	/* Color Correction config */
+	struct atomisp_css_cc_config	yuv2rgb_cc_config;
+	/* Color Correction config */
+	struct atomisp_css_cc_config	rgb2yuv_cc_config;
+	struct atomisp_css_xnr_table   xnr_table;
+	struct atomisp_css_rgb_gamma_table	r_gamma_table;
+	struct atomisp_css_rgb_gamma_table	g_gamma_table;
+	struct atomisp_css_rgb_gamma_table	b_gamma_table;
+	struct atomisp_css_anr_thres	anr_thres;
+
+	struct ia_css_dz_config   dz_config;  /**< Digital Zoom */
+	struct ia_css_capture_config   capture_config;
+	struct ia_css_dvs_coefficients dvs_coefs;
+	struct ia_css_vector  motion_vector;
+
+	struct atomisp_css_isp_config config;
+
+	/* Intermediate buffers used to communicate data between
+	   CSS and user space. These are needed to perform the
+	   copy_to_user. */
+	struct ia_css_3a_statistics *s3a_user_stat;
+	struct ia_css_dvs_coefficients *dvs_coeff;
+	struct ia_css_dvs_statistics *dvs_stat;
+	int  dvs_hor_coef_bytes;
+	int  dvs_ver_coef_bytes;
+	int  dvs_ver_proj_bytes;
+	int  dvs_hor_proj_bytes;
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
+	struct sh_css_3a_output *s3a_output_buf;
+	/* DIS Coefficients */
+	short *dis_hor_coef_buf;
+	int    dis_hor_coef_bytes;
+	short *dis_ver_coef_buf;
+	int    dis_ver_coef_bytes;
+	/* DIS projections */
+	int *dis_ver_proj_buf;
+	int  dis_ver_proj_bytes;
+	int *dis_hor_proj_buf;
+	int  dis_hor_proj_bytes;
+
+	/* default configurations */
+	struct atomisp_css_dp_config   *default_dp_config;
+	struct atomisp_css_wb_config   *default_wb_config;
+	struct atomisp_css_cc_config   *default_cc_config;
+	struct atomisp_css_nr_config   *default_nr_config;
+	struct atomisp_css_ee_config   *default_ee_config;
+	struct atomisp_css_ob_config   *default_ob_config;
+	struct atomisp_css_de_config   *default_de_config;
+	struct atomisp_css_ce_config   *default_ce_config;
+	struct atomisp_css_gc_config   *default_gc_config;
+	struct atomisp_css_tnr_config  *default_tnr_config;
+	struct atomisp_css_3a_config   *default_3a_config;
+	struct atomisp_css_macc_table  *default_macc_table;
+	struct atomisp_css_ctc_table   *default_ctc_table;
+	struct atomisp_css_gamma_table *default_gamma_table;
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+
+	/* Flash */
+	int num_flash_frames;
+	enum atomisp_flash_state flash_state;
+	enum atomisp_frame_status last_frame_status;
+	/* continuous capture */
+	struct atomisp_cont_capture_conf offline_parm;
+	/* Flag to check if driver needs to update params to css */
+	bool css_update_params_needed;
 };
 
 struct atomisp_sub_device {
@@ -115,6 +257,12 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl *continuous_mode;
 	struct v4l2_ctrl *continuous_raw_buffer_size;
 	struct v4l2_ctrl *continuous_viewfinder;
+
+	struct atomisp_css_params params;
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_stream_env stream_env;
+#endif
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];
