@@ -108,11 +108,13 @@ bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
 				      unsigned int source_pad)
 {
 	struct v4l2_mbus_framefmt *sink, *src;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	sink = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	sink = atomisp_subdev_get_ffmt(&isp_subdev->subdev, NULL,
 				       V4L2_SUBDEV_FORMAT_ACTIVE,
 				       ATOMISP_SUBDEV_PAD_SINK);
-	src = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	src = atomisp_subdev_get_ffmt(&isp_subdev->subdev, NULL,
 				      V4L2_SUBDEV_FORMAT_ACTIVE, source_pad);
 
 	return atomisp_is_mbuscode_raw(sink->code)
@@ -358,7 +360,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			isp_sd->params.video_dis_en = 0;
 
 		if (isp_sd->params.video_dis_en &&
-		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+		    isp_sd->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			/* This resolution contains 20 % of DVS slack
 			 * (of the desired captured image before
 			 * scaling, or 1 / 6 of what we get from the
@@ -388,7 +390,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			break;
 
 		if (isp_sd->params.video_dis_en &&
-		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+		    isp_sd->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			dvs_w = rounddown(crop[pad]->width / 5,
 					  ATOM_ISP_STEP_WIDTH);
 			dvs_h = rounddown(crop[pad]->height / 5,
@@ -678,7 +680,9 @@ static const struct media_entity_operations isp_subdev_media_ops = {
 
 static int __atomisp_update_run_mode(struct atomisp_device *isp)
 {
-	struct v4l2_ctrl *ctrl = isp->isp_subdev.run_mode;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	struct v4l2_ctrl *ctrl = isp_subdev->run_mode;
 	struct v4l2_ctrl *c;
 	struct v4l2_streamparm p = {0};
 	int modes[] = { CI_MODE_NONE,
@@ -689,7 +693,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 	s32 mode;
 
 	if (ctrl->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->isp_subdev.continuous_mode->val)
+	    isp_subdev->continuous_mode->val)
 		mode = ATOMISP_RUN_MODE_PREVIEW;
 	else
 		mode = ctrl->val;
@@ -711,10 +715,12 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 int atomisp_update_run_mode(struct atomisp_device *isp)
 {
 	int rval;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	mutex_lock(isp->isp_subdev.ctrl_handler.lock);
+	mutex_lock(isp_subdev->ctrl_handler.lock);
 	rval = __atomisp_update_run_mode(isp);
-	mutex_unlock(isp->isp_subdev.ctrl_handler.lock);
+	mutex_unlock(isp_subdev->ctrl_handler.lock);
 
 	return rval;
 }
@@ -1018,20 +1024,29 @@ error:
  */
 int atomisp_subdev_init(struct atomisp_device *isp)
 {
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
-	int ret;
-
-	spin_lock_init(&isp_subdev->lock);
-	isp_subdev->isp = isp;
-	isp_subdev_init_params(isp_subdev);
-	ret = isp_subdev_init_entities(isp_subdev);
-	if (ret < 0)
-		atomisp_subdev_cleanup(isp);
-
+	struct atomisp_sub_device *isp_subdev;
+	int ret = 0, i;
+	/*
+	 * CSS2.0 supports multiple streams
+	 */
+	isp->num_of_streams = IS_ISP2400 ? 2 : 1;
+	isp->isp_subdev = kzalloc(sizeof(struct atomisp_sub_device) *
+				  isp->num_of_streams, GFP_KERNEL);
+	if (!isp->isp_subdev)
+		return -ENOMEM;
+	for (i = 0; i < isp->num_of_streams; i++) {
+		isp_subdev = &isp->isp_subdev[i];
+		spin_lock_init(&isp_subdev->lock);
+		isp_subdev->isp = isp;
+		isp_subdev_init_params(isp_subdev);
+		ret = isp_subdev_init_entities(isp_subdev);
+		if (ret < 0)
+			atomisp_subdev_cleanup(isp);
+	}
 	return ret;
 }
 
 void atomisp_subdev_cleanup(struct atomisp_device *isp)
 {
-
+	kfree(isp->isp_subdev);
 }

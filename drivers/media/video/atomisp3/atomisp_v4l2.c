@@ -646,7 +646,8 @@ static void atomisp_unregister_entities(struct atomisp_device *isp)
 {
 	unsigned int i;
 
-	atomisp_subdev_unregister_entities(&isp->isp_subdev);
+	for (i = 0; i < isp->num_of_streams; i++)
+		atomisp_subdev_unregister_entities(&isp->isp_subdev[i]);
 	atomisp_tpg_unregister_entities(&isp->tpg);
 	atomisp_file_input_unregister_entities(&isp->file_dev);
 	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++)
@@ -718,12 +719,15 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		goto tpg_register_failed;
 	}
 
-	ret =
-	atomisp_subdev_register_entities(&isp->isp_subdev, &isp->v4l2_dev);
-	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
-			"atomisp_subdev_register_entities fail\n");
-		goto subdev_register_failed;
+	for (i = 0; i < isp->num_of_streams; i++) {
+		ret =
+		atomisp_subdev_register_entities(&isp->isp_subdev[i],
+						 &isp->v4l2_dev);
+		if (ret < 0) {
+			v4l2_err(&atomisp_dev,
+				"atomisp_subdev_register_entities fail\n");
+			goto subdev_register_failed;
+		}
 	}
 
 	for (i = 0; i < isp->input_cnt; i++) {
@@ -775,8 +779,11 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	return ret;
 
 link_failed:
-	atomisp_subdev_unregister_entities(&isp->isp_subdev);
+	for (i = 0; i < isp->num_of_streams; i++)
+		atomisp_subdev_unregister_entities(&isp->isp_subdev[i]);
 subdev_register_failed:
+	while (i--)
+		atomisp_subdev_unregister_entities(&isp->isp_subdev[i]);
 	atomisp_tpg_unregister_entities(&isp->tpg);
 tpg_register_failed:
 	atomisp_file_input_unregister_entities(&isp->file_dev);
@@ -793,7 +800,7 @@ v4l2_device_failed:
 static int atomisp_initialize_modules(struct atomisp_device *isp)
 {
 	int ret;
-	unsigned int i;
+	unsigned int i, j;
 
 	ret = atomisp_mipi_csi2_init(isp);
 	if (ret < 0) {
@@ -822,14 +829,16 @@ static int atomisp_initialize_modules(struct atomisp_device *isp)
 
 	/* connet submoduels */
 	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++) {
-		ret = media_entity_create_link(
+		for (j = 0; j < isp->num_of_streams; j++) {
+			ret = media_entity_create_link(
 				&isp->csi2_port[i].subdev.entity,
 				CSI2_PAD_SOURCE,
-				&isp->isp_subdev.subdev.entity,
+				&isp->isp_subdev[j].subdev.entity,
 				ATOMISP_SUBDEV_PAD_SINK,
 				0);
-		if (ret < 0)
-			goto error_link;
+			if (ret < 0)
+				goto error_link;
+		}
 	}
 	return 0;
 

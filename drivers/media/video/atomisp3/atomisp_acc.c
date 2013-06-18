@@ -312,7 +312,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	const struct ia_css_stream_config *s_config =
 			&isp->css2_basis.stream_config;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 	int ret = 0;
 
 	dev_dbg(isp->dev, ">%s\n", __func__);

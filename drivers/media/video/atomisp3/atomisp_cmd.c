@@ -278,7 +278,8 @@ static int write_target_freq_to_hw(struct atomisp_device *isp, int new_freq)
 }
 int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 {
-	struct atomisp_sub_device *asd = &isp->isp_subdev;
+	/* FIXME: currently only use subdev[0] in single stream mode */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 	unsigned int new_freq;
 	struct atomisp_freq_scaling_rule curr_rules;
 	int i, ret;
@@ -303,16 +304,16 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 	if (fps == 0)
 		return -EINVAL;
 
-	curr_rules.width = asd->fmt[asd->capture_pad].fmt.width;
-	curr_rules.height = asd->fmt[asd->capture_pad].fmt.height;
+	curr_rules.width = isp_subdev->fmt[isp_subdev->capture_pad].fmt.width;
+	curr_rules.height = isp_subdev->fmt[isp_subdev->capture_pad].fmt.height;
 	curr_rules.fps = fps;
-	curr_rules.run_mode = isp->isp_subdev.run_mode->val;
+	curr_rules.run_mode = isp_subdev->run_mode->val;
 	/*
 	 * For continuous mode, we need to make the capture setting applied
 	 * since preview mode, because there is no chance to do this when
 	 * starting image capture.
 	 */
-	if (isp->isp_subdev.continuous_mode->val)
+	if (isp_subdev->continuous_mode->val)
 		curr_rules.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE;
 
 	/* search for the target frequency by looping freq rules*/
@@ -426,21 +427,25 @@ void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev)
 static void atomisp_sof_event(struct atomisp_device *isp)
 {
 	struct v4l2_event event = {0};
+	/* FIXME: currently only use subdev[0] in single stream mode */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	event.type = V4L2_EVENT_FRAME_SYNC;
 	event.u.frame_sync.frame_sequence = atomic_read(&isp->sof_count);
 
-	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
+	v4l2_event_queue(isp_subdev->subdev.devnode, &event);
 }
 
 static void atomisp_3a_stats_ready_event(struct atomisp_device *isp)
 {
 	struct v4l2_event event = {0};
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	event.type = V4L2_EVENT_ATOMISP_3A_STATS_READY;
 	event.u.frame_sync.frame_sequence = atomic_read(&isp->sequence);
 
-	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
+	v4l2_event_queue(isp_subdev->subdev.devnode, &event);
 }
 
 static void print_csi_rx_errors(struct atomisp_device *isp)
@@ -623,18 +628,24 @@ void atomisp_set_term_en_count(struct atomisp_device *isp)
 
 void atomisp_clear_css_buffer_counters(struct atomisp_device *isp)
 {
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+
 	memset(isp->s3a_bufs_in_css, 0, sizeof(isp->s3a_bufs_in_css));
 	isp->dis_bufs_in_css = 0;
-	isp->isp_subdev.video_out_capture.buffers_in_css = 0;
-	isp->isp_subdev.video_out_vf.buffers_in_css = 0;
-	isp->isp_subdev.video_out_preview.buffers_in_css = 0;
+	isp_subdev->video_out_capture.buffers_in_css = 0;
+	isp_subdev->video_out_vf.buffers_in_css = 0;
+	isp_subdev->video_out_preview.buffers_in_css = 0;
 }
 
 bool atomisp_buffers_queued(struct atomisp_device *isp)
 {
-	return isp->isp_subdev.video_out_capture.buffers_in_css ||
-		isp->isp_subdev.video_out_vf.buffers_in_css ||
-		isp->isp_subdev.video_out_preview.buffers_in_css ?
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+
+	return isp_subdev->video_out_capture.buffers_in_css ||
+		isp_subdev->video_out_vf.buffers_in_css ||
+		isp_subdev->video_out_preview.buffers_in_css ?
 		    true : false;
 }
 
@@ -720,9 +731,12 @@ static void atomisp_flush_video_pipe(struct atomisp_device *isp,
 /* Returns queued buffers back to video-core */
 void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 {
-	atomisp_flush_video_pipe(isp, &isp->isp_subdev.video_out_capture);
-	atomisp_flush_video_pipe(isp, &isp->isp_subdev.video_out_vf);
-	atomisp_flush_video_pipe(isp, &isp->isp_subdev.video_out_preview);
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+
+	atomisp_flush_video_pipe(isp, &isp_subdev->video_out_capture);
+	atomisp_flush_video_pipe(isp, &isp_subdev->video_out_vf);
+	atomisp_flush_video_pipe(isp, &isp_subdev->video_out_preview);
 }
 
 
@@ -731,25 +745,28 @@ static struct atomisp_video_pipe *__atomisp_get_pipe(struct atomisp_device *isp,
 		enum ia_css_pipe_id css_pipe_id,
 		enum ia_css_buffer_type buf_type)
 {
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+
 	/* video is same in online as in continuouscapture mode */
-	if (!isp->isp_subdev.enable_vfpp->val) {
-		return &isp->isp_subdev.video_out_capture;
-	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+	if (!isp_subdev->enable_vfpp->val) {
+		return &isp_subdev->video_out_capture;
+	} else if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		if (buf_type == IA_CSS_BUFFER_TYPE_OUTPUT_FRAME)
-			return &isp->isp_subdev.video_out_capture;
-		return &isp->isp_subdev.video_out_preview;
+			return &isp_subdev->video_out_capture;
+		return &isp_subdev->video_out_preview;
 	} else if (buf_type == IA_CSS_BUFFER_TYPE_OUTPUT_FRAME) {
 		if (css_pipe_id == IA_CSS_PIPE_ID_PREVIEW)
-			return &isp->isp_subdev.video_out_preview;
-		return &isp->isp_subdev.video_out_capture;
+			return &isp_subdev->video_out_preview;
+		return &isp_subdev->video_out_capture;
 	/* statistic buffers are needed only in css capture & preview pipes */
 	} else if (buf_type == IA_CSS_BUFFER_TYPE_3A_STATISTICS ||
 		   buf_type == IA_CSS_BUFFER_TYPE_DIS_STATISTICS) {
 		if (css_pipe_id == IA_CSS_PIPE_ID_PREVIEW)
-			return &isp->isp_subdev.video_out_preview;
-		return &isp->isp_subdev.video_out_capture;
+			return &isp_subdev->video_out_preview;
+		return &isp_subdev->video_out_capture;
 	}
-	return &isp->isp_subdev.video_out_vf;
+	return &isp_subdev->video_out_vf;
 }
 
 static void atomisp_buf_done(struct atomisp_device *isp, int error,
@@ -764,7 +781,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	unsigned long irqflags;
 	struct ia_css_frame *frame = NULL;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (buf_type != IA_CSS_BUFFER_TYPE_3A_STATISTICS &&
 	    buf_type != IA_CSS_BUFFER_TYPE_DIS_STATISTICS &&
@@ -959,6 +976,8 @@ void atomisp_wdt_work(struct work_struct *work)
 						  wdt_work);
 	char debug_context[64];
 	int ret = 0;
+	/* FIXME: currently only use subdev[0] in single stream mode */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 
 	dev_err(isp->dev, "timeout %d of %d\n",
@@ -987,14 +1006,14 @@ void atomisp_wdt_work(struct work_struct *work)
 		sh_css_dump_sp_sw_debug_info();
 		sh_css_dump_debug_info(debug_context);
 		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
-			isp->isp_subdev.video_out_capture.vdev.name,
-			isp->isp_subdev.video_out_capture.buffers_in_css);
+			isp_subdev->video_out_capture.vdev.name,
+			isp_subdev->video_out_capture.buffers_in_css);
 		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
-			isp->isp_subdev.video_out_vf.vdev.name,
-			isp->isp_subdev.video_out_vf.buffers_in_css);
+			isp_subdev->video_out_vf.vdev.name,
+			isp_subdev->video_out_vf.buffers_in_css);
 		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
-			isp->isp_subdev.video_out_preview.vdev.name,
-			isp->isp_subdev.video_out_preview.buffers_in_css);
+			isp_subdev->video_out_preview.vdev.name,
+			isp_subdev->video_out_preview.buffers_in_css);
 		dev_err(isp->dev, "%s, s3a buffers in css preview pipe: %d\n",
 			__func__,
 			isp->s3a_bufs_in_css[IA_CSS_PIPE_ID_PREVIEW]);
@@ -1074,8 +1093,8 @@ void atomisp_wdt_work(struct work_struct *work)
 			dev_warn(isp->dev,
 				 "can't start streaming on sensor!\n");
 
-		if (isp->isp_subdev.continuous_mode->val &&
-		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
+		if (isp_subdev->continuous_mode->val &&
+		    isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
 		    isp->delayed_init == ATOMISP_DELAYED_INIT_NOT_QUEUED) {
 			INIT_COMPLETION(isp->init_done);
 			isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
@@ -1103,7 +1122,7 @@ void atomisp_wdt(unsigned long isp_addr)
 void atomisp_setup_flash(struct atomisp_device *isp)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (isp_subdev->params.flash_state != ATOMISP_FLASH_REQUESTED &&
 	    isp_subdev->params.flash_state != ATOMISP_FLASH_DONE)
@@ -1131,7 +1150,7 @@ void atomisp_ISP_parameters_clean_up(struct atomisp_device *isp,
 				     struct ia_css_isp_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config->wb_config) {
 		memset(isp_subdev->params.config.wb_config, 0 ,
@@ -1302,7 +1321,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	bool css_pipe_done = false;
 	bool reset_wdt_timer = false;
 	/* FIXME: CSS2.0 will tell which stream has the buffer */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
 
 	dev_dbg(isp->dev, ">%s\n", __func__);
@@ -1600,7 +1619,7 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
 	struct ia_css_isp_config isp_config;
 	enum ia_css_capture_mode capture_mode;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!isp->css2_basis.stream) {
 		v4l2_err(&atomisp_dev,
@@ -1632,7 +1651,7 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
 int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		*value = isp_subdev->params.gdc_cac_en;
@@ -1655,7 +1674,7 @@ int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		*value = isp_subdev->params.low_light;
@@ -1674,7 +1693,7 @@ int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value)
 int atomisp_xnr(struct atomisp_device *isp, int flag, int *xnr_enable)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!xnr_enable)
 		return 0;
@@ -1699,7 +1718,7 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
 	       struct atomisp_nr_config *arg)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (arg == NULL)
 		return -EINVAL;
@@ -1746,7 +1765,7 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 		struct atomisp_tnr_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -1795,7 +1814,7 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 			struct atomisp_ob_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -1841,7 +1860,7 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
 	       struct atomisp_ee_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -1887,7 +1906,7 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 		  struct atomisp_gamma_table *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -1932,7 +1951,7 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 		struct atomisp_ctc_table *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -1977,7 +1996,7 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 	struct atomisp_gc_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (sizeof(*config) != sizeof(*isp_subdev->params.config.gc_config)) {
 		v4l2_err(&atomisp_dev,
@@ -2031,7 +2050,7 @@ void atomisp_free_internal_buffers(struct atomisp_device *isp)
 void atomisp_free_3a_dvs_buffers(struct atomisp_device *isp)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	struct atomisp_s3a_buf *s3a_buf, *_s3a_buf;
 	struct atomisp_dvs_buf *dvs_buf, *_dvs_buf;
@@ -2069,7 +2088,7 @@ void atomisp_free_3a_dvs_buffers(struct atomisp_device *isp)
 static void atomisp_update_grid_info(struct atomisp_device *isp)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	int err;
 	struct ia_css_pipe_info p_info;
@@ -2170,7 +2189,7 @@ static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 				    struct atomisp_grid_info *info)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 #ifndef ATOMISP_CSS2
 	info->isp_in_width          =
@@ -2223,7 +2242,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 	int ret;
 	int i;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		struct ia_css_morph_table tab;
@@ -2320,7 +2339,7 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	struct ia_css_macc_table tmp_macc_table;
 	struct ia_css_isp_config isp_config;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -2373,7 +2392,7 @@ int atomisp_set_dis_vector(struct atomisp_device *isp,
 			   struct atomisp_dis_vector *vector)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!isp_subdev->params.config.motion_vector)
 		isp_subdev->params.config.motion_vector =
@@ -2398,7 +2417,7 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	unsigned long flags;
 	int error;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (stats->vertical_projections   == NULL ||
 	    stats->horizontal_projections == NULL ||
@@ -2445,7 +2464,7 @@ int atomisp_set_dis_coefs(struct atomisp_device *isp,
 {
 	int error;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (coefs->horizontal_coefficients == NULL ||
 	    coefs->vertical_coefficients   == NULL ||
@@ -2477,7 +2496,7 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 {
 	unsigned long ret;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag != 0)
 		return -EINVAL;
@@ -2514,7 +2533,7 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 					struct atomisp_parameters *arg)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	/* TODO: add cnr_config and ctc_config when they're ready */
 	if (arg->wb_config) {
@@ -2895,7 +2914,7 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 	}
 
 	if (isp->css2_basis.stream
-		&& isp->isp_subdev.run_mode->val
+		&& isp_subdev->run_mode->val
 			== ATOMISP_RUN_MODE_STILL_CAPTURE) {
 		ia_css_stream_set_isp_config(isp->css2_basis.stream,
 					     &isp_subdev->params.config);
@@ -2915,7 +2934,7 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 	struct ia_css_shading_table *shading_table;
 	struct ia_css_shading_table *old_shading_table;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!user_st)
 		return 0;
@@ -2977,7 +2996,7 @@ static int __atomisp_set_morph_table(struct atomisp_device *isp,
 	struct ia_css_morph_table *morph_table;
 	struct ia_css_morph_table *old_morph_table;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!user_morph_table)
 		return 0;
@@ -3026,7 +3045,7 @@ int atomisp_set_parameters(struct atomisp_device *isp,
 {
 	int ret;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	ret = __atomisp_set_general_isp_parameters(isp, arg);
 	if (ret)
@@ -3053,7 +3072,7 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 		  struct atomisp_parm *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	/* Read parameter for 3A binary info */
 	if (flag == 0) {
@@ -3158,7 +3177,7 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	int ret = 0;
 	struct v4l2_control control;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		*effect = isp_subdev->params.color_effect;
@@ -3248,7 +3267,7 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 int atomisp_bad_pixel(struct atomisp_device *isp, int flag, __s32 *value)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		*value = isp_subdev->params.bad_pixel_en;
@@ -3266,7 +3285,7 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 			    struct atomisp_dp_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -3312,7 +3331,7 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 int atomisp_video_stable(struct atomisp_device *isp, int flag, __s32 * value)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0)
 		*value = isp_subdev->params.video_dis_en;
@@ -3328,7 +3347,7 @@ int atomisp_video_stable(struct atomisp_device *isp, int flag, __s32 * value)
 int atomisp_fixed_pattern(struct atomisp_device *isp, int flag, __s32 * value)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		*value = isp_subdev->params.fpn_en;
@@ -3457,7 +3476,7 @@ int atomisp_fixed_pattern_table(struct atomisp_device *isp,
 int atomisp_false_color(struct atomisp_device *isp, int flag, __s32 *value)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	/* Get nr config from current setup */
 	if (flag == 0) {
@@ -3486,7 +3505,7 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 			      struct atomisp_de_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -3532,7 +3551,7 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 	struct atomisp_wb_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (config == NULL)
 		return -EINVAL;
@@ -3575,7 +3594,7 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 			    struct atomisp_3a_config *config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s %d\n", __func__, flag);
 	if (config == NULL)
@@ -3624,7 +3643,7 @@ int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 				       __s32 *value)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		*value = isp_subdev->params.sc_en;
@@ -3651,7 +3670,7 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 	unsigned int max_zoom =
 		IS_ISP2400 ? MRFLD_MAX_ZOOM_FACTOR : MFLD_MAX_ZOOM_FACTOR;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (flag == 0) {
 		struct ia_css_dz_config dz_config;  /**< Digital Zoom */
@@ -3884,21 +3903,26 @@ static inline void atomisp_set_sensor_mipi_to_isp(struct atomisp_device *isp,
 
 static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 {
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+
 	dev_dbg(isp->dev, "continuous mode %d, raw buffers %d, stop preview %d\n",
-		enable, isp->isp_subdev.continuous_raw_buffer_size->val,
-		!isp->isp_subdev.continuous_viewfinder->val);
+		enable, isp_subdev->continuous_raw_buffer_size->val,
+		!isp_subdev->continuous_viewfinder->val);
 	ia_css_capture_set_mode(isp, IA_CSS_CAPTURE_MODE_PRIMARY);
 	ia_css_capture_enable_online(isp, !enable);
 	ia_css_preview_enable_online(isp, !enable);
 	ia_css_enable_continuous(isp, enable);
 	sh_css_enable_cont_capt(enable,
-				!isp->isp_subdev.continuous_viewfinder->val);
+				!isp_subdev->continuous_viewfinder->val);
 	/* TODO: remove this if FW limitation is removed*/
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2 &&
-		isp->isp_subdev.continuous_raw_buffer_size->val > NUM_CONTINUOUS_FRAMES)
-		isp->isp_subdev.continuous_raw_buffer_size->val = NUM_CONTINUOUS_FRAMES;
+		isp_subdev->continuous_raw_buffer_size->val >
+		NUM_CONTINUOUS_FRAMES)
+		isp_subdev->continuous_raw_buffer_size->val =
+		    NUM_CONTINUOUS_FRAMES;
 	if (ia_css_stream_set_buffer_depth(isp->css2_basis.stream,
-			isp->isp_subdev.continuous_raw_buffer_size->val)
+			isp_subdev->continuous_raw_buffer_size->val)
 		!= IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "css_continuous_set_num_raw_frames failed\n");
 		return -EINVAL;
@@ -3931,7 +3955,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 {
 	struct camera_mipi_info *mipi_info;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd = &isp->isp_subdev;
+	struct atomisp_sub_device *asd = &isp->isp_subdev[0];
 	const struct atomisp_format_bridge *format;
 	struct v4l2_rect *isp_sink_crop;
 	enum ia_css_err (*configure_output)(struct atomisp_device *isp,
@@ -3946,10 +3970,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		configure_pp_input_nop;
 	int ret;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	isp_sink_crop = atomisp_subdev_get_rect(
-		&isp->isp_subdev.subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
+		&isp_subdev->subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
 		ATOMISP_SUBDEV_PAD_SINK, V4L2_SEL_TGT_CROP);
 
 	format = atomisp_get_format_bridge(pixelformat);
@@ -3976,8 +4000,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	 * Configure viewfinder also if enable_vfpp is disabled: the
 	 * CSS still requires viewfinder configuration.
 	 */
-	if (isp->isp_subdev.fmt_auto->val
-	    || !isp->isp_subdev.enable_vfpp->val) {
+	if (isp_subdev->fmt_auto->val
+	    || !isp_subdev->enable_vfpp->val) {
 		struct v4l2_rect vf_size = {0};
 		struct v4l2_mbus_framefmt vf_ffmt = {0};
 
@@ -4001,21 +4025,21 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
 
-		isp->isp_subdev.video_out_vf.sh_fmt = IA_CSS_FRAME_FORMAT_YUV420;
+		isp_subdev->video_out_vf.sh_fmt = IA_CSS_FRAME_FORMAT_YUV420;
 
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
-		    || !isp->isp_subdev.enable_vfpp->val)
+		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || !isp_subdev->enable_vfpp->val)
 			ia_css_video_configure_viewfinder(isp,
 				vf_size.width, vf_size.height,
-				isp->isp_subdev.video_out_vf.sh_fmt);
+				isp_subdev->video_out_vf.sh_fmt);
 		else if (source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW)
 			ia_css_capture_configure_viewfinder(isp,
 				vf_size.width, vf_size.height,
-				isp->isp_subdev.video_out_vf.sh_fmt);
+				isp_subdev->video_out_vf.sh_fmt);
 	}
 
-	if (isp->isp_subdev.continuous_mode->val) {
-		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+	if (isp_subdev->continuous_mode->val) {
+		if (isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			ret = __enable_continuous_mode(isp, true);
 			/*
 			 * Enable only if resolution is equal or above 5M,
@@ -4036,11 +4060,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		isp->inputs[isp->input_curr].type != FILE_INPUT)
 		ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
 
-	ia_css_disable_vf_pp(isp, !isp->isp_subdev.enable_vfpp->val);
+	ia_css_disable_vf_pp(isp, !isp_subdev->enable_vfpp->val);
 
 	/* video same in continuouscapture and online modes */
-	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
-	    || !isp->isp_subdev.enable_vfpp->val) {
+	if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
+	    || !isp_subdev->enable_vfpp->val) {
 		configure_output = ia_css_video_configure_output;
 		get_frame_info = ia_css_video_get_output_frame_info;
 	} else if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
@@ -4055,7 +4079,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			ia_css_capture_set_mode(isp, IA_CSS_CAPTURE_MODE_PRIMARY);
 		}
 
-		if (!isp->isp_subdev.continuous_mode->val)
+		if (!isp_subdev->continuous_mode->val)
 			ia_css_capture_enable_online(isp,
 					isp_subdev->params.online_process);
 
@@ -4064,16 +4088,16 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		configure_pp_input = ia_css_capture_configure_pp_input;
 
 		if (!isp_subdev->params.online_process &&
-		    !isp->isp_subdev.continuous_mode->val)
+		    !isp_subdev->continuous_mode->val)
 			if (ia_css_capture_get_output_raw_frame_info(isp,
 						raw_output_info))
 				return -EINVAL;
-		if (!isp->isp_subdev.continuous_mode->val &&
-		    isp->isp_subdev.run_mode->val
+		if (!isp_subdev->continuous_mode->val &&
+		    isp_subdev->run_mode->val
 		    != ATOMISP_RUN_MODE_STILL_CAPTURE) {
 			dev_err(isp->dev,
 				    "Need to set the running mode first\n");
-			isp->isp_subdev.run_mode->val =
+			isp_subdev->run_mode->val =
 				ATOMISP_RUN_MODE_STILL_CAPTURE;
 		}
 	}
@@ -4084,7 +4108,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			width, height, format->sh_fmt);
 		return -EINVAL;
 	}
-	if (isp->isp_subdev.continuous_mode->val) {
+	if (isp_subdev->continuous_mode->val) {
 		configure_pp_input(isp, 0, 0);
 	} else {
 		ret = configure_pp_input(isp, isp_sink_crop->width,
@@ -4107,7 +4131,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	ia_css_frame_free(isp->raw_output_frame);
 	isp->raw_output_frame = NULL;
 
-	if (!isp->isp_subdev.continuous_mode->val &&
+	if (!isp_subdev->continuous_mode->val &&
 		!isp_subdev->params.online_process &&
 		!isp->sw_contex.file_input &&
 	    ia_css_frame_allocate_from_info(&isp->raw_output_frame,
@@ -4123,14 +4147,14 @@ static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 			    unsigned int *dvs_env_h)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	/* if subdev type is SOC camera,we do not need to set DVS */
 	if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
 		isp_subdev->params.video_dis_en = 0;
 
 	if (isp_subdev->params.video_dis_en &&
-	    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+	    isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		/* envelope is 20% of the output resolution */
 		/*
 		 * dvs envelope cannot be round up.
@@ -4152,6 +4176,8 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 	const struct atomisp_format_bridge *format;
 	struct v4l2_mbus_framefmt ffmt;
 	int ret;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	format = atomisp_get_format_bridge(pixelformat);
 	if (format == NULL)
@@ -4177,7 +4203,7 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 	    ffmt.height < ATOM_ISP_STEP_HEIGHT)
 			return -EINVAL;
 
-	return atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+	return atomisp_subdev_set_ffmt(&isp_subdev->subdev, NULL,
 				       V4L2_SUBDEV_FORMAT_ACTIVE,
 				       ATOMISP_SUBDEV_PAD_SINK, &ffmt);
 }
@@ -4200,7 +4226,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret;
 	/* FIXME: isp_subdev should be derived from pipe */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	dev_dbg(isp->dev, "setting resolution %ux%u on pad %u\n",
 		f->fmt.pix.width, f->fmt.pix.height, source_pad);
@@ -4220,11 +4246,11 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_VF
 	    || (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW
-		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
-		if (isp->isp_subdev.fmt_auto->val) {
+		&& isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
+		if (isp_subdev->fmt_auto->val) {
 			struct v4l2_rect *capture_comp =
 				atomisp_subdev_get_rect(
-					&isp->isp_subdev.subdev, NULL,
+					&isp_subdev->subdev, NULL,
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
 					V4L2_SEL_TGT_COMPOSE);
@@ -4240,7 +4266,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 			}
 
 			atomisp_subdev_set_selection(
-				&isp->isp_subdev.subdev, NULL,
+				&isp_subdev->subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE, source_pad,
 				V4L2_SEL_TGT_COMPOSE, 0, &r);
 
@@ -4248,7 +4274,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 			f->fmt.pix.height = r.height;
 		}
 
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			ia_css_video_configure_viewfinder(isp,
 				f->fmt.pix.width, f->fmt.pix.height,
 				format_bridge->sh_fmt);
@@ -4271,7 +4297,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		struct v4l2_rect *r;
 
 		r = atomisp_subdev_get_rect(
-			&isp->isp_subdev.subdev, NULL,
+			&isp_subdev->subdev, NULL,
 			V4L2_SUBDEV_FORMAT_ACTIVE,
 			ATOMISP_SUBDEV_PAD_SOURCE_VF, V4L2_SEL_TGT_COMPOSE);
 
@@ -4289,7 +4315,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		isp_subdev->params.online_process = 1;
 
 	/* Pipeline configuration done through subdevs. Bail out now. */
-	if (!isp->isp_subdev.fmt_auto->val)
+	if (!isp_subdev->fmt_auto->val)
 		goto set_fmt_to_isp;
 
 	/* get sensor resolution and format */
@@ -4305,11 +4331,11 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 
 	atomisp_subdev_get_ffmt(
-		&isp->isp_subdev.subdev, NULL,
+		&isp_subdev->subdev, NULL,
 		V4L2_SUBDEV_FORMAT_ACTIVE,
 		ATOMISP_SUBDEV_PAD_SINK)->code = fmt->mbus_code;
 
-	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp_subdev->subdev, NULL,
 					    V4L2_SUBDEV_FORMAT_ACTIVE,
 					    ATOMISP_SUBDEV_PAD_SINK);
 
@@ -4318,7 +4344,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 
 	isp_source_fmt.code = fmt->mbus_code;
-	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+	atomisp_subdev_set_ffmt(&isp_subdev->subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				source_pad, &isp_source_fmt);
 
@@ -4331,7 +4357,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	}
 
 	/* construct resolution supported by isp */
-	if (res_overflow && !isp->isp_subdev.continuous_mode->val) {
+	if (res_overflow && !isp_subdev->continuous_mode->val) {
 		f->fmt.pix.width = rounddown(
 			clamp_t(u32, f->fmt.pix.width - padding_w,
 				ATOM_ISP_MIN_WIDTH,
@@ -4346,7 +4372,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 				&dvs_env_w, &dvs_env_h);
 
 	/* Only main stream pipe will be here */
-	isp->isp_subdev.capture_pad = source_pad;
+	isp_subdev->capture_pad = source_pad;
 
 	/*
 	 * set format info to sensor
@@ -4354,8 +4380,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * existing value. This because preview pipe will be configured after
 	 * capture pipe and usually has lower resolution than capture pipe.
 	 */
-	if (!isp->isp_subdev.continuous_mode->val ||
-	    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
+	if (!isp_subdev->continuous_mode->val ||
+	    isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
 	    (isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) &&
 	     isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
 				    dvs_env_h))) {
@@ -4366,7 +4392,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 			return -EINVAL;
 	}
 
-	isp_sink_crop = *atomisp_subdev_get_rect(&isp->isp_subdev.subdev, NULL,
+	isp_sink_crop = *atomisp_subdev_get_rect(&isp_subdev->subdev, NULL,
 						 V4L2_SUBDEV_FORMAT_ACTIVE,
 						 ATOMISP_SUBDEV_PAD_SINK,
 						 V4L2_SEL_TGT_CROP);
@@ -4376,19 +4402,19 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (isp_sink_crop.width * 9 / 10 < f->fmt.pix.width
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
 	    || (!atomisp_subdev_format_conversion(isp, source_pad)
-		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO
-		&& isp->isp_subdev.enable_vfpp->val)
+		&& isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO
+		&& isp_subdev->enable_vfpp->val)
 	    || (atomisp_subdev_format_conversion(isp, source_pad)
-		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
+		&& isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
 		isp_sink_crop.width = f->fmt.pix.width;
 		isp_sink_crop.height = f->fmt.pix.height;
-		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,
+		atomisp_subdev_set_selection(&isp_subdev->subdev, NULL,
 					     V4L2_SUBDEV_FORMAT_ACTIVE,
 					     ATOMISP_SUBDEV_PAD_SINK,
 					     V4L2_SEL_TGT_CROP,
 					     V4L2_SEL_FLAG_KEEP_CONFIG,
 					     &isp_sink_crop);
-		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,
+		atomisp_subdev_set_selection(&isp_subdev->subdev, NULL,
 					     V4L2_SUBDEV_FORMAT_ACTIVE,
 					     source_pad, V4L2_SEL_TGT_COMPOSE,
 					     0, &isp_sink_crop);
@@ -4408,7 +4434,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		}
 
 		ret = atomisp_subdev_set_selection(
-					     &isp->isp_subdev.subdev, NULL,
+					     &isp_subdev->subdev, NULL,
 					     V4L2_SUBDEV_FORMAT_ACTIVE,
 					     ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
 					     V4L2_SEL_TGT_COMPOSE, 0,
@@ -4446,7 +4472,7 @@ done:
 	 * If in video 480P case, no GFX throttle
 	 */
 	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE) {
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO &&
+		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO &&
 		    f->fmt.pix.width == 720 && f->fmt.pix.height == 480)
 			isp->need_gfx_throttle = false;
 		else
@@ -4463,6 +4489,8 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_mbus_framefmt ffmt = {0};
 	const struct atomisp_format_bridge *format_bridge;
 	int ret;
+	/* FIXME: isp_subdev should be get from pipe */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	dev_dbg(isp->dev, "setting fmt %ux%u 0x%x for file inject\n",
 		f->fmt.pix.width, f->fmt.pix.height, f->fmt.pix.pixelformat);
@@ -4488,7 +4516,7 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	ffmt.height = f->fmt.pix.height;
 	ffmt.code = format_bridge->mbus_code;
 
-	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+	atomisp_subdev_set_ffmt(&isp_subdev->subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &ffmt);
 
@@ -4516,7 +4544,7 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	int i;
 	int ret = 0;
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (!user_shading_table)
 		return -EINVAL;
@@ -4683,7 +4711,7 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 			      struct atomisp_cont_capture_conf *cvf_config)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	isp_subdev->params.offline_parm = *cvf_config;
 
@@ -4702,15 +4730,15 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 
 			/* TODO: this can be removed once user-space
 			 *       has been updated to use control API */
-			isp->isp_subdev.continuous_raw_buffer_size->val =
+			isp_subdev->continuous_raw_buffer_size->val =
 				num_raw_frames;
 			ia_css_stream_set_buffer_depth(isp->css2_basis.stream,
 							num_raw_frames);
 		}
 
-		isp->isp_subdev.continuous_mode->val = true;
+		isp_subdev->continuous_mode->val = true;
 	} else {
-		isp->isp_subdev.continuous_mode->val = false;
+		isp_subdev->continuous_mode->val = false;
 		__enable_continuous_mode(isp, false);
 	}
 
@@ -4720,7 +4748,7 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 int atomisp_flash_enable(struct atomisp_device *isp, int num_frames)
 {
 	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (num_frames < 0) {
 		dev_dbg(isp->dev, "%s ERROR: num_frames: %d\n", __func__,
