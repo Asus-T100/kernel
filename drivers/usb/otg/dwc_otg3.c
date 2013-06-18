@@ -1964,6 +1964,14 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	 */
 	set_sus_phy(otg, 0);
 
+	if (otg && otg->otg_data && otg->otg_data->is_byt) {
+		u32	u1power;
+
+		u1power = otg_read(otg, PHY_U1POWER_STATE);
+		otg_write(otg, PHY_U1POWER_STATE,
+			u1power | PHY_U1POWER_STATE_TX_EN);
+	}
+
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
 	pm_runtime_allow(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
@@ -2108,6 +2116,14 @@ static int dwc_otg_runtime_resume(struct device *dev)
 	}
 	set_sus_phy(otg, 0);
 
+	if (otg && otg->otg_data && otg->otg_data->is_byt) {
+		u32	u1power;
+
+		u1power = otg_read(otg, PHY_U1POWER_STATE);
+		otg_write(otg, PHY_U1POWER_STATE,
+			u1power | PHY_U1POWER_STATE_TX_EN);
+	}
+
 	if (otg->state == DWC_STATE_B_PERIPHERAL)
 		dwc_otg_notify_charger_type(otg,
 				POWER_SUPPLY_CHARGER_EVENT_CONNECT);
@@ -2167,6 +2183,14 @@ static int dwc_otg_resume(struct device *dev)
 		return -EIO;
 	}
 	set_sus_phy(otg, 0);
+
+	if (otg && otg->otg_data && otg->otg_data->is_byt) {
+		u32	u1power;
+
+		u1power = otg_read(otg, PHY_U1POWER_STATE);
+		otg_write(otg, PHY_U1POWER_STATE,
+			u1power | PHY_U1POWER_STATE_TX_EN);
+	}
 
 	if (otg->state == DWC_STATE_B_PERIPHERAL)
 		dwc_otg_notify_charger_type(otg,

@@ -106,6 +106,10 @@ struct dwc_device_par {
 	})
 #endif
 
+/* PHY registers */
+#define PHY_U1POWER_STATE			0x100004
+#define PHY_U1POWER_STATE_TX_EN			(1 << 2)
+
 #define GUSB2PHYCFG0				0xc200
 #define GUSB2PHYCFG_SUS_PHY                     0x40
 #define GUSB2PHYCFG_PHYSOFTRST (1 << 31)
