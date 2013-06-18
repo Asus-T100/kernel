@@ -406,6 +406,16 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		err = -EINVAL;
 		goto err;
 	}
+
+	isp_subdev->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
+	init_completion(&isp->acc.acc_done);
+	atomic_set(&isp->wdt_count, 0);
+	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
+	isp->sw_contex.invalid_frame = false;
+	isp_subdev->params.dvs_proj_data_valid = false;
+	isp->acc.pipeline = isp_subdev->css2_basis.pipes[IA_CSS_PIPE_ID_ACC];
+
 	dev_dbg(isp->dev, ">ia_css_start\n");
 	err = ia_css_start(isp_subdev, false);
 	if (err != IA_CSS_SUCCESS) {
@@ -419,16 +429,6 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		goto err;
 	}
 	dev_dbg(isp->dev, "<ia_css_start\n");
-
-	isp_subdev->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
-	init_completion(&isp->acc.acc_done);
-	atomic_set(&isp->wdt_count, 0);
-	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
-	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
-	isp->sw_contex.invalid_frame = false;
-	isp_subdev->params.dvs_proj_data_valid = false;
-	isp->acc.pipeline = isp_subdev->css2_basis.pipes[IA_CSS_PIPE_ID_ACC];
-
 	dev_dbg(isp->dev, "<%s\n", __func__);
 	return 0;
 err:
