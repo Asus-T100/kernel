@@ -134,7 +134,7 @@ static int acc_stop_acceleration(struct atomisp_device *isp)
 	acc_stages =
 		isp_subdev->css2_basis.pipe_configs[IA_CSS_PIPE_ID_ACC].
 		acc_stages;
-	ia_css_stop(isp, false);
+	ia_css_stop(isp_subdev, false);
 	isp_subdev->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
 	kfree(acc_stages);
 
@@ -403,7 +403,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		goto err;
 	}
 	dev_dbg(isp->dev, ">ia_css_start\n");
-	err = ia_css_start(isp, false);
+	err = ia_css_start(isp_subdev, false);
 	if (err != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "%s: start css error %d.\n", __func__, err);
 		ret = ia_css_stream_destroy(isp_subdev->css2_basis.stream);
@@ -567,7 +567,7 @@ int atomisp_acc_load_extensions(struct atomisp_device *isp)
 			goto error;
 	}
 
-	if (ia_css_update_stream(isp) != IA_CSS_SUCCESS) {
+	if (ia_css_update_stream(isp_subdev) != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "%s: update stream failed.\n", __func__);
 		ret = -ENOMEM;
 		goto error;
