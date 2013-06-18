@@ -3828,8 +3828,9 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	if (dev_priv->cfb_plane == plane)
 		intel_disable_fbc(dev);
 
-	if ((pipe == 0) && (dev_priv->is_mipi)) {
+	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
 		/* XXX: Disable PPS */
+		/* temporary fix for the IA firwware issue */
 		I915_WRITE_BITS(VLV_PIPE_PP_CONTROL(pipe), 0, 0x00000001);
 		if (wait_for((I915_READ(VLV_PIPE_PP_STATUS(pipe)) &
 						0x80000000) == 0, 50))
@@ -3958,10 +3959,11 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 	i9xx_crtc_disable(crtc);
 
-	if ((pipe == 0) && (dev_priv->is_mipi)) {
+	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
 		/* Ensure that port, plane, pipe, pf, pll are all disabled
 		 * XXX Fis the register constants
 		 */
+		/* temporary fix for the IA firwware issue */
 		I915_WRITE_BITS(0x64200, 0, 0x80000000);
 		I915_WRITE_BITS(0x70180, 0, 0x80000000);
 		I915_WRITE_BITS(0x70008, 0, 0x80000000);
