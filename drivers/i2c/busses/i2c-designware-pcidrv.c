@@ -103,9 +103,23 @@ struct dw_pci_controller {
 */
 static void vlv2_reset(struct dw_i2c_dev *dev)
 {
-	writel(0, (dev->base + 0x804));
-	writel(0, (dev->base + 0x808));
-	writel(3, (dev->base + 0x804));
+	int i;
+
+	for (i = 0; i < 10; i++) {
+		dw_writel(dev, 0, 0x804);
+		dw_writel(dev, 0, 0x808);
+		usleep_range(10, 100);
+
+		dw_writel(dev, 3, 0x804);
+		usleep_range(10, 100);
+
+		if (dw_readl(dev, DW_IC_COMP_TYPE) != DW_IC_COMP_TYPE_VALUE)
+			continue;
+
+		return;
+	}
+
+	dev_warn(dev->dev, "vlv2 I2C reset failed\n");
 }
 
 static int mfld_i2c_scl_cfg(struct dw_i2c_dev *dev)
