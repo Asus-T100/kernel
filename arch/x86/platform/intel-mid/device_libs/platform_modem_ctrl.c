@@ -210,7 +210,6 @@ static struct modem_base_info mdm_info_table[] = {
 	{"XMM_6360", MODEM_6360, UNKNOWN_PMIC, 0, {} },
 	{"XMM_7160", MODEM_7160, UNKNOWN_PMIC, 0, {} },
 	{"XMM_7160_REV1", MODEM_7160, UNKNOWN_PMIC, 0, {} },
-	{"XMM_7160_REV2", MODEM_7160, UNKNOWN_PMIC, 0, {} },
 	{"XMM_7160_REV3", MODEM_7160, UNKNOWN_PMIC, 0, {} },
 	{"XMM_7160_REV3_5", MODEM_7160, UNKNOWN_PMIC, 0, {} },
 	{"XMM_7260", MODEM_7260, UNKNOWN_PMIC, 0, {} },
