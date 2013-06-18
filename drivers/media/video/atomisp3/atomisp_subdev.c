@@ -889,18 +889,22 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 
 	isp_subdev->video_in.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	isp_subdev->video_in.isp = isp_subdev->isp;
+	isp_subdev->video_in.isp_subdev = isp_subdev;
 	spin_lock_init(&isp_subdev->video_in.irq_lock);
 
 	isp_subdev->video_out_preview.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_preview.isp = isp_subdev->isp;
+	isp_subdev->video_out_preview.isp_subdev = isp_subdev;
 	spin_lock_init(&isp_subdev->video_out_preview.irq_lock);
 
 	isp_subdev->video_out_vf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_vf.isp = isp_subdev->isp;
+	isp_subdev->video_out_vf.isp_subdev = isp_subdev;
 	spin_lock_init(&isp_subdev->video_out_vf.irq_lock);
 
 	isp_subdev->video_out_capture.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_capture.isp = isp_subdev->isp;
+	isp_subdev->video_out_capture.isp_subdev = isp_subdev;
 	spin_lock_init(&isp_subdev->video_out_capture.irq_lock);
 
 	ret = atomisp_video_init(&isp_subdev->video_in, "MEMORY");

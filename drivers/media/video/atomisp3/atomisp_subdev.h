@@ -76,6 +76,7 @@ struct atomisp_dvs_buf {
 	struct list_head list;
 };
 
+struct atomisp_sub_device;
 struct atomisp_video_pipe {
 	struct video_device vdev;
 	enum v4l2_buf_type type;
@@ -95,6 +96,8 @@ struct atomisp_video_pipe {
 	struct atomisp_device *isp;
 	struct v4l2_pix_format pix;
 	uint32_t sh_fmt;
+
+	struct atomisp_sub_device *isp_subdev;
 };
 
 struct atomisp_pad_format {
