@@ -1606,7 +1606,7 @@ static int bq24261_probe(struct i2c_client *client,
 		ret = request_threaded_irq(chip->client->irq,
 					   bq24261_irq_handler,
 					   bq24261_thread_handler,
-					   IRQF_SHARED,
+					   IRQF_SHARED|IRQF_NO_SUSPEND,
 					   DEV_NAME, chip);
 		if (ret) {
 			dev_err(&client->dev, "Failed: request_irq (%d)\n",

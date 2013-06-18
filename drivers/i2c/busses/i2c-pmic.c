@@ -269,7 +269,8 @@ static int pmic_i2c_probe(struct platform_device *pdev)
 		goto ioremap_failed;
 	}
 	ret = request_threaded_irq(pmic_dev->irq, pmic_i2c_handler,
-					pmic_thread_handler, IRQF_SHARED,
+					pmic_thread_handler,
+					IRQF_SHARED|IRQF_NO_SUSPEND,
 					DRIVER_NAME, pmic_dev);
 	if (ret)
 		goto err_irq_request;

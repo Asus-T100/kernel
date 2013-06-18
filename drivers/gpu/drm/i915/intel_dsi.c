@@ -116,6 +116,20 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.dev_ops = &auo_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
+	{
+		.panel_id = MIPI_DSI_PANASONIC_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "panasonic-dsi-vid-mode-display",
+		.dev_ops = &panasonic_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
+	{
+		.panel_id = MIPI_DSI_B080XAT_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "b080xat-dsi-vid-mode-display",
+		.dev_ops = &b080xat_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
 };
 
 static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
@@ -168,6 +182,7 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp);
 
 	temp = I915_READ(MIPI_PORT_CTRL(pipe));
+	temp = temp | intel_dsi->dev.port_bits;
 	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
 	POSTING_READ(MIPI_PORT_CTRL(pipe));
 
@@ -398,6 +413,25 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	hsync = txbyteclkhs(hsync, bpp, lane_count);
 	hbp = txbyteclkhs(hbp, bpp, lane_count);
 
+	DRM_DEBUG_KMS("hactive = 0x%0x hfp = 0x%0x hsync = 0x%0x hbp = 0x%0x\n",
+				hactive, hfp, hsync, hbp);
+
+	/* FIXME: Find better way to do this */
+	/* For 7x10 panel we need to have BLLP added to active */
+	/* Trying to find optimal BLLP Multiplier */
+	/*	2.875 - Original multiplier, Works with flicker */
+	/*	2.000 - works but still some flicker */
+	/*	1.500 - Works, No Flicker */
+	/*	1.250 - Works, No Flicker */
+	/*	1.100 - Doesn't work */
+	/* FIXME: Acer Mango spec requires to run the DSI clock at 500 to
+	 * 560Mbps. Recomendation is to run at 513 Mbps. The addition dsi
+	 * clock is to be filled with NULL packets. Refer to acer panel
+	 * spec for more details.
+	 */
+	if (dev_priv->mipi.panel_id == MIPI_DSI_B080XAT_PANEL_ID)
+		hactive = (hactive * 10) / 8;
+
 	I915_WRITE(MIPI_HACTIVE_AREA_COUNT(pipe), hactive);
 	I915_WRITE(MIPI_HFP_COUNT(pipe), hfp);
 	I915_WRITE(MIPI_HSYNC_PADDING_COUNT(pipe), hsync);
@@ -446,6 +480,10 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	u32 val;
 
 	DRM_DEBUG_KMS("\n");
+
+	if (intel_dsi->dev.dev_ops->mode_set)
+		intel_dsi->dev.dev_ops->mode_set(&intel_dsi->dev,
+						mode, adjusted_mode);
 
 	/* Enable bandgap fix */
 	intel_cck_write32_bits(dev_priv, 0x6D, 0x00010000, 0x00030000);
@@ -517,8 +555,10 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 			       bpp, intel_dsi->dev.lane_count));
 
 	I915_WRITE(MIPI_LP_RX_TIMEOUT(pipe), 0xffff);
-	I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(pipe), 0x14);
-	I915_WRITE(MIPI_DEVICE_RESET_TIMER(pipe), 0xffff);
+	I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(pipe),
+					intel_dsi->dev.turn_arnd_val);
+	I915_WRITE(MIPI_DEVICE_RESET_TIMER(pipe),
+					intel_dsi->dev.rst_timer_val);
 	/* in terms of low power clock */
 	I915_WRITE(MIPI_INIT_COUNT(pipe), 0x7d0);
 
@@ -527,26 +567,32 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	else
 		I915_WRITE(MIPI_EOT_DISABLE(pipe), 1);
 
-	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), 0x46);
-	I915_WRITE(MIPI_LP_BYTECLK(pipe), 1);
-	I915_WRITE(MIPI_DBI_BW_CTRL(pipe), 0x820);
+	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), \
+					intel_dsi->dev.hs_to_lp_count);
+	I915_WRITE(MIPI_LP_BYTECLK(pipe), intel_dsi->dev.lp_byte_clk);
+	I915_WRITE(MIPI_DBI_BW_CTRL(pipe), intel_dsi->dev.bw_timer);
 
 	I915_WRITE(MIPI_CLK_LANE_SWITCH_TIME_CNT(pipe),
-		   0xa << LP_HS_SSW_CNT_SHIFT |
-		   0x14 << HS_LP_PWR_SW_CNT_SHIFT);
+		((u32)intel_dsi->dev.clk_lp_to_hs_count
+		<< LP_HS_SSW_CNT_SHIFT) |
+		(intel_dsi->dev.clk_hs_to_lp_count << HS_LP_PWR_SW_CNT_SHIFT));
 
 	if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) && \
 			(intel_dsi->dev.video_mode_type ==
 					DSI_VIDEO_NBURST_SPULSE))
 		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				intel_dsi->dev.video_frmt_cfg_bits |
 				VIDEO_MODE_NON_BURST_WITH_SYNC_PULSE);
 	else if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) &&	\
 			(intel_dsi->dev.video_mode_type ==
 					DSI_VIDEO_NBURST_SEVENT))
 		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				intel_dsi->dev.video_frmt_cfg_bits |
 				VIDEO_MODE_NON_BURST_WITH_SYNC_EVENTS);
 	else
-		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe), VIDEO_MODE_BURST);
+		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				intel_dsi->dev.video_frmt_cfg_bits |
+				VIDEO_MODE_BURST);
 }
 
 static enum drm_connector_status
@@ -571,54 +617,15 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 {
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
-	struct drm_display_mode *mode;
+	struct drm_display_mode *mode = NULL;
 
-	u32 hblank;
-	u32 vblank;
-	u32 hsync_offset;
-	u32 hsync_width;
-	u32 vsync_offset;
-	u32 vsync_width;
-
-	DRM_DEBUG_KMS("\n");
-
-	hblank = 0x78;
-	vblank = 0x0C;
-	hsync_offset = 0x28;
-	hsync_width = 0x28;
-	vsync_offset = 0x4;
-	vsync_width = 0x4;
-
-	intel_dsi->panel_fixed_mode = kzalloc(sizeof(struct drm_display_mode),
-			GFP_KERNEL);
-	if (intel_dsi->panel_fixed_mode == NULL) {
+	/* Get the mode info from panel specific callback */
+	intel_dsi->panel_fixed_mode =
+		intel_dsi->dev.dev_ops->get_modes(&intel_dsi->dev);
+	if (!intel_dsi->panel_fixed_mode) {
 		DRM_ERROR("out of memory for fixed panel mode\n");
 		return 0;
 	}
-
-	strcpy(intel_dsi->panel_fixed_mode->name, "1920x1200");
-	intel_dsi->panel_fixed_mode->hdisplay = 0x780;
-	intel_dsi->panel_fixed_mode->vdisplay = 0x4B0;
-	intel_dsi->panel_fixed_mode->hsync_start =
-			intel_dsi->panel_fixed_mode->hdisplay + hsync_offset;
-	intel_dsi->panel_fixed_mode->hsync_end =
-			intel_dsi->panel_fixed_mode->hdisplay +
-			hsync_offset + hsync_width;
-	intel_dsi->panel_fixed_mode->htotal =
-			intel_dsi->panel_fixed_mode->hdisplay + hblank;
-	intel_dsi->panel_fixed_mode->vsync_start =
-			intel_dsi->panel_fixed_mode->vdisplay + vsync_offset;
-	intel_dsi->panel_fixed_mode->vsync_end =
-			intel_dsi->panel_fixed_mode->vdisplay +
-			vsync_offset + vsync_width;
-	intel_dsi->panel_fixed_mode->vtotal =
-			intel_dsi->panel_fixed_mode->vdisplay + vblank;
-
-	intel_dsi->panel_fixed_mode->vrefresh = 60;
-	intel_dsi->panel_fixed_mode->clock =  148350;
-	intel_dsi->panel_fixed_mode->flags =
-			DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC;
-	intel_dsi->panel_fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
 
 	mode = drm_mode_duplicate(connector->dev, intel_dsi->panel_fixed_mode);
 	if (!mode)
@@ -626,10 +633,11 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 
 	mode->status = MODE_OK;
 
+	/* Add this mode in probed mode list */
 	drm_mode_probed_add(connector, mode);
-	DRM_DEBUG_KMS("1\n");
+	DRM_DEBUG_KMS("Mode read done\n");
 
-	/* fill the panel info here for now */
+	/* Fill the panel info here */
 	intel_dsi->dev.dev_ops->get_info(0, connector);
 
 	return 1;
@@ -704,7 +712,7 @@ static void dsi_config(struct drm_encoder *encoder)
 	I915_WRITE(MIPI_INTR_EN(pipe), 0xffffffff);
 
 	/* why here, was elsewhere... also 2a, 0c, 60, 08 for values */
-	I915_WRITE(MIPI_DPHY_PARAM(pipe), 0x3c1fc51f);
+	I915_WRITE(MIPI_DPHY_PARAM(pipe), intel_dsi->dev.dphy_reg);
 }
 
 bool intel_dsi_init(struct drm_device *dev)
@@ -748,7 +756,7 @@ bool intel_dsi_init(struct drm_device *dev)
 		/* check if panel id available from VBT */
 		if (!dev_priv->mipi.panel_id) {
 			/* default ASUS panel */
-			dev_priv->mipi.panel_id = MIPI_DSI_AUO_PANEL_ID;
+			dev_priv->mipi.panel_id = MIPI_DSI_PANASONIC_PANEL_ID;
 		}
 	} else
 		dev_priv->mipi.panel_id = i915_mipi_panel_id;
@@ -772,7 +780,11 @@ bool intel_dsi_init(struct drm_device *dev)
 		goto err;
 	}
 
-	intel_dsi->dsi_packet_format = dsi_24Bpp_packed;
+	if (intel_dsi->dev.pixel_format == VID_MODE_FORMAT_RGB666_LOOSE)
+		intel_dsi->dsi_packet_format = dsi_18Bpp_loosely_packed;
+	else
+		intel_dsi->dsi_packet_format = dsi_24Bpp_packed;
+
 	intel_dsi->channel = 0;
 
 	if (i == ARRAY_SIZE(intel_dsi_devices))

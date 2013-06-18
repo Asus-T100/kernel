@@ -3643,7 +3643,7 @@ static void gen6_init_clock_gating(struct drm_device *dev)
 	I915_WRITE(WM2_LP_ILK, 0);
 	I915_WRITE(WM1_LP_ILK, 0);
 
-	I915_WRITE(CACHE_MODE_0,
+	I915_WRITE(CACHE_MODE_0_OFFSET(dev),
 		   _MASKED_BIT_DISABLE(CM0_STC_EVICT_DISABLE_LRA_SNB));
 
 	I915_WRITE(GEN6_UCGCTL1,
@@ -4859,6 +4859,7 @@ int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
 
 	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
 		     500)) {
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
 			   addr);
 		return -ETIMEDOUT;
@@ -4870,6 +4871,7 @@ int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
 	/* Make sure that the SB is not busy since we need to be synchronous */
 	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
 		     500)) {
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
 			  addr);
 		return -ETIMEDOUT;
@@ -4902,6 +4904,7 @@ int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val)
 
 	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
 		     500)) {
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
 			  addr);
 		return -ETIMEDOUT;
@@ -4913,6 +4916,7 @@ int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val)
 	/* Make sure that the SB is not busy since we need to be synchronous */
 	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
 		     500)) {
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
 			  addr);
 		return -ETIMEDOUT;
@@ -4945,6 +4949,7 @@ int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val)
 
 	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
 		     500)) {
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
 			  addr);
 		return -ETIMEDOUT;
