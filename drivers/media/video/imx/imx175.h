@@ -713,7 +713,7 @@ static struct imx_reg const imx_1080p_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x0340, 0x06},  /* frame_length_lines[15:8] */
 	{IMX_8BIT, 0x0341, 0xA4},  /*	frame_length_lines[7:0]	*/
 	{IMX_8BIT, 0x0342, 0x11},  /*	line_length_pck[15:8]	*/
-	{IMX_8BIT, 0x0343, 0xEE},  /*	line_length_pck[7:0]	*/
+	{IMX_8BIT, 0x0343, 0xC6},  /*	line_length_pck[7:0]	*/
 	{IMX_8BIT, 0x0344, 0x01},  /*	x_addr_start[15:8]	*/
 	{IMX_8BIT, 0x0345, 0xD8},  /*	x_addr_start[7:0]	*/
 	{IMX_8BIT, 0x0346, 0x02},  /*	y_addr_start[15:8]	*/
@@ -877,8 +877,8 @@ static struct imx_reg const imx_720p_strong_dvs_30fps[] = {
 	/* image sizing */
 	{IMX_8BIT, 0x0340, 0x06},  /* frame_length_lines[15:8] */
 	{IMX_8BIT, 0x0341, 0x00},  /*	frame_length_lines[7:0]	*/
-	{IMX_8BIT, 0x0342, 0x14},  /*	line_length_pck[15:8]	*/
-	{IMX_8BIT, 0x0343, 0x28},  /*	line_length_pck[7:0]	*/
+	{IMX_8BIT, 0x0342, 0x13},  /*	line_length_pck[15:8]	*/
+	{IMX_8BIT, 0x0343, 0x9C},  /*	line_length_pck[7:0]	*/
 	{IMX_8BIT, 0x0344, 0x00},  /*	x_addr_start[15:8]	*/
 	{IMX_8BIT, 0x0345, 0x48},  /*	x_addr_start[7:0]	*/
 	{IMX_8BIT, 0x0346, 0x01},  /*	y_addr_start[15:8]	*/
@@ -1043,8 +1043,8 @@ static struct imx_reg const imx_WVGA_strong_dvs_30fps[] = {
 	/* image sizing */
 	{IMX_8BIT, 0x0340, 0x06},  /* frame_length_lines[15:8] */
 	{IMX_8BIT, 0x0341, 0x00},  /*	frame_length_lines[7:0]	*/
-	{IMX_8BIT, 0x0342, 0x14},  /*	line_length_pck[15:8]	*/
-	{IMX_8BIT, 0x0343, 0x28},  /*	line_length_pck[7:0]	*/
+	{IMX_8BIT, 0x0342, 0x13},  /*	line_length_pck[15:8]	*/
+	{IMX_8BIT, 0x0343, 0x9C},  /*	line_length_pck[7:0]	*/
 	{IMX_8BIT, 0x0344, 0x00},  /*	x_addr_start[15:8]	*/
 	{IMX_8BIT, 0x0345, 0x00},  /*	x_addr_start[7:0]	*/
 	{IMX_8BIT, 0x0346, 0x00},  /*	y_addr_start[15:8]	*/
@@ -1153,7 +1153,7 @@ static struct imx_reg const imx_VGA_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x0340, 0x06},  /* frame_length_lines[15:8] */
 	{IMX_8BIT, 0x0341, 0x00},  /*	frame_length_lines[7:0]	*/
 	{IMX_8BIT, 0x0342, 0x11},  /*	line_length_pck[15:8]	*/
-	{IMX_8BIT, 0x0343, 0xDB},  /*	line_length_pck[7:0]	*/
+	{IMX_8BIT, 0x0343, 0x94},  /*	line_length_pck[7:0]	*/
 	{IMX_8BIT, 0x0344, 0x00},  /*	x_addr_start[15:8]	*/
 	{IMX_8BIT, 0x0345, 0x00},  /*	x_addr_start[7:0]	*/
 	{IMX_8BIT, 0x0346, 0x00},  /*	y_addr_start[15:8]	*/
@@ -1676,7 +1676,7 @@ struct imx_resolution imx175_res_video[] = {
 		.width = 820,
 		.height = 616,
 		.fps = 30,
-		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
+		.pixels_per_line = 0x1194, /* consistent with regs arrays */
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
@@ -1689,7 +1689,7 @@ struct imx_resolution imx175_res_video[] = {
 		.width = 1568,
 		.height = 876,
 		.fps = 30,
-		.pixels_per_line = 0x1428, /* consistent with regs arrays */
+		.pixels_per_line = 0x139C, /* consistent with regs arrays */
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
@@ -1702,7 +1702,7 @@ struct imx_resolution imx175_res_video[] = {
 		.width = 1640,
 		.height = 1024,
 		.fps = 30,
-		.pixels_per_line = 0x1428, /* consistent with regs arrays */
+		.pixels_per_line = 0x139C, /* consistent with regs arrays */
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
@@ -1715,8 +1715,8 @@ struct imx_resolution imx175_res_video[] = {
 		.width = 2336,
 		.height = 1308,
 		.fps = 30,
-		.pixels_per_line = 0x157C, /* consistent with regs arrays */
-		.lines_per_frame = 0x0708, /* consistent with regs arrays */
+		.pixels_per_line = 0x11C6, /* consistent with regs arrays */
+		.lines_per_frame = 0x06A4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 3,
