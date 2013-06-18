@@ -41,7 +41,6 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  intel_overlay.o \
 	  intel_sprite.o \
 	  intel_opregion.o \
-	  cmi_dsi_display.o \
 	  dsi_mod_auo_b101uan01.o \
 	  dsi_mod_panasonic_vvx09f006a00.o \
 	  dsi_mod_auo_b080xat.o \
