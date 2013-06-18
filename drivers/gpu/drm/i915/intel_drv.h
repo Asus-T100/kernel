@@ -572,8 +572,6 @@ extern void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file_priv);
 extern void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file_priv);
-extern void intel_edp_get_psr_support(struct drm_device *device, void *data,
-					struct drm_file *file);
 
 /* VLV LP clock bending */
 extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,

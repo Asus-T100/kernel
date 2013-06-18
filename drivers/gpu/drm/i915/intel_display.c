@@ -49,8 +49,6 @@
 bool intel_pipe_has_type(struct drm_crtc *crtc, int type);
 static void intel_increase_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
-static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
-			int x, int y);
 
 typedef struct {
 	/* given values */
@@ -117,8 +115,6 @@ intel_fdi_link_freq(struct drm_device *dev)
 	} else
 		return 27;
 }
-
-struct drm_display_mode rot_mode;
 
 static const intel_limit_t intel_limits_i8xx_dvo = {
 	.dot = { .min = 25000, .max = 350000 },
@@ -1964,21 +1960,6 @@ static void intel_disable_plane(struct drm_i915_private *dev_priv,
 	I915_WRITE(reg, val & ~DISPLAY_PLANE_ENABLE);
 	intel_flush_display_plane(dev_priv, plane);
 	intel_wait_for_vblank(dev_priv->dev, pipe);
-
-	/* disable the sprite planes */
-	if (IS_VALLEYVIEW(dev_priv->dev)) {
-		int i;
-		for (i = 0; i < VLV_NUM_SPRITES; i++) {
-			val = I915_READ(SPCNTR(pipe, i));
-			if ((val & SP_ENABLE) == 0)
-				break;
-
-			I915_WRITE(SPCNTR(pipe, i), (val & ~SP_ENABLE));
-			/* Activate double buffered register update */
-			I915_MODIFY_DISPBASE(SPSURF(pipe, i), 0);
-			POSTING_READ(SPSURF(pipe, i));
-		}
-	}
 }
 
 static void disable_pch_dp(struct drm_i915_private *dev_priv,
@@ -2102,47 +2083,39 @@ int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_reserved_reg_bit_2 *rrb = data;
 	u32 enable = rrb->enable;
-	u32 reg1, reg2;
+	int plane = rrb->plane;
 	u32 val;
 
-	switch (rrb->plane) {
-	case 2: /* SPRITE A */
-		reg1 = SPSURF(0, 0);
-		reg2 = SPLIVESURF(0, 0);
-		break;
-	case 3:	/* SPRITE B */
-		reg1 = SPSURF(0, 1);
-		reg2 = SPLIVESURF(0, 1);
-		break;
-	case 5: /* SPRITE C */
-		reg1 = SPSURF(1, 0);
-		reg2 = SPLIVESURF(1, 0);
-		break;
-	case 6: /* SPRITE D */
-		reg1 = SPSURF(1, 1);
-		reg2 = SPLIVESURF(1, 1);
-		break;
-	default: return -EINVAL;
+	/* Clear the older rrb setting*/
+	val = I915_READ(DSPSURF(plane));
+	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+	I915_WRITE(DSPSURF(plane), val);
+
+	val = I915_READ(DSPSURFLIVE(plane));
+	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+	I915_WRITE(DSPSURFLIVE(plane), val);
+
+	if (plane == 1 || plane == 4) {
+		val = I915_READ(VLV_DSPADDR(plane));
+		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(VLV_DSPADDR(plane), val);
 	}
 
 	/* Program bit enable if it was requested */
 	if (enable) {
-		val = I915_READ(reg1);
+		val = I915_READ(DSPSURF(plane));
 		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(reg1, val);
+		I915_WRITE(DSPSURF(plane), val);
 
-		val = I915_READ(reg2);
+		val = I915_READ(DSPSURFLIVE(plane));
 		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(reg2, val);
-	} else {
-		/* Clear the older rrb setting*/
-		val = I915_READ(reg1);
-		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(reg1, val);
+		I915_WRITE(DSPSURFLIVE(plane), val);
 
-		val = I915_READ(reg2);
-		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(reg2, val);
+		if (plane == 1 || plane == 4) {
+			val = I915_READ(VLV_DSPADDR(plane));
+			val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
+			I915_WRITE(VLV_DSPADDR(plane), val);
+		}
 	}
 
 	return 0;
@@ -2175,83 +2148,6 @@ unsigned long intel_gen4_compute_page_offset(int *x, int *y,
 	}
 }
 
-int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
-				struct drm_file *file)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct drm_i915_plane_180_rotation *rotation = data;
-
-	bool rotate = (rotation->rotate & 0x1) ? true : false;
-	int reg;
-	u32 val;
-	u32 sprctla;
-	u32 sprctlb;
-	int ret = 1;
-	struct drm_mode_object *obj;
-	struct drm_crtc *crtc;
-	struct intel_crtc *intel_crtc;
-	int pipe;
-
-	obj = drm_mode_object_find(dev, rotation->crtc_id,
-			DRM_MODE_OBJECT_CRTC);
-
-	if (!obj) {
-		DRM_DEBUG_DRIVER("Unknown CRTC ID %d\n", rotation->crtc_id);
-		return -EINVAL;
-	}
-
-	crtc = obj_to_crtc(obj);
-	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
-	intel_crtc = to_intel_crtc(crtc);
-	pipe = intel_crtc->pipe;
-
-	DRM_DEBUG_DRIVER("pipe = %d\n", pipe);
-	memcpy(&rot_mode, &(crtc->hwmode), sizeof(struct drm_display_mode));
-	reg = DSPCNTR(pipe);
-	val = I915_READ(reg);
-	sprctla = I915_READ(SPCNTR(pipe, 0));
-	sprctlb = I915_READ(SPCNTR(pipe, 1));
-
-	/*Clear older rotation settings*/
-	if (val & DISPLAY_PLANE_ENABLE) {
-		val &= ~DISPPLANE_180_ROTATION_ENABLE;
-		I915_WRITE(reg, val);
-		ret = 0;
-	}
-
-	if (sprctla & DISPLAY_PLANE_ENABLE) {
-		sprctla &= ~DISPPLANE_180_ROTATION_ENABLE;
-		I915_WRITE(SPCNTR(pipe, 0), sprctla);
-		ret = 0;
-	}
-
-	if (sprctlb & DISPLAY_PLANE_ENABLE) {
-		sprctlb &= ~DISPPLANE_180_ROTATION_ENABLE;
-		I915_WRITE(SPCNTR(pipe, 1), sprctlb);
-		ret = 0;
-	}
-
-	if (rotate) {
-		if (val & DISPLAY_PLANE_ENABLE) {
-			val |= DISPPLANE_180_ROTATION_ENABLE;
-			I915_WRITE(reg, val);
-		}
-
-		if (sprctla & DISPLAY_PLANE_ENABLE) {
-			sprctla |= DISPPLANE_180_ROTATION_ENABLE;
-			I915_WRITE(SPCNTR(pipe, 0), sprctla);
-		}
-
-		if (sprctlb & DISPLAY_PLANE_ENABLE) {
-			sprctlb |= DISPPLANE_180_ROTATION_ENABLE;
-			I915_WRITE(SPCNTR(pipe, 1), sprctlb);
-		}
-	}
-
-	i9xx_update_plane(crtc, crtc->fb, 0, 0);
-	return ret;
-}
-
 static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 			     int x, int y)
 {
@@ -2262,10 +2158,8 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 	struct drm_i915_gem_object *obj;
 	int plane = intel_crtc->plane;
 	unsigned long linear_offset;
-	bool rotate = false;
 	u32 dspcntr;
 	u32 reg;
-	int pixel_size;
 
 	switch (plane) {
 	case 0:
@@ -2276,7 +2170,6 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 		return -EINVAL;
 	}
 
-	pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 	intel_fb = to_intel_framebuffer(fb);
 	obj = intel_fb->obj;
 
@@ -2316,18 +2209,12 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 		return -EINVAL;
 	}
 
-	if (dspcntr & DISPPLANE_180_ROTATION_ENABLE)
-		rotate = true;
-
 	if (INTEL_INFO(dev)->gen >= 4) {
 		if (obj->tiling_mode != I915_TILING_NONE)
 			dspcntr |= DISPPLANE_TILED;
 		else
 			dspcntr &= ~DISPPLANE_TILED;
 	}
-
-	if (rotate)
-		dspcntr |= DISPPLANE_180_ROTATION_ENABLE;
 
 	I915_WRITE(reg, dspcntr);
 
@@ -2349,18 +2236,10 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 	if (INTEL_INFO(dev)->gen >= 4) {
 		I915_MODIFY_DISPBASE(DSPSURF(plane),
 				     obj->gtt_offset + intel_crtc->dspaddr_offset);
-		if (rotate) {
-			I915_WRITE(DSPTILEOFF(plane), ((intel_fb->base.height
-				<< 16) | (intel_fb->base.width)));
-			I915_WRITE(DSPLINOFF(plane), (intel_fb->base.width *
-				intel_fb->base.height * pixel_size));
-		} else {
-			I915_WRITE(DSPTILEOFF(plane), (y << 16) | x);
-			I915_WRITE(DSPLINOFF(plane), linear_offset);
-		}
+		I915_WRITE(DSPTILEOFF(plane), (y << 16) | x);
+		I915_WRITE(DSPLINOFF(plane), linear_offset);
 	} else
 		I915_WRITE(DSPADDR(plane), obj->gtt_offset + linear_offset);
-
 	POSTING_READ(reg);
 
 	return 0;

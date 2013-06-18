@@ -26,8 +26,6 @@
 #define CONFIG_SUPPORT_HDMI_AUDIO
 #ifdef CONFIG_SUPPORT_HDMI_AUDIO
 int i915_hdmi_state;
-int i915_notify_had;
-
 /*
  * Audio register range 0x65000 to 0x65FFF
  */
@@ -48,15 +46,7 @@ void i915_hdmi_audio_init(struct hdmi_audio_priv *p_hdmi_priv)
 /* Added for HDMI Audio */
 void hdmi_get_eld(uint8_t *eld)
 {
-	struct drm_device *dev = hdmi_priv->dev;
-	struct drm_i915_private *dev_priv =
-		(struct drm_i915_private *) dev->dev_private;
 	memcpy(hdmi_eld, eld, HAD_MAX_ELD_BYTES);
-	if (i915_notify_had) {
-		mid_hdmi_audio_signal_event(dev_priv->dev,
-			HAD_EVENT_HOT_PLUG);
-		i915_notify_had = 0;
-	}
 }
 
 static inline int android_hdmi_get_eld(struct drm_device *dev, void *eld)
@@ -282,12 +272,23 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 	case HAD_SET_ENABLE_AUDIO_INT:
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
 			int_masks |= I915_HDMI_AUDIO_UNDERRUN_ENABLE;
+#if 0
+		/* ToDo: Check if any bit needs to be
+		 * set for buffer done
+		 */
+		if (*((u32 *)capabilties) & HDMI_AUDIO_BUFFER_DONE)
+			int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
+#endif
 		dev_priv->hdmi_audio_interrupt_mask |= int_masks;
 		i915_enable_hdmi_audio_int(dev);
 		break;
 	case HAD_SET_DISABLE_AUDIO_INT:
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
 			int_masks |= I915_HDMI_AUDIO_UNDERRUN_ENABLE;
+#if 0
+			if (*((u32 *)capabilties) & HDMI_AUDIO_BUFFER_DONE)
+				int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
+#endif
 		dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
 
 		if (dev_priv->hdmi_audio_interrupt_mask)

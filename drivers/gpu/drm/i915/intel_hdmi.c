@@ -262,9 +262,6 @@ static void vlv_write_infoframe(struct drm_encoder *encoder,
 		I915_WRITE(VLV_TVIDEO_DIP_DATA(intel_crtc->pipe), *data);
 		data++;
 	}
-	/* Write every possible data byte to force correct ECC calculation. */
-	for (; i < VIDEO_DIP_DATA_SIZE; i += 4)
-		I915_WRITE(VLV_TVIDEO_DIP_DATA(intel_crtc->pipe), 0);
 	mmiowb();
 
 	val |= g4x_infoframe_enable(frame);
@@ -820,7 +817,8 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	if ((status == connector_status_connected)
 			&& (status != i915_hdmi_state)) {
 		/* Added for HDMI Audio */
-		i915_notify_had = 1;
+		mid_hdmi_audio_signal_event(dev_priv->dev,
+				HAD_EVENT_HOT_PLUG);
 		if (intel_hdmi->force_audio != HDMI_AUDIO_AUTO)
 			intel_hdmi->has_audio =
 			(intel_hdmi->force_audio == HDMI_AUDIO_ON);
@@ -828,7 +826,6 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 		/* Added for HDMI Audio */
 		mid_hdmi_audio_signal_event(dev_priv->dev,
 			HAD_EVENT_HOT_UNPLUG);
-		i915_notify_had = 0;
 	}
 
 	/* Added for HDMI Audio */

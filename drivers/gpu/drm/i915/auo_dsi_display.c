@@ -72,16 +72,6 @@ bool auo_init(struct intel_dsi_device *dsi)
 	dsi->operation_mode = DSI_VIDEO_MODE;
 	dsi->video_mode_type = DSI_VIDEO_NBURST_SPULSE;
 	dsi->pixel_format = VID_MODE_FORMAT_RGB888;
-	dsi->port_bits = 0;
-	dsi->turn_arnd_val = 0x14;
-	dsi->rst_timer_val = 0xffff;
-	dsi->hs_to_lp_count = 0x46;
-	dsi->lp_byte_clk = 1;
-	dsi->bw_timer = 0x820;
-	dsi->clk_lp_to_hs_count = 0xa;
-	dsi->clk_hs_to_lp_count = 0x14;
-	dsi->video_frmt_cfg_bits = 0;
-	dsi->dphy_reg = 0x3c1fc51f;
 
 	return true;
 }
@@ -148,45 +138,7 @@ bool auo_get_hw_state(struct intel_dsi_device *dev)
 
 struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
 {
-	u32 hblank = 0x78;
-	u32 vblank = 0x0C;
-	u32 hsync_offset = 0x28;
-	u32 hsync_width  = 0x28;
-	u32 vsync_offset = 0x4;
-	u32 vsync_width  = 0x4;
-	struct drm_display_mode *mode = NULL;
-	struct drm_i915_private *dev_priv = dsi->dev_priv;
-
-	/* Allocate */
-	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
-	if (!mode) {
-		DRM_DEBUG_KMS("AUO Panel: No memory\n");
-		return NULL;
-	}
-
-	/* Hardcode 1920x1200*/
-	strcpy(mode->name, "1920x1200");
-	mode->hdisplay = 0x780;
-	mode->vdisplay = 0x4B0;
-	mode->vrefresh = 60;
-	mode->clock =  148350;
-
-	/* Calculate */
-	mode->hsync_start = mode->hdisplay + hsync_offset;
-	mode->hsync_end = mode->hdisplay + hsync_offset
-		+ hsync_width;
-	mode->htotal = mode->hdisplay + hblank;
-	mode->vsync_start = mode->vdisplay + vsync_offset;
-	mode->vsync_end = mode->vdisplay + vsync_offset
-		+ vsync_width;
-	mode->vtotal = mode->vdisplay + vblank;
-
-	/* Configure */
-	mode->flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC;
-	mode->type |= DRM_MODE_TYPE_PREFERRED;
-	mode->status = MODE_OK;
-
-	return mode;
+	return NULL;
 }
 
 void auo_dump_regs(struct intel_dsi_device *dsi) { }
