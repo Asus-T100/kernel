@@ -28,6 +28,7 @@ KERNEL_SOC_medfield := mfld
 KERNEL_SOC_clovertrail := ctp
 KERNEL_SOC_merrifield := mrfl
 KERNEL_SOC_baytrail := byt
+KERNEL_SOC_bigcore := bigc
 KERNEL_SOC_moorefield := moor
 KERNEL_SOC_carboncanyon := crc
 
