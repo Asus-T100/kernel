@@ -139,4 +139,5 @@ ia_css_input_set_mode(struct atomisp_device *isp,
 void
 ia_css_enbale_dz(struct atomisp_device *isp, bool enable);
 
+enum ia_css_err ia_css_update_stream(struct atomisp_device *isp);
 #endif
