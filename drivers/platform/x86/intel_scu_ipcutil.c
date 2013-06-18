@@ -43,8 +43,8 @@
 
 #define MAX_FW_SIZE 264192
 
-#define PMIT_RESETIRQ1_OFFSET		14
-#define PMIT_RESETIRQ2_OFFSET		15
+#define PMIT_RESET1_OFFSET		14
+#define PMIT_RESET2_OFFSET		15
 
 #define IPC_RESIDENCY_CMD_ID_START	0
 #define IPC_RESIDENCY_CMD_ID_DUMP	2
@@ -101,7 +101,6 @@
 
 #define OSHOB_RESERVED_DEBUG_SIZE 5     /* Reserved for debug                */
 
-
 /* Size (bytes) of the default OSHOB structure. Includes the default OSNIB   */
 /* size.                                                                     */
 #define OSHOB_SIZE	(68 + (4*OSHOB_SCU_BUF_BASE_DW_SIZE) + \
@@ -114,14 +113,27 @@
 /* number of bytes.                                                          */
 
 
+struct chip_reset_event {
+	int id;
+	const char *reset_ev1_name;
+	const char *reset_ev2_name;
+};
+
+static struct chip_reset_event chip_reset_events[] = {
+	{ INTEL_MID_CPU_CHIP_TANGIER, "RESETSRC0", "RESETSRC1" },
+	{ INTEL_MID_CPU_CHIP_CLOVERVIEW, "RESETIRQ1", "RESETIRQ2" },
+	{ INTEL_MID_CPU_CHIP_PENWELL, "RESETIRQ1", "RESETIRQ2" },
+};
+
+
 /* OSNIB allocation. */
 struct scu_ipc_osnib {
 	u8 target_mode;        /* Target mode.                      */
 	u8 wd_count;           /* Software watchdog.                */
 	u8 alarm;              /* RTC alarm.                        */
 	u8 wakesrc;            /* WAKESRC.                          */
-	u8 resetirq1;          /* RESETIRQ1.                        */
-	u8 resetirq2;          /* RESETIRQ2.                        */
+	u8 reset_ev1;          /* RESETIRQ1 or RESETSRC0.           */
+	u8 reset_ev2;          /* RESETIRQ2 or RESETSRC1.           */
 	u8 spare;              /* Spare.                            */
 	u8 intel_reserved[OSNIB_INTEL_RSVD_SIZE]; /* INTEL RESERVED */
 			       /* (offsets 7 to 20).                */
@@ -1562,10 +1574,10 @@ exit:
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oemnib);
 
+#ifdef DUMP_OSNIB
 /*
  * This reads the PMIT from the OSHOB (pointer to interrupt tree)
  */
-#ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_oshob_it_tree(u32 *ptr)
 {
 	u16 struct_offs;
@@ -1592,32 +1604,54 @@ static int intel_scu_ipc_read_oshob_it_tree(u32 *ptr)
 #endif
 
 /*
- * This reads the RESETIRQ1 from the OSNIB
+ * This reads the RESETIRQ1 or RESETSRC0 from the OSNIB
  */
 #ifdef DUMP_OSNIB
-static int intel_scu_ipc_read_osnib_resetirq1(u8 *rirq1)
+static int intel_scu_ipc_read_osnib_reset_ev1(u8 *rev1)
 {
-	pr_debug("intel_scu_ipc_read_osnib_resetirq1: read RESETIRQ1\n");
+	int i;
 
-	return oshob_info->scu_ipc_read_osnib(
-			rirq1,
-			1,
-			offsetof(struct scu_ipc_osnib, resetirq1));
+	for (i = 0 ; i < ARRAY_SIZE(chip_reset_events); i++) {
+		if (chip_reset_events[i].id == oshob_info->platform_type) {
+			pr_debug(
+				"intel_scu_ipc_read_osnib_rst_ev1: read %s\n",
+				chip_reset_events[i].reset_ev1_name);
+
+			return oshob_info->scu_ipc_read_osnib(
+				    rev1,
+				    1,
+				    offsetof(struct scu_ipc_osnib, reset_ev1));
+		}
+	}
+
+	pr_err("intel_scu_ipc_read_osnib_reset_ev1: param not found\n");
+	return -EFAULT;
 }
 #endif
 
 /*
- * This reads the RESETIRQ2 from the OSNIB
+ * This reads the RESETIRQ2 or RESETSRC1 from the OSNIB
  */
 #ifdef DUMP_OSNIB
-static int intel_scu_ipc_read_osnib_resetirq2(u8 *rirq2)
+static int intel_scu_ipc_read_osnib_reset_ev2(u8 *rev2)
 {
-	pr_debug("intel_scu_ipc_read_osnib_resetirq2: read RESETIRQ2\n");
+	int i;
 
-	return oshob_info->scu_ipc_read_osnib(
-			rirq2,
-			1,
-			offsetof(struct scu_ipc_osnib, resetirq2));
+	for (i = 0 ; i < ARRAY_SIZE(chip_reset_events); i++) {
+		if (chip_reset_events[i].id == oshob_info->platform_type) {
+			pr_debug(
+				"intel_scu_ipc_read_osnib_rst_ev2: read %s\n",
+				chip_reset_events[i].reset_ev2_name);
+
+			return oshob_info->scu_ipc_read_osnib(
+				rev2,
+				1,
+				offsetof(struct scu_ipc_osnib, reset_ev2));
+		}
+	}
+
+	pr_err("intel_scu_ipc_read_osnib_reset_ev2: param not found\n");
+	return -EFAULT;
 }
 #endif
 
@@ -2072,7 +2106,7 @@ static int oshob_init(void)
 	u16 struct_offs;
 
 #ifdef DUMP_OSNIB
-	u8 rr, resetirq1, resetirq2, wd, alarm, wakesrc, *ptr;
+	u8 rr, reset_ev1, reset_ev2, wd, alarm, wakesrc, *ptr;
 	u32 pmit, scu_trace[OSHOB_SCU_BUF_BASE_DW_SIZE*4], ia_trace;
 	int buff_size;
 #endif
@@ -2086,7 +2120,7 @@ static int oshob_init(void)
 	}
 
 #ifdef DUMP_OSNIB
-	/* Dumping RESETIRQ1 and 2 from the interrupt tree */
+	/* Dumping reset events from the interrupt tree */
 	ret = intel_scu_ipc_read_oshob_it_tree(&pmit);
 
 	if (ret != 0) {
@@ -2094,7 +2128,7 @@ static int oshob_init(void)
 		goto exit;
 	}
 
-	ptr = ioremap_nocache(pmit + PMIT_RESETIRQ1_OFFSET, 2);
+	ptr = ioremap_nocache(pmit + PMIT_RESET1_OFFSET, 2);
 
 	if (!ptr) {
 		pr_err("Cannot remap PMIT\n");
@@ -2104,10 +2138,17 @@ static int oshob_init(void)
 
 	pr_debug("PMIT addr 0x%8x remapped to 0x%8x\n", pmit, (u32)ptr);
 
-	resetirq1 = readb(ptr);
-	resetirq2 = readb(ptr+1);
-	pr_warn("[BOOT] RESETIRQ1=0x%02x RESETIRQ2=0x%02x (interrupt tree)\n",
-		resetirq1, resetirq2);
+	reset_ev1 = readb(ptr);
+	reset_ev2 = readb(ptr+1);
+	for (i = 0 ; i < ARRAY_SIZE(chip_reset_events); i++) {
+		if (chip_reset_events[i].id == oshob_info->platform_type) {
+			pr_warn("[BOOT] %s=0x%02x %s=0x%02x (PMIT interrupt tree)\n",
+				chip_reset_events[i].reset_ev1_name,
+				reset_ev1,
+				chip_reset_events[i].reset_ev2_name,
+				reset_ev2);
+		}
+	}
 	iounmap(ptr);
 
 	/* Dumping OSHOB content */
@@ -2181,8 +2222,8 @@ static int oshob_init(void)
 	/* Dumping OSNIB content */
 	ret = 0;
 	ret |= intel_scu_ipc_read_osnib_rr(&rr);
-	ret |= intel_scu_ipc_read_osnib_resetirq1(&resetirq1);
-	ret |= intel_scu_ipc_read_osnib_resetirq2(&resetirq2);
+	ret |= intel_scu_ipc_read_osnib_reset_ev1(&reset_ev1);
+	ret |= intel_scu_ipc_read_osnib_reset_ev2(&reset_ev2);
 	ret |= intel_scu_ipc_read_osnib_wd(&wd);
 	ret |= intel_scu_ipc_read_osnib_alarm(&alarm);
 	ret |= intel_scu_ipc_read_osnib_wakesrc(&wakesrc);
@@ -2194,8 +2235,18 @@ static int oshob_init(void)
 
 	pr_warn("[BOOT] RR=0x%02x WD=0x%02x ALARM=0x%02x (osnib)\n",
 		rr, wd, alarm);
-	pr_warn("[BOOT] WAKESRC=0x%02x RESETIRQ1=0x%02x RESETIRQ2=0x%02x (osnib)\n",
-		wakesrc, resetirq1, resetirq2);
+
+	for (i = 0 ; i < ARRAY_SIZE(chip_reset_events); i++) {
+		if (chip_reset_events[i].id == oshob_info->platform_type) {
+			pr_warn("[BOOT] WAKESRC=0x%02x %s=0x%02x %s=0x%02x (osnib)\n",
+				wakesrc,
+				chip_reset_events[i].reset_ev1_name,
+				reset_ev1,
+				chip_reset_events[i].reset_ev2_name,
+				reset_ev2);
+		}
+	}
+
 #endif /* DUMP_OSNIB */
 
 #ifdef CONFIG_DEBUG_FS
