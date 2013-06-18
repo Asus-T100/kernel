@@ -1724,7 +1724,7 @@ static int mxt_initialize(struct mxt_data *data)
 	struct mxt_info info;
 
 	error = __mxt_read_reg(client, 0, sizeof(struct mxt_info), &info);
-	if (!error && info.family_id != MXT1664S_FAMILY_ID) {
+	if (error || info.family_id != MXT1664S_FAMILY_ID) {
 		error = mxt_load_fw(&client->dev, MXT_FW_NAME);
 		if (!error) {
 			dev_info(&client->dev, "Firmware update succeeded\n");
