@@ -480,6 +480,8 @@
 #define RING_SYNC_1(base)	((base)+0x44)
 #define RING_MI_MODE(base)		((base)+0x9c)
 #define RING_UHPTR(base)	((base)+0x134)
+#define RING_CNTR(base)		((base)+0x178)
+#define RING_THRESH(base)	((base)+0x17C)
 #define GEN6_RVSYNC (RING_SYNC_0(RENDER_RING_BASE))
 #define GEN6_RBSYNC (RING_SYNC_1(RENDER_RING_BASE))
 #define GEN6_VRSYNC (RING_SYNC_1(GEN6_BSD_RING_BASE))
@@ -618,6 +620,13 @@
 #define DPST_IEHCR_HIST_MODE_SELECT	(1UL<<24)
 #define DPST_IEHCR_MOD_TBL_ENABLE	(1UL<<30)
 #define DPST_IEHCR_HIST_ENABLE		(1UL<<31)
+
+/* Watchdog counter registers */
+#define PR_CTR_CTL      0x2178
+#define PR_CTR_THRESH   0x217c
+#define PR_CTR          0x2190
+#define VCS_CTR_THRESH  0x1217c
+#define VCS_CTR         0x12178
 
 #define SCPD0		0x0209c /* 915+ only */
 #define IER		0x020a0
@@ -809,6 +818,7 @@
 #define GEN6_BSD_HWSTAM			0x12098
 #define GEN6_BSD_IMR			0x120a8
 #define   GEN6_BSD_USER_INTERRUPT	(1 << 12)
+#define   GEN6_BSD_TIMEOUT_COUNTER_EXPIRED (1 << 18)
 
 #define GEN6_BSD_RNCID			0x12198
 
@@ -3685,8 +3695,10 @@ EDP_PSR_SW_TIMER
 #define GT_GEN6_BLT_FLUSHDW_NOTIFY_INTERRUPT	(1 << 26)
 #define GT_GEN6_BLT_CS_ERROR_INTERRUPT		(1 << 25)
 #define GT_GEN6_BLT_USER_INTERRUPT		(1 << 22)
+#define GT_GEN6_BSD_WATCHDOG_INTERRUPT          (1 << 18)
 #define GT_GEN6_BSD_CS_ERROR_INTERRUPT		(1 << 15)
 #define GT_GEN6_BSD_USER_INTERRUPT		(1 << 12)
+#define GT_GEN6_RENDER_WATCHDOG_INTERRUPT       (1 << 6)
 #define GT_BSD_USER_INTERRUPT			(1 << 5) /* ilk only */
 #define GT_GEN7_L3_PARITY_ERROR_INTERRUPT	(1 << 5)
 #define GT_PIPE_NOTIFY				(1 << 4)

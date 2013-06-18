@@ -464,6 +464,7 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 	struct drm_device *dev = ring->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret = init_ring_common(ring);
+	uint32_t imr;
 
 	if (INTEL_INFO(dev)->gen > 3) {
 		if (!IS_VALLEYVIEW(dev))
@@ -508,8 +509,14 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 	if ((INTEL_INFO(dev)->gen >= 6) && !(IS_VALLEYVIEW(dev)))
 		I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
 
+	imr = ~0;
+	if (INTEL_INFO(dev)->gen >= 7)
+		imr &= ~GEN6_RENDER_TIMEOUT_COUNTER_EXPIRED;
+
 	if (HAS_L3_GPU_CACHE(dev))
-		I915_WRITE_IMR(ring, ~GEN6_RENDER_L3_PARITY_ERROR);
+		imr &= ~GEN6_RENDER_L3_PARITY_ERROR;
+
+	I915_WRITE_IMR(ring, imr);
 
 	return ret;
 }
@@ -885,12 +892,13 @@ gen6_ring_get_irq(struct intel_ring_buffer *ring)
 	struct drm_device *dev = ring->dev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	unsigned long flags;
+	uint32_t imr;
 
 	if (!dev->irq_enabled)
 	       return false;
 
 	/* It looks like we need to prevent the gt from suspending while waiting
-	 * for an notifiy irq, otherwise irqs seem to get lost on at least the
+	 * for an notify irq, otherwise irqs seem to get lost on at least the
 	 * blt/bsd rings on ivb. */
 
 	/* TBD: Wake up relevant engine based on ring type */
@@ -898,11 +906,10 @@ gen6_ring_get_irq(struct intel_ring_buffer *ring)
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (ring->irq_refcount++ == 0) {
-		if (HAS_L3_GPU_CACHE(dev) && ring->id == RCS)
-			I915_WRITE_IMR(ring, ~(ring->irq_enable_mask |
-						GEN6_RENDER_L3_PARITY_ERROR));
-		else
-			I915_WRITE_IMR(ring, ~ring->irq_enable_mask);
+		imr = I915_READ_IMR(ring);
+		imr &= ~ring->irq_enable_mask;
+		I915_WRITE_IMR(ring, imr);
+
 		dev_priv->gt_irq_mask &= ~ring->irq_enable_mask;
 		I915_WRITE(GTIMR, dev_priv->gt_irq_mask);
 		POSTING_READ(GTIMR);
@@ -918,13 +925,14 @@ gen6_ring_put_irq(struct intel_ring_buffer *ring)
 	struct drm_device *dev = ring->dev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	unsigned long flags;
+	uint32_t imr;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (--ring->irq_refcount == 0) {
-		if (HAS_L3_GPU_CACHE(dev) && ring->id == RCS)
-			I915_WRITE_IMR(ring, ~GEN6_RENDER_L3_PARITY_ERROR);
-		else
-			I915_WRITE_IMR(ring, ~0);
+		imr = I915_READ_IMR(ring);
+		imr |= ring->irq_enable_mask;
+		I915_WRITE_IMR(ring, imr);
+
 		dev_priv->gt_irq_mask |= ring->irq_enable_mask;
 		I915_WRITE(GTIMR, dev_priv->gt_irq_mask);
 		POSTING_READ(GTIMR);
@@ -2137,6 +2145,8 @@ int intel_init_bsd_ring_buffer(struct drm_device *dev)
 	}
 	ring->init = init_ring_common;
 
+	/* Enable the timeout counter for watchdog reset */
+	I915_WRITE_IMR(ring, ~GEN6_BSD_TIMEOUT_COUNTER_EXPIRED);
 
 	return intel_init_ring_buffer(dev, ring);
 }
@@ -2248,6 +2258,92 @@ intel_ring_invalidate_all_caches(struct intel_ring_buffer *ring)
 	ring->gpu_caches_dirty = false;
 	return 0;
 }
+
+int
+intel_ring_supports_watchdog(struct intel_ring_buffer *ring)
+{
+	/* Return 1 if the ring supports watchdog reset, otherwise 0 */
+	if (ring) {
+		switch (ring->id) {
+		case RCS:
+		case VCS:
+			return 1;
+		default:
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+
+int
+intel_ring_start_watchdog(struct intel_ring_buffer *ring)
+{
+	int ret;
+	drm_i915_private_t *dev_priv = ring->dev->dev_private;
+
+	ret = intel_ring_begin(ring, 10);
+	if (ret)
+		return ret;
+
+	/* i915_reg.h includes a warning to place a MI_NOOP
+	* before a MI_LOAD_REGISTER_IMM*/
+	intel_ring_emit(ring, MI_NOOP);
+	intel_ring_emit(ring, MI_NOOP);
+
+	/* Set counter period */
+	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
+	intel_ring_emit(ring, RING_THRESH(ring->mmio_base));
+	intel_ring_emit(ring, dev_priv->watchdog_threshold[ring->id]);
+	intel_ring_emit(ring, MI_NOOP);
+
+	/* Start counter */
+	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
+	intel_ring_emit(ring, RING_CNTR(ring->mmio_base));
+	intel_ring_emit(ring, WATCHDOG_ENABLE);
+	intel_ring_emit(ring, MI_NOOP);
+
+	intel_ring_advance(ring);
+
+	return 0;
+}
+
+
+int
+intel_ring_stop_watchdog(struct intel_ring_buffer *ring)
+{
+	int ret;
+
+	ret = intel_ring_begin(ring, 6);
+	if (ret)
+		return ret;
+
+	/* i915_reg.h includes a warning to place a MI_NOOP
+	* before a MI_LOAD_REGISTER_IMM*/
+	intel_ring_emit(ring, MI_NOOP);
+	intel_ring_emit(ring, MI_NOOP);
+
+	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
+	intel_ring_emit(ring, RING_CNTR(ring->mmio_base));
+
+	switch (ring->id) {
+	default:
+	case RCS:
+		intel_ring_emit(ring, RCS_WATCHDOG_DISABLE);
+		break;
+	case VCS:
+		intel_ring_emit(ring, VCS_WATCHDOG_DISABLE);
+		break;
+	}
+
+	intel_ring_emit(ring, MI_NOOP);
+
+	intel_ring_advance(ring);
+
+	return 0;
+}
+
 
 
 

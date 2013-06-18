@@ -1657,7 +1657,7 @@ i915_wedged_write(struct file *filp,
 
 	if (val) {
 		if (!atomic_read(&dev_priv->full_reset))
-			i915_handle_error(dev, NULL);
+			i915_handle_error(dev, NULL, 0);
 	}
 
 	return cnt;

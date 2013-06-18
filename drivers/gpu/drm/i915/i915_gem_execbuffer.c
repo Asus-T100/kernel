@@ -35,6 +35,7 @@
 #include <linux/dma_remapping.h>
 
 #include "bp_34_linux_pagemap.h"
+#include "intel_ringbuffer.h"
 
 struct eb_objects {
 	int and;
@@ -799,14 +800,20 @@ i915_reset_gen7_sol_offsets(struct drm_device *dev,
 	if (!IS_GEN7(dev) || ring != &dev_priv->ring[RCS])
 		return 0;
 
-	ret = intel_ring_begin(ring, 4 * 3);
+	ret = intel_ring_begin(ring, 2 + (4 * 4));
 	if (ret)
 		return ret;
+
+	/* Comments in i915_reg.h indicate that a MI_LOAD_REGISTER_IMM
+	* should be preceded by a MI_NOOP*/
+	intel_ring_emit(ring, MI_NOOP);
+	intel_ring_emit(ring, MI_NOOP);
 
 	for (i = 0; i < 4; i++) {
 		intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
 		intel_ring_emit(ring, GEN7_SO_WRITE_OFFSET(i));
 		intel_ring_emit(ring, 0);
+		intel_ring_emit(ring, MI_NOOP);
 	}
 
 	intel_ring_advance(ring);
@@ -1089,6 +1096,16 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 
 	trace_i915_gem_ring_dispatch(ring, seqno);
 
+	/* Start watchdog timer*/
+	if ((args->flags & I915_EXEC_ENABLE_WATCHDOG) &&
+		i915_enable_watchdog &&
+		intel_ring_supports_watchdog(ring)) {
+
+		ret = intel_ring_start_watchdog(ring);
+		if (ret)
+			goto err;
+	}
+
 	exec_start = batch_obj->gtt_offset + args->batch_start_offset;
 	exec_len = args->batch_len;
 	if (cliprects) {
@@ -1109,6 +1126,16 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		/* Execution path for all Gen >= 5 */
 		ret = ring->dispatch_execbuffer(ring, exec_start, exec_len,
 						priv_data, priv_length);
+		if (ret)
+			goto err;
+	}
+
+	/* Cancel watchdog timer */
+	if ((args->flags & I915_EXEC_ENABLE_WATCHDOG) &&
+		i915_enable_watchdog &&
+		intel_ring_supports_watchdog(ring)) {
+
+		ret = intel_ring_stop_watchdog(ring);
 		if (ret)
 			goto err;
 	}

@@ -24,6 +24,10 @@ struct  intel_hw_status_page {
 						VCS_RING_CTX_SIZE), \
 						BCS_RING_CTX_SIZE))
 
+#define WATCHDOG_ENABLE 0
+#define RCS_WATCHDOG_DISABLE 1
+#define VCS_WATCHDOG_DISABLE 0xFFFFFFFF
+
 #define I915_READ_TAIL(ring) I915_READ(RING_TAIL((ring)->mmio_base))
 #define I915_WRITE_TAIL(ring, val) I915_WRITE(RING_TAIL((ring)->mmio_base), val)
 
@@ -287,5 +291,8 @@ int intel_ring_restore(struct intel_ring_buffer *ring);
 
 u32 get_pipe_control_scratch_addr(struct intel_ring_buffer *ring);
 
+int intel_ring_supports_watchdog(struct intel_ring_buffer *ring);
+int intel_ring_start_watchdog(struct intel_ring_buffer *ring);
+int intel_ring_stop_watchdog(struct intel_ring_buffer *ring);
 
 #endif /* _INTEL_RINGBUFFER_H_ */

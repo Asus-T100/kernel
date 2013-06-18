@@ -672,6 +672,7 @@ static void snb_gt_irq_handler(struct drm_device *dev,
 			       struct drm_i915_private *dev_priv,
 			       u32 gt_iir)
 {
+	struct intel_ring_buffer *ring;
 
 	if (gt_iir & (GEN6_RENDER_USER_INTERRUPT |
 		      GEN6_RENDER_PIPE_CONTROL_NOTIFY_INTERRUPT))
@@ -680,6 +681,26 @@ static void snb_gt_irq_handler(struct drm_device *dev,
 		notify_ring(dev, &dev_priv->ring[VCS]);
 	if (gt_iir & GEN6_BLITTER_USER_INTERRUPT)
 		notify_ring(dev, &dev_priv->ring[BCS]);
+
+	if (gt_iir & GEN6_RENDER_TIMEOUT_COUNTER_EXPIRED) {
+		DRM_DEBUG_TDR("Render timeout counter exceeded\n");
+
+		/* Stop the counter to prevent further interrupts */
+		ring = &dev_priv->ring[RCS];
+		I915_WRITE(RING_CNTR(ring->mmio_base), RCS_WATCHDOG_DISABLE);
+
+		i915_handle_error(dev, &dev_priv->hangcheck[RCS], 1);
+	}
+
+	if (gt_iir & GEN6_BSD_TIMEOUT_COUNTER_EXPIRED) {
+		DRM_DEBUG_TDR("Video timeout counter exceeded\n");
+
+		/* Stop the counter to prevent further interrupts */
+		ring = &dev_priv->ring[VCS];
+		I915_WRITE(RING_CNTR(ring->mmio_base), VCS_WATCHDOG_DISABLE);
+
+		i915_handle_error(dev, &dev_priv->hangcheck[VCS], 1);
+	}
 
 	/* Command streamer error interrupts will be dealt with by TDR*/
 
@@ -1624,11 +1645,15 @@ static void i915_report_and_clear_eir(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t instdone[I915_MAX_INSTDONE_REG];
-	u32 eir = I915_READ(EIR);
+	u32 eir;
 	int pipe, i;
+	unsigned long flags;
 
+	spin_lock_irqsave(&dev_priv->error_lock, flags);
+
+	eir = I915_READ(EIR);
 	if (!eir)
-		return;
+		goto i915_report_and_clear_eir_exit;
 
 	pr_err("render error detected, EIR: 0x%08x\n", eir);
 
@@ -1714,19 +1739,23 @@ static void i915_report_and_clear_eir(struct drm_device *dev)
 		I915_WRITE(EMR, I915_READ(EMR) | eir);
 		I915_WRITE(IIR, I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT);
 	}
+
+i915_report_and_clear_eir_exit:
+	spin_unlock_irqrestore(&dev_priv->error_lock, flags);
 }
 
 /**
  * i915_handle_error - handle an error interrupt
  * @dev: drm device
  *
- * Do some basic checking of regsiter state at error interrupt time and
+ * Do some basic checking of register state at error interrupt time and
  * dump it to the syslog.  Also call i915_capture_error_state() to make
  * sure we get a record and make it available in debugfs.  Fire a uevent
  * so userspace knows something bad happened (should trigger collection
  * of a ring dump etc.).
  */
-void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc)
+void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc,
+			int watchdog)
 {
 	u32 i;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -1743,12 +1772,14 @@ void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc)
 	 * older chips will revert to a full reset.
 	 * Error interrupts trigger a full reset (hc == NULL)*/
 	if ((INTEL_INFO(dev)->gen >= 7) && hc) {
-		cur_time = get_seconds();
-		last_reset = hc->last_reset;
-		hc->last_reset = cur_time;
+		if (!watchdog) {
+			cur_time = get_seconds();
+			last_reset = hc->last_reset;
+			hc->last_reset = cur_time;
+		}
 
-		if ((cur_time - last_reset) <
-			i915_ring_reset_min_alive_period) {
+		if (!watchdog && ((cur_time - last_reset) <
+			i915_ring_reset_min_alive_period)) {
 			/* This ring is hanging too frequently.
 			* Opt for full-reset instead */
 			DRM_DEBUG_TDR("Ring %d hanging too quickly...\r\n",
@@ -2108,7 +2139,7 @@ static bool i915_hangcheck_hung(struct intel_hangcheck *hc)
 		}
 
 		if (hung)
-			i915_handle_error(dev, hc);
+			i915_handle_error(dev, hc, 0);
 
 		return hung;
 	}
@@ -2430,10 +2461,15 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 	I915_WRITE(VLV_IIR, 0xffffffff);
 
 	I915_WRITE(GTIIR, I915_READ(GTIIR));
+	dev_priv->gt_irq_mask = ~(GT_GEN7_L3_PARITY_ERROR_INTERRUPT |
+				GT_GEN6_BSD_WATCHDOG_INTERRUPT |
+				GT_GEN6_RENDER_WATCHDOG_INTERRUPT);
 	I915_WRITE(GTIMR, dev_priv->gt_irq_mask);
 
 	render_irqs = GT_USER_INTERRUPT | GEN6_BSD_USER_INTERRUPT |
-		GEN6_BLITTER_USER_INTERRUPT;
+		GEN6_BLITTER_USER_INTERRUPT |
+		GEN6_RENDER_TIMEOUT_COUNTER_EXPIRED |
+		GEN6_BSD_TIMEOUT_COUNTER_EXPIRED;
 	I915_WRITE(GTIER, render_irqs);
 	POSTING_READ(GTIER);
 
@@ -2579,7 +2615,7 @@ static irqreturn_t i8xx_irq_handler(DRM_IRQ_ARGS)
 		 */
 		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 		if (iir & I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT)
-			i915_handle_error(dev, NULL);
+			i915_handle_error(dev, NULL, 0);
 
 		for_each_pipe(pipe) {
 			int reg = PIPESTAT(pipe);
@@ -2759,7 +2795,7 @@ static irqreturn_t i915_irq_handler(DRM_IRQ_ARGS)
 		 */
 		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 		if (iir & I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT)
-			i915_handle_error(dev, NULL);
+			i915_handle_error(dev, NULL, 0);
 
 		for_each_pipe(pipe) {
 			int reg = PIPESTAT(pipe);
@@ -2994,7 +3030,7 @@ static irqreturn_t i965_irq_handler(DRM_IRQ_ARGS)
 		 */
 		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 		if (iir & I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT)
-			i915_handle_error(dev, NULL);
+			i915_handle_error(dev, NULL, 0);
 
 		for_each_pipe(pipe) {
 			int reg = PIPESTAT(pipe);
