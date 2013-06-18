@@ -42,9 +42,9 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  intel_sprite.o \
 	  intel_opregion.o \
 	  cmi_dsi_display.o \
-	  auo_dsi_display.o \
-	  panasonic_dsi_display.o \
-	  acer_b080xat.o \
+	  dsi_mod_auo_b101uan01.o \
+	  dsi_mod_panasonic_vvx09f006a00.o \
+	  dsi_mod_auo_b080xat.o \
 	  dvo_ch7xxx.o \
 	  dvo_ch7017.o \
 	  dvo_ivch.o \

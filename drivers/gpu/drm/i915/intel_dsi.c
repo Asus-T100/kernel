@@ -110,24 +110,24 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	{
-		.panel_id = MIPI_DSI_AUO_PANEL_ID,
+		.panel_id = MIPI_DSI_AUO_B101UAN01_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
-		.name = "auo-dsi-vid-mode-display",
-		.dev_ops = &auo_dsi_display_ops,
+		.name = "auo-b101uan01-dsi-vid-mode-display",
+		.dev_ops = &auo_b101uan01_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	{
-		.panel_id = MIPI_DSI_PANASONIC_PANEL_ID,
+		.panel_id = MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
-		.name = "panasonic-dsi-vid-mode-display",
-		.dev_ops = &panasonic_dsi_display_ops,
+		.name = "panasonic-vvx09f006a00-dsi-vid-mode-display",
+		.dev_ops = &panasonic_vvx09f006a00_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	{
-		.panel_id = MIPI_DSI_B080XAT_PANEL_ID,
+		.panel_id = MIPI_DSI_AUO_B080XAT_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
-		.name = "b080xat-dsi-vid-mode-display",
-		.dev_ops = &b080xat_dsi_display_ops,
+		.name = "auo-b080xat-dsi-vid-mode-display",
+		.dev_ops = &auo_b080xat_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 };
@@ -429,7 +429,7 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	 * clock is to be filled with NULL packets. Refer to acer panel
 	 * spec for more details.
 	 */
-	if (dev_priv->mipi.panel_id == MIPI_DSI_B080XAT_PANEL_ID)
+	if (dev_priv->mipi.panel_id == MIPI_DSI_AUO_B080XAT_PANEL_ID)
 		hactive = (hactive * 10) / 8;
 
 	I915_WRITE(MIPI_HACTIVE_AREA_COUNT(pipe), hactive);
@@ -756,7 +756,8 @@ bool intel_dsi_init(struct drm_device *dev)
 		/* check if panel id available from VBT */
 		if (!dev_priv->mipi.panel_id) {
 			/* default ASUS panel */
-			dev_priv->mipi.panel_id = MIPI_DSI_PANASONIC_PANEL_ID;
+			dev_priv->mipi.panel_id =
+				MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID;
 		}
 	} else
 		dev_priv->mipi.panel_id = i915_mipi_panel_id;

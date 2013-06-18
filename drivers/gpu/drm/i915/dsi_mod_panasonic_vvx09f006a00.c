@@ -37,9 +37,10 @@
 #include "intel_drv.h"
 #include "intel_dsi.h"
 #include "intel_dsi_cmd.h"
-#include "panasonic_dsi_display.h"
+#include "dsi_mod_panasonic_vvx09f006a00.h"
 
-static void  panasonic_get_panel_info(int pipe, struct drm_connector *connector)
+static void  vvx09f006a00_get_panel_info(int pipe,
+					struct drm_connector *connector)
 {
 	if (!connector) {
 		DRM_DEBUG_KMS("Panasonic: Invalid input to get_info\n");
@@ -47,14 +48,14 @@ static void  panasonic_get_panel_info(int pipe, struct drm_connector *connector)
 	}
 
 	if (pipe == 0) {
-		connector->display_info.width_mm = 216;
-		connector->display_info.height_mm = 135;
+		connector->display_info.width_mm = 192;
+		connector->display_info.height_mm = 120;
 	}
 
 	return;
 }
 
-static void panasonic_msgbus_reset()
+static void vvx09f006a00_msgbus_reset()
 {
 	u32 msg_bus_port;
 	u32 msg_bus_reg;
@@ -87,33 +88,33 @@ static void panasonic_msgbus_reset()
 	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
 }
 
-static void panasonic_destroy(struct intel_dsi_device *dsi)
+static void vvx09f006a00_destroy(struct intel_dsi_device *dsi)
 {
 }
 
-static void panasonic_commit(struct intel_dsi_device *dsi)
+static void vvx09f006a00_commit(struct intel_dsi_device *dsi)
 {
 }
 
-static void panasonic_prepare(struct intel_dsi_device *dsi)
+static void vvx09f006a00_prepare(struct intel_dsi_device *dsi)
 {
 }
 
-static void panasonic_dump_regs(struct intel_dsi_device *dsi)
+static void vvx09f006a00_dump_regs(struct intel_dsi_device *dsi)
 {
 }
 
-static void panasonic_mode_set(struct intel_dsi_device *dsi,
+static void vvx09f006a00_mode_set(struct intel_dsi_device *dsi,
 		  struct drm_display_mode *mode,
 		  struct drm_display_mode *adjusted_mode)
 {
 }
 
-static void panasonic_create_resources(struct intel_dsi_device *dsi)
+static void vvx09f006a00_create_resources(struct intel_dsi_device *dsi)
 {
 }
 
-static struct drm_display_mode *panasonic_get_modes(
+static struct drm_display_mode *vvx09f006a00_get_modes(
 	struct intel_dsi_device *dsi)
 {
 	struct drm_display_mode *mode = NULL;
@@ -149,12 +150,13 @@ static struct drm_display_mode *panasonic_get_modes(
 }
 
 
-static bool panasonic_get_hw_state(struct intel_dsi_device *dev)
+static bool vvx09f006a00_get_hw_state(struct intel_dsi_device *dev)
 {
 	return true;
 }
 
-static enum drm_connector_status panasonic_detect(struct intel_dsi_device *dsi)
+static enum drm_connector_status vvx09f006a00_detect(
+					struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
@@ -164,19 +166,19 @@ static enum drm_connector_status panasonic_detect(struct intel_dsi_device *dsi)
 	return connector_status_connected;
 }
 
-static bool panasonic_mode_fixup(struct intel_dsi_device *dsi,
+static bool vvx09f006a00_mode_fixup(struct intel_dsi_device *dsi,
 		    const struct drm_display_mode *mode,
 		    struct drm_display_mode *adjusted_mode) {
 	return true;
 }
 
-static int panasonic_mode_valid(struct intel_dsi_device *dsi,
+static int vvx09f006a00_mode_valid(struct intel_dsi_device *dsi,
 		   struct drm_display_mode *mode)
 {
 	return MODE_OK;
 }
 
-static void panasonic_dpms(struct intel_dsi_device *dsi, bool enable)
+static void vvx09f006a00_dpms(struct intel_dsi_device *dsi, bool enable)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
@@ -196,7 +198,7 @@ static void panasonic_dpms(struct intel_dsi_device *dsi, bool enable)
 	}
 }
 
-bool panasonic_init(struct intel_dsi_device *dsi)
+bool vvx09f006a00_init(struct intel_dsi_device *dsi)
 {
 	/* create private data, slam to dsi->dev_priv. could support many panels
 	 * based on dsi->name. This panal supports both command and video mode,
@@ -234,26 +236,26 @@ bool panasonic_init(struct intel_dsi_device *dsi)
 	dsi->dphy_reg = 0x3c1fc51f;
 
 	/* Program MIPI reset */
-	panasonic_msgbus_reset();
+	vvx09f006a00_msgbus_reset();
 
 	return true;
 }
 
 
 /* Callbacks. We might not need them all. */
-struct intel_dsi_dev_ops panasonic_dsi_display_ops = {
-	.init = panasonic_init,
-	.get_info = panasonic_get_panel_info,
-	.create_resources = panasonic_create_resources,
-	.dpms = panasonic_dpms,
-	.mode_valid = panasonic_mode_valid,
-	.mode_fixup = panasonic_mode_fixup,
-	.prepare = panasonic_prepare,
-	.commit = panasonic_commit,
-	.mode_set = panasonic_mode_set,
-	.detect = panasonic_detect,
-	.get_hw_state = panasonic_get_hw_state,
-	.get_modes = panasonic_get_modes,
-	.destroy = panasonic_destroy,
-	.dump_regs = panasonic_dump_regs,
+struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops = {
+	.init = vvx09f006a00_init,
+	.get_info = vvx09f006a00_get_panel_info,
+	.create_resources = vvx09f006a00_create_resources,
+	.dpms = vvx09f006a00_dpms,
+	.mode_valid = vvx09f006a00_mode_valid,
+	.mode_fixup = vvx09f006a00_mode_fixup,
+	.prepare = vvx09f006a00_prepare,
+	.commit = vvx09f006a00_commit,
+	.mode_set = vvx09f006a00_mode_set,
+	.detect = vvx09f006a00_detect,
+	.get_hw_state = vvx09f006a00_get_hw_state,
+	.get_modes = vvx09f006a00_get_modes,
+	.destroy = vvx09f006a00_destroy,
+	.dump_regs = vvx09f006a00_dump_regs,
 };

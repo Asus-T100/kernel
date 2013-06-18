@@ -23,18 +23,16 @@
  * Authors:
  *	Shobhit Kumar <shobhit.kumar@intel.com>
  */
-#ifndef __AUO_VID_H__
-#define __AUO_VID_H__
+#ifndef __DSI_MOD_AUO_B080XAT_H__
+#define __DSI_MOD_AUO_B080XAT_H__
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include "intel_drv.h"
 
-/* FIXME: To get the AUO panel width/height inches. */
-#define AUO_PANEL_WIDTH         72
-#define AUO_PANEL_HEIGHT        128
+#define B080XAT_10x7_PANEL_WIDTH         122
+#define B080XAT_10x7_PANEL_HEIGHT        162
 
-void auo_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs);
 
-#endif /* __AUO_VID_H__ */
+#endif /* __DSI_MOD_AUO_B080XAT_H__ */
