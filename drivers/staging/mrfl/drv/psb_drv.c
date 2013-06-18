@@ -1502,6 +1502,10 @@ static int psb_driver_unload(struct drm_device *dev)
 			iounmap(dev_priv->wrapper_reg);
 			dev_priv->wrapper_reg = NULL;
 		}
+		if (dev_priv->ved_wrapper_reg) {
+			iounmap(dev_priv->ved_wrapper_reg);
+			dev_priv->ved_wrapper_reg = NULL;
+		}
 		if (dev_priv->vec_wrapper_reg) {
 			iounmap(dev_priv->vec_wrapper_reg);
 			dev_priv->vec_wrapper_reg = NULL;
@@ -1669,6 +1673,13 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 				GFX_WRAPPER_SIZE);
 
 		if (!dev_priv->wrapper_reg)
+			goto out_err;
+
+		dev_priv->ved_wrapper_reg =
+			ioremap(resource_start + VED_WRAPPER_OFFSET,
+				VED_WRAPPER_SIZE);
+
+		if (!dev_priv->ved_wrapper_reg)
 			goto out_err;
 
 		dev_priv->vec_wrapper_reg =

@@ -129,6 +129,9 @@ enum panel_type {
 #define GFX_WRAPPER_OFFSET	 0x00160000	/* GFX Wrapper */
 #define GFX_WRAPPER_SIZE	 0x00001000
 
+#define VED_WRAPPER_OFFSET	 0x00161000	/* VED Wrapper */
+#define VED_WRAPPER_SIZE	 0x00001000
+
 #define VEC_WRAPPER_OFFSET	 0x00162000	/* VEC Wrapper */
 #define VEC_WRAPPER_SIZE	 0x00001000
 
@@ -417,6 +420,7 @@ struct drm_psb_private {
 
 	uint8_t *rgx_reg;
 	uint8_t *wrapper_reg;
+	uint8_t *ved_wrapper_reg;
 	uint8_t *vec_wrapper_reg;
 	uint8_t *vdc_reg;
 	uint32_t gatt_free_offset;
