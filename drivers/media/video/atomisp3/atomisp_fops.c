@@ -99,6 +99,8 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 	struct videobuf_vmalloc_memory *vm_mem;
 	unsigned long irqflags;
 	int err;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	while (pipe->buffers_in_css < ATOMISP_CSS_Q_DEPTH) {
 		struct ia_css_buffer css_buf = {0};
@@ -120,7 +122,8 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 			 "queue video buffer[%d] type[%d] into css pipe[%d].\n",
 			 vb->i, css_buf_type, css_pipe_id);
 
-		err = ia_css_pipe_enqueue_buffer(isp->css2_basis.pipes[css_pipe_id],
+		err = ia_css_pipe_enqueue_buffer(isp_subdev->css2_basis.
+						 pipes[css_pipe_id],
 						 &css_buf);
 		if (err) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
@@ -142,6 +145,8 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
 {
 	struct atomisp_s3a_buf *s3a_buf;
 	int pipe_index = 0;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (list_empty(&isp->s3a_stats)) {
 		WARN(1, "%s: No s3a buffers available!\n", __func__);
@@ -157,7 +162,7 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
 		buffer.type = IA_CSS_BUFFER_TYPE_3A_STATISTICS;
 		buffer.data.stats_3a = s3a_buf->s3a_stat;
 		if (ia_css_pipe_enqueue_buffer(
-					isp->css2_basis.pipes[css_pipe_id],
+				isp_subdev->css2_basis.pipes[css_pipe_id],
 					&buffer)) {
 			dev_err(isp->dev, "failed to q s3a stat buffer\n");
 			return -EINVAL;
@@ -172,6 +177,8 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 			   enum ia_css_pipe_id css_pipe_id)
 {
 	struct atomisp_dvs_buf *dvs_buf;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (list_empty(&isp->dvs_stats)) {
 		WARN(1, "%s: No dis buffers available!\n", __func__);
@@ -186,7 +193,8 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 
 		buffer.type = IA_CSS_BUFFER_TYPE_DIS_STATISTICS;
 		buffer.data.stats_dvs = dvs_buf->dvs_stat;
-		if (ia_css_pipe_enqueue_buffer(isp->css2_basis.pipes[css_pipe_id],
+		if (ia_css_pipe_enqueue_buffer(isp_subdev->css2_basis.
+					       pipes[css_pipe_id],
 					&buffer)) {
 			dev_err(isp->dev, "failed to q dvs stat buffer\n");
 			return -EINVAL;
@@ -413,16 +421,17 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->isp_fatal_error = false;
 	isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
-	isp->css2_basis.stream = NULL;
+	isp_subdev->css2_basis.stream = NULL;
 	for (i = 0; i < IA_CSS_PIPE_MODE_NUM; i++) {
-		isp->css2_basis.pipes[i] = NULL;
-		isp->css2_basis.update_pipe[i] = false;
-		ia_css_pipe_config_defaults(&isp->css2_basis.pipe_configs[i]);
+		isp_subdev->css2_basis.pipes[i] = NULL;
+		isp_subdev->css2_basis.update_pipe[i] = false;
+		ia_css_pipe_config_defaults(&isp_subdev->css2_basis.
+					    pipe_configs[i]);
 		ia_css_pipe_extra_config_defaults(
-				&isp->css2_basis.pipe_extra_configs[i]);
+				&isp_subdev->css2_basis.pipe_extra_configs[i]);
 	}
-	ia_css_stream_config_defaults(&isp->css2_basis.stream_config);
-	isp->css2_basis.curr_pipe = 0;
+	ia_css_stream_config_defaults(&isp_subdev->css2_basis.stream_config);
+	isp_subdev->css2_basis.curr_pipe = 0;
 
 	/*
 	 * For Merrifield, frequency is scalable.

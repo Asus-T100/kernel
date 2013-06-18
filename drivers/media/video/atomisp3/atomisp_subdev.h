@@ -199,6 +199,23 @@ struct atomisp_css_params {
 	bool css_update_params_needed;
 };
 
+enum atomisp_css2_stream_state {
+	CSS2_STREAM_UNINIT,
+	CSS2_STREAM_CREATED,
+	CSS2_STREAM_STARTED,
+	CSS2_STREAM_STOPPED,
+};
+struct atomisp_css2_basis {
+	struct ia_css_stream *stream;
+	struct ia_css_stream_config stream_config;
+	struct ia_css_pipe *pipes[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe_config pipe_configs[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe_extra_config pipe_extra_configs[IA_CSS_PIPE_ID_NUM];
+	bool update_pipe[IA_CSS_PIPE_ID_NUM];
+	unsigned int curr_pipe;
+	enum atomisp_css2_stream_state stream_state;
+};
+
 struct atomisp_sub_device {
 	struct v4l2_subdev subdev;
 	struct media_pad pads[ATOMISP_SUBDEV_PADS_NUM];
@@ -223,6 +240,7 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl *continuous_viewfinder;
 
 	struct atomisp_css_params params;
+	struct atomisp_css2_basis css2_basis;
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];

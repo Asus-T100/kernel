@@ -173,23 +173,6 @@ struct atomisp_sw_contex {
 	int running_freq;
 };
 
-enum atomisp_css2_stream_state {
-	CSS2_STREAM_UNINIT,
-	CSS2_STREAM_CREATED,
-	CSS2_STREAM_STARTED,
-	CSS2_STREAM_STOPPED,
-};
-struct atomisp_css2_basis {
-	struct ia_css_stream *stream;
-	struct ia_css_stream_config stream_config;
-	struct ia_css_pipe *pipes[IA_CSS_PIPE_ID_NUM];
-	struct ia_css_pipe_config pipe_configs[IA_CSS_PIPE_ID_NUM];
-	struct ia_css_pipe_extra_config pipe_extra_configs[IA_CSS_PIPE_ID_NUM];
-	bool update_pipe[IA_CSS_PIPE_ID_NUM];
-	unsigned int curr_pipe;
-	enum atomisp_css2_stream_state stream_state;
-};
-
 #ifdef ATOMISP_CSS2
 struct atomisp_acc_fw {
 	struct ia_css_fw_info *fw;
@@ -298,7 +281,6 @@ struct atomisp_device {
 
 	struct atomisp_regs saved_regs;
 	struct atomisp_sw_contex sw_contex;
-	struct atomisp_css2_basis css2_basis;
 
 	/* isp timeout status flag */
 	bool isp_timeout;
