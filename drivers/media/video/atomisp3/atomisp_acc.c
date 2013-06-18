@@ -534,8 +534,9 @@ int atomisp_acc_load_extensions(struct atomisp_device *isp)
 	struct atomisp_acc_fw *acc_fw;
 	/* FIXME: Function should take isp_subdev as parameter */
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
+	bool ext_loaded = false;
 
-	int ret, i;
+	int ret = 0, i;
 
 	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
@@ -559,6 +560,7 @@ int atomisp_acc_load_extensions(struct atomisp_device *isp)
 				pipe_cfg->acc_extension = acc_fw->fw;
 				isp_subdev->css2_basis.update_pipe[pipe_id] =
 				    true;
+				ext_loaded = true;
 			}
 		}
 
@@ -566,6 +568,9 @@ int atomisp_acc_load_extensions(struct atomisp_device *isp)
 		if (ret < 0)
 			goto error;
 	}
+
+	if (!ext_loaded)
+		return ret;
 
 	if (ia_css_update_stream(isp_subdev) != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "%s: update stream failed.\n", __func__);
