@@ -203,8 +203,10 @@ static unsigned short atomisp_get_sensor_fps(struct atomisp_device *isp)
 {
 	struct v4l2_subdev_frame_interval frame_interval;
 	unsigned short fps;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	if (v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
 		video, g_frame_interval, &frame_interval)) {
 		fps = 0;
 	} else {
@@ -436,14 +438,13 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 	v4l2_event_queue(isp_subdev->subdev.devnode, &event);
 }
 
-static void atomisp_3a_stats_ready_event(struct atomisp_device *isp)
+static void atomisp_3a_stats_ready_event(struct atomisp_sub_device *isp_subdev)
 {
 	struct v4l2_event event = {0};
-	/* FIXME: Function should take isp_subdev as parameter */
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	event.type = V4L2_EVENT_ATOMISP_3A_STATS_READY;
-	event.u.frame_sync.frame_sequence = atomic_read(&isp->sequence);
+	event.u.frame_sync.frame_sequence =
+	    atomic_read(&isp_subdev->isp->sequence);
 
 	v4l2_event_queue(isp_subdev->subdev.devnode, &event);
 }
@@ -489,6 +490,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	unsigned int irq_infos = 0;
 	unsigned long flags;
 	int err;
+	/* FIXME: currently only use subdev[0] in single stream mode */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	err = ia_css_irq_translate(&irq_infos);
 	dev_dbg(isp->dev, "irq:0x%x\n", irq_infos);
@@ -505,7 +508,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+	if (isp_subdev->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 		goto out_nowake;
 
 	if (irq_infos & IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
@@ -631,8 +634,9 @@ void atomisp_clear_css_buffer_counters(struct atomisp_device *isp)
 	/* FIXME: Function should take isp_subdev as parameter */
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	memset(isp->s3a_bufs_in_css, 0, sizeof(isp->s3a_bufs_in_css));
-	isp->dis_bufs_in_css = 0;
+	memset(isp_subdev->s3a_bufs_in_css, 0,
+	       sizeof(isp_subdev->s3a_bufs_in_css));
+	isp_subdev->dis_bufs_in_css = 0;
 	isp_subdev->video_out_capture.buffers_in_css = 0;
 	isp_subdev->video_out_vf.buffers_in_css = 0;
 	isp_subdev->video_out_preview.buffers_in_css = 0;
@@ -827,8 +831,8 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 						 buffer.data.stats_3a);
 			isp_subdev->params.s3a_buf_data_valid = true;
 		}
-		isp->s3a_bufs_in_css[css_pipe_id]--;
-		atomisp_3a_stats_ready_event(isp);
+		isp_subdev->s3a_bufs_in_css[css_pipe_id]--;
+		atomisp_3a_stats_ready_event(isp_subdev);
 		break;
 	case IA_CSS_BUFFER_TYPE_DIS_STATISTICS:
 		/* ignore error in case of dis statistics for now */
@@ -843,7 +847,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 						  buffer.data.stats_dvs);
 			isp_subdev->params.dvs_proj_data_valid = true;
 		}
-		isp->dis_bufs_in_css--;
+		isp_subdev->dis_bufs_in_css--;
 		break;
 	case IA_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
 		if (!buffer.data.frame->valid) {
@@ -892,21 +896,21 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 		if (isp_subdev->params.flash_state == ATOMISP_FLASH_ONGOING) {
 			if (frame->flash_state
 			    == IA_CSS_FRAME_FLASH_STATE_PARTIAL) {
-				isp->frame_status[vb->i] =
+				isp_subdev->frame_status[vb->i] =
 				    ATOMISP_FRAME_STATUS_FLASH_PARTIAL;
 					dev_dbg(isp->dev,
 						 "%s partially flashed\n",
 						 __func__);
 			} else if (frame->flash_state
 				   == IA_CSS_FRAME_FLASH_STATE_FULL) {
-				isp->frame_status[vb->i] =
+				isp_subdev->frame_status[vb->i] =
 				    ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
 				isp_subdev->params.num_flash_frames--;
 					dev_dbg(isp->dev,
 						 "%s completely flashed\n",
 						 __func__);
 			} else {
-				isp->frame_status[vb->i] =
+				isp_subdev->frame_status[vb->i] =
 				    ATOMISP_FRAME_STATUS_OK;
 					dev_dbg(isp->dev,
 						 "%s no flash in this frame\n",
@@ -914,15 +918,17 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 				}
 
 				/* Check if flashing sequence is done */
-				if (isp->frame_status[vb->i] == ATOMISP_FRAME_STATUS_FLASH_EXPOSED)
+				if (isp_subdev->frame_status[vb->i] ==
+				    ATOMISP_FRAME_STATUS_FLASH_EXPOSED)
 					isp_subdev->params.flash_state =
 					    ATOMISP_FLASH_DONE;
 			} else {
-				isp->frame_status[vb->i] = ATOMISP_FRAME_STATUS_OK;
+				isp_subdev->frame_status[vb->i] =
+				    ATOMISP_FRAME_STATUS_OK;
 			}
 
 			isp_subdev->params.last_frame_status =
-			    isp->frame_status[vb->i];
+			    isp_subdev->frame_status[vb->i];
 
 			break;
 		default:
@@ -987,7 +993,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		ATOMISP_ISP_MAX_TIMEOUT_COUNT);
 
 	mutex_lock(&isp->mutex);
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (isp_subdev->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
 		mutex_unlock(&isp->mutex);
 		return;
 	}
@@ -1018,14 +1024,15 @@ void atomisp_wdt_work(struct work_struct *work)
 			isp_subdev->video_out_preview.buffers_in_css);
 		dev_err(isp->dev, "%s, s3a buffers in css preview pipe: %d\n",
 			__func__,
-			isp->s3a_bufs_in_css[IA_CSS_PIPE_ID_PREVIEW]);
+			isp_subdev->s3a_bufs_in_css[IA_CSS_PIPE_ID_PREVIEW]);
 		dev_err(isp->dev, "%s, s3a buffers in css capture pipe: %d\n",
 			__func__,
-			isp->s3a_bufs_in_css[IA_CSS_PIPE_ID_CAPTURE]);
+			isp_subdev->s3a_bufs_in_css[IA_CSS_PIPE_ID_CAPTURE]);
 		dev_err(isp->dev, "%s, s3a buffers in css video pipe: %d\n",
-			__func__, isp->s3a_bufs_in_css[IA_CSS_PIPE_ID_VIDEO]);
+			__func__,
+			isp_subdev->s3a_bufs_in_css[IA_CSS_PIPE_ID_VIDEO]);
 		dev_err(isp->dev, "%s, dis buffers in css: %d\n",
-			__func__, isp->dis_bufs_in_css);
+			__func__, isp_subdev->dis_bufs_in_css);
 		/*sh_css_dump_sp_state();*/
 		/*sh_css_dump_isp_state();*/
 
@@ -1054,7 +1061,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		 */
 		/* stream off sensor */
 		ret = v4l2_subdev_call(
-			isp->inputs[isp->input_curr].camera, video,
+			isp->inputs[isp_subdev->input_curr].camera, video,
 			s_stream, 0);
 		if (ret)
 			dev_warn(isp->dev,
@@ -1089,7 +1096,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		}
 
 		ret = v4l2_subdev_call(
-			isp->inputs[isp->input_curr].camera, video,
+			isp->inputs[isp_subdev->input_curr].camera, video,
 			s_stream, 1);
 		if (ret)
 			dev_warn(isp->dev,
@@ -1330,7 +1337,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	mutex_lock(&isp->mutex);
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (isp_subdev->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		goto out;
 	}
@@ -1421,10 +1428,10 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 out:
 	mutex_unlock(&isp->mutex);
 
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED
+	if (isp_subdev->streaming == ATOMISP_DEVICE_STREAMING_ENABLED
 		&& css_pipe_done
 		&& isp->sw_contex.file_input)
-		v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
 				video, s_stream, 1);
 
 	if (isp->acc.pipeline && css_pipe_done) {
@@ -1664,7 +1671,7 @@ int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 	isp_subdev->params.gdc_cac_en = !!*value;
 	if (isp_subdev->params.gdc_cac_en) {
 		isp_subdev->params.config.morph_table =
-		    isp->inputs[isp->input_curr].morph_table;
+		    isp->inputs[isp_subdev->input_curr].morph_table;
 		isp_subdev->params.css_update_params_needed = true;
 		atomisp_update_capture_mode(isp);
 	}
@@ -2045,15 +2052,17 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 void atomisp_free_internal_buffers(struct atomisp_device *isp)
 {
 	struct ia_css_morph_table *tab;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
-	tab = isp->inputs[isp->input_curr].morph_table;
+	tab = isp->inputs[isp_subdev->input_curr].morph_table;
 	if (tab) {
 		ia_css_morph_table_free(tab);
-		isp->inputs[isp->input_curr].morph_table = NULL;
+		isp->inputs[isp_subdev->input_curr].morph_table = NULL;
 	}
-	if (isp->raw_output_frame) {
-		ia_css_frame_free(isp->raw_output_frame);
-		isp->raw_output_frame = NULL;
+	if (isp_subdev->raw_output_frame) {
+		ia_css_frame_free(isp_subdev->raw_output_frame);
+		isp_subdev->raw_output_frame = NULL;
 	}
 }
 
@@ -2076,7 +2085,8 @@ void atomisp_free_3a_dvs_buffers(struct atomisp_device *isp)
 		isp_subdev->params.dvs_hor_coef_bytes = 0;
 		isp_subdev->params.dvs_ver_coef_bytes = 0;
 		isp_subdev->params.dvs_proj_data_valid = false;
-		list_for_each_entry_safe(dvs_buf, _dvs_buf, &isp->dvs_stats, list) {
+		list_for_each_entry_safe(dvs_buf, _dvs_buf,
+					 &isp_subdev->dvs_stats, list) {
 			ia_css_isp_dvs_statistics_free(dvs_buf->dvs_stat);
 			list_del(&dvs_buf->list);
 			kfree(dvs_buf);
@@ -2087,7 +2097,8 @@ void atomisp_free_3a_dvs_buffers(struct atomisp_device *isp)
 		isp_subdev->params.s3a_user_stat = NULL;
 		isp_subdev->params.s3a_buf_data_valid = false;
 		isp_subdev->params.s3a_output_bytes = 0;
-		list_for_each_entry_safe(s3a_buf, _s3a_buf, &isp->s3a_stats, list) {
+		list_for_each_entry_safe(s3a_buf, _s3a_buf,
+					 &isp_subdev->s3a_stats, list) {
 			ia_css_isp_3a_statistics_free(s3a_buf->s3a_stat);
 			list_del(&s3a_buf->list);
 			kfree(s3a_buf);
@@ -2294,12 +2305,12 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 		}
 	} else {
 		struct ia_css_morph_table *table =
-			isp->inputs[isp->input_curr].morph_table;
+			isp->inputs[isp_subdev->input_curr].morph_table;
 
 		/* free first if we have one */
 		if (table) {
 			ia_css_morph_table_free(table);
-			isp->inputs[isp->input_curr].morph_table = NULL;
+			isp->inputs[isp_subdev->input_curr].morph_table = NULL;
 		}
 
 		/* allocate new one */
@@ -2335,7 +2346,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				return -EFAULT;
 			}
 		}
-		isp->inputs[isp->input_curr].morph_table = table;
+		isp->inputs[isp_subdev->input_curr].morph_table = table;
 		if (isp_subdev->params.gdc_cac_en)
 			isp_subdev->params.config.morph_table = table;
 	}
@@ -2438,7 +2449,7 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 
 	/* isp needs to be streaming to get DIS statistics */
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (isp_subdev->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		return -EINVAL;
 	}
@@ -2950,7 +2961,7 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 	if (!user_st)
 		return 0;
 
-	old_shading_table = isp->inputs[isp->input_curr].shading_table;
+	old_shading_table = isp->inputs[isp_subdev->input_curr].shading_table;
 
 	/* user config is to disable the shading table. */
 	if (!user_st->enable) {
@@ -2989,7 +3000,7 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 
 set_lsc:
 	/* set LSC to CSS */
-	isp->inputs[isp->input_curr].shading_table = shading_table;
+	isp->inputs[isp_subdev->input_curr].shading_table = shading_table;
 	isp_subdev->params.config.shading_table = shading_table;
 	isp_subdev->params.sc_en = shading_table != NULL;
 
@@ -3012,7 +3023,7 @@ static int __atomisp_set_morph_table(struct atomisp_device *isp,
 	if (!user_morph_table)
 		return 0;
 
-	old_morph_table = isp->inputs[isp->input_curr].morph_table;
+	old_morph_table = isp->inputs[isp_subdev->input_curr].morph_table;
 
 	morph_table = ia_css_morph_table_allocate(user_morph_table->width,
 				user_morph_table->height);
@@ -3033,7 +3044,7 @@ static int __atomisp_set_morph_table(struct atomisp_device *isp,
 			goto error;
 	}
 
-	isp->inputs[isp->input_curr].morph_table = morph_table;
+	isp->inputs[isp_subdev->input_curr].morph_table = morph_table;
 	if (isp_subdev->params.gdc_cac_en)
 		isp_subdev->params.config.morph_table = morph_table;
 
@@ -3198,7 +3209,7 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 
 	control.id = V4L2_CID_COLORFX;
 	control.value = *effect;
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	ret = v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
 				core, s_ctrl, &control);
 	/*
 	 * if set color effect to sensor successfully, return
@@ -3672,7 +3683,7 @@ int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 		isp_subdev->params.config.shading_table = NULL;
 	else
 		isp_subdev->params.config.shading_table =
-		    isp->inputs[isp->input_curr].shading_table;
+		    isp->inputs[isp_subdev->input_curr].shading_table;
 
 	isp_subdev->params.sc_en = *value;
 
@@ -3739,9 +3750,11 @@ int atomisp_get_sensor_mode_data(struct atomisp_device *isp,
 				 struct atomisp_sensor_mode_data *config)
 {
 	struct camera_mipi_info *mipi_info;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	mipi_info = atomisp_to_sensor_mipi_info(
-		isp->inputs[isp->input_curr].camera);
+		isp->inputs[isp_subdev->input_curr].camera);
 	if (mipi_info == NULL)
 		return -EINVAL;
 
@@ -3774,13 +3787,15 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
 	int ret;
+	/* FIXME: isp_subdev should be derived from pipe */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_err(isp->dev, "Wrong v4l2 buf type\n");
 		return -EINVAL;
 	}
 
-	if (isp->inputs[isp->input_curr].camera == NULL)
+	if (isp->inputs[isp_subdev->input_curr].camera == NULL)
 		return -EINVAL;
 
 	fmt = atomisp_get_format_bridge(f->fmt.pix.pixelformat);
@@ -3792,15 +3807,15 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	/* fixing me! seems tpg does not support mbus interface */
 #if 0
 	/*set TPG format*/
-	if (isp->inputs[isp->input_curr].type == TEST_PATTERN) {
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-			video, try_fmt, f);
+	if (isp->inputs[isp_subdev->input_curr].type == TEST_PATTERN) {
+		ret = v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].
+				       camera, video, try_fmt, f);
 		in_width = f->fmt.pix.width;
 		in_height = f->fmt.pix.height;
 		goto done;
 	}
 #else
-	if (isp->inputs[isp->input_curr].type == TEST_PATTERN)
+	if (isp->inputs[isp_subdev->input_curr].type == TEST_PATTERN)
 		return 0;
 #endif
 	snr_mbus_fmt.code = fmt->mbus_code;
@@ -3810,7 +3825,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	dev_dbg(isp->dev, "try_mbus_fmt: asking for %ux%u\n",
 		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	ret = v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
 			video, try_mbus_fmt, &snr_mbus_fmt);
 	if (ret)
 		return ret;
@@ -3951,8 +3966,8 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 		ia_css_input_set_two_pixels_per_clock(isp, false);
 	}
 
-	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
-		isp->inputs[isp->input_curr].type != FILE_INPUT) {
+	if (isp->inputs[isp_subdev->input_curr].type != TEST_PATTERN &&
+		isp->inputs[isp_subdev->input_curr].type != FILE_INPUT) {
 		ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
 	}
 	return atomisp_update_run_mode(isp);
@@ -3999,10 +4014,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (format == NULL)
 		return -EINVAL;
 
-	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
-		isp->inputs[isp->input_curr].type != FILE_INPUT) {
+	if (isp->inputs[isp_subdev->input_curr].type != TEST_PATTERN &&
+		isp->inputs[isp_subdev->input_curr].type != FILE_INPUT) {
 		mipi_info = atomisp_to_sensor_mipi_info(
-			isp->inputs[isp->input_curr].camera);
+			isp->inputs[isp_subdev->input_curr].camera);
 		if (!mipi_info) {
 			dev_err(isp->dev, "mipi_info is NULL\n");
 			return -EINVAL;
@@ -4075,8 +4090,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
-	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
-		isp->inputs[isp->input_curr].type != FILE_INPUT)
+	if (isp->inputs[isp_subdev->input_curr].type != TEST_PATTERN &&
+		isp->inputs[isp_subdev->input_curr].type != FILE_INPUT)
 		ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
 
 	ia_css_disable_vf_pp(isp, !isp_subdev->enable_vfpp->val);
@@ -4147,13 +4162,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	atomisp_update_grid_info(isp);
 
 	/* Free the raw_dump buffer first */
-	ia_css_frame_free(isp->raw_output_frame);
-	isp->raw_output_frame = NULL;
+	ia_css_frame_free(isp_subdev->raw_output_frame);
+	isp_subdev->raw_output_frame = NULL;
 
 	if (!isp_subdev->continuous_mode->val &&
 		!isp_subdev->params.online_process &&
 		!isp->sw_contex.file_input &&
-	    ia_css_frame_allocate_from_info(&isp->raw_output_frame,
+	    ia_css_frame_allocate_from_info(&isp_subdev->raw_output_frame,
 					       raw_output_info))
 		return -ENOMEM;
 
@@ -4169,7 +4184,7 @@ static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	/* if subdev type is SOC camera,we do not need to set DVS */
-	if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
+	if (isp->inputs[isp_subdev->input_curr].type == SOC_CAMERA)
 		isp_subdev->params.video_dis_en = 0;
 
 	if (isp_subdev->params.video_dis_en &&
@@ -4210,8 +4225,8 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 		ffmt.width, ffmt.height, padding_w, padding_h,
 		dvs_env_w, dvs_env_h);
 
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, video,
-			       s_mbus_fmt, &ffmt);
+	ret = v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
+			       video, s_mbus_fmt, &ffmt);
 	if (ret)
 		return ret;
 
@@ -4610,8 +4625,8 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	shading_table->sensor_height = user_shading_table->sensor_height;
 	shading_table->fraction_bits = user_shading_table->fraction_bits;
 
-	free_table = isp->inputs[isp->input_curr].shading_table;
-	isp->inputs[isp->input_curr].shading_table = shading_table;
+	free_table = isp->inputs[isp_subdev->input_curr].shading_table;
+	isp->inputs[isp_subdev->input_curr].shading_table = shading_table;
 	isp_subdev->params.config.shading_table = shading_table;
 	isp_subdev->params.sc_en = 1;
 
@@ -4701,23 +4716,25 @@ int atomisp_exif_makernote(struct atomisp_device *isp,
 			   struct atomisp_makernote_info *config)
 {
 	struct v4l2_control ctrl;
+	/* FIXME: Function should take isp_subdev as parameter */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	ctrl.id = V4L2_CID_FOCAL_ABSOLUTE;
-	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	if (v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
 				 core, g_ctrl, &ctrl))
 		dev_warn(isp->dev, "failed to g_ctrl for focal length\n");
 	else
 		config->focal_length = ctrl.value;
 
 	ctrl.id = V4L2_CID_FNUMBER_ABSOLUTE;
-	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	if (v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
 				core, g_ctrl, &ctrl))
 		dev_warn(isp->dev, "failed to g_ctrl for f-number\n");
 	else
 		config->f_number_curr = ctrl.value;
 
 	ctrl.id = V4L2_CID_FNUMBER_RANGE;
-	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	if (v4l2_subdev_call(isp->inputs[isp_subdev->input_curr].camera,
 				core, g_ctrl, &ctrl))
 		dev_warn(isp->dev, "failed to g_ctrl for f number range\n");
 	else
@@ -4735,7 +4752,8 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 	isp_subdev->params.offline_parm = *cvf_config;
 
 	if (isp_subdev->params.offline_parm.num_captures) {
-		if (isp->streaming == ATOMISP_DEVICE_STREAMING_DISABLED) {
+		if (isp_subdev->streaming ==
+		    ATOMISP_DEVICE_STREAMING_DISABLED) {
 			int num_raw_frames =
 				min_t(int, ATOMISP_CONT_RAW_FRAMES,
 				isp_subdev->params.offline_parm.num_captures

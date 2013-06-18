@@ -390,6 +390,8 @@ static int atomisp_suspend(struct device *dev)
 		dev_get_drvdata(dev);
 	unsigned long flags;
 	int ret;
+	/* FIXME: currently only use subdev[0] in single stream mode */
+	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev[0];
 
 	/*
 	 * FIXME: Suspend is not supported by sensors. Abort if any video
@@ -399,7 +401,7 @@ static int atomisp_suspend(struct device *dev)
 		return -EBUSY;
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
+	if (isp_subdev->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		v4l2_err(&atomisp_dev,
 			    "atomisp cannot suspend at this time.\n");
@@ -997,9 +999,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		dev_err(&dev->dev, "Load firmwares failed\n");
 		goto load_fw_fail;
 	}
-
-	INIT_LIST_HEAD(&isp->s3a_stats);
-	INIT_LIST_HEAD(&isp->dvs_stats);
 
 	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
 	if (isp->wdt_work_queue == NULL) {
