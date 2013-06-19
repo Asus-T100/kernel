@@ -663,6 +663,12 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_TEMP);
 		if (ret < 0)
 			goto i2c_read_err;
+		/* check for sign bit for -ve range */
+		if (ret & 0x80) {
+			ret = (~ret) & 0x7F;
+			ret++;
+			ret *= -1;
+		}
 		val->intval = ret * 10;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
