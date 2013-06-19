@@ -45,7 +45,7 @@ static int
 pnwotg_test_probe(struct usb_interface *intf, const struct usb_device_id *id)
 {
 	struct pnwotg_test_dev	*dev;
-	int retval;
+	int retval, portNum;
 
 	dev_dbg(&intf->dev, "Penwell OTG test mode is initiated.\n");
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
@@ -61,6 +61,7 @@ pnwotg_test_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	dev->udev = usb_get_dev(interface_to_usbdev(intf));
 	dev->hcd = usb_get_hcd(bus_to_hcd(dev->udev->bus));
 	usb_set_intfdata(intf, dev);
+	portNum = dev->udev->portnum & 0xff;
 
 	dev_dbg(&intf->dev, "test mode PID 0x%04x\n",
 		le16_to_cpu(dev->udev->descriptor.idProduct));
@@ -68,31 +69,31 @@ pnwotg_test_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	case 0x0101:
 		/* TEST_SE0_NAK */
 		dev->hcd->driver->hub_control(dev->hcd, SetPortFeature,
-			USB_PORT_FEAT_TEST, 0x301, NULL, 0);
+			USB_PORT_FEAT_TEST, 0x300 + portNum, NULL, 0);
 		break;
 	case 0x0102:
 		/* TEST_J */
 		dev->hcd->driver->hub_control(dev->hcd, SetPortFeature,
-			USB_PORT_FEAT_TEST, 0x101, NULL, 0);
+			USB_PORT_FEAT_TEST, 0x100 + portNum, NULL, 0);
 		break;
 	case 0x0103:
 		/* TEST_K */
 		dev->hcd->driver->hub_control(dev->hcd, SetPortFeature,
-			USB_PORT_FEAT_TEST, 0x201, NULL, 0);
+			USB_PORT_FEAT_TEST, 0x200 + portNum, NULL, 0);
 		break;
 	case 0x0104:
 		/* TEST_PACKET */
 		dev->hcd->driver->hub_control(dev->hcd, SetPortFeature,
-			USB_PORT_FEAT_TEST, 0x401, NULL, 0);
+			USB_PORT_FEAT_TEST, 0x400 + portNum, NULL, 0);
 		break;
 	case 0x0106:
 		/* HS_HOST_PORT_SUSPEND_RESUME */
 		msleep(15000);
 		dev->hcd->driver->hub_control(dev->hcd, SetPortFeature,
-			USB_PORT_FEAT_SUSPEND, 1, NULL, 0);
+			USB_PORT_FEAT_SUSPEND, portNum, NULL, 0);
 		msleep(15000);
 		dev->hcd->driver->hub_control(dev->hcd, ClearPortFeature,
-			USB_PORT_FEAT_SUSPEND, 1, NULL, 0);
+			USB_PORT_FEAT_SUSPEND, portNum, NULL, 0);
 		break;
 	case 0x0107:
 		/* SINGLE_STEP_GET_DEV_DESC */
