@@ -344,7 +344,7 @@ static int __destroy_stream(struct atomisp_sub_device *asd, bool force)
 	int i;
 
 	if (!asd->stream_env.stream)
-		return -EINVAL;
+		return 0;
 
 	if (!force) {
 		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
