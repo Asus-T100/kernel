@@ -44,7 +44,8 @@ char *states[] = {
 	"S0I1",
 	"S0I2",
 	"S0I3",
-	"S0" };
+	"S0",
+	"S3"};
 
 struct mid_pmc_dev *mid_pmc_cxt;
 static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
@@ -206,10 +207,12 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		s0ix_residency[i] = pmc_register_read(i);
 		residency_total += s0ix_residency[i];
 	}
+	s0ix_residency[S0I3] = s0ix_residency[S0I3] - mid_pmc_cxt->s3_residency;
 
 	seq_printf(s, "State \t\t Time[sec] \t\t Residency[%%]\n");
 	for (i = 0; i < MAX_PLATFORM_STATES; i++)
 		print_residency_per_state(s, i, s0ix_residency[i]);
+	print_residency_per_state(s, i, mid_pmc_cxt->s3_residency);
 
 	seq_printf(s, "\n\nNORTH COMPLEX DEVICES :\n");
 
@@ -331,17 +334,21 @@ static int mid_suspend_prepare_late(void)
 
 static int mid_suspend_enter(suspend_state_t state)
 {
-	u32 temp = 0;
+	u32 temp = 0, count_before_entry, count_after_exit;
 
 	if (state != PM_SUSPEND_MEM)
 		return -EINVAL;
 
+	count_before_entry = pmc_register_read(S0I3);
 	trace_printk("s3_entry\n");
 	__monitor((void *)&temp, 0, 0);
 	smp_mb();
 	__mwait(BYT_S3_HINT, 1);
 	trace_printk("s3_exit\n");
+	count_after_exit = pmc_register_read(S0I3);
 
+	mid_pmc_cxt->s3_residency = mid_pmc_cxt->s3_residency +
+				count_after_exit - count_before_entry;
 	return 0;
 }
 
@@ -427,6 +434,8 @@ static int __devinit pmc_pci_probe(struct pci_dev *pdev,
 		error = -EFAULT;
 		goto exit_err1;
 	}
+
+	mid_pmc_cxt->s3_residency = 0;
 
 	error = byt_pmu_init();
 	if (error) {
