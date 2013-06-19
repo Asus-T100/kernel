@@ -29,6 +29,7 @@ struct bq24261_plat_data {
 	int (*set_cc) (int val);
 	int (*set_cv) (int val);
 	int (*set_iterm) (int val);
+	int (*enable_vbus) (int val);
 	void (*dump_master_regs) (void);
 };
 

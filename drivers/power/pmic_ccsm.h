@@ -39,6 +39,14 @@
 #define D1 (1 << 1)
 #define D0 (1 << 0)
 
+#define PMIC_ID_ADDR	0x00
+
+#define PMIC_VENDOR_ID_MASK	(0x03 << 6)
+#define PMIC_MAJOR_REV_MASK	(0x07 << 3)
+
+#define PMIC_MAJOR_REV_A0	0x00
+#define PMIC_MAJOR_REV_B0	(0x01 << 3)
+
 #define PMIC_BZONE_LOW 0
 #define PMIC_BZONE_HIGH 5
 
@@ -102,12 +110,16 @@
 #define PMIC_CHRGR_EXT_CHRGR_INT_MASK	0x01
 
 #define CHGRCTRL0_ADDR			0x4B
-#define CHGRCTRL0_RSVD_MASK		(D7|D6|D5)
+#define CHGRCTRL0_WDT_NOKICK_MASK	(D7)
+#define CHGRCTRL0_RSVD_MASK		(D6|D5)
 #define CHGRCTRL0_TTLCK_MASK		D4
 #define CHGRCTRL0_SWCONTROL_MASK	D3
 #define CHGRCTRL0_EXTCHRDIS_MASK	D2
 #define	CHRCTRL0_EMRGCHREN_MASK		D1
 #define	CHRCTRL0_CHGRRESET_MASK		D0
+
+#define WDT_NOKICK_ENABLE		(0x01 << 7)
+#define WDT_NOKICK_DISABLE		(~WDT_NOKICK_ENABLE & 0xFF)
 
 #define EXTCHRDIS_ENABLE		(0x01 << 2)
 #define EXTCHRDIS_DISABLE		(~EXTCHRDIS_ENABLE & 0xFF)
@@ -263,6 +275,7 @@ struct pmic_chrgr_drv_context {
 	void __iomem *pmic_intr_iomap;
 	struct device *dev;
 	int health;
+	u8 pmic_id;
 	struct ps_batt_chg_prof *sfi_bcprof;
 	struct ps_pse_mod_prof *actual_bcprof;
 	struct ps_pse_mod_prof *runtime_bcprof;

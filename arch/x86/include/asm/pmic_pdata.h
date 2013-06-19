@@ -14,6 +14,7 @@ extern int pmic_enable_charging(bool);
 extern int pmic_set_cc(int);
 extern int pmic_set_cv(int);
 extern int pmic_set_ilimmA(int);
+extern int pmic_enable_vbus(bool enable);
 
 extern void dump_pmic_regs(void);
 #ifdef CONFIG_PMIC_CCSM

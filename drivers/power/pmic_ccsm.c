@@ -486,7 +486,6 @@ void dump_pmic_regs(void)
 	}
 	dev_info(chc.dev, "====================\n");
 }
-EXPORT_SYMBOL(dump_pmic_regs);
 
 void dump_pmic_tt_regs(void)
 {
@@ -646,7 +645,19 @@ int pmic_get_health(void)
 {
 	return chc.health;
 }
-EXPORT_SYMBOL(pmic_get_health);
+
+int pmic_enable_vbus(bool enable)
+{
+	int ret;
+
+	if (enable) {
+		return intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
+				WDT_NOKICK_ENABLE, CHGRCTRL0_WDT_NOKICK_MASK);
+	}
+
+	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
+			WDT_NOKICK_DISABLE, CHGRCTRL0_WDT_NOKICK_MASK);
+}
 
 int pmic_enable_charging(bool enable)
 {
@@ -666,7 +677,6 @@ int pmic_enable_charging(bool enable)
 			val, CHGRCTRL0_EXTCHRDIS_MASK);
 	return ret;
 }
-EXPORT_SYMBOL(pmic_enable_charging);
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
@@ -751,7 +761,6 @@ int pmic_set_cc(int new_cc)
 
 	return 0;
 }
-EXPORT_SYMBOL(pmic_set_cc);
 
 int pmic_set_cv(int new_cv)
 {
@@ -792,7 +801,6 @@ int pmic_set_cv(int new_cv)
 
 	return 0;
 }
-EXPORT_SYMBOL(pmic_set_cv);
 
 int pmic_set_ilimmA(int ilim_mA)
 {
@@ -804,7 +812,6 @@ int pmic_set_ilimmA(int ilim_mA)
 		CHGRCTRL1_ADDR, reg_val);
 	return intel_scu_ipc_iowrite8(CHGRCTRL1_ADDR, reg_val);
 }
-EXPORT_SYMBOL(pmic_set_ilimmA);
 
 /**
  * pmic_read_adc_val - read ADC value of specified sensors
@@ -855,7 +862,6 @@ int pmic_get_battery_pack_temp(int *temp)
 		return -ENODEV;
 	return pmic_read_adc_val(GPADC_BATTEMP0, temp, &chc);
 }
-EXPORT_SYMBOL(pmic_get_battery_pack_temp);
 
 static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 				struct interrupt_info int_info[],
@@ -1354,6 +1360,13 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	if (chc.pdata == NULL) {
 		dev_err(chc.dev, "Platform data not initialized\n");
 		return -EFAULT;
+	}
+
+	retval = intel_scu_ipc_ioread8(PMIC_ID_ADDR, &chc.pmic_id);
+	if (retval) {
+		dev_err(chc.dev,
+			"Error reading PMIC ID register\n");
+		return retval;
 	}
 
 	chc.sfi_bcprof = kzalloc(sizeof(struct ps_batt_chg_prof),
