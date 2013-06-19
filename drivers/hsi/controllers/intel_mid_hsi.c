@@ -1012,18 +1012,19 @@ static inline void hsi_disable_master_dma_cfg(void __iomem *dma)
 /**
  * hsi_ctrl_set_cfg - HSI controller hardware configure
  * @intel_hsi: Intel HSI controller reference
+ * @do_reset: flag to reset or not ARASAN IP
  *
- * Program the hardware in accordance with the settings stored in the HSI
- * controller software structure.
+ * Reset the ARASAN IP if requested and Program the hardware in accordance
+ * with the settings stored in the HSI controller software structure.
  *
  * Returns success or an error if it is not possible to reprogram the device.
  */
-static int hsi_ctrl_set_cfg(struct intel_controller *intel_hsi)
+static int hsi_ctrl_set_cfg(struct intel_controller *intel_hsi, int do_reset)
 {
 	void __iomem	*ctrl	= intel_hsi->ctrl_io;
 	void __iomem	*dma	= intel_hsi->dma_io;
 	int		 version = intel_hsi->version;
-	u32 sz, status, mask, fifo_th, fifo_sz, start, dma_arb;
+	u32 sz, status, mask, fifo_th, fifo_sz, start, dma_arb, program_reg;
 	int i;
 
 	/* If the reset bit is set then nothing has been configured yet ! */
@@ -1034,6 +1035,28 @@ static int hsi_ctrl_set_cfg(struct intel_controller *intel_hsi)
 	iowrite32(0, ARASAN_REG(PROGRAM));
 	iowrite32((intel_hsi->clk_cfg & ~ARASAN_CLK_ENABLE),
 		  ARASAN_REG(CLOCK_CTRL));
+	/* reset the ARASAN IP only during setup */
+	if (do_reset) {
+		status = ioread32(ARASAN_REG(CLOCK_CTRL));
+		i = 0;
+		while (!(status & ARASAN_CLK_STABLE)) {
+			i++;
+			if (i > HSI_CLOCK_SETUP_DELAY_WAIT)
+				return -ETIME;
+			udelay(1);
+			status = ioread32(ARASAN_REG(CLOCK_CTRL));
+		}
+		iowrite32(intel_hsi->clk_cfg, ARASAN_REG(CLOCK_CTRL));
+
+		iowrite32(ARASAN_RESET, ARASAN_REG(PROGRAM));
+		do {
+			program_reg = ioread32(ARASAN_REG(PROGRAM));
+		} while ((program_reg & ARASAN_RESET));
+
+		iowrite32(0, ARASAN_REG(PROGRAM));
+		iowrite32((intel_hsi->clk_cfg & ~ARASAN_CLK_ENABLE),
+			  ARASAN_REG(CLOCK_CTRL));
+	}
 
 	/* Disable FIFO and configure fixed DMA registers */
 	if (is_arasan_v1(version)) {
@@ -1203,7 +1226,7 @@ static int hsi_ctrl_resume(struct intel_controller *intel_hsi, int rtpm)
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (intel_hsi->suspend_state != DEVICE_READY) {
-		if (hsi_ctrl_set_cfg(intel_hsi))
+		if (hsi_ctrl_set_cfg(intel_hsi, 0))
 			err = -EAGAIN;
 		intel_hsi->dma_resumed = 0;
 		intel_hsi->suspend_state--;
@@ -3123,7 +3146,7 @@ static int hsi_mid_setup(struct hsi_client *cl)
 
 	/* The controller will be configured on resume if necessary */
 	if (unlikely(!err && intel_hsi->suspend_state == DEVICE_READY))
-		err = hsi_ctrl_set_cfg(intel_hsi);
+		err = hsi_ctrl_set_cfg(intel_hsi, 1);
 
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
