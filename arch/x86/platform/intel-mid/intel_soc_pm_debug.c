@@ -26,6 +26,9 @@
 #ifdef CONFIG_PM_DEBUG
 #define MAX_CSTATES_POSSIBLE	32
 
+u32 prev_s0ix_cnt[SYS_STATE_MAX];
+unsigned long long prev_s0ix_res[SYS_STATE_MAX];
+
 static struct latency_stat *lat_stat;
 
 static void latency_measure_enable_disable(bool enable_measure)
@@ -1341,6 +1344,10 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 
 	/* Print S0ix residency counter */
 	t = readq(residency[type]);
+	if (t < prev_s0ix_res[type-1])
+		t += (((unsigned long long)~0) - prev_s0ix_res[type-1]);
+	else
+		t -= prev_s0ix_res[type-1];
 	micro_sec_rem = do_div(t, MICRO_SEC);
 	time = (unsigned int)t;
 
@@ -1374,6 +1381,10 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 
 	/* Print number of interations of S0ix */
 	scu_val = readl(s0ix_counter[type]);
+	if (scu_val < prev_s0ix_cnt[type-1])
+		scu_val += (((u32)~0) - prev_s0ix_cnt[type-1]);
+	else
+		scu_val -= prev_s0ix_cnt[type-1];
 	seq_printf(s, "%lu\n", (unsigned long) scu_val);
 }
 
@@ -1464,9 +1475,48 @@ static int devices_state_open(struct inode *inode, struct file *file)
 	return single_open(file, pmu_devices_state_show, NULL);
 }
 
+static ssize_t devices_state_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int ret;
+	int buf_size = min(count, sizeof(buf)-1);
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+	buf[buf_size] = 0;
+
+	if (((strlen("clear")+1) == buf_size) &&
+		!strncmp(buf, "clear", strlen("clear"))) {
+		down(&mid_pmu_cxt->scu_ready_sem);
+
+		/* Dump S0ix residency counters */
+		ret = intel_scu_ipc_simple_command(DUMP_RES_COUNTER, 0);
+		if (ret)
+			printk(KERN_ERR "IPC command to DUMP S0ix residency failed\n");
+
+		/* Dump number of interations of S0ix */
+		ret = intel_scu_ipc_simple_command(DUMP_S0IX_COUNT, 0);
+		if (ret)
+			printk(KERN_ERR "IPC command to DUMP S0ix count failed\n");
+
+		mid_pmu_cxt->pmu_init_time = cpu_clock(0);
+		prev_s0ix_cnt[0] = readl(s0ix_counter[SYS_STATE_S0I1]);
+		prev_s0ix_cnt[1] = readl(s0ix_counter[SYS_STATE_S0I2]);
+		prev_s0ix_cnt[2] = readl(s0ix_counter[SYS_STATE_S0I3]);
+		prev_s0ix_res[0] = readq(residency[SYS_STATE_S0I1]);
+		prev_s0ix_res[1] = readq(residency[SYS_STATE_S0I2]);
+		prev_s0ix_res[2] = readq(residency[SYS_STATE_S0I3]);
+		up(&mid_pmu_cxt->scu_ready_sem);
+	}
+	return buf_size;
+}
+
+
 static const struct file_operations devices_state_operations = {
 	.open		= devices_state_open,
 	.read		= seq_read,
+	.write		= devices_state_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
