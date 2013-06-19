@@ -226,7 +226,7 @@ struct atomisp_device {
 	unsigned int dis_bufs_in_css;
 
 	/* ISP modules */
-	struct atomisp_sub_device isp_subdev;
+	struct atomisp_sub_device asd;
 	/*
 	 * MRFLD has 3 CSI ports, while MFLD has only 2.
 	 */

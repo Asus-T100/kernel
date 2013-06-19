@@ -710,7 +710,7 @@ static void atomisp_unregister_entities(struct atomisp_device *isp)
 {
 	unsigned int i;
 
-	atomisp_subdev_unregister_entities(&isp->isp_subdev);
+	atomisp_subdev_unregister_entities(&isp->asd);
 	atomisp_tpg_unregister_entities(&isp->tpg);
 	atomisp_file_input_unregister_entities(&isp->file_dev);
 	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++)
@@ -783,7 +783,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	}
 
 	ret =
-	atomisp_subdev_register_entities(&isp->isp_subdev, &isp->v4l2_dev);
+	atomisp_subdev_register_entities(&isp->asd, &isp->v4l2_dev);
 	if (ret < 0) {
 		v4l2_err(&atomisp_dev,
 			"atomisp_subdev_register_entities fail\n");
@@ -839,7 +839,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	return ret;
 
 link_failed:
-	atomisp_subdev_unregister_entities(&isp->isp_subdev);
+	atomisp_subdev_unregister_entities(&isp->asd);
 subdev_register_failed:
 	atomisp_tpg_unregister_entities(&isp->tpg);
 tpg_register_failed:
@@ -889,7 +889,7 @@ static int atomisp_initialize_modules(struct atomisp_device *isp)
 		ret = media_entity_create_link(
 				&isp->csi2_port[i].subdev.entity,
 				CSI2_PAD_SOURCE,
-				&isp->isp_subdev.subdev.entity,
+				&isp->asd.subdev.entity,
 				ATOMISP_SUBDEV_PAD_SINK,
 				0);
 		if (ret < 0)

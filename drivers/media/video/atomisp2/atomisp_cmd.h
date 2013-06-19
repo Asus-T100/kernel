@@ -81,7 +81,7 @@ void atomisp_msi_irq_init(struct atomisp_device *isp, struct pci_dev *dev);
 void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev);
 void atomisp_wdt_work(struct work_struct *work);
 void atomisp_wdt(unsigned long isp_addr);
-void atomisp_setup_flash(struct atomisp_sub_device *isp_subdev);
+void atomisp_setup_flash(struct atomisp_sub_device *asd);
 irqreturn_t atomisp_isr(int irq, void *dev);
 irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr);
 const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
@@ -110,173 +110,173 @@ bool atomisp_is_viewfinder_support(struct atomisp_device *isp);
  * Function to enable/disable lens geometry distortion correction (GDC) and
  * chromatic aberration correction (CAC)
  */
-int atomisp_gdc_cac(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_gdc_cac(struct atomisp_sub_device *asd, int flag,
 		    __s32 *value);
 
 /*
  * Function to enable/disable low light mode (including ANR)
  */
-int atomisp_low_light(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_low_light(struct atomisp_sub_device *asd, int flag,
 		      __s32 *value);
 
 /*
  * Function to enable/disable extra noise reduction (XNR) in low light
  * condition
  */
-int atomisp_xnr(struct atomisp_sub_device *isp_subdev, int flag, int *arg);
+int atomisp_xnr(struct atomisp_sub_device *asd, int flag, int *arg);
 
 /*
  * Function to configure noise reduction
  */
-int atomisp_nr(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_nr(struct atomisp_sub_device *asd, int flag,
 	       struct atomisp_nr_config *config);
 
 /*
  * Function to configure temporal noise reduction (TNR)
  */
-int atomisp_tnr(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_tnr(struct atomisp_sub_device *asd, int flag,
 		struct atomisp_tnr_config *config);
 
 /*
  * Function to configure black level compensation
  */
-int atomisp_black_level(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_black_level(struct atomisp_sub_device *asd, int flag,
 			struct atomisp_ob_config *config);
 
 /*
  * Function to configure edge enhancement
  */
-int atomisp_ee(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_ee(struct atomisp_sub_device *asd, int flag,
 	       struct atomisp_ee_config *config);
 
 /*
  * Function to update Gamma table for gamma, brightness and contrast config
  */
-int atomisp_gamma(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_gamma(struct atomisp_sub_device *asd, int flag,
 		  struct atomisp_gamma_table *config);
 /*
  * Function to update Ctc table for Chroma Enhancement
  */
-int atomisp_ctc(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_ctc(struct atomisp_sub_device *asd, int flag,
 		struct atomisp_ctc_table *config);
 
 /*
  * Function to update gamma correction parameters
  */
-int atomisp_gamma_correction(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_gamma_correction(struct atomisp_sub_device *asd, int flag,
 	struct atomisp_gc_config *config);
 
 /*
  * Function to update Gdc table for gdc
  */
-int atomisp_gdc_cac_table(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_gdc_cac_table(struct atomisp_sub_device *asd, int flag,
 			  struct atomisp_morph_table *config);
 
 /*
  * Function to update table for macc
  */
-int atomisp_macc_table(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_macc_table(struct atomisp_sub_device *asd, int flag,
 		       struct atomisp_macc_config *config);
 /*
  * Function to get DIS statistics.
  */
-int atomisp_get_dis_stat(struct atomisp_sub_device *isp_subdev,
+int atomisp_get_dis_stat(struct atomisp_sub_device *asd,
 			 struct atomisp_dis_statistics *stats);
 
 /*
  * Function to set the DIS coefficients.
  */
-int atomisp_set_dis_coefs(struct atomisp_sub_device *isp_subdev,
+int atomisp_set_dis_coefs(struct atomisp_sub_device *asd,
 			  struct atomisp_dis_coefficients *coefs);
 
 /*
  * Function to set the DIS motion vector.
  */
-int atomisp_set_dis_vector(struct atomisp_sub_device *isp_subdev,
+int atomisp_set_dis_vector(struct atomisp_sub_device *asd,
 			   struct atomisp_dis_vector *vector);
 
 /*
  * Function to set/get 3A stat from isp
  */
-int atomisp_3a_stat(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_3a_stat(struct atomisp_sub_device *asd, int flag,
 		    struct atomisp_3a_statistics *config);
 
-int atomisp_set_parameters(struct atomisp_sub_device *isp_subdev,
+int atomisp_set_parameters(struct atomisp_sub_device *asd,
 		struct atomisp_parameters *arg);
 
 /*
  * Function to set/get isp parameters to isp
  */
-int atomisp_param(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_param(struct atomisp_sub_device *asd, int flag,
 		  struct atomisp_parm *config);
 
 /*
  * Function to configure color effect of the image
  */
-int atomisp_color_effect(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_color_effect(struct atomisp_sub_device *asd, int flag,
 			 __s32 *effect);
 
 /*
  * Function to configure bad pixel correction
  */
-int atomisp_bad_pixel(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_bad_pixel(struct atomisp_sub_device *asd, int flag,
 		      __s32 *value);
 
 /*
  * Function to configure bad pixel correction params
  */
-int atomisp_bad_pixel_param(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_bad_pixel_param(struct atomisp_sub_device *asd, int flag,
 			    struct atomisp_dp_config *config);
 
 /*
  * Function to enable/disable video image stablization
  */
-int atomisp_video_stable(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_video_stable(struct atomisp_sub_device *asd, int flag,
 			 __s32 *value);
 
 /*
  * Function to configure fixed pattern noise
  */
-int atomisp_fixed_pattern(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_fixed_pattern(struct atomisp_sub_device *asd, int flag,
 			  __s32 *value);
 
 /*
  * Function to configure fixed pattern noise table
  */
-int atomisp_fixed_pattern_table(struct atomisp_sub_device *isp_subdev,
+int atomisp_fixed_pattern_table(struct atomisp_sub_device *asd,
 				struct v4l2_framebuffer *config);
 
 /*
  * Function to configure false color correction
  */
-int atomisp_false_color(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_false_color(struct atomisp_sub_device *asd, int flag,
 			__s32 *value);
 
 /*
  * Function to configure false color correction params
  */
-int atomisp_false_color_param(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_false_color_param(struct atomisp_sub_device *asd, int flag,
 			      struct atomisp_de_config *config);
 
 /*
  * Function to configure white balance params
  */
-int atomisp_white_balance_param(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_white_balance_param(struct atomisp_sub_device *asd, int flag,
 				struct atomisp_wb_config *config);
 
-int atomisp_3a_config_param(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_3a_config_param(struct atomisp_sub_device *asd, int flag,
 			    struct atomisp_3a_config *config);
 
 /*
  * Function to enable/disable lens shading correction
  */
-int atomisp_shading_correction(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_shading_correction(struct atomisp_sub_device *asd, int flag,
 				       __s32 *value);
 
 /*
  * Function to setup digital zoom
  */
-int atomisp_digital_zoom(struct atomisp_sub_device *isp_subdev, int flag,
+int atomisp_digital_zoom(struct atomisp_sub_device *asd, int flag,
 			 __s32 *value);
 
 int atomisp_get_sensor_mode_data(struct atomisp_device *isp,
@@ -293,21 +293,21 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f);
 int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f);
 
 void atomisp_free_all_shading_tables(struct atomisp_device *isp);
-int atomisp_set_shading_table(struct atomisp_sub_device *isp_subdev,
+int atomisp_set_shading_table(struct atomisp_sub_device *asd,
 			      struct atomisp_shading_table *shading_table);
 
-int atomisp_offline_capture_configure(struct atomisp_sub_device *isp_subdev,
+int atomisp_offline_capture_configure(struct atomisp_sub_device *asd,
 				struct atomisp_cont_capture_conf *cvf_config);
 
 int atomisp_ospm_dphy_down(struct atomisp_device *isp);
 int atomisp_ospm_dphy_up(struct atomisp_device *isp);
-int atomisp_exif_makernote(struct atomisp_sub_device *isp_subdev,
+int atomisp_exif_makernote(struct atomisp_sub_device *asd,
 			   struct atomisp_makernote_info *config);
 
-void atomisp_free_internal_buffers(struct atomisp_sub_device *isp_subdev);
-void atomisp_free_3a_dis_buffers(struct atomisp_sub_device *isp_subdev);
+void atomisp_free_internal_buffers(struct atomisp_sub_device *asd);
+void atomisp_free_3a_dis_buffers(struct atomisp_sub_device *asd);
 
-int  atomisp_flash_enable(struct atomisp_sub_device *isp_subdev,
+int  atomisp_flash_enable(struct atomisp_sub_device *asd,
 			  int num_frames);
 
 int atomisp_freq_scaling(struct atomisp_device *vdev,

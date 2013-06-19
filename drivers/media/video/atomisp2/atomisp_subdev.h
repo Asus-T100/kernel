@@ -88,7 +88,7 @@ struct atomisp_video_pipe {
 	struct v4l2_pix_format pix;
 	uint32_t sh_fmt;
 
-	struct atomisp_sub_device *isp_subdev;
+	struct atomisp_sub_device *asd;
 };
 
 struct atomisp_pad_format {
@@ -297,8 +297,8 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 
 int atomisp_update_run_mode(struct atomisp_device *isp);
 
-void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev);
-int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,
+void atomisp_subdev_unregister_entities(struct atomisp_sub_device *asd);
+int atomisp_subdev_register_entities(struct atomisp_sub_device *asd,
 	struct v4l2_device *vdev);
 int atomisp_subdev_init(struct atomisp_device *isp);
 void atomisp_subdev_cleanup(struct atomisp_device *isp);

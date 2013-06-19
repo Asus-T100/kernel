@@ -164,45 +164,45 @@ struct atomisp_css_event {
 	struct ia_css_event event;
 };
 
-void atomisp_css_set_macc_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_macc_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_macc_config *macc_config);
 
-void atomisp_css_set_ecd_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_ecd_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_ecd_config *ecd_config);
 
-void atomisp_css_set_ynr_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_ynr_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_ynr_config *ynr_config);
 
-void atomisp_css_set_fc_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_fc_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_fc_config *fc_config);
 
-void atomisp_css_set_aa_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_aa_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_aa_config *aa_config);
 
-void atomisp_css_set_anr_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_anr_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_anr_config *anr_config);
 
-void atomisp_css_set_xnr_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_xnr_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_xnr_config *xnr_config);
 
-void atomisp_css_set_yuv2rgb_cc_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_yuv2rgb_cc_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_cc_config *yuv2rgb_cc_config);
 
-void atomisp_css_set_rgb2yuv_cc_config(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_rgb2yuv_cc_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_cc_config *rgb2yuv_cc_config);
 
-void atomisp_css_set_xnr_table(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_xnr_table(struct atomisp_sub_device *asd,
 			struct atomisp_css_xnr_table *xnr_table);
 
-void atomisp_css_set_r_gamma_table(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_r_gamma_table(struct atomisp_sub_device *asd,
 			struct atomisp_css_rgb_gamma_table *r_gamma_table);
 
-void atomisp_css_set_g_gamma_table(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_g_gamma_table(struct atomisp_sub_device *asd,
 			struct atomisp_css_rgb_gamma_table *g_gamma_table);
 
-void atomisp_css_set_b_gamma_table(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_b_gamma_table(struct atomisp_sub_device *asd,
 			struct atomisp_css_rgb_gamma_table *b_gamma_table);
 
-void atomisp_css_set_anr_thres(struct atomisp_sub_device *isp_subdev,
+void atomisp_css_set_anr_thres(struct atomisp_sub_device *asd,
 			struct atomisp_css_anr_thres *anr_thres);
 #endif
