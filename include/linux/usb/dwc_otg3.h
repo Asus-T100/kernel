@@ -594,4 +594,10 @@ struct dwc_otg2 {
 #define PCI_DEVICE_ID_DWC 0x119E
 #define PCI_DEVICE_ID_DWC_VLV 0x0F37
 
+#define VENDOR_ID_MASK (0x03 << 6)
+#define BASIN_COVE_PMIC_ID (0x03 << 6)
+
+#define PMIC_MAJOR_REV (0x07 << 3)
+#define PMIC_A0_MAJOR_REV 0x00
+
 #endif /* __DWC_OTG_H__ */
