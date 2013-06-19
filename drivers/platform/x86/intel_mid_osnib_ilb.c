@@ -59,6 +59,7 @@ static struct target_os oses[] = {
 	{ "fastboot", FASTBOOT },
 	{ "bootloader", FASTBOOT },
 	{ "factory", FACTORY },
+	{ "dnx", DNX},
 };
 
 static int osnib_ilb_reboot_notify(struct notifier_block *notifier,
