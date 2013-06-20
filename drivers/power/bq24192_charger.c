@@ -1333,8 +1333,11 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 			"%s : mutex is already acquired",
 				__func__);
 	}
-	if (!mutex_trylock(&chip->event_lock))
-		return -EBUSY;
+	if (system_state != SYSTEM_RUNNING) {
+		if (!mutex_trylock(&chip->event_lock))
+			return -EBUSY;
+	} else
+		mutex_lock(&chip->event_lock);
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = (chip->cable_type !=
@@ -1441,7 +1444,7 @@ static irqreturn_t bq24192_irq_isr(int irq, void *devid)
 static irqreturn_t bq24192_irq_thread(int irq, void *devid)
 {
 	struct bq24192_chip *chip = (struct bq24192_chip *)devid;
-	int reg_status, reg_fault;
+	int reg_status, reg_fault, temp;
 
 	dev_info(&chip->client->dev,
 		"IRQ Handled for charger interrupt: %d\n", irq);
@@ -1478,8 +1481,21 @@ static irqreturn_t bq24192_irq_thread(int irq, void *devid)
 		} else
 			dev_info(&chip->client->dev, "No charger connected\n");
 	}
-	/*updating health status when interrupt occurs*/
-	power_supply_changed(&chip->usb);
+
+	temp = fg_chip_get_property(POWER_SUPPLY_PROP_TEMP);
+	if (temp == -ENODEV || temp == -EINVAL) {
+		dev_err(&chip->client->dev,
+			"%s Failed to read batt temp\n", __func__);
+	}
+
+	temp /= 10;
+
+	if ((temp <= chip->min_temp) ||
+		(temp >= chip->max_temp)) {
+			/*updating health status when the
+				status change interrupt occurs*/
+			power_supply_changed(&chip->usb);
+	}
 	return IRQ_HANDLED;
 }
 
