@@ -285,8 +285,7 @@ int intel_ring_save(struct intel_ring_buffer *ring,
 			u32 flags);
 int intel_ring_restore(struct intel_ring_buffer *ring);
 
-
-
+u32 get_pipe_control_scratch_addr(struct intel_ring_buffer *ring);
 
 
 #endif /* _INTEL_RINGBUFFER_H_ */

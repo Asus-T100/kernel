@@ -3994,9 +3994,8 @@ static void ivybridge_init_clock_gating(struct drm_device *dev)
 
 	I915_WRITE(ILK_DSPCLK_GATE, IVB_VRHUNIT_CLK_GATE);
 
-	/* WaDisableEarlyCull */
-	I915_WRITE(_3D_CHICKEN3,
-		   _MASKED_BIT_ENABLE(_3D_CHICKEN_SF_DISABLE_OBJEND_CULL));
+	/* Reset the 0th bit to disable the stats from FMD/GNE/ACE regs */
+	I915_WRITE(FF_SLICE_CS_CHICKEN3, 0);
 
 	I915_WRITE(IVB_CHICKEN3,
 		   CHICKEN3_DGMG_REQ_OUT_FIX_DISABLE |
@@ -4099,10 +4098,6 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		   _MASKED_BIT_ENABLE(GEN7_MAX_PS_THREAD_DEP |
 				      GEN7_PSD_SINGLE_PORT_DISPATCH_ENABLE));
 
-	/* Apply the WaDisableRHWOOptimizationForRenderHang workaround. */
-	I915_WRITE(GEN7_COMMON_SLICE_CHICKEN1,
-		   GEN7_CSC1_RHWO_OPT_DISABLE_IN_RCC);
-
 	/* WaApplyL3ControlAndL3ChickenMode requires those two on Ivy Bridge */
 	if (IS_VALLEYVIEWP_M(dev)) {
 		I915_WRITE(GEN7_L3CNTLREG1,
@@ -4114,9 +4109,28 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 
 	I915_WRITE(GEN7_L3_CHICKEN_MODE_REGISTER, GEN7_WA_L3_CHICKEN_MODE);
 
+	/* WaDisable_RenderCache_OperationalFlush
+	 * Clear bit 0, so we do a AND with the mask
+	 * to keep other bits the same */
+	I915_WRITE(GEN7_CACHE_MODE_0,
+		I915_READ(GEN7_CACHE_MODE_0) & (~GEN7_RC_OP_FLUSH_ENABLE));
+
 	/* WaDisableDopClockGating */
-	I915_WRITE(GEN7_ROW_CHICKEN2,
-		   _MASKED_BIT_ENABLE(DOP_CLOCK_GATING_DISABLE));
+	if (IS_VALLEYVIEWP_M(dev)) {
+		/* Not needed for VLV+ */
+	} else {
+		/* Set bit 0, Disable Drop of Point Gating for EUs */
+		I915_WRITE(GEN7_ROW_CHICKEN2,
+			I915_READ(GEN7_ROW_CHICKEN2) |
+			_MASKED_BIT_ENABLE(DOP_CLOCK_GATING_DISABLE));
+	}
+
+	/* WaDisableAsyncFlipPerfMode
+	 * Disabling async flip performance mode
+	 * (used to fix multiple issues) */
+	I915_WRITE(MI_MODE,
+		I915_READ(MI_MODE) |
+		_MASKED_BIT_ENABLE(DIS_AYSNC_FLIP_PERF_MODE));
 
 	/* WaForceL3Serialization */
 	I915_WRITE(GEN7_L3SQCREG4, I915_READ(GEN7_L3SQCREG4) &
@@ -4154,7 +4168,11 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		   GEN6_RCPBUNIT_CLOCK_GATE_DISABLE |
 		   GEN6_RCCUNIT_CLOCK_GATE_DISABLE);
 
-	I915_WRITE(GEN7_UCGCTL4, GEN7_L3BANK2X_CLOCK_GATE_DISABLE);
+	/* WaDisableL3Bank2xClockGate
+	 * Disabling L3 clock gating- MMIO 940c[25] = 1
+	 * Set bit 25, to disable L3_BANK_2x_CLK_GATING */
+	I915_WRITE(GEN7_UCGCTL4,
+		I915_READ(GEN7_UCGCTL4) | GEN7_L3BANK2X_CLOCK_GATE_DISABLE);
 
 	for_each_pipe(pipe) {
 		I915_WRITE(DSPCNTR(pipe),
@@ -4163,9 +4181,18 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		intel_flush_display_plane(dev_priv, pipe);
 	}
 
-	I915_WRITE(CACHE_MODE_1,
-		   _MASKED_BIT_ENABLE(PIXEL_SUBSPAN_COLLECT_OPT_DISABLE));
+	/* WaVSThreadDispatchOverride
+	 * Hw will decide which half slice the thread will dispatch.
+	 * May not be needed for VLV, as its a single slice */
+	I915_WRITE(GEN7_CACHE_MODE_0,
+		I915_READ(GEN7_FF_THREAD_MODE) &
+		(~GEN7_FF_VS_SCHED_LOAD_BALANCE));
 
+	/* WaDisable4x2SubspanOptimization,
+	 * Disable combining of two 2x2 subspans into a 4x2 subspan
+	 * Set chicken bit to disable subspan optimization */
+	I915_WRITE(CACHE_MODE_1,
+		   _MASKED_BIT_DISABLE(PIXEL_SUBSPAN_COLLECT_OPT_DISABLE));
 	/*
 	 * WaDisableVLVClockGating_VBIIssue
 	 * Disable clock gating on th GCFG unit to prevent a delay

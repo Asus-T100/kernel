@@ -254,18 +254,6 @@ gen6_render_ring_flush(struct intel_ring_buffer *ring,
 	intel_ring_emit(ring, 0);
 	intel_ring_advance(ring);
 
-	ret = intel_ring_begin(ring, 4 * 8);
-	if (ret)
-		return ret;
-
-	for (i = 0; i < 8; i++) {
-		intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
-		intel_ring_emit(ring, I915_GEM_SCRATCH_INDEX << MI_STORE_DWORD_INDEX_SHIFT);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, MI_NOOP);
-	}
-	intel_ring_advance(ring);
-
 	return 0;
 }
 
@@ -462,6 +450,15 @@ cleanup_pipe_control(struct intel_ring_buffer *ring)
 	ring->private = NULL;
 }
 
+u32
+get_pipe_control_scratch_addr(struct intel_ring_buffer *ring)
+{
+	struct pipe_control *pc = ring->private;
+	if (!ring->private)
+		return 0;
+	return pc->gtt_offset;
+}
+
 static int init_render_ring(struct intel_ring_buffer *ring)
 {
 	struct drm_device *dev = ring->dev;
@@ -469,14 +466,20 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 	int ret = init_ring_common(ring);
 
 	if (INTEL_INFO(dev)->gen > 3) {
-		I915_WRITE(MI_MODE, _MASKED_BIT_ENABLE(VS_TIMER_DISPATCH));
-		if (IS_GEN7(dev))
-			I915_WRITE(GFX_MODE_GEN7,
-				   _MASKED_BIT_DISABLE(GFX_TLB_INVALIDATE_ALWAYS) |
-				   _MASKED_BIT_ENABLE(GFX_REPLAY_MODE));
-		if (IS_VALLEYVIEW(dev))
-			I915_WRITE(MI_MODE, I915_READ(MI_MODE) |
-				   _MASKED_BIT_ENABLE(MI_FLUSH_ENABLE));
+		if (!IS_VALLEYVIEW(dev))
+			I915_WRITE(MI_MODE,
+				_MASKED_BIT_ENABLE(VS_TIMER_DISPATCH));
+		if (IS_GEN7(dev)) {
+			if (IS_VALLEYVIEW(dev)) {
+				I915_WRITE(GFX_MODE_GEN7,
+					   _MASKED_BIT_ENABLE(GFX_REPLAY_MODE));
+				I915_WRITE(MI_MODE, I915_READ(MI_MODE) |
+					   _MASKED_BIT_ENABLE(MI_FLUSH_ENABLE));
+			} else
+				I915_WRITE(GFX_MODE_GEN7,
+				_MASKED_BIT_DISABLE(GFX_TLB_INVALIDATE_ALWAYS) |
+				_MASKED_BIT_ENABLE(GFX_REPLAY_MODE));
+		}
 	}
 
 	if (INTEL_INFO(dev)->gen >= 5) {
@@ -502,7 +505,7 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 			!!(I915_READ(GFX_MODE) & GFX_TLB_INVALIDATE_ALWAYS);
 	}
 
-	if (INTEL_INFO(dev)->gen >= 6)
+	if ((INTEL_INFO(dev)->gen >= 6) && !(IS_VALLEYVIEW(dev)))
 		I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
 
 	if (HAS_L3_GPU_CACHE(dev))
@@ -2174,7 +2177,7 @@ int intel_init_blt_ring_buffer(struct drm_device *dev)
 int
 intel_ring_flush_all_caches(struct intel_ring_buffer *ring)
 {
-	int ret;
+	int ret, i;
 
 	if (!ring->gpu_caches_dirty)
 		return 0;
@@ -2182,6 +2185,26 @@ intel_ring_flush_all_caches(struct intel_ring_buffer *ring)
 	ret = ring->flush(ring, 0, I915_GEM_GPU_DOMAINS);
 	if (ret)
 		return ret;
+
+	/* WaReadAfterWriteHazard*/
+	/* Send a number of Store Data commands here to finish
+	   flushing hardware pipeline.This is needed in the case
+	   where the next workload tries reading from the same
+	   surface that this batch writes to. Without these StoreDWs,
+	   not all of the data will actually be flushd to the surface
+	   by the time the next batch starts reading it, possibly
+	   causing a small amount of corruption.*/
+	ret = intel_ring_begin(ring, 4 * 12);
+	if (ret)
+		return ret;
+	for (i = 0; i < 12; i++) {
+		intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+		intel_ring_emit(ring, I915_GEM_SCRATCH_INDEX <<
+						MI_STORE_DWORD_INDEX_SHIFT);
+		intel_ring_emit(ring, 0);
+		intel_ring_emit(ring, MI_NOOP);
+	}
+	intel_ring_advance(ring);
 
 	trace_i915_gem_ring_flush(ring, 0, I915_GEM_GPU_DOMAINS);
 
@@ -2193,7 +2216,24 @@ int
 intel_ring_invalidate_all_caches(struct intel_ring_buffer *ring)
 {
 	uint32_t flush_domains;
-	int ret;
+	int ret, i;
+
+	/* WaTlbInvalidateStoreDataBefore*/
+	/* Before pipecontrol with TLB invalidate set, need 2 store
+	   data commands (such as MI_STORE_DATA_IMM or MI_STORE_DATA_INDEX)
+	   Without this, hardware cannot guarantee the command after the
+	   PIPE_CONTROL with TLB inv will not use the old TLB values.*/
+	ret = intel_ring_begin(ring, 4 * 2);
+	if (ret)
+		return ret;
+	for (i = 0; i < 2; i++) {
+		intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+		intel_ring_emit(ring, I915_GEM_SCRATCH_INDEX <<
+						MI_STORE_DWORD_INDEX_SHIFT);
+		intel_ring_emit(ring, 0);
+		intel_ring_emit(ring, MI_NOOP);
+	}
+	intel_ring_advance(ring);
 
 	flush_domains = 0;
 	if (ring->gpu_caches_dirty)
@@ -2208,5 +2248,6 @@ intel_ring_invalidate_all_caches(struct intel_ring_buffer *ring)
 	ring->gpu_caches_dirty = false;
 	return 0;
 }
+
 
 

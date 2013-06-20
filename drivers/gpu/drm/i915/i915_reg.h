@@ -306,6 +306,7 @@
 #define GFX_OP_PIPE_CONTROL(len)	((0x3<<29)|(0x3<<27)|(0x2<<24)|(len-2))
 #define   PIPE_CONTROL_CS_STALL				(1<<20)
 #define   PIPE_CONTROL_TLB_INVALIDATE			(1<<18)
+#define   PIPE_CONTROL_GENERIC_MEDIA_STATE_CLEAR	(1<<16)
 #define   PIPE_CONTROL_QW_WRITE				(1<<14)
 #define   PIPE_CONTROL_DEPTH_STALL			(1<<13)
 #define   PIPE_CONTROL_WRITE_FLUSH			(1<<12)
@@ -314,6 +315,7 @@
 #define   PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE		(1<<10) /* GM45+ only */
 #define   PIPE_CONTROL_INDIRECT_STATE_DISABLE		(1<<9)
 #define   PIPE_CONTROL_NOTIFY				(1<<8)
+#define   PIPE_CONTROL_DC_FLUSH				(1<<5)
 #define   PIPE_CONTROL_VF_CACHE_INVALIDATE		(1<<4)
 #define   PIPE_CONTROL_CONST_CACHE_INVALIDATE		(1<<3)
 #define   PIPE_CONTROL_STATE_CACHE_INVALIDATE		(1<<2)
@@ -321,6 +323,9 @@
 #define   PIPE_CONTROL_DEPTH_CACHE_FLUSH		(1<<0)
 #define   PIPE_CONTROL_GLOBAL_GTT (1<<2) /* in addr dword */
 
+#define GFX_OP_3DPRIMITIVE()              \
+	((0x3<<29)|(0x3<<27)|(0x3<<24)|       \
+	 (0x0<<16)|(0x0<<10)|(0x0<<8)|(7-2))
 
 /*
  * Reset registers
@@ -573,6 +578,10 @@
 # define MI_FLUSH_ENABLE				(1 << 12)
 # define MODE_STOP					(1 << 8)
 # define MODE_IDLE					(1 << 9)
+# define DIS_AYSNC_FLIP_PERF_MODE			(1 << 14)
+
+/* FF_SLICE_CS_CHICKEN3 - Chicken Bit for CS FF_SLICE */
+#define FF_SLICE_CS_CHICKEN3	0x020E8
 
 #define GFX_MODE	0x02520
 #define GFX_MODE_GEN7	0x0229c
@@ -744,6 +753,7 @@
 
 #define CACHE_MODE_0	0x02120 /* 915+ only Pre-IVB */
 #define GEN7_CACHE_MODE_0	0x07000 /* IVB+ */
+#define   GEN7_RC_OP_FLUSH_ENABLE (1<<0)
 /* CACHE_MODE_0 offset is different for per-IVB and IVB+ systems */
 #define CACHE_MODE_0_OFFSET(d) ((INTEL_INFO(d)->gen >= 7) ? \
 					GEN7_CACHE_MODE_0 : CACHE_MODE_0)
