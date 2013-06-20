@@ -87,6 +87,9 @@
 #define INPUT_DATA_LEN				32
 #define TEMP_BUFFER_LEN				8
 
+/* No of times we should retry on -EAGAIN error */
+#define NR_RETRY_CNT	3
+
 static u8 input_data[INPUT_DATA_LEN];
 static u8 *file_buf;
 static u32 fdata_len;
@@ -126,6 +129,22 @@ static void crc_ccitt_update(struct ulpmc_fwu_info *fwu, u8 x)
 static u16 crc_ccitt_crc(struct ulpmc_fwu_info *fwu)
 {
 	return fwu->crc;
+}
+
+static int do_i2c_transfer(struct ulpmc_fwu_info *fwu,
+				struct i2c_msg *msg, int num)
+{
+	int ret, nc;
+
+	for (nc = 0; nc < NR_RETRY_CNT; nc++) {
+		ret = i2c_transfer(fwu->client->adapter, msg, num);
+		if (ret < 0)
+			continue;
+		else
+			break;
+	}
+
+	return ret;
 }
 
 static int fill_BSLCmd_packet(struct ulpmc_fwu_info *fwu, u8 cmd, u32 addr,
@@ -195,7 +214,7 @@ static int recieve_BSLResponse(struct ulpmc_fwu_info *fwu, u16 read_len,
 	msg.flags = I2C_M_RD;
 	msg.buf = res_buf;
 	msg.len = read_len;
-	ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+	ret = do_i2c_transfer(fwu, &msg, 1);
 	if (ret < 0) {
 		dev_err(&fwu->pdev->dev, "i2c tx failed:%d\n", ret);
 		return ret;
@@ -256,7 +275,7 @@ static int enter_bsl_mode(struct  ulpmc_fwu_info *fwu)
 	wbuf[idx] = CMD_ENTER_BSL_MODE;
 	msg.buf = &wbuf[idx];
 	msg.len = 1;
-	ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+	ret = do_i2c_transfer(fwu, &msg, 1);
 	if (ret < 0)
 		dev_err(&fwu->pdev->dev, "i2c tx failed\n");
 
@@ -289,7 +308,7 @@ static int do_mass_erase(struct  ulpmc_fwu_info *fwu)
 	msg.flags = 0;
 	msg.buf = cmd_buf;
 	msg.len = cmd_len;
-	ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+	ret = do_i2c_transfer(fwu, &msg, 1);
 	if (ret < 0) {
 		dev_err(&fwu->pdev->dev, "i2c tx failed:%d\n", ret);
 		return ret;
@@ -326,7 +345,7 @@ static int check_password(struct  ulpmc_fwu_info *fwu)
 	msg.flags = 0;
 	msg.buf = cmd_buf;
 	msg.len = cmd_len;
-	ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+	ret = do_i2c_transfer(fwu, &msg, 1);
 	if (ret < 0) {
 		dev_err(&fwu->pdev->dev, "i2c tx failed\n");
 		return ret;
@@ -363,7 +382,7 @@ static int erase_segment(struct  ulpmc_fwu_info *fwu, u32 seg_offset)
 	msg.flags = 0;
 	msg.buf = cmd_buf;
 	msg.len = cmd_len;
-	ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+	ret = do_i2c_transfer(fwu, &msg, 1);
 	if (ret < 0) {
 		dev_err(&fwu->pdev->dev, "i2c tx failed\n");
 		return ret;
@@ -399,7 +418,7 @@ static int check_bsl_version(struct  ulpmc_fwu_info *fwu)
 	msg.flags = 0;
 	msg.buf = cmd_buf;
 	msg.len = cmd_len;
-	ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+	ret = do_i2c_transfer(fwu, &msg, 1);
 	if (ret < 0) {
 		dev_err(&fwu->pdev->dev, "i2c tx failed\n");
 		return ret;
@@ -515,7 +534,7 @@ static int ulpmc_SW_por_reset(struct ulpmc_fwu_info *fwu)
 	msg.flags = 0;
 	msg.buf = cmd_buf;
 	msg.len = cmd_len;
-	ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+	ret = do_i2c_transfer(fwu, &msg, 1);
 	if (ret < 0)
 		dev_err(&fwu->pdev->dev, "i2c tx failed\n");
 
@@ -566,7 +585,7 @@ static int updateFW(struct ulpmc_fwu_info *fwu, u8 *udata, u32 ulen)
 		msg.flags = 0;
 		msg.buf = cmd_buf;
 		msg.len = cmd_len;
-		ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+		ret = do_i2c_transfer(fwu, &msg, 1);
 		if (ret < 0) {
 			dev_err(&fwu->pdev->dev, "i2c tx failed\n");
 			goto fw_update_failed;
@@ -609,7 +628,7 @@ static int updateFW(struct ulpmc_fwu_info *fwu, u8 *udata, u32 ulen)
 		msg.flags = 0;
 		msg.buf = cmd_buf;
 		msg.len = cmd_len;
-		ret = i2c_transfer(fwu->client->adapter, &msg, 1);
+		ret = do_i2c_transfer(fwu, &msg, 1);
 		if (ret < 0) {
 			dev_err(&fwu->pdev->dev, "i2c tx failed\n");
 			goto fw_update_failed;
