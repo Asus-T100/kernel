@@ -1212,16 +1212,25 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	res = &dev->curr_res_table[dev->fmt_idx];
 
 	/*
-	 * FIXME: workaround for Merrifield:
-	 * enlarge horizontal/vertical blanking due to ISP FW performance
+	 * Work around for OV8835 used in Merrifield PRH(ISP2400A0), select
+	 * the lowest fps setting due to low ISP firmware performance.
 	 */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
-		/* Work around for OV8835 used in Merrifield PRH */
-		if (res->fps_options[1].fps) {
-			dev_warn(&client->dev, "use work-around setting\n");
-			dev->fps_index = 1;
+#ifdef CONFIG_ISP2400
+	{
+		unsigned int i, low_fps;
+
+		low_fps = res->fps_options[0].fps;
+		for (i = 1; i < MAX_FPS_OPTIONS_SUPPORTED; i++) {
+			if (res->fps_options[i].fps != 0 &&
+				res->fps_options[i].fps < low_fps) {
+				low_fps = res->fps_options[i].fps;
+				dev->fps_index = i;
+			}
 		}
+		dev_warn(&client->dev, "use the lowest fps[%d] setting\n",
+			low_fps);
 	}
+#endif /* CONFIG_ISP2400 */
 
 	/* Write the selected resolution table values to the registers */
 	ret = ov8830_write_reg_array(client, res->regs);
