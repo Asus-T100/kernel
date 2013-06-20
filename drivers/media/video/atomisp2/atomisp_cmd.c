@@ -3103,6 +3103,60 @@ int configure_pp_input_nop(struct atomisp_sub_device *asd,
 	return 0;
 }
 
+/**
+ * Resets CSS parameters that depend on input resolution.
+ *
+ * Update params like CSS RAW binning, 2ppc mode and pp_input
+ * which depend on input size, but are not automatically
+ * handled in CSS when the input resolution is changed.
+ */
+static int css_input_resolution_changed(struct atomisp_device *isp,
+		struct v4l2_mbus_framefmt *ffmt)
+{
+	struct atomisp_sub_device *asd = &isp->asd;
+	int ret;
+
+	dev_dbg(isp->dev, "css_input_resolution_changed to %ux%u\n",
+		ffmt->width, ffmt->height);
+
+	if (isp->asd.continuous_mode->val &&
+		isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+
+		/*
+		 * Enable only if resolution is >= 3M for ISP2400
+		 */
+		if (IS_ISP2400(isp) && (ffmt->width >= 2048
+						|| ffmt->height >= 1536)) {
+			atomisp_css_enable_raw_binning(asd, true);
+			atomisp_css_input_set_two_pixels_per_clock(asd,
+								false);
+		}
+
+		if (!IS_ISP2400(isp)) {
+			/* enable raw binning for >= 5M */
+			if (ffmt->width >= 2576 || ffmt->height >= 1936)
+				atomisp_css_enable_raw_binning(asd, true);
+			/* enable 2ppc for CTP if > 8M */
+			if (ffmt->width > 3264 || ffmt->height > 2448)
+				atomisp_css_input_set_two_pixels_per_clock(
+					asd, true);
+		}
+	}
+
+	ret = atomisp_css_capture_configure_pp_input(asd, ffmt->width,
+				ffmt->height);
+	if (ret)
+		dev_err(isp->dev, "configure_pp_input %ux%u\n",
+			ffmt->width, ffmt->height);
+
+	return ret;
+
+	/*
+	 * TODO: atomisp_css_preview_configure_pp_input() not
+	 *       reset due to CSS bug tracked as PSI BZ 115124
+	 */
+}
+
 static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			struct atomisp_css_frame_info *output_info,
 			struct atomisp_css_frame_info *raw_output_info,
@@ -3193,47 +3247,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	}
 
 	if (isp->asd.continuous_mode->val) {
-
-		/*
-		 * Frame format of the RAW input buffer has dependencies
-		 * to which CSS modes should be enabled.
-		 */
-		const struct v4l2_rect *raw_res =
-			atomisp_subdev_get_rect(&isp->asd.subdev, NULL,
-						V4L2_SUBDEV_FORMAT_ACTIVE,
-						ATOMISP_SUBDEV_PAD_SINK,
-						V4L2_SEL_TGT_CROP);
-		if (!raw_res)
-			return -EINVAL;
-
-		if (isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+		if (isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 			ret = __enable_continuous_mode(asd, true);
-
-			/*
-			 * Enable only if resolution is >= 3M for ISP2400
-			 */
-			if (IS_ISP2400(isp) && (raw_res->width >= 2048
-						|| raw_res->height >= 1536)) {
-				atomisp_css_enable_raw_binning(asd, true);
-				atomisp_css_input_set_two_pixels_per_clock(asd,
-									false);
-			}
-
-			if (!IS_ISP2400(isp)) {
-				/* enable raw binning for >= 5M */
-				if (raw_res->width >= 2576 ||
-						raw_res->height >= 1936)
-					atomisp_css_enable_raw_binning(asd,
-									true);
-				/* enable 2ppc for CTP if > 8M */
-				if (raw_res->width > 3264 ||
-						raw_res->height > 2448)
-					atomisp_css_input_set_two_pixels_per_clock(
-								asd, true);
-			}
-		} else {
+		else
 			ret = __enable_continuous_mode(asd, false);
-		}
 		if (ret)
 			return -EINVAL;
 	}
@@ -3392,7 +3409,7 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &ffmt);
 
-	return 0;
+	return css_input_resolution_changed(isp, &ffmt);
 }
 
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
