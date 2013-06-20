@@ -3472,9 +3472,11 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 	    ffmt.height < ATOM_ISP_STEP_HEIGHT)
 			return -EINVAL;
 
-	return atomisp_subdev_set_ffmt(&isp->asd.subdev, NULL,
-				       V4L2_SUBDEV_FORMAT_ACTIVE,
-				       ATOMISP_SUBDEV_PAD_SINK, &ffmt);
+	atomisp_subdev_set_ffmt(&isp->asd.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				ATOMISP_SUBDEV_PAD_SINK, &ffmt);
+
+	return 0;
 }
 
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)

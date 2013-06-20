@@ -491,9 +491,9 @@ static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 	return hbin;
 }
 
-int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			    uint32_t which, uint32_t pad,
-			    struct v4l2_mbus_framefmt *ffmt)
+void atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			     uint32_t which, uint32_t pad,
+			     struct v4l2_mbus_framefmt *ffmt)
 {
 	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = isp_sd->isp;
@@ -539,8 +539,6 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		__ffmt->code = ffmt->code;
 		break;
 	}
-
-	return 0;
 }
 
 /*
@@ -574,8 +572,9 @@ static int isp_subdev_get_format(struct v4l2_subdev *sd,
 static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
-	return atomisp_subdev_set_ffmt(sd, fh, fmt->which, fmt->pad,
-				       &fmt->format);
+	atomisp_subdev_set_ffmt(sd, fh, fmt->which, fmt->pad, &fmt->format);
+
+	return 0;
 }
 
 /* V4L2 subdev core operations */
