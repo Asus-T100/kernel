@@ -56,24 +56,24 @@
  * FPS requirements. So we have three PLL configurationa and these are based
  * on the EMC friendly MIPI values.
  *
- * Maximum clock: Pix clock @ 359.04MHz MIPI @ 448.8MHz 897.6mbps
+ * Maximum clock: Pix clock @ 360.96MHz MIPI @ 451.2MHz 902.4mbps
  * Reduced clock: Pix clock @ 273.00MHz MIPI @ 342.0MHz 684.0mbps
  * Binning modes: Pix clock @ 335.36MHz MIPI @ 209.6MHz 419.2mbps
  * Global Timing registers are based on the data rates and these are part of
  * the below clock definitions.
  */
 
-/* MIPI 448.8MHz 897.6mbps PIXCLK: 359.04MHz */
-#define PLL_SETTINGS_FOR_MIPI_448_8MHZ \
+/* MIPI 451.2MHz 902.4mbps PIXCLK: 360.96MHz */
+#define PLL_SETTINGS_FOR_MIPI_451_2MHZ \
 	{IMX_8BIT, 0x011e, 0x13}, \
 	{IMX_8BIT, 0x011f, 0x33}, \
 	{IMX_8BIT, 0x0301, 0x05}, \
 	{IMX_8BIT, 0x0303, 0x01}, \
-	{IMX_8BIT, 0x0305, 0x08}, \
+	{IMX_8BIT, 0x0305, 0x0c}, \
 	{IMX_8BIT, 0x0309, 0x05}, \
 	{IMX_8BIT, 0x030b, 0x01}, \
-	{IMX_8BIT, 0x030c, 0x01}, \
-	{IMX_8BIT, 0x030d, 0x78}, \
+	{IMX_8BIT, 0x030c, 0x02}, \
+	{IMX_8BIT, 0x030d, 0x34}, \
 	{IMX_8BIT, 0x030e, 0x01}, \
 	{IMX_8BIT, 0x3a06, 0x11}, \
 	{IMX_8BIT, 0x0830, 0x87}, \
@@ -372,7 +372,7 @@ static struct imx_reg const imx135vb_init_settings[] = {
 	{ IMX_8BIT, 0x0718, 0x01},
 	{ IMX_8BIT, 0x0719, 0x00},
 	{ IMX_8BIT, 0x4500, 0x1F },
-	PLL_SETTINGS_FOR_MIPI_448_8MHZ,
+	PLL_SETTINGS_FOR_MIPI_451_2MHZ,
 	{ IMX_8BIT, 0x0205, 0x00},
 	{ IMX_8BIT, 0x020E, 0x01},
 	{ IMX_8BIT, 0x020F, 0x00},
@@ -405,7 +405,7 @@ static struct imx_reg const imx135vb_init_settings[] = {
 
 static struct imx_reg const imx135vb_13m[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
-	PLL_SETTINGS_FOR_MIPI_448_8MHZ,
+	PLL_SETTINGS_FOR_MIPI_451_2MHZ,
 	/* Mode setting */
 	{IMX_8BIT, 0x0108, 0x03},
 	{IMX_8BIT, 0x0112, 0x0A},
@@ -520,7 +520,7 @@ static struct imx_reg const imx135vb_13m_for_mipi_342[] = {
 
 static struct imx_reg const imx135vb_10m[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
-	PLL_SETTINGS_FOR_MIPI_448_8MHZ,
+	PLL_SETTINGS_FOR_MIPI_451_2MHZ,
 	/* Mode setting */
 	{IMX_8BIT, 0x0108, 0x03},
 	{IMX_8BIT, 0x0112, 0x0A},
@@ -634,7 +634,7 @@ static struct imx_reg const imx135vb_10m_for_mipi_342[] = {
 
 static struct imx_reg const imx135vb_8m_scaled_from_12m[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
-	PLL_SETTINGS_FOR_MIPI_448_8MHZ,
+	PLL_SETTINGS_FOR_MIPI_451_2MHZ,
 	/* Mode setting */
 	{IMX_8BIT, 0x0108, 0x03},
 	{IMX_8BIT, 0x0112, 0x0A},
@@ -748,7 +748,7 @@ static struct imx_reg const imx135vb_8m_scaled_from_12m_for_mipi342[] = {
 
 static struct imx_reg const imx135vb_6m[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
-	PLL_SETTINGS_FOR_MIPI_448_8MHZ,
+	PLL_SETTINGS_FOR_MIPI_451_2MHZ,
 	/* Mode setting */
 	{IMX_8BIT, 0x0108, 0x03},
 	{IMX_8BIT, 0x0112, 0x0A},
@@ -922,7 +922,7 @@ static struct imx_reg const imx135vb_3m_binning[] = {
 /* 1080P DVS 2336x1320 */
 static const struct imx_reg imx135vb_2336x1320_max_clock[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
-	PLL_SETTINGS_FOR_MIPI_448_8MHZ,
+	PLL_SETTINGS_FOR_MIPI_451_2MHZ,
 	/* mode setting */
 	{ IMX_8BIT, 0x0108, 0x03 },
 	{ IMX_8BIT, 0x0112, 0x0A },
@@ -1439,8 +1439,8 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.width = 4208,
 		.height = 2368,
 		.fps = 30,
-		.pixels_per_line = 4572, /* Pixel Clock : 359.04 MHz */
-		.lines_per_frame = 2624,
+		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
+		.lines_per_frame = 2632,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1451,8 +1451,8 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.width = 4208,
 		.height = 3120,
 		.fps = 24,
-		.pixels_per_line = 4572, /* Pixel Clock : 359.04 MHz */
-		.lines_per_frame = 3280,
+		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
+		.lines_per_frame = 3290,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1632,7 +1632,7 @@ struct imx_resolution imx135vb_res_video[] = {
 		.width = 2336,
 		.height = 1320,
 		.fps = 30,
-		.pixels_per_line = 4572, /* Pixel Clock 359.04 */
+		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
 		.lines_per_frame = 2632,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
