@@ -15,6 +15,7 @@
 #include <linux/device.h>
 #include <linux/fault-inject.h>
 #include <linux/wakelock.h>
+#include <linux/pm_qos.h>
 
 #include <linux/mmc/core.h>
 #include <linux/mmc/pm.h>
@@ -376,6 +377,7 @@ struct mmc_host {
 #endif
 
 	struct mmc_panic_host *phost;
+	struct pm_qos_request *qos;
 	unsigned long		private[0] ____cacheline_aligned;
 };
 

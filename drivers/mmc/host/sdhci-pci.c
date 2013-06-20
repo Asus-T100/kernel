@@ -360,11 +360,17 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->rst_n_gpio = -EINVAL;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
+		slot->host->mmc->qos = kzalloc(sizeof(struct pm_qos_request),
+				GFP_KERNEL);
 		break;
 	}
 
 	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE;
 	slot->host->mmc->caps2 |= MMC_CAP2_HC_ERASE_SZ | MMC_CAP2_POLL_R1B_BUSY;
+
+	if (slot->host->mmc->qos)
+		pm_qos_add_request(slot->host->mmc->qos, PM_QOS_CPU_DMA_LATENCY,
+				PM_QOS_DEFAULT_VALUE);
 
 	return 0;
 }
@@ -378,6 +384,11 @@ static void mfd_emmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 		break;
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC1:
 		break;
+	}
+
+	if (slot->host->mmc->qos) {
+		pm_qos_remove_request(slot->host->mmc->qos);
+		kfree(slot->host->mmc->qos);
 	}
 }
 
@@ -665,6 +676,7 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_emmc = {
 static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
 	.allow_runtime_pm = true,
 	.probe_slot	= mfd_emmc_probe_slot,
+	.remove_slot	= mfd_emmc_remove_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
