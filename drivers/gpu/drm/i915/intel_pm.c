@@ -2514,8 +2514,11 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 	if (val == dev_priv->rps.cur_delay)
 		return;
 
-	if (val > dev_priv->rps.max_delay || val < dev_priv->rps.min_delay)
+	if (val > dev_priv->rps.max_delay)
 		return;
+
+	if (val < dev_priv->rps.min_delay)
+		val = dev_priv->rps.min_delay;
 
 	valleyview_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
 }
