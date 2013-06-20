@@ -11,23 +11,15 @@
  */
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/mmc/sdhci-pci-data.h>
 #include <linux/gpio.h>
 #include <linux/lnw_gpio.h>
 #include <linux/delay.h>
-#include <linux/intel_mid_pm.h>
-#include <linux/hardirq.h>
-#include <linux/mmc/sdhci.h>
-#include <asm/intel_scu_ipc.h>
-#include <asm/intel_scu_pmic.h>
+#include <linux/intel_mid_dma.h>
 #include <asm/intel-mid.h>
 #include <asm/platform_sst.h>
 
 #define CTP_SSP_BASE 0xffa23000
 #define CTP_DMA_BASE 0xffa23000
-#define SST_MAX_DMA_LEN (4095*4)
-/* On Mrfld, MAX DMA BLOCK SIZE is (2*17 - 1)*/
-#define SST_MAX_DMA_LEN_MRFLD (131071)
 #define CTP_MAX_CONFIG_SIZE 500
 struct sst_pci_info sst_data;
 
@@ -89,7 +81,7 @@ struct sst_info ctp_sst_info = {
 	.imr_use = false,
 	.use_elf = false,
 	.max_streams = 5,
-	.dma_max_len = SST_MAX_DMA_LEN,
+	.dma_max_len = (SST_MAX_DMA_LEN * 4),
 	.num_probes = 1,
 };
 

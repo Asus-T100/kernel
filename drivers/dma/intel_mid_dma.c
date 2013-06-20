@@ -2012,28 +2012,28 @@ static int dma_runtime_idle(struct device *dev)
 */
 static struct pci_device_id intel_mid_dma_ids[] = {
 	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC1_ID),
-					INFO(2, 6, 4095, 0x200020, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
+		INFO(2, 6, SST_MAX_DMA_LEN, 0x200020, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC2_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MID_GP_DMAC2_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MFLD_DMAC1_ID),
-					INFO(4, 0, 4095, 0x400040, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
+		INFO(4, 0, SST_MAX_DMA_LEN, 0x400040, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
 	/* Cloverview support */
 	{ PCI_VDEVICE(INTEL, INTEL_CLV_GP_DMAC2_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_CLV_DMAC1_ID),
-					INFO(4, 0, 4095, 0x400040, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
+		INFO(4, 0, SST_MAX_DMA_LEN, 0x400040, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
 	/* Mrfld */
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_GP_DMAC2_ID),
-					INFO(4, 0, 131071, 0, 0, 0, 0, &v2_dma_ops)},
+		INFO(4, 0, SST_MAX_DMA_LEN_MRFLD, 0, 0, 0, 0, &v2_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_DMAC0_ID),
-					INFO(2, 6, 131071, 0xFF0000, 0xFF340018, 0, 0x10, &v2_dma_ops)},
-	/* Baytrauk Low Speed Peripheral DMA */
+		INFO(2, 6, SST_MAX_DMA_LEN_MRFLD, 0xFF0000, 0xFF340018, 0, 0x10, &v2_dma_ops)},
+	/* Baytrail Low Speed Peripheral DMA */
 	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO1_DMAC_ID),
-			INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO2_DMAC_ID),
-			INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_mid_dma_ids);

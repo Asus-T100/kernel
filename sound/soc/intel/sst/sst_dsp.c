@@ -716,9 +716,9 @@ static int sst_parse_module_dma(struct fw_module_header *module,
 	block = (void *)module + sizeof(*module);
 
 	for (count = 0; count < module->blocks; count++) {
-		sg_len += (block->size) / SST_MAX_DMA_LEN;
+		sg_len += (block->size) / sst_drv_ctx->info.dma_max_len;
 
-		if ((block->size) % SST_MAX_DMA_LEN)
+		if (block->size % sst_drv_ctx->info.dma_max_len)
 			sg_len = sg_len + 1;
 		block = (void *)block + sizeof(*block) + block->size;
 	}

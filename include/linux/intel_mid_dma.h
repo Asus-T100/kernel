@@ -29,6 +29,10 @@
 
 #define DMA_PREP_CIRCULAR_LIST		(1 << 10)
 
+#define SST_MAX_DMA_LEN		4095
+#define SST_MAX_DMA_LEN_MRFLD	131071 /* 2^17 - 1 */
+
+
 /*DMA mode configurations*/
 enum intel_mid_dma_mode {
 	LNW_DMA_PER_TO_MEM = 0, /*periphral to memory configuration*/

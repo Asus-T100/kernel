@@ -378,9 +378,6 @@ struct snd_sst_probe_bytes {
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
 #define PCI_DMAC_MRFLD_ID 0x119B
-#define SST_MAX_DMA_LEN (4095*4)
-/* On Mrfld, MAX DMA BLOCK SIZE is (2*17 - 1)*/
-#define SST_MAX_DMA_LEN_MRFLD (131071)
 
 struct sst_probe_info {
 	u32 iram_start;
@@ -560,15 +557,15 @@ struct intel_sst_drv {
 	struct sst_dma		dma;
 	void			*fw_in_mem;
 	struct sst_runtime_param runtime_param;
-	struct snd_sst_bytes get_params;
+	struct snd_sst_bytes	get_params;
 	unsigned int		device_input_mixer;
 	struct mutex		mixer_ctrl_lock;
 	struct dma_async_tx_descriptor *desc;
-	struct sst_sg_list fw_sg_list, library_list;
+	struct sst_sg_list	fw_sg_list, library_list;
 	struct intel_sst_ops	*ops;
-	struct sst_debugfs debugfs;
-	struct pm_qos_request *qos;
-	struct sst_probe_info info;
+	struct sst_debugfs	debugfs;
+	struct pm_qos_request	*qos;
+	struct sst_probe_info	info;
 	unsigned int use_dma;
 	unsigned int use_lli;
 	atomic_t fw_clear_context;
