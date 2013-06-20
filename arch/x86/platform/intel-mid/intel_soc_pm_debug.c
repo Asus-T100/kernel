@@ -28,6 +28,9 @@
 
 u32 prev_s0ix_cnt[SYS_STATE_MAX];
 unsigned long long prev_s0ix_res[SYS_STATE_MAX];
+u32 S3_count;
+unsigned long long S3_res;
+
 
 static struct latency_stat *lat_stat;
 
@@ -1306,6 +1309,11 @@ void pmu_stats_init(void)
 #endif
 }
 
+void pmu_s3_stats_update(int enter)
+{
+
+}
+
 void pmu_stats_finish(void)
 {
 #ifdef CONFIG_PM_DEBUG
@@ -1343,11 +1351,18 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	unsigned long init_2_now_time;
 
 	/* Print S0ix residency counter */
-	t = readq(residency[type]);
-	if (t < prev_s0ix_res[type-1])
-		t += (((unsigned long long)~0) - prev_s0ix_res[type-1]);
-	else
-		t -= prev_s0ix_res[type-1];
+	if (type < SYS_STATE_S3) {
+		t = readq(residency[type]);
+		if (t < prev_s0ix_res[type-1])
+			t += (((unsigned long long)~0) - prev_s0ix_res[type-1]);
+		else
+			t -= prev_s0ix_res[type-1];
+
+		if (type == SYS_STATE_S0I3)
+			t -= prev_s0ix_res[SYS_STATE_S3-1];
+	} else
+		t = prev_s0ix_res[SYS_STATE_S3-1];
+
 	micro_sec_rem = do_div(t, MICRO_SEC);
 	time = (unsigned int)t;
 
@@ -1380,11 +1395,18 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	seq_printf(s, "%5lu.%03lu\t", (unsigned long) time, (unsigned long) t);
 
 	/* Print number of interations of S0ix */
-	scu_val = readl(s0ix_counter[type]);
-	if (scu_val < prev_s0ix_cnt[type-1])
-		scu_val += (((u32)~0) - prev_s0ix_cnt[type-1]);
-	else
-		scu_val -= prev_s0ix_cnt[type-1];
+	if (type < SYS_STATE_S3) {
+		scu_val = readl(s0ix_counter[type]);
+		if (scu_val < prev_s0ix_cnt[type-1])
+			scu_val += (((u32)~0) - prev_s0ix_cnt[type-1]);
+		else
+			scu_val -= prev_s0ix_cnt[type-1];
+
+		if (type == SYS_STATE_S0I3)
+			scu_val -= prev_s0ix_cnt[SYS_STATE_S3-1];
+	} else
+			scu_val = prev_s0ix_cnt[SYS_STATE_S3-1];
+
 	seq_printf(s, "%lu\n", (unsigned long) scu_val);
 }
 
@@ -1430,6 +1452,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	pmu_stat_seq_printf(s, SYS_STATE_S0I1, "s0i1");
 	pmu_stat_seq_printf(s, SYS_STATE_S0I2, "S0i2");
 	pmu_stat_seq_printf(s, SYS_STATE_S0I3, "s0i3");
+	pmu_stat_seq_printf(s, SYS_STATE_S3, "s3");
 
 	seq_printf(s, "\nNORTH COMPLEX DEVICES :\n\n");
 
@@ -1504,9 +1527,11 @@ static ssize_t devices_state_write(struct file *file,
 		prev_s0ix_cnt[0] = readl(s0ix_counter[SYS_STATE_S0I1]);
 		prev_s0ix_cnt[1] = readl(s0ix_counter[SYS_STATE_S0I2]);
 		prev_s0ix_cnt[2] = readl(s0ix_counter[SYS_STATE_S0I3]);
+		prev_s0ix_cnt[3] = 0;
 		prev_s0ix_res[0] = readq(residency[SYS_STATE_S0I1]);
 		prev_s0ix_res[1] = readq(residency[SYS_STATE_S0I2]);
 		prev_s0ix_res[2] = readq(residency[SYS_STATE_S0I3]);
+		prev_s0ix_res[3] = 0 ;
 		up(&mid_pmu_cxt->scu_ready_sem);
 	}
 	return buf_size;
@@ -2344,6 +2369,38 @@ void pmu_stats_finish(void)
 
 	return;
 }
+
+void pmu_s3_stats_update(int enter)
+{
+#ifdef CONFIG_PM_DEBUG
+	int ret;
+
+	down(&mid_pmu_cxt->scu_ready_sem);
+	/* Dump S0ix residency counters */
+	ret = intel_scu_ipc_simple_command(DUMP_RES_COUNTER, 0);
+	if (ret)
+		printk(KERN_ERR "IPC command to DUMP S0ix residency failed\n");
+
+	/* Dump number of interations of S0ix */
+	ret = intel_scu_ipc_simple_command(DUMP_S0IX_COUNT, 0);
+	if (ret)
+		printk(KERN_ERR "IPC command to DUMP S0ix count failed\n");
+
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	if (enter == 1) {
+		S3_count  = readl(s0ix_counter[SYS_STATE_S0I3]);
+		S3_res = readl(residency[SYS_STATE_S0I3]);
+	} else {
+		prev_s0ix_cnt[3] +=
+			(readl(s0ix_counter[SYS_STATE_S0I3])) - S3_count;
+		prev_s0ix_res[3] += (readl(residency[SYS_STATE_S0I3])) - S3_res;
+	}
+
+#endif
+	return;
+}
+
 
 void pmu_stats_init(void)
 {

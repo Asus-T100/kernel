@@ -384,6 +384,7 @@ extern struct platform_pmu_ops mrfld_pmu_ops;
 extern struct platform_pmu_ops *get_platform_ops(void);
 extern void mfld_s0ix_sram_save_cleanup(void);
 extern void pmu_stats_init(void);
+extern void pmu_s3_stats_update(int enter);
 extern void pmu_stats_finish(void);
 extern void mfld_s0ix_sram_restore(u32 s0ix);
 extern void pmu_stat_error(u8 err_type);

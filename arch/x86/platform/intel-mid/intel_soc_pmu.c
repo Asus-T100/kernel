@@ -1897,6 +1897,7 @@ static int standby_enter(void)
 static int mid_suspend_begin(suspend_state_t state)
 {
 	mid_pmu_cxt->suspend_started = true;
+	pmu_s3_stats_update(1);
 	return 0;
 }
 
@@ -1945,6 +1946,7 @@ static int mid_suspend_enter(suspend_state_t state)
 
 static void mid_suspend_end(void)
 {
+	pmu_s3_stats_update(0);
 	mid_pmu_cxt->suspend_started = false;
 }
 
