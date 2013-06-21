@@ -69,16 +69,6 @@ struct intel_dsi_device {
 	u8 operation_mode;
 	u8 video_mode_type;
 	u32 pixel_format;
-	u32 port_bits;
-	u8 turn_arnd_val;
-	u16 rst_timer_val;
-	u16 hs_to_lp_count;
-	u16 lp_byte_clk;
-	u32 bw_timer;
-	u16 clk_lp_to_hs_count;
-	u16 clk_hs_to_lp_count;
-	u32 video_frmt_cfg_bits;
-	u32 dphy_reg;
 
 };
 
@@ -150,8 +140,6 @@ static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 /* the panel drivers */
 extern struct intel_dsi_dev_ops cmi_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_dsi_display_ops;
-extern struct intel_dsi_dev_ops panasonic_dsi_display_ops;
-extern struct intel_dsi_dev_ops b080xat_dsi_display_ops;
 
 /* internal functions */
 static void dsi_config(struct drm_encoder *encoder);
@@ -163,7 +151,5 @@ bool intel_dsi_init(struct drm_device *dev);
 /* FIXME */
 #define	MIPI_DSI_CMI_PANEL_ID	0x01
 #define	MIPI_DSI_AUO_PANEL_ID	0x02
-#define	MIPI_DSI_PANASONIC_PANEL_ID		0x03
-#define	MIPI_DSI_B080XAT_PANEL_ID		0x04
 
 #endif /* _INTEL_DSI_H */

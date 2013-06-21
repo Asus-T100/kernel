@@ -4369,11 +4369,6 @@ static void intel_hsi_shutdown(struct pci_dev *pdev)
 	if (runtime_pm)
 		hsi_rtpm_exit(intel_hsi);
 
-	/*avoid accessing resource during shutdown*/
-	intel_hsi->tx_state = TX_SLEEPING;
-	intel_hsi->rx_state = RX_SLEEPING;
-	intel_hsi->suspend_state = DEVICE_SUSPENDED;
-
 	pci_set_drvdata(pdev, NULL);
 
 #ifdef CONFIG_DEBUG_FS

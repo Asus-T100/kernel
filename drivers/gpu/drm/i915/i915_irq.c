@@ -90,10 +90,8 @@ i915_disable_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 
 /* Added for HDMI AUDIO */
 void
-i915_enable_lpe_pipestat(drm_i915_private_t *dev_priv, int pipe)
+i915_enable_lpe_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 {
-	u32 mask;
-	mask = dev_priv->hdmi_audio_interrupt_mask;
 	mask |= I915_HDMI_AUDIO_UNDERRUN | I915_HDMI_AUDIO_BUFFER_DONE;
 	/* Enable the interrupt, clear any pending status */
 	I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_B, mask);
@@ -101,13 +99,9 @@ i915_enable_lpe_pipestat(drm_i915_private_t *dev_priv, int pipe)
 }
 
 void
-i915_disable_lpe_pipestat(drm_i915_private_t *dev_priv, int pipe)
+i915_disable_lpe_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 {
-	u32 mask;
-	mask = dev_priv->hdmi_audio_interrupt_mask;
-	mask |= I915_HDMI_AUDIO_UNDERRUN | I915_HDMI_AUDIO_BUFFER_DONE;
-	/* Disable the interrupt, clear any pending status */
-	I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_B, mask);
+	I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_B, ~mask);
 	POSTING_READ(I915_LPE_AUDIO_HDMI_STATUS_B);
 }
 
@@ -1624,7 +1618,8 @@ int i915_enable_hdmi_audio_int(struct drm_device *dev)
 	/* Audio is on Stream B */
 	imr &= ~I915_LPE_PIPE_B_INTERRUPT;
 	I915_WRITE(VLV_IMR, imr);
-	i915_enable_lpe_pipestat(dev_priv, pipe);
+	i915_enable_lpe_pipestat(dev_priv, pipe,
+			     I915_HDMI_AUDIO_UNDERRUN_ENABLE);
 	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
 
 	return 0;
@@ -1700,7 +1695,8 @@ int i915_disable_hdmi_audio_int(struct drm_device *dev)
 	imr = I915_READ(VLV_IMR);
 	imr |= I915_LPE_PIPE_B_INTERRUPT;
 	I915_WRITE(VLV_IMR, imr);
-	i915_disable_lpe_pipestat(dev_priv, pipe);
+	i915_disable_lpe_pipestat(dev_priv, pipe,
+			     I915_HDMI_AUDIO_UNDERRUN_ENABLE);
 	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
 
 	return 0;

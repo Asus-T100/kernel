@@ -1302,7 +1302,6 @@ extern bool i915_enable_hangcheck __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
 extern int i915_enable_turbo __read_mostly;
 extern int i915_psr_support __read_mostly;
-extern struct drm_display_mode rot_mode;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
@@ -1616,6 +1615,10 @@ extern int i915_restore_state(struct drm_device *dev);
 extern void i915_pm_init(struct drm_device *dev);
 extern void i915_pm_deinit(struct drm_device *dev);
 
+/* i915_suspend.c */
+extern int i915_save_state(struct drm_device *dev);
+extern int i915_restore_state(struct drm_device *dev);
+
 /* i915_sysfs.c */
 void i915_setup_sysfs(struct drm_device *dev_priv);
 void i915_teardown_sysfs(struct drm_device *dev_priv);
@@ -1628,7 +1631,7 @@ extern inline bool intel_gmbus_is_port_valid(unsigned port)
 	return (port >= GMBUS_PORT_SSC && port <= GMBUS_PORT_DPD);
 }
 
-void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv);
+void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv, int clock);
 extern struct i2c_adapter *intel_gmbus_get_adapter(
 		struct drm_i915_private *dev_priv, unsigned port);
 extern void intel_gmbus_set_speed(struct i2c_adapter *adapter, int speed);
@@ -1687,10 +1690,6 @@ int i915_reg_read_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
 int i915_set_plane_zorder(struct drm_device *dev, void *data,
 			  struct drm_file *file);
-int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
-					 struct drm_file *file);
-int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
-			struct drm_file *file);
 int i915_disp_screen_control(struct drm_device *dev, void *data,
 			struct drm_file *file);
 

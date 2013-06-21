@@ -3144,28 +3144,3 @@ void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 		}
 	}
 }
-
-void intel_edp_get_psr_support(struct drm_device *device, void *data,
-							struct drm_file *file)
-{
-	if (i915_psr_support) {
-		struct drm_i915_private *dev_priv = device->dev_private;
-		struct drm_connector *connector;
-		struct intel_dp *intel_dp;
-		bool *support = (bool *)data;
-
-		*support = false;
-		connector = dev_priv->int_edp_connector;
-
-		if (connector == NULL) {
-			DRM_ERROR("Support : Connector is NULL");
-		} else {
-			intel_dp = intel_attached_dp(connector);
-
-			if (intel_dp == NULL)
-				DRM_ERROR("Intel Dp  = NULL");
-			else
-				*support = is_edp_psr(intel_dp);
-		}
-	}
-}

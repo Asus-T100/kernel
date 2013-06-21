@@ -2556,37 +2556,12 @@ static void i830_write_fence_reg(struct drm_device *dev, int reg,
 	POSTING_READ(FENCE_REG_830_0 + reg * 4);
 }
 
-struct write_fence {
-	struct drm_device *dev;
-	struct drm_i915_gem_object *obj;
-	int reg;
-};
-
-static void sandybridge_write_fence__ipi(void *data)
-{
-	struct write_fence *args = data;
-
-	/* Required for SNB+ with LLC */
-	wbinvd();
-
-	/* Required for VLV */
-	sandybridge_write_fence_reg(args->dev, args->reg, args->obj);
-}
-
 static void i915_gem_write_fence(struct drm_device *dev, int reg,
 				 struct drm_i915_gem_object *obj)
 {
-	struct write_fence args = {
-		.dev = dev,
-		.reg = reg,
-		.obj = obj,
-	};
-
 	switch (INTEL_INFO(dev)->gen) {
 	case 7:
-	case 6:
-		on_each_cpu((void (*)(void *))sandybridge_write_fence__ipi,
-				&args, 1); break;
+	case 6: sandybridge_write_fence_reg(dev, reg, obj); break;
 	case 5:
 	case 4: i965_write_fence_reg(dev, reg, obj); break;
 	case 3: i915_write_fence_reg(dev, reg, obj); break;
