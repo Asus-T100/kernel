@@ -50,7 +50,6 @@ obj-y += psb_bl.o \
 	dispmgrnl.o \
 	mdfld_dsi_pkg_sender.o \
 	mrfld_clock.o \
-	pmu_tng.o \
 	psb_irq.o \
 	tng_wa.o \
 	jdi_vid.o \

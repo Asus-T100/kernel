@@ -21,6 +21,7 @@
 #define _PSB_DRV_H_
 
 #include <linux/version.h>
+#include <linux/panel_psb_drv.h>
 
 #include <drm/drmP.h>
 #include "psb_drm.h"
@@ -66,24 +67,6 @@ enum {
 	CHIP_MRFLD_1180 = 4
 };
 
-enum panel_type {
-	TPO_CMD,
-	TPO_VID,
-	TMD_CMD,
-	TMD_VID,
-	TMD_6X10_VID,
-	PYR_CMD,
-	PYR_VID,
-	TPO,
-	TMD,
-	PYR,
-	HDMI,
-	JDI_VID,
-	JDI_CMD,
-	CMI_VID,
-	CMI_CMD,
-	GCT_DETECT
-};
 
 #define PCI_ID_TOPAZ_DISABLED 0x4101
 
@@ -128,6 +111,9 @@ enum panel_type {
 
 #define GFX_WRAPPER_OFFSET	 0x00160000	/* GFX Wrapper */
 #define GFX_WRAPPER_SIZE	 0x00001000
+
+#define VED_WRAPPER_OFFSET	 0x00161000	/* VED Wrapper */
+#define VED_WRAPPER_SIZE	 0x00001000
 
 #define VEC_WRAPPER_OFFSET	 0x00162000	/* VEC Wrapper */
 #define VEC_WRAPPER_SIZE	 0x00001000
@@ -417,6 +403,7 @@ struct drm_psb_private {
 
 	uint8_t *rgx_reg;
 	uint8_t *wrapper_reg;
+	uint8_t *ved_wrapper_reg;
 	uint8_t *vec_wrapper_reg;
 	uint8_t *vdc_reg;
 	uint32_t gatt_free_offset;

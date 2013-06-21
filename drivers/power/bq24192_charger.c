@@ -60,6 +60,7 @@
  */
 #define BQ24192_INPUT_SRC_CNTL_REG		0x0
 #define INPUT_SRC_CNTL_EN_HIZ			(1 << 7)
+#define BATTERY_NEAR_FULL(a)			((a * 98)/100)
 /*
  * set input voltage lim to 4.68V. This will help in charger
  * instability issue when duty cycle reaches 100%.
@@ -67,11 +68,13 @@
 #define INPUT_SRC_VOLT_LMT_DEF                 (3 << 4)
 #define INPUT_SRC_VOLT_LMT_444                 (7 << 3)
 #define INPUT_SRC_VOLT_LMT_468                 (5 << 4)
+#define INPUT_SRC_VOLT_LMT_476                 (0xB << 3)
 
 #define INPUT_SRC_VINDPM_MASK                  (0xF << 3)
 #define INPUT_SRC_LOW_VBAT_LIMIT               3600
-#define INPUT_SRC_MID_VBAT_LIMIT               4000
-#define INPUT_SRC_HIG_VBAT_LIMIT               4350
+#define INPUT_SRC_MIDL_VBAT_LIMIT              4000
+#define INPUT_SRC_MIDH_VBAT_LIMIT              4200
+#define INPUT_SRC_HIGH_VBAT_LIMIT              4350
 
 /* D0, D1, D2 represent the input current limit */
 #define INPUT_SRC_CUR_LMT0		0x0	/* 100mA */
@@ -640,7 +643,7 @@ int bq24192_get_charger_health(void)
  */
 int bq24192_get_battery_health(void)
 {
-	int ret, temp;
+	int ret, temp, count;
 	struct bq24192_chip *chip =
 		i2c_get_clientdata(bq24192_client);
 
@@ -660,15 +663,16 @@ int bq24192_get_battery_health(void)
 
 	temp /= 10;
 
-	if ((temp < BATT_TEMP_MIN_DEF) ||
-		(temp > BATT_TEMP_MAX_DEF))
+	if ((temp <= chip->min_temp) ||
+		(temp > chip->max_temp))
 		return POWER_SUPPLY_HEALTH_OVERHEAT;
 
 	/* Check if battery OVP condition occured. Reading the register
 	value two times to get reliable reg value, recommended by vendor*/
-	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
-	msleep(22);
-	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	for (count = 0; count <= MAX_TRY; count++) {
+		ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+		msleep(22);
+	}
 	if (ret < 0) {
 		dev_warn(&chip->client->dev,
 			"read reg failed %s\n", __func__);
@@ -1080,6 +1084,7 @@ static inline int bq24192_enable_charging(
 			struct bq24192_chip *chip, bool val)
 {
 	int ret;
+	u8 regval;
 
 	dev_warn(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, val);
 
@@ -1087,6 +1092,22 @@ static inline int bq24192_enable_charging(
 	if (ret) {
 		dev_err(&chip->client->dev,
 				"program_timers failed: %d\n", ret);
+		return ret;
+	}
+
+	/*
+	 * Program the inlmt here in case we are asked to resume the charging
+	 * framework would send only set CC/CV commands and not the inlmt. This
+	 * would make sure that we program the last set inlmt into the register
+	 * in case for some reasons WDT expires
+	 */
+	regval = chrg_ilim_to_reg(chip->inlmt);
+
+	ret = bq24192_write_reg(chip->client, BQ24192_INPUT_SRC_CNTL_REG,
+				regval);
+	if (ret) {
+		dev_err(&chip->client->dev,
+				"inlmt programming failed: %d\n", ret);
 		return ret;
 	}
 
@@ -1112,10 +1133,6 @@ static inline int bq24192_enable_charging(
 		/* Schedule the charger task worker now */
 		schedule_delayed_work(&chip->chrg_task_wrkr,
 						0);
-	else {
-		/* Cancel the charger task worker now */
-		cancel_delayed_work_sync(&chip->chrg_task_wrkr);
-	}
 	return ret;
 }
 
@@ -1211,7 +1228,11 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 	int ret = 0;
 
 	dev_dbg(&chip->client->dev, "%s %d\n", __func__, psp);
-
+	if (mutex_is_locked(&chip->event_lock)) {
+		dev_dbg(&chip->client->dev,
+			"%s: mutex is already acquired",
+				__func__);
+	}
 	mutex_lock(&chip->event_lock);
 
 	switch (psp) {
@@ -1308,8 +1329,13 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 	enum bq24192_chrgr_stat charging;
 
 	dev_dbg(&chip->client->dev, "%s %d\n", __func__, psp);
-
-	mutex_lock(&chip->event_lock);
+	if (mutex_is_locked(&chip->event_lock)) {
+		dev_dbg(&chip->client->dev,
+			"%s : mutex is already acquired",
+				__func__);
+	}
+	if (!mutex_trylock(&chip->event_lock))
+		return -EBUSY;
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = (chip->cable_type !=
@@ -1452,6 +1478,8 @@ static irqreturn_t bq24192_irq_thread(int irq, void *devid)
 		} else
 			dev_info(&chip->client->dev, "No charger connected\n");
 	}
+	/*updating health status when interrupt occurs*/
+	power_supply_changed(&chip->usb);
 	return IRQ_HANDLED;
 }
 
@@ -1460,7 +1488,7 @@ static void bq24192_task_worker(struct work_struct *work)
 	struct bq24192_chip *chip =
 	    container_of(work, struct bq24192_chip, chrg_task_wrkr.work);
 	int ret, jiffy = CHARGER_TASK_JIFFIES, vbatt = 0;
-	u8 vindpm = 0;
+	u8 vindpm = INPUT_SRC_VOLT_LMT_DEF;
 
 	dev_info(&chip->client->dev, "%s\n", __func__);
 
@@ -1496,18 +1524,37 @@ static void bq24192_task_worker(struct work_struct *work)
 	vbatt /= 1000;
 	dev_warn(&chip->client->dev, "vbatt = %d\n", vbatt);
 
-	if (vbatt > INPUT_SRC_LOW_VBAT_LIMIT &&
-		vbatt < INPUT_SRC_MID_VBAT_LIMIT)
-		vindpm = INPUT_SRC_VOLT_LMT_444;
-	else if (vbatt > INPUT_SRC_MID_VBAT_LIMIT &&
-		vbatt < INPUT_SRC_HIG_VBAT_LIMIT)
-		vindpm = INPUT_SRC_VOLT_LMT_468;
+	/* If vbatt <= 3600mV, leave the VINDPM settings to default */
+	if (vbatt <= INPUT_SRC_LOW_VBAT_LIMIT)
+		goto sched_task_work;
 
-	mutex_lock(&chip->event_lock);
+	if (vbatt > INPUT_SRC_LOW_VBAT_LIMIT &&
+		vbatt < INPUT_SRC_MIDL_VBAT_LIMIT)
+		vindpm = INPUT_SRC_VOLT_LMT_444;
+	else if (vbatt > INPUT_SRC_MIDL_VBAT_LIMIT &&
+		vbatt < INPUT_SRC_MIDH_VBAT_LIMIT)
+		vindpm = INPUT_SRC_VOLT_LMT_468;
+	else if (vbatt > INPUT_SRC_MIDH_VBAT_LIMIT &&
+		vbatt < INPUT_SRC_HIGH_VBAT_LIMIT)
+		vindpm = INPUT_SRC_VOLT_LMT_476;
+
+	if (!mutex_trylock(&chip->event_lock))
+		goto sched_task_work;
 	ret = bq24192_modify_vindpm(vindpm);
 	if (ret < 0)
 		dev_err(&chip->client->dev, "%s failed\n", __func__);
 	mutex_unlock(&chip->event_lock);
+
+	/*
+	 * BQ driver depends upon the charger interrupt to send notification
+	 * to the framework about the HW charge termination and then framework
+	 * starts to poll the driver for declaring FULL. Presently the BQ
+	 * interrupts are not coming properly, so the driver would notify the
+	 * framework when battery is nearing FULL.
+	*/
+	if (vbatt >= BATTERY_NEAR_FULL(chip->max_cv))
+		power_supply_changed(NULL);
+
 sched_task_work:
 	schedule_delayed_work(&chip->chrg_task_wrkr, jiffy);
 }
@@ -1669,6 +1716,9 @@ static int bq24192_probe(struct i2c_client *client,
 
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
+	/*assigning default value for min and max temp*/
+	chip->min_temp = BATT_TEMP_MIN_DEF;
+	chip->max_temp = BATT_TEMP_MAX_DEF;
 	i2c_set_clientdata(client, chip);
 	bq24192_client = client;
 	ret = bq24192_read_reg(client, BQ24192_VENDER_REV_REG);
@@ -1706,7 +1756,6 @@ static int bq24192_probe(struct i2c_client *client,
 					"FAILED: init_platform_data\n");
 		}
 	}
-
 	/*
 	 * Request for charger chip gpio.This will be used to
 	 * register for an interrupt handler for servicing charger
@@ -1851,7 +1900,7 @@ static int bq24192_resume(struct device *dev)
 	if (chip->irq > 0) {
 		ret = request_threaded_irq(chip->irq,
 				bq24192_irq_isr, bq24192_irq_thread,
-				0, "BQ24192", chip);
+				IRQF_TRIGGER_FALLING, "BQ24192", chip);
 		if (ret) {
 			dev_warn(&bq24192_client->dev,
 				"failed to register irq for pin %d\n",

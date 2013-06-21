@@ -330,6 +330,14 @@
 #define  DEBUG_RESET_RENDER		(1<<8)
 #define  DEBUG_RESET_DISPLAY		(1<<9)
 
+/*
+ * PMC HW WA Reg
+ */
+#define PMC_WA_FORICLK5_REG		0xB4
+#define PMC_WA_HNDSHK			(1<<0)
+#define PMC_WA_ICLK5_BIT16_BND		(1<<1)
+#define PMC_WA_ICLK5_BIT17_SPRD		(1<<2)
+
 #define IOSF_DOORBELL_REQ			0x2100
 #define   IOSF_DEVFN_SHIFT			24
 #define   IOSF_OPCODE_SHIFT			16
@@ -349,6 +357,7 @@
 #define IOSF_PORT_CCK			0x14
 #define IOSF_PORT_CCU			0xA9
 #define IOSF_PORT_GPS_CORE		0x48
+#define IOSF_PORT_PMC			0x52
 
 
 /*
@@ -698,7 +707,12 @@
 #define   MI_ARB_DISPLAY_PRIORITY_A_B		(0 << 0)	/* display A > display B */
 #define   MI_ARB_DISPLAY_PRIORITY_B_A		(1 << 0)	/* display B > display A */
 
-#define CACHE_MODE_0	0x02120 /* 915+ only */
+#define CACHE_MODE_0	0x02120 /* 915+ only Pre-IVB */
+#define GEN7_CACHE_MODE_0	0x07000 /* IVB+ */
+/* CACHE_MODE_0 offset is different for per-IVB and IVB+ systems */
+#define CACHE_MODE_0_OFFSET(d) ((INTEL_INFO(d)->gen >= 7) ? \
+					GEN7_CACHE_MODE_0 : CACHE_MODE_0)
+
 #define   CM0_IZ_OPT_DISABLE      (1<<6)
 #define   CM0_ZR_OPT_DISABLE      (1<<5)
 #define	  CM0_STC_EVICT_DISABLE_LRA_SNB	(1<<5)
@@ -930,6 +944,8 @@
 #define GMBUS5			0x5120 /* byte index */
 #define   GMBUS_2BYTE_INDEX_EN	(1<<31)
 #define GMBUSFREQ		0x6510
+#define CD_CZ_CLOCK_FREQ_REG	0x6508	/* CZ Clock, CD Clock Frequency
+					 * Ratio register */
 
 /*
  * Clock control & power management
@@ -1885,6 +1901,7 @@ EDP_PSR_SW_TIMER
 
 /* Video Data Island Packet control */
 #define VIDEO_DIP_DATA		0x61178
+#define   VIDEO_DIP_DATA_SIZE   32
 #define VIDEO_DIP_CTL		0x61170
 /* Pre HSW: */
 #define   VIDEO_DIP_ENABLE		(1 << 31)
@@ -2915,6 +2932,9 @@ EDP_PSR_SW_TIMER
 #define DDL_CURSORB_PRECISION_64	(1<<31)
 #define DDL_CURSORB_PRECISION_32	(0<<31)
 #define DDL_CURSORB_SHIFT		24
+#define DDL_SPRITEB_PRECISION_64	(1<<23)
+#define DDL_SPRITEB_PRECISION_32	(0<<23)
+#define DDL_SPRITEB_SHIFT		16
 #define DDL_PLANEB_PRECISION_64		(1<<7)
 #define DDL_PLANEB_PRECISION_32		(0<<7)
 
@@ -3094,6 +3114,8 @@ EDP_PSR_SW_TIMER
 #define   MCURSOR_PIPE_A	0x00
 #define   MCURSOR_PIPE_B	(1 << 28)
 #define   MCURSOR_GAMMA_ENABLE  (1 << 26)
+#define   CUR_MODE_SEL_BIT	(1 << 5)
+#define   CUR_ENABLE		7
 #define   _CURABASE		0x70084
 #define   _CURAPOS		0x70088
 #define   CURSOR_POS_MASK       0x007FF
@@ -3150,6 +3172,7 @@ EDP_PSR_SW_TIMER
 #define   DISPPLANE_STEREO_POLARITY_SECOND	(1<<18)
 #define   DISPPLANE_TRICKLE_FEED_DISABLE	(1<<14) /* Ironlake */
 #define   DISPPLANE_TILED			(1<<10)
+#define   DISPPLANE_180_ROTATION_ENABLE		(1<<15)
 #define _DSPAADDR		0x70184
 #define _DSPASTRIDE		0x70188
 #define _DSPAPOS			0x7018C /* reserved */
@@ -3210,7 +3233,7 @@ EDP_PSR_SW_TIMER
 #define   DISPPLANE_SPRITE_ABOVE_OVERLAY	(1)
 #define _DSPBADDR		0x71184
 #define _DSPBSTRIDE		0x71188
-#define _DSPBPOS			0x7118C
+#define _DSPBPOS		0x7118C
 #define _DSPBSIZE		0x71190
 #define _DSPBSURF		0x7119C
 #define _DSPBTILEOFF		0x711A4
@@ -3392,6 +3415,7 @@ EDP_PSR_SW_TIMER
 #define _SPACONSTALPHA		0x721a8
 #define   SP_ALPHA_EN		(1<<31)
 #define _SPAGAMC		0x721f4
+#define _SPALIVESURF		0x721AC
 
 #define _SPBCNTR		0x72280
 #define _SPBLINOFF		0x72284
@@ -3405,6 +3429,11 @@ EDP_PSR_SW_TIMER
 #define _SPBTILEOFF		0x722a4
 #define _SPBCONSTALPHA		0x722a8
 #define _SPBGAMC		0x722f4
+#define VLV_NUM_SPRITES		2
+#define _SPBLIVESURF		0x722AC
+
+#define _SPCCNTR		0x72380
+#define _SPDCNTR		0x72480
 
 #define SPCNTR(pipe, plane) _PIPE(pipe * 2 + plane, _SPACNTR, _SPBCNTR)
 #define SPLINOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPALINOFF, _SPBLINOFF)
@@ -3418,9 +3447,10 @@ EDP_PSR_SW_TIMER
 #define SPTILEOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPATILEOFF, _SPBTILEOFF)
 #define SPCONSTALPHA(pipe, plane) _PIPE(pipe * 2 + plane, _SPACONSTALPHA, _SPBCONSTALPHA)
 #define SPGAMC(pipe, plane) _PIPE(pipe * 2 + plane, _SPAGAMC, _SPBGAMC)
+#define SPLIVESURF(pipe, plane) _PIPE(pipe * 2 + plane, _SPALIVESURF, \
+							_SPBLIVESURF);
 
 #define	  PLANE_RESERVED_REG_BIT_2_ENABLE	(1 << 2)
-#define          CURSOR_DECRYPTION_ENABLE      (1<<4)
 
 /* VBIOS regs */
 #define VGACNTRL		0x71400
@@ -4841,6 +4871,7 @@ EDP_PSR_SW_TIMER
 #define  MIPIA_FLISDSI_DELAY_COUNT_SHIFT		18
 #define  MIPIA_FLISDSI_DELAY_COUNT_MASK			(0xf << 18)
 #define  AFE_LATCHOUT					(1 << 17)
+#define  LP_OUTPUT_HOLD					(1 << 16)
 #define  MIPIC_FLISDSI_DELAY_COUNT_HIGH_SHIFT		15
 #define  MIPIC_FLISDSI_DELAY_COUNT_HIGH_MASK		(1 << 15)
 #define  MIPIC_MIPI4DPHY_DELAY_COUNT_SHIFT		11

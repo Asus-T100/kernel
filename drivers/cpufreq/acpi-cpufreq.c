@@ -46,6 +46,7 @@
 #include <asm/processor.h>
 #include <asm/cpufeature.h>
 #include "mperf.h"
+#include <linux/intel_mid_pm.h>
 
 MODULE_AUTHOR("Paul Diefenbaugh, Dominik Brodowski");
 MODULE_DESCRIPTION("ACPI Processor P-States Driver");
@@ -57,7 +58,9 @@ enum {
 	SYSTEM_IO_CAPABLE,
 };
 
-#define INTEL_MSR_RANGE		(0xffff)
+#define INTEL_MSR_RANGE			(0xffff)
+#define MSR_TURBO_RATIO_LIMIT  		0x000001AD
+#define TURBO_RATIO_MAX_MINUS_2		0x02020202
 
 struct acpi_cpufreq_data {
 	struct acpi_processor_performance *acpi_data;
@@ -445,6 +448,16 @@ static int __init acpi_cpufreq_early_init(void)
 			/* Freeing a NULL pointer is OK: alloc_percpu zeroes. */
 			free_acpi_perf_data();
 			return -ENOMEM;
+		}
+	}
+
+	if (platform_is(INTEL_ATOM_BYT)) {
+		int cpu;
+		u32 lo, hi;
+		for (cpu = 0; cpu < num_present_cpus(); cpu++) {
+			rdmsr_on_cpu(cpu, MSR_TURBO_RATIO_LIMIT, &lo, &hi);
+			lo = (u32) TURBO_RATIO_MAX_MINUS_2;
+			wrmsr_on_cpu(cpu, MSR_TURBO_RATIO_LIMIT, lo, hi);
 		}
 	}
 

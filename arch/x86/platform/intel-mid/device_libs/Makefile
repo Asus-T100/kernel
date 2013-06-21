@@ -1,7 +1,7 @@
 CFLAGS_platform_regulator.o			:= -Werror
 
 # IPC Devices
-obj-y									+= platform_byt_audio.o
+obj-$(subst m,y,$(CONFIG_SND_BYT_MACHINE))				+= platform_byt_audio.o
 obj-y									+= platform_mrfld_audio.o
 obj-y									+= platform_ipc.o
 obj-y									+= platform_scu_mip.o
@@ -13,6 +13,7 @@ obj-y									+= platform_tc35876x.o
 obj-y									+= platform_ctp_audio.o
 obj-y									+= platform_sst_audio.o
 obj-y									+= platform_regulator.o
+obj-y									+= platform_soc_thermal.o
 obj-y									+= pci/
 obj-$(subst m,y,$(CONFIG_MSIC_GPADC))					+= platform_msic_adc.o
 obj-$(subst m,y,$(CONFIG_BATTERY_INTEL_MDF))				+= platform_msic_battery.o
@@ -66,8 +67,8 @@ obj-$(subst m,y,$(CONFIG_SND_SOC_WM5102))				+= platform_wm5102.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_CS42L73))                              += platform_cs42l73.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_WM8994))				+= platform_wm8994.o
 # Camera
-obj-$(subst m,y,$(CONFIG_VIDEO_ATOMISP))				+= platform_camera.o
-ifdef CONFIG_VIDEO_ATOMISP
+obj-$(subst m,y,$(CONFIG_VIDEO_ATOMISP_TMP))				+= platform_camera.o
+ifdef CONFIG_VIDEO_ATOMISP_TMP
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9E013))				+= platform_mt9e013.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9D113))				+= platform_mt9d113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9M114))				+= platform_mt9m114.o
@@ -112,3 +113,5 @@ obj-$(subst m,y,$(CONFIG_PINCTRL_INTEL_MID))				+= platform_mid_pinctrl.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_OSNIB_ILB))				+= platform_osnib_ilb.o
 
 obj-$(subst m,y,$(CONFIG_SCU_LOGGING))					+= platform_scu_log.o
+# Panel Control Device
+obj-$(subst m,y,$(CONFIG_DRM_MRFLD))					+= platform_panel.o

@@ -206,6 +206,18 @@ struct intel_plane {
 			     struct drm_intel_sprite_colorkey *key);
 };
 
+struct vlv_MA_component_enabled {
+	union {
+		u8 component;
+		struct {
+			u8 EnPlane:1;
+			u8 EnSprite:1;
+			u8 EnCursor:1;
+			u8 reserved:5;
+		};
+	};
+};
+
 struct intel_watermark_params {
 	unsigned long fifo_size;
 	unsigned long max_wm;
@@ -572,6 +584,8 @@ extern void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file_priv);
 extern void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 					struct drm_file *file_priv);
+extern void intel_edp_get_psr_support(struct drm_device *device, void *data,
+					struct drm_file *file);
 
 /* VLV LP clock bending */
 extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
@@ -579,4 +593,11 @@ extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 
 extern ssize_t display_runtime_suspend(struct drm_device *drm_dev);
 extern ssize_t display_runtime_resume(struct drm_device *drm_dev);
+bool is_plane_enabled(struct drm_i915_private *dev_priv,
+			enum plane plane);
+
+bool is_sprite_enabled(struct drm_i915_private *dev_priv,
+			enum pipe pipe, enum plane plane);
+bool is_cursor_enabled(struct drm_i915_private *dev_priv,
+			enum pipe pipe);
 #endif /* __INTEL_DRV_H__ */

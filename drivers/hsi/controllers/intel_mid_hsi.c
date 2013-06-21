@@ -871,7 +871,8 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	intel_hsi->irq_status	&= ~irq_clr;
 	intel_hsi->irq_cfg	&= ~irq_clr;
 	if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
-		if (use_oob_cawake(intel_hsi)) {
+		if (use_oob_cawake(intel_hsi)
+				&& !intel_hsi->hsi_wake_disabled) {
 			disable_irq(intel_hsi->irq_wake);
 			intel_hsi->hsi_wake_disabled = 1;
 		}
@@ -2939,9 +2940,6 @@ static int hsi_mid_setup(struct hsi_client *cl)
 	/* Save the ACWAKE delay */
 	intel_hsi->acwake_delay = HSI_ACWAKE_DELAY;
 
-	/* Initialize hsi_wake disabling status */
-	intel_hsi->hsi_wake_disabled = 0;
-
 	/* Save the current TX speed */
 	intel_hsi->tx_speed = cl->tx_cfg.speed;
 
@@ -4211,6 +4209,9 @@ static int hsi_add_controller(struct hsi_controller *hsi,
 	intel_hsi->resumed = 1;
 	intel_hsi->use_oob_cawake = pdata->use_oob_cawake;
 
+	/* Initialize hsi_wake disabling status */
+	intel_hsi->hsi_wake_disabled = 0;
+
 	err = pci_enable_device(pdev);
 	if (err) {
 		pr_err(DRVNAME ": pci_enable_device failed (%d)\n", err);
@@ -4368,6 +4369,11 @@ static void intel_hsi_shutdown(struct pci_dev *pdev)
 
 	if (runtime_pm)
 		hsi_rtpm_exit(intel_hsi);
+
+	/*avoid accessing resource during shutdown*/
+	intel_hsi->tx_state = TX_SLEEPING;
+	intel_hsi->rx_state = RX_SLEEPING;
+	intel_hsi->suspend_state = DEVICE_SUSPENDED;
 
 	pci_set_drvdata(pdev, NULL);
 

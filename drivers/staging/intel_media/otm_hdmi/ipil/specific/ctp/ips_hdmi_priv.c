@@ -368,3 +368,96 @@ otm_hdmi_ret_t	ips_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 
 	return OTM_HDMI_SUCCESS;
 }
+
+/**
+ * Description: restore HDMI display registers and enable display
+ *
+ * @dev:	hdmi_device_t
+ *
+ * Returns:	none
+ */
+void ips_hdmi_restore_and_enable_display(hdmi_device_t *dev)
+{
+	int i;
+	u32 dpll = 0;
+	u32 dpll_val;
+	if (NULL == dev)  {
+		pr_debug("\n%s invalid argument\n", __func__);
+		return;
+	}
+	if (dev->reg_state.valid == false) {
+		pr_debug("\nhdmi no data to restore\n");
+		return;
+	}
+
+	/*make sure VGA plane is off. it initializes to on after reset!*/
+	hdmi_write32(IPIL_VGACNTRL, IPIL_VGA_DISP_DISABLE);
+
+	dpll = hdmi_read32(IPS_DPLL_B);
+	if (!(dpll & IPIL_DPLL_VCO_ENABLE)) {
+		/**
+		 * When ungating power of DPLL, needs to wait 0.5us
+		 * before enable the VCO
+		 */
+		if (dpll & IPIL_DPLL_PWR_GATE_EN) {
+			dpll &= ~IPIL_DPLL_PWR_GATE_EN;
+			hdmi_write32(IPS_DPLL_B, dpll);
+			udelay(1);
+		}
+
+		hdmi_write32(IPS_DPLL_DIV0, dev->reg_state.saveFPA0);
+
+		dpll_val = dev->reg_state.saveDPLL & ~IPIL_DPLL_VCO_ENABLE;
+		hdmi_write32(IPS_DPLL_B, dpll_val);
+		udelay(1);
+
+		dpll_val |= IPIL_DPLL_VCO_ENABLE;
+		hdmi_write32(IPS_DPLL_B, dpll_val);
+		hdmi_read32(IPS_DPLL_B);
+
+	}
+
+	/* Restore mode */
+	hdmi_write32(IPS_HTOTAL_B, dev->reg_state.saveHTOTAL_B);
+	hdmi_write32(IPS_HBLANK_B, dev->reg_state.saveHBLANK_B);
+	hdmi_write32(IPS_HSYNC_B, dev->reg_state.saveHSYNC_B);
+	hdmi_write32(IPS_VTOTAL_B, dev->reg_state.saveVTOTAL_B);
+	hdmi_write32(IPS_VBLANK_B, dev->reg_state.saveVBLANK_B);
+	hdmi_write32(IPS_VSYNC_B, dev->reg_state.saveVSYNC_B);
+	hdmi_write32(IPS_PIPEBSRC, dev->reg_state.savePIPEBSRC);
+	hdmi_write32(IPS_DSPBSTAT, dev->reg_state.saveDSPBSTATUS);
+
+	/*set up the plane*/
+	hdmi_write32(IPS_DSPBSTRIDE, dev->reg_state.saveDSPBSTRIDE);
+	hdmi_write32(IPS_DSPBLINOFF, dev->reg_state.saveDSPBLINOFF);
+	hdmi_write32(IPS_DSPBTILEOFF, dev->reg_state.saveDSPBTILEOFF);
+	hdmi_write32(IPS_DSPBSIZE, dev->reg_state.saveDSPBSIZE);
+	hdmi_write32(IPS_DSPBPOS, dev->reg_state.saveDSPBPOS);
+	hdmi_write32(IPS_DSPBSURF, dev->reg_state.saveDSPBSURF);
+
+	hdmi_write32(IPS_PFIT_CONTROL, dev->reg_state.savePFIT_CONTROL);
+	hdmi_write32(IPS_PFIT_PGM_RATIOS, dev->reg_state.savePFIT_PGM_RATIOS);
+	hdmi_write32(IPS_HDMIPHYMISCCTL, dev->reg_state.saveHDMIPHYMISCCTL);
+	hdmi_write32(IPS_HDMIB_CONTROL, dev->reg_state.saveHDMIB_CONTROL);
+
+	/*enable the plane*/
+	hdmi_write32(IPS_DSPBCNTR, dev->reg_state.saveDSPBCNTR);
+	hdmi_write32(IPS_HDMIB_LANES02, dev->reg_state.saveHDMIB_DATALANES);
+	hdmi_write32(IPS_HDMIB_LANES3, dev->reg_state.saveHDMIB_DATALANES);
+
+	if (in_atomic() || in_interrupt()) {
+		/*  udelay arg must be < 20000 */
+		udelay(19999);
+	} else
+		msleep_interruptible(20);
+
+	/*enable the pipe */
+	hdmi_write32(IPS_PIPEBCONF, dev->reg_state.savePIPEBCONF);
+
+	/* restore palette (gamma) */
+	for (i = 0; i < 256; i++)
+		hdmi_write32(IPS_PALETTE_B + (i<<2),
+				dev->reg_state.save_palette_b[i]);
+
+	dev->reg_state.valid = false;
+}

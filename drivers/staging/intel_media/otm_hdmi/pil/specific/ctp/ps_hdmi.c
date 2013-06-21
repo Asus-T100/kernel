@@ -73,7 +73,7 @@
 #include "ps_hdmi.h"
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel-mid.h>
-
+#include "psb_drv.h"
 
 /* Implementation of the Clovertrail specific PCI driver for receiving
  * Hotplug and other device status signals.
@@ -280,6 +280,21 @@ bool ps_hdmi_power_islands_on(int hw_island)
 
 void ps_hdmi_power_islands_off(int hw_island)
 {
+}
+
+void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg)
+{
+	if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
+				OSPM_ISLAND_UP, OSPM_REG_TYPE))
+		BUG();
+}
+
+void ps_hdmi_vblank_control(struct drm_device *dev, bool on)
+{
+	if (on)
+		psb_enable_vblank(dev, 1);
+	else
+		psb_disable_vblank(dev, 1);
 }
 
 /*

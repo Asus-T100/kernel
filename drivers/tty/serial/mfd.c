@@ -1087,7 +1087,7 @@ static void check_modem_status(struct uart_hsu_port *up)
 /*
  * This handles the interrupt from one port.
  */
-static irqreturn_t port_irq(int irq, void *dev_id)
+static irqreturn_t hsu_port_irq(int irq, void *dev_id)
 {
 	struct uart_hsu_port *up = dev_id;
 	unsigned long flags;
@@ -1140,7 +1140,7 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t dma_irq(int irq, void *dev_id)
+static irqreturn_t hsu_dma_irq(int irq, void *dev_id)
 {
 	struct uart_hsu_port *up;
 	struct hsu_port *hsu = dev_id;
@@ -2032,12 +2032,24 @@ static int serial_hsu_do_suspend(struct pci_dev *pdev)
 	char cmd;
 	unsigned long flags;
 
-	if (cfg->hw_set_rts) {
-		cfg->hw_set_rts(up->index, 1);
-		usleep_range(up->byte_delay, up->byte_delay);
+	if (up->use_dma) {
+		if (test_bit(flag_startup, &up->flags)
+				&& serial_in(up, UART_FOR) & 0x7F)
+			goto busy;
+
+		if (chan_readl(chan, HSU_CH_D0SAR) - up->rxbuf.dma_addr)
+			goto busy;
 	}
+
+	if (cfg->hw_set_rts)
+		cfg->hw_set_rts(up->index, 1);
+
 	disable_irq(up->port.irq);
 	disable_irq(phsu->dma_irq);
+
+	if (cfg->hw_set_rts)
+		usleep_range(up->byte_delay, up->byte_delay);
+
 	serial_sched_stop(up);
 	if (up->use_dma)
 		up->rxc_chcr_save = chan_readl(up->rxc, HSU_CH_CR);
@@ -2117,6 +2129,7 @@ err:
 	serial_sched_cmd(up, qcmd_get_msr);
 	spin_unlock_irqrestore(&up->port.lock, flags);
 	serial_sched_sync(up);
+busy:
 	pm_schedule_suspend(up->dev, cfg->idle);
 	return -EBUSY;
 }
@@ -2419,7 +2432,7 @@ static int serial_port_setup(struct uart_hsu_port *up,
 	up->qcirc.buf = (char *)up->qbuf;
 	spin_lock_init(&up->cl_lock);
 	set_bit(flag_cmd_off, &up->flags);
-	ret = request_irq(up->port.irq, port_irq, IRQF_SHARED,
+	ret = request_irq(up->port.irq, hsu_port_irq, IRQF_SHARED,
 			up->name, up);
 	if (ret)
 		return ret;
@@ -2643,7 +2656,7 @@ static int serial_hsu_dma_probe(struct pci_dev *pdev,
 		dchan++;
 	}
 	phsu->dma_irq = pdev->irq;
-	ret = request_irq(pdev->irq, dma_irq, 0, "hsu dma", phsu);
+	ret = request_irq(pdev->irq, hsu_dma_irq, 0, "hsu dma", phsu);
 	if (ret) {
 		dev_err(&pdev->dev, "can not get IRQ\n");
 		goto err;

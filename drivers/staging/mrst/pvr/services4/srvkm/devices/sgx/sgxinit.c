@@ -1487,9 +1487,10 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
 
 	#if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 	{
-		msleep(1);
 		IMG_UINT32	*pui32MKTraceBuffer = psDevInfo->psKernelEDMStatusBufferMemInfo->pvLinAddrKM;
 		IMG_UINT32	ui32LastStatusCode, ui32WriteOffset;
+
+		msleep(1);
 
 		ui32LastStatusCode = *pui32MKTraceBuffer;
 		pui32MKTraceBuffer++;

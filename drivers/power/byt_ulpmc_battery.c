@@ -443,7 +443,7 @@ report_chrg_health:
 
 static int ulpmc_battery_health(struct ulpmc_chip_info *chip)
 {
-	int stat, fault, health;
+	int stat, fault, health, batt_type;
 
 	stat = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
 	if (stat < 0) {
@@ -455,6 +455,13 @@ static int ulpmc_battery_health(struct ulpmc_chip_info *chip)
 	fault = ulpmc_read_reg8(chip->client, ULPMC_BC_FAULT_REG);
 	if (fault < 0) {
 		dev_err(&chip->client->dev, "i2c read error:%d\n", fault);
+		health = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+		goto report_batt_health;
+	}
+
+	batt_type = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_BATT_PRESENT);
+	if (batt_type < 0) {
+		dev_err(&chip->client->dev, "i2c read error:%d\n", batt_type);
 		health = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
 		goto report_batt_health;
 	}
@@ -476,6 +483,14 @@ static int ulpmc_battery_health(struct ulpmc_chip_info *chip)
 	 * and low thresholds and set health.
 	 * this will be done on PR1.1
 	 */
+
+
+	/* check battery valid case */
+	if ((batt_type & BATT_PRESENT_DET_MASK) != BATT_PRESENT_DET_2P) {
+		dev_info(&chip->client->dev, "invalid battery!!\n");
+		health = POWER_SUPPLY_HEALTH_UNKNOWN;
+		goto report_batt_health;
+	}
 
 	if (stat & BC_STAT_VSYS_LOW) {
 		dev_info(&chip->client->dev, "battery low fault\n");

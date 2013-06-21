@@ -269,9 +269,19 @@ void ps_hdmi_power_islands_off(int hw_island)
 	 * HDMI cable, but here fabric error happens.
 	 */
 	if (!hw_island)
-		hw_island = OSPM_DISPLAY_B;
+		hw_island = OSPM_DISPLAY_A | OSPM_DISPLAY_B;
 
 	ospm_power_using_hw_end(hw_island);
+}
+
+void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg)
+{
+	/* Don't need to force powering on DSPB for MRFLD. */
+}
+
+void ps_hdmi_vblank_control(struct drm_device *dev, bool on)
+{
+	/* Won't force turning on/off vblank interrupt for MRFLD. */
 }
 
 /*

@@ -286,7 +286,7 @@ static void init_pvr_pool(void)
 		return ;
 	} else {
 		ret = gen_pool_add(pvrsrv_pool_writecombine,
-				pool_start, POOL_SIZE, -1);
+			(unsigned long) pool_start, POOL_SIZE, -1);
 		if (ret) {
 			printk(KERN_ERR "%s:could not remainder pool\n",
 					__func__);
@@ -1087,7 +1087,7 @@ NewVMallocLinuxMemArea(IMG_SIZE_T uBytes, IMG_UINT32 ui32AreaFlags)
     if (pvrsrv_pool_writecombine && uBytes <= 128*1024) {
         if ((ui32AreaFlags & PVRSRV_HAP_CACHETYPE_MASK) ==
                             PVRSRV_HAP_WRITECOMBINE) {
-            pvCpuVAddr = gen_pool_alloc(pvrsrv_pool_writecombine,
+            pvCpuVAddr = (void *) gen_pool_alloc(pvrsrv_pool_writecombine,
                             PAGE_ALIGN(uBytes));
             if (pvCpuVAddr)
                 psLinuxMemArea->bfromPool = IMG_TRUE;
@@ -1196,9 +1196,9 @@ FreeVMallocLinuxMemArea(LinuxMemArea *psLinuxMemArea)
                     psLinuxMemArea->uiByteSize);
 #endif
     if (psLinuxMemArea->bfromPool) {
-        gen_pool_free(pvrsrv_pool_writecombine,
-                        psLinuxMemArea->uData.sVmalloc.pvVmallocAddress,
-                        PAGE_ALIGN(psLinuxMemArea->uiByteSize));
+	gen_pool_free(pvrsrv_pool_writecombine,
+		(unsigned long) psLinuxMemArea->uData.sVmalloc.pvVmallocAddress,
+		PAGE_ALIGN(psLinuxMemArea->uiByteSize));
     } else
         VFreeWrapper(psLinuxMemArea->uData.sVmalloc.pvVmallocAddress);
 #endif	 /* defined(PVR_LINUX_MEM_AREA_USE_VMAP) */

@@ -70,6 +70,8 @@
 #include <linux/jiffies.h>
 #include <linux/async.h>
 #include <linux/crypto.h>
+#include <linux/reboot.h>
+#include <linux/notifier.h>
 #include <crypto/internal/hash.h>
 #include <crypto/scatterwalk.h>
 #include <crypto/sha.h>
@@ -105,6 +107,10 @@
 #define PNW_IMR4H_MSG_REGADDR 0x51
 #define PNW_IMR_ADDRESS_MASK 0x00fffffcu
 #define PNW_IMR_ADDRESS_SHIFT 8
+
+/* SEP Message information */
+#define SEP_REBOOT_NOTIFIER_MSG_SIZE 7
+#define SEP_REBOOT_NOTIFIER_MSG_DUMMY_CRC 0
 
 uint32_t get_imr_base(void)
 {
@@ -4728,6 +4734,44 @@ static int sep_wait_for_scu(struct sep_device *sep)
 }
 
 /**
+ * This function gets called when a reboot is about
+ * to happen. The kernel's reboot notifier
+ * infrastructure is used to call this function.
+ */
+static int sep_reboot_notifier_callback(struct notifier_block *this,
+	unsigned long code, void *unused)
+{
+	struct sep_msg_shared_mem_addr_to_sep *shm_to_sep = NULL;
+	int error;
+
+	/* Let the world know driver is notified */
+	pr_debug("SEP - reboot notifier called; The code: 0x%lx\n", code);
+
+	/* Message pool of shared area */
+	shm_to_sep = (struct sep_msg_shared_mem_addr_to_sep *)
+		(sep_dev->shared_addr +
+		SEP_DRIVER_MESSAGE_AREA_OFFSET_IN_BYTES);
+
+	/* Fill in the message */
+	shm_to_sep->token = SEP_START_MSG_TOKEN;
+	shm_to_sep->command = DX_SEP_HOST_SEP_SEP_DRIVER_REBOOT_OP_CODE;
+	shm_to_sep->shared_phys = (u32)sep_dev->shared_bus;
+	shm_to_sep->crc = SEP_REBOOT_NOTIFIER_MSG_DUMMY_CRC;
+	shm_to_sep->size = SEP_REBOOT_NOTIFIER_MSG_SIZE;
+
+	error = sep_send_command_handler(sep_dev);
+	if (error)
+		pr_err("sep_send_command_handler fails in notifier\n");
+		pr_err("result was (decimal) %d\n", error);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block sep_notifier = {
+	.notifier_call = sep_reboot_notifier_callback,
+	};
+
+/**
  *sep_probe - probe a matching PCI device
  *@pdev:	pci_device
  *@ent:	pci_device_id
@@ -5033,6 +5077,12 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 #endif
 
 	dev_dbg(&sep->pdev->dev, "Done sending shared phys to sep\n");
+
+	error = register_reboot_notifier(&sep_notifier);
+	if (error) {
+		pr_err("cant call register_reboot_notifier %d\n", error);
+		goto end_function_free_workqueue;
+	}
 
 	goto end_function;
 

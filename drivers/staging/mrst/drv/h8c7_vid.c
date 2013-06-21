@@ -31,6 +31,8 @@
 #include <linux/gpio.h>
 #include <linux/sfi.h>
 
+#undef DEBUG
+
 static u8 h8c7_soft_reset[]      = {0x01};
 static u8 h8c7_exit_sleep_mode[] = {0x11, 0x00, 0x00, 0x00};
 static u8 h8c7_mcs_protect_off[] = {0xb9, 0xff, 0x83, 0x92};
@@ -521,6 +523,7 @@ int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
 	return 0;
 }
 
+#ifdef DEBUG
 static
 int mdfld_dsi_h8c7_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
@@ -557,6 +560,7 @@ int mdfld_dsi_h8c7_panel_reset(struct mdfld_dsi_config *dsi_config)
 
 	return 0;
 }
+#endif
 
 static
 struct drm_display_mode *h8c7_get_config_mode(void)

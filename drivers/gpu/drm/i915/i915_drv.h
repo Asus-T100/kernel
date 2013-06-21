@@ -948,9 +948,10 @@ enum hdmi_force_audio {
 };
 
 enum hdmi_panel_fitter {
-	AUTO_SCALE,
-	PILLAR_BOX,
-	LETTER_BOX,
+	PFIT_OFF,
+	AUTOSCALE,
+	PILLARBOX,
+	LETTERBOX,
 };
 
 enum i915_cache_level {
@@ -1031,8 +1032,13 @@ struct drm_i915_gem_object {
 	 *
 	 * In the worst case this is 1 + 1 + 1 + 2*2 = 7. That would fit into 3
 	 * bits with absolutely no headroom. So use 4 bits. */
-	unsigned int pin_count:4;
-#define DRM_I915_GEM_OBJECT_MAX_PIN_COUNT 0xf
+	/**
+	 * But somehow VLV manages to exceed this counter, especially
+	 * in Widi case, so time being use 5 bits to provide aditional headroom.
+	 * Todo, understand that why 4 bits are proving insufficient
+	 */
+	unsigned int pin_count:5;
+#define DRM_I915_GEM_OBJECT_MAX_PIN_COUNT 0x1f
 
 	/**
 	 * Is the object at the current location in the gtt mappable and
@@ -1302,6 +1308,7 @@ extern bool i915_enable_hangcheck __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
 extern int i915_enable_turbo __read_mostly;
 extern int i915_psr_support __read_mostly;
+extern struct drm_display_mode rot_mode;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
@@ -1615,10 +1622,6 @@ extern int i915_restore_state(struct drm_device *dev);
 extern void i915_pm_init(struct drm_device *dev);
 extern void i915_pm_deinit(struct drm_device *dev);
 
-/* i915_suspend.c */
-extern int i915_save_state(struct drm_device *dev);
-extern int i915_restore_state(struct drm_device *dev);
-
 /* i915_sysfs.c */
 void i915_setup_sysfs(struct drm_device *dev_priv);
 void i915_teardown_sysfs(struct drm_device *dev_priv);
@@ -1631,7 +1634,7 @@ extern inline bool intel_gmbus_is_port_valid(unsigned port)
 	return (port >= GMBUS_PORT_SSC && port <= GMBUS_PORT_DPD);
 }
 
-void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv, int clock);
+void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv);
 extern struct i2c_adapter *intel_gmbus_get_adapter(
 		struct drm_i915_private *dev_priv, unsigned port);
 extern void intel_gmbus_set_speed(struct i2c_adapter *adapter, int speed);
@@ -1690,6 +1693,10 @@ int i915_reg_read_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
 int i915_set_plane_zorder(struct drm_device *dev, void *data,
 			  struct drm_file *file);
+int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
+					 struct drm_file *file);
+int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
+			struct drm_file *file);
 int i915_disp_screen_control(struct drm_device *dev, void *data,
 			struct drm_file *file);
 
@@ -1844,6 +1851,11 @@ int intel_gps_core_write32(struct drm_i915_private *dev_priv,
 int intel_gps_core_write32_bits(struct drm_i915_private *dev_priv,
 					u32 reg, u32 val, u32 mask);
 
+int intel_pmc_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_pmc_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_pmc_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
+
 #define intel_dpio_read(dev_priv, reg)	intel_dpio_read32_tmp(dev_priv, reg)
 #define intel_dpio_write(dev_priv, reg, val) \
 			intel_dpio_write32(dev_priv, reg, val)
@@ -1873,5 +1885,10 @@ int intel_gps_core_write32_bits(struct drm_i915_private *dev_priv,
 			intel_ccu_write32(dev_priv, reg, val)
 #define intel_ccu_write_bits(dev_priv, reg, val, mask) \
 			intel_ccu_write32_bits(dev_priv, reg, val, mask)
-
+#define intel_pmc_read(dev_priv, reg, val) \
+			intel_pmc_read32(dev_priv, reg, val)
+#define intel_pmc_write(dev_priv, reg, val) \
+			intel_pmc_write32(dev_priv, reg, val)
+#define intel_pmc_write_bits(dev_priv, reg, val, mask) \
+			intel_pmc_write32_bits(dev_priv, reg, val, mask)
 #endif

@@ -123,9 +123,8 @@ static struct platform_device bcm43xx_vwlan_device = {
 
 static void generate_nvram_id(void)
 {
-	if (INTEL_MID_BOARD(3, PHONE, CLVTP, VB, PRO, PR1A) ||
-			INTEL_MID_BOARD(3, PHONE, CLVTP, VB, PRO, PR1B)) {
-		strncpy(nvram_id, "victoriabay_pr1", sizeof(nvram_id));
+	if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)) {
+		strncpy(nvram_id, "victoriabay_prx", sizeof(nvram_id));
 	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO)) {
 		strncpy(nvram_id, "bodegabay_pr1", sizeof(nvram_id));
 	} else {
@@ -168,7 +167,16 @@ void __init bcm43xx_platform_data_init_post_scu(void)
 		/*Get GPIO numbers from the SFI table*/
 		wifi_irq_gpio = get_gpio_by_name(BCM43XX_SFI_GPIO_IRQ_NAME);
 	} else {
-		wifi_irq_gpio = 144;
+		if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
+			    INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG)) {
+			wifi_irq_gpio = 147;
+			pr_err("bcm byt-m specific GPIO IRQ: %d"
+			       , wifi_irq_gpio);
+		} else {
+			wifi_irq_gpio = 145;
+			pr_err("bcm byt-t specific GPIO IRQ: %d"
+			       , wifi_irq_gpio);
+		}
 	}
 
 	if (wifi_irq_gpio < 0) {
@@ -183,8 +191,16 @@ void __init bcm43xx_platform_data_init_post_scu(void)
 	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		gpio_enable = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
 	else {
-		gpio_enable = 150;
-		pr_err("baytrail, hardcoding GPIO Enable to %d\n", gpio_enable);
+		if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
+			    INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG)) {
+			pr_err("bcm byt-m specific GPIO enable");
+			gpio_enable = 151;
+		} else {
+			pr_err("bcm byt-t specific GPIO enable");
+			gpio_enable = 150;
+		}
+		pr_err("bcm byt specific GPIO enable: %d", gpio_enable);
+
 	}
 	if (gpio_enable < 0) {
 		pr_err("%s: Unable to find WLAN-enable GPIO in the SFI table\n",

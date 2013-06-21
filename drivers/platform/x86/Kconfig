@@ -753,6 +753,17 @@ config INTEL_MID_OSNIB_ILB
 
 			If unsure, say N.
 
+config INTEL_MODEM_NVRAM
+	tristate "modem NVRAM driver for Intel CTP/MERR platforms"
+	default n
+        ---help---
+	  This driver adds NVRAM support for telephony use.
+	  It provides SYSFS entries to allow any user application to read/write
+	  in this zone.
+	  The driver also ensure that there is no buffer overflow.
+
+	  If unsure, say N.
+
 config INTEL_MFLD_THERMAL
        tristate "Thermal driver for Intel Medfield platform"
        depends on MFD_INTEL_MSIC && THERMAL

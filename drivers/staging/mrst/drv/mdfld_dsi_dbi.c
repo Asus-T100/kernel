@@ -59,7 +59,7 @@ int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
 
 	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
 	if (!sender) {
-		DRM_ERROR("Cannot get sender\m");
+		DRM_ERROR("Cannot get sender\n");
 		return -EINVAL;
 	}
 
@@ -106,7 +106,7 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 
 	if (!sender) {
 		DRM_ERROR("Cannot get sender\n");
-		return -EINVAL;
+		return;
 	}
 
 	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
@@ -536,12 +536,11 @@ power_on_err:
 static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			struct panel_funcs *p_funcs)
 {
-	u32 val = 0;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
-	int retry, reset_count = 10;
+	int reset_count = 10;
 	int err = 0;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -733,13 +732,10 @@ power_off_err:
 static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 			struct panel_funcs *p_funcs)
 {
-	u32 val = 0;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
-	int pipe0_enabled;
-	int pipe2_enabled;
 	int err = 0;
 
 	if (!dsi_config)
@@ -1022,7 +1018,7 @@ void mdfld_generic_dsi_dbi_restore(struct drm_encoder *encoder)
 
 static
 bool mdfld_generic_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
-		struct drm_display_mode *mode,
+		const struct drm_display_mode *mode,
 		struct drm_display_mode *adjusted_mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
@@ -1078,7 +1074,6 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	struct mdfld_dsi_config *dsi_config;
 	struct drm_connector *connector = NULL;
 	struct drm_encoder *encoder = NULL;
-	struct drm_display_mode *fixed_mode = NULL;
 	struct psb_gtt *pg = dev_priv ? (dev_priv->pg) : NULL;
 
 #ifdef CONFIG_MDFLD_DSI_DPU
@@ -1089,7 +1084,6 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 		dev_priv ? (dev_priv->dbi_dsr_info) : NULL;
 #endif
 	int pipe;
-	int ret;
 
 	PSB_DEBUG_ENTRY("\n");
 

@@ -36,7 +36,7 @@
 static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 {
 	int ret;
-	u32 data = 0;
+	u8 data = 0;
 	struct drm_device *dev = dsi_config->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 

@@ -341,8 +341,13 @@ static int ctp_wm5102_init(struct snd_soc_pcm_runtime *runtime)
 	int ret;
 	struct snd_soc_card *card = runtime->card;
 	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
-	struct snd_soc_codec *codec = ctp_get_codec(card, "wm5102-codec");
-	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	struct snd_soc_codec *codec;
+	struct snd_soc_dapm_context *dapm;
+
+	codec = ctp_get_codec(card, "wm5102-codec");
+	if (!codec)
+		return -EIO;
+	dapm = &codec->dapm;
 
 	/* Set codec bias level */
 	ctp_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);

@@ -104,7 +104,6 @@ struct mei_nfc_dev {
 	u8 fw_ivn;
 	u8 vendor_id;
 	u8 radio_type;
-
 	char *bus_name;
 
 	u16 req_id;
@@ -244,7 +243,7 @@ static int mei_nfc_connect(struct mei_nfc_dev *ndev)
 	}
 
 	dev_info(&dev->pdev->dev, "IVN 0x%x Vendor ID 0x%x\n",
-		connect_resp->fw_ivn, connect_resp->vendor_id);
+		 connect_resp->fw_ivn, connect_resp->vendor_id);
 
 	dev_info(&dev->pdev->dev, "ME FW %d.%d.%d.%d\n",
 		connect_resp->me_major, connect_resp->me_minor,
@@ -479,7 +478,7 @@ err:
 int mei_nfc_host_init(struct mei_device *dev)
 {
 	struct mei_nfc_dev *ndev = &nfc_dev;
-	struct mei_cl *cl_info, *cl  = NULL;
+	struct mei_cl *cl_info, *cl = NULL;
 	int i, ret;
 
 	/* already initialzed */

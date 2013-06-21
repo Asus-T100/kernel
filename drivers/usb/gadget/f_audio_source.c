@@ -159,6 +159,16 @@ static struct usb_endpoint_descriptor ss_as_in_ep_desc  = {
 	.bInterval =		4, /* poll 1 per millisecond */
 };
 
+static struct usb_ss_ep_comp_descriptor ss_as_in_comp_desc = {
+	.bLength =		sizeof ss_as_in_comp_desc,
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	/* the following 3 values can be tweaked if necessary */
+	/* .bMaxBurst =		0, */
+	/* .bmAttributes =	0, */
+	.wBytesPerInterval =	__constant_cpu_to_le16(IN_EP_MAX_PACKET_SIZE),
+};
+
 /* Standard ISO IN Endpoint Descriptor for highspeed */
 static struct usb_endpoint_descriptor fs_as_in_ep_desc  = {
 	.bLength =		USB_DT_ENDPOINT_AUDIO_SIZE,
@@ -214,6 +224,7 @@ static struct usb_descriptor_header *ss_audio_desc[] = {
 	(struct usb_descriptor_header *)&as_type_i_desc,
 
 	(struct usb_descriptor_header *)&ss_as_in_ep_desc,
+	(struct usb_descriptor_header *)&ss_as_in_comp_desc,
 	(struct usb_descriptor_header *)&as_iso_in_desc,
 	NULL,
 };
@@ -639,12 +650,13 @@ audio_bind(struct usb_configuration *c, struct usb_function *f)
 	audio->in_ep = ep;
 	ep->driver_data = audio; /* claim */
 
-	if (gadget_is_dualspeed(c->cdev->gadget)) {
+	if (gadget_is_dualspeed(c->cdev->gadget))
 		hs_as_in_ep_desc.bEndpointAddress =
 			fs_as_in_ep_desc.bEndpointAddress;
+
+	if (gadget_is_superspeed(c->cdev->gadget))
 		ss_as_in_ep_desc.bEndpointAddress =
 			fs_as_in_ep_desc.bEndpointAddress;
-	}
 
 	f->descriptors = fs_audio_desc;
 	f->hs_descriptors = hs_audio_desc;

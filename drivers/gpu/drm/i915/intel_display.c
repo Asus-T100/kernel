@@ -49,6 +49,8 @@
 bool intel_pipe_has_type(struct drm_crtc *crtc, int type);
 static void intel_increase_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
+static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
+			int x, int y);
 
 typedef struct {
 	/* given values */
@@ -115,6 +117,8 @@ intel_fdi_link_freq(struct drm_device *dev)
 	} else
 		return 27;
 }
+
+struct drm_display_mode rot_mode;
 
 static const intel_limit_t intel_limits_i8xx_dvo = {
 	.dot = { .min = 25000, .max = 350000 },
@@ -1262,6 +1266,48 @@ static void assert_plane(struct drm_i915_private *dev_priv,
 #define assert_plane_enabled(d, p) assert_plane(d, p, true)
 #define assert_plane_disabled(d, p) assert_plane(d, p, false)
 
+bool is_plane_enabled(struct drm_i915_private *dev_priv,
+			enum plane plane)
+{
+	int reg;
+	u32 val;
+
+	reg = DSPCNTR(plane);
+	val = I915_READ(reg);
+	return val & DISPLAY_PLANE_ENABLE;
+}
+
+bool is_sprite_enabled(struct drm_i915_private *dev_priv,
+			enum pipe pipe, enum plane plane)
+{
+	int reg;
+	u32 val;
+
+	reg = SPCNTR(pipe, plane);
+	val = I915_READ(reg);
+	return val & SP_ENABLE;
+}
+
+bool is_cursor_enabled(struct drm_i915_private *dev_priv,
+			enum pipe pipe)
+{
+	int reg;
+	bool ret = false;
+	u32 val;
+
+	reg = CURCNTR(pipe);
+	val = I915_READ(reg);
+
+	/* check bit 5 of cursor control register.
+	if bit 5 is 1, then cursor enabled */
+	ret = val & CUR_MODE_SEL_BIT;
+	/* if bit 5 is 0, check if bit 2:0 are all zeroes */
+	if (false == ret)
+		ret = val & CUR_ENABLE;
+
+	return ret;
+}
+
 static void assert_planes_disabled(struct drm_i915_private *dev_priv,
 				   enum pipe pipe)
 {
@@ -1960,6 +2006,21 @@ static void intel_disable_plane(struct drm_i915_private *dev_priv,
 	I915_WRITE(reg, val & ~DISPLAY_PLANE_ENABLE);
 	intel_flush_display_plane(dev_priv, plane);
 	intel_wait_for_vblank(dev_priv->dev, pipe);
+
+	/* disable the sprite planes */
+	if (IS_VALLEYVIEW(dev_priv->dev)) {
+		int i;
+		for (i = 0; i < VLV_NUM_SPRITES; i++) {
+			val = I915_READ(SPCNTR(pipe, i));
+			if ((val & SP_ENABLE) == 0)
+				break;
+
+			I915_WRITE(SPCNTR(pipe, i), (val & ~SP_ENABLE));
+			/* Activate double buffered register update */
+			I915_MODIFY_DISPBASE(SPSURF(pipe, i), 0);
+			POSTING_READ(SPSURF(pipe, i));
+		}
+	}
 }
 
 static void disable_pch_dp(struct drm_i915_private *dev_priv,
@@ -2083,39 +2144,47 @@ int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_reserved_reg_bit_2 *rrb = data;
 	u32 enable = rrb->enable;
-	int plane = rrb->plane;
+	u32 reg1, reg2;
 	u32 val;
 
-	/* Clear the older rrb setting*/
-	val = I915_READ(DSPSURF(plane));
-	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-	I915_WRITE(DSPSURF(plane), val);
-
-	val = I915_READ(DSPSURFLIVE(plane));
-	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-	I915_WRITE(DSPSURFLIVE(plane), val);
-
-	if (plane == 1 || plane == 4) {
-		val = I915_READ(VLV_DSPADDR(plane));
-		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(VLV_DSPADDR(plane), val);
+	switch (rrb->plane) {
+	case 2: /* SPRITE A */
+		reg1 = SPSURF(0, 0);
+		reg2 = SPLIVESURF(0, 0);
+		break;
+	case 3:	/* SPRITE B */
+		reg1 = SPSURF(0, 1);
+		reg2 = SPLIVESURF(0, 1);
+		break;
+	case 5: /* SPRITE C */
+		reg1 = SPSURF(1, 0);
+		reg2 = SPLIVESURF(1, 0);
+		break;
+	case 6: /* SPRITE D */
+		reg1 = SPSURF(1, 1);
+		reg2 = SPLIVESURF(1, 1);
+		break;
+	default: return -EINVAL;
 	}
 
 	/* Program bit enable if it was requested */
 	if (enable) {
-		val = I915_READ(DSPSURF(plane));
+		val = I915_READ(reg1);
 		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(DSPSURF(plane), val);
+		I915_WRITE(reg1, val);
 
-		val = I915_READ(DSPSURFLIVE(plane));
+		val = I915_READ(reg2);
 		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(DSPSURFLIVE(plane), val);
+		I915_WRITE(reg2, val);
+	} else {
+		/* Clear the older rrb setting*/
+		val = I915_READ(reg1);
+		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(reg1, val);
 
-		if (plane == 1 || plane == 4) {
-			val = I915_READ(VLV_DSPADDR(plane));
-			val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-			I915_WRITE(VLV_DSPADDR(plane), val);
-		}
+		val = I915_READ(reg2);
+		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(reg2, val);
 	}
 
 	return 0;
@@ -2148,6 +2217,83 @@ unsigned long intel_gen4_compute_page_offset(int *x, int *y,
 	}
 }
 
+int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
+				struct drm_file *file)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_plane_180_rotation *rotation = data;
+
+	bool rotate = (rotation->rotate & 0x1) ? true : false;
+	int reg;
+	u32 val;
+	u32 sprctla;
+	u32 sprctlb;
+	int ret = 1;
+	struct drm_mode_object *obj;
+	struct drm_crtc *crtc;
+	struct intel_crtc *intel_crtc;
+	int pipe;
+
+	obj = drm_mode_object_find(dev, rotation->crtc_id,
+			DRM_MODE_OBJECT_CRTC);
+
+	if (!obj) {
+		DRM_DEBUG_DRIVER("Unknown CRTC ID %d\n", rotation->crtc_id);
+		return -EINVAL;
+	}
+
+	crtc = obj_to_crtc(obj);
+	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
+	intel_crtc = to_intel_crtc(crtc);
+	pipe = intel_crtc->pipe;
+
+	DRM_DEBUG_DRIVER("pipe = %d\n", pipe);
+	memcpy(&rot_mode, &(crtc->hwmode), sizeof(struct drm_display_mode));
+	reg = DSPCNTR(pipe);
+	val = I915_READ(reg);
+	sprctla = I915_READ(SPCNTR(pipe, 0));
+	sprctlb = I915_READ(SPCNTR(pipe, 1));
+
+	/*Clear older rotation settings*/
+	if (val & DISPLAY_PLANE_ENABLE) {
+		val &= ~DISPPLANE_180_ROTATION_ENABLE;
+		I915_WRITE(reg, val);
+		ret = 0;
+	}
+
+	if (sprctla & DISPLAY_PLANE_ENABLE) {
+		sprctla &= ~DISPPLANE_180_ROTATION_ENABLE;
+		I915_WRITE(SPCNTR(pipe, 0), sprctla);
+		ret = 0;
+	}
+
+	if (sprctlb & DISPLAY_PLANE_ENABLE) {
+		sprctlb &= ~DISPPLANE_180_ROTATION_ENABLE;
+		I915_WRITE(SPCNTR(pipe, 1), sprctlb);
+		ret = 0;
+	}
+
+	if (rotate) {
+		if (val & DISPLAY_PLANE_ENABLE) {
+			val |= DISPPLANE_180_ROTATION_ENABLE;
+			I915_WRITE(reg, val);
+		}
+
+		if (sprctla & DISPLAY_PLANE_ENABLE) {
+			sprctla |= DISPPLANE_180_ROTATION_ENABLE;
+			I915_WRITE(SPCNTR(pipe, 0), sprctla);
+		}
+
+		if (sprctlb & DISPLAY_PLANE_ENABLE) {
+			sprctlb |= DISPPLANE_180_ROTATION_ENABLE;
+			I915_WRITE(SPCNTR(pipe, 1), sprctlb);
+		}
+	}
+
+	i9xx_update_plane(crtc, crtc->fb, 0, 0);
+	return ret;
+}
+
 static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 			     int x, int y)
 {
@@ -2158,8 +2304,10 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 	struct drm_i915_gem_object *obj;
 	int plane = intel_crtc->plane;
 	unsigned long linear_offset;
+	bool rotate = false;
 	u32 dspcntr;
 	u32 reg;
+	int pixel_size;
 
 	switch (plane) {
 	case 0:
@@ -2170,6 +2318,7 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 		return -EINVAL;
 	}
 
+	pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 	intel_fb = to_intel_framebuffer(fb);
 	obj = intel_fb->obj;
 
@@ -2209,12 +2358,18 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 		return -EINVAL;
 	}
 
+	if (dspcntr & DISPPLANE_180_ROTATION_ENABLE)
+		rotate = true;
+
 	if (INTEL_INFO(dev)->gen >= 4) {
 		if (obj->tiling_mode != I915_TILING_NONE)
 			dspcntr |= DISPPLANE_TILED;
 		else
 			dspcntr &= ~DISPPLANE_TILED;
 	}
+
+	if (rotate)
+		dspcntr |= DISPPLANE_180_ROTATION_ENABLE;
 
 	I915_WRITE(reg, dspcntr);
 
@@ -2236,10 +2391,18 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 	if (INTEL_INFO(dev)->gen >= 4) {
 		I915_MODIFY_DISPBASE(DSPSURF(plane),
 				     obj->gtt_offset + intel_crtc->dspaddr_offset);
-		I915_WRITE(DSPTILEOFF(plane), (y << 16) | x);
-		I915_WRITE(DSPLINOFF(plane), linear_offset);
+		if (rotate) {
+			I915_WRITE(DSPTILEOFF(plane), ((intel_fb->base.height
+				<< 16) | (intel_fb->base.width)));
+			I915_WRITE(DSPLINOFF(plane), (intel_fb->base.width *
+				intel_fb->base.height * pixel_size));
+		} else {
+			I915_WRITE(DSPTILEOFF(plane), (y << 16) | x);
+			I915_WRITE(DSPLINOFF(plane), linear_offset);
+		}
 	} else
 		I915_WRITE(DSPADDR(plane), obj->gtt_offset + linear_offset);
+
 	POSTING_READ(reg);
 
 	return 0;
@@ -3620,7 +3783,6 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	intel_crtc->active = true;
 	if (dev_priv->disp_pm_in_progress == true)
 		intel_crtc->disp_suspend_state = false;
-	intel_update_watermarks(dev);
 
 	if (!dev_priv->is_mipi)
 		intel_enable_pll(dev_priv, pipe);
@@ -3640,6 +3802,7 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 
 	intel_crtc_load_lut(crtc);
 	intel_update_fbc(dev);
+	intel_update_watermarks(dev);
 
 	/* Give the overlay scaler a chance to enable if it's on this pipe */
 	intel_crtc_dpms_overlay(intel_crtc, true);
@@ -4091,6 +4254,7 @@ static bool intel_choose_pipe_bpp_dither(struct drm_crtc *crtc,
 		bpc = 6; /* min is 18bpp */
 		break;
 	case 24:
+	case 32:
 		bpc = 8;
 		break;
 	case 30:
@@ -4582,8 +4746,9 @@ void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 	bool ssbendupdown = 0, clkbenden = 0;
 	u32 iClk1val = 0, iClk0val = 0, iClk5val = 0, writeval = 0;
 	unsigned long long bendadjust = 0, bendstepsize = 0;
-	u32 bendtimetosw = 0;
+	u32 bendtimetosw = 0, regval = 0;
 	unsigned long long mult = 0, div = 0;
+	unsigned long timeout = jiffies + msecs_to_jiffies(100);
 
 	clkbenden = clockbend->is_enable;
 	if (clockbend->is_enable) {
@@ -4656,15 +4821,22 @@ void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 
 			Disable clock bending if enabled: toggling of enable bit
 			is required for new parameters to take effect.*/
-			intel_iosf_rw(dev_priv, OPCODE_REG_READ,
-				IOSF_PORT_CCU, CCU_iCLK5_REG, &iClk5val);
+			intel_ccu_read(dev_priv, CCU_iCLK5_REG, &iClk5val);
 			if (true == ((iClk5val & iCLK5_DISPBENDCLKEN)
 					>> iCLK5_BENDCLKEN_SHIFT)) {
-				writeval = ~iCLK5_DISPBENDCLKEN;
-				iClk5val = iClk5val & writeval;
-				intel_iosf_rw(dev_priv, OPCODE_REG_WRITE,
-					IOSF_PORT_CCU, CCU_iCLK5_REG,
-					&iClk5val);
+				/* HW WA - Clear the dispbendclken */
+				intel_pmc_write_bits(dev_priv,
+				PMC_WA_FORICLK5_REG, PMC_WA_HNDSHK, 0x3);
+				do {
+					regval = 0xF; /* Random */
+					intel_pmc_read(dev_priv,
+						PMC_WA_FORICLK5_REG, &regval);
+				 /* Wait for handshake bit clearance */
+				} while (((regval & PMC_WA_HNDSHK) != 0x0) &&
+					time_after(timeout, jiffies));
+				if (time_after(jiffies, timeout))
+					DRM_DEBUG_DRIVER(
+					"Clock bending prgm timed out\n");
 			}
 
 			/*program step size*/
@@ -4688,12 +4860,20 @@ void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 				IOSF_PORT_CCU, CCU_iCLK1_REG, &iClk1val);
 
 			/*enable clock bend*/
-			intel_iosf_rw(dev_priv, OPCODE_REG_READ,
-				IOSF_PORT_CCU, CCU_iCLK5_REG, &iClk5val);
-			writeval = iCLK5_DISPBENDCLKREQ | iCLK5_DISPBENDCLKEN;
-			iClk5val = iClk5val | writeval;
-			intel_iosf_rw(dev_priv, OPCODE_REG_WRITE,
-				IOSF_PORT_CCU, CCU_iCLK5_REG, &iClk5val);
+			/* Alternative HW WA */
+			/* Handshake bit and bit 1 mapped to bit 16 of iclk5 */
+			intel_pmc_write_bits(dev_priv, PMC_WA_FORICLK5_REG,
+				PMC_WA_HNDSHK | PMC_WA_ICLK5_BIT16_BND, 0x3);
+			do {
+				regval = 0xF; /* Random */
+				intel_pmc_read(dev_priv,
+					PMC_WA_FORICLK5_REG, &regval);
+			/* Wait for handshake bit clearance */
+			} while (((regval & PMC_WA_HNDSHK) != 0x0) &&
+				time_after(timeout, jiffies));
+			if (time_after(jiffies, timeout))
+				DRM_DEBUG_DRIVER(
+				"Clock bending prgm timed out\n");
 		} else {
 			clkbenden = false;
 		}
@@ -4714,11 +4894,20 @@ void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 		intel_iosf_rw(dev_priv, OPCODE_REG_WRITE, IOSF_PORT_CCU,
 				CCU_iCLK1_REG, &iClk1val);
 
-		intel_iosf_rw(dev_priv, OPCODE_REG_READ,
-				IOSF_PORT_CCU, CCU_iCLK5_REG, &iClk5val);
-		iClk5val = iClk5val & ~iCLK5_DISPBENDCLKEN;
-		intel_iosf_rw(dev_priv, OPCODE_REG_WRITE, IOSF_PORT_CCU,
-				CCU_iCLK5_REG, &iClk5val);
+		/* Alternative HW WA */
+		intel_pmc_write_bits(dev_priv,
+			PMC_WA_FORICLK5_REG, PMC_WA_HNDSHK, 0x3);
+		do {
+			regval = 0xF; /* Random */
+			intel_pmc_read(dev_priv, PMC_WA_FORICLK5_REG, &regval);
+		 /* Wait for handshake bit clearance */
+		} while (((regval & PMC_WA_HNDSHK) != 0x0) &&
+			time_after(timeout, jiffies));
+		if (time_after(jiffies, timeout))
+			DRM_DEBUG_DRIVER(
+			"Clock bending prgm timed out\n");
+		intel_ccu_read(dev_priv, CCU_iCLK5_REG, &iClk5val);
+		DRM_DEBUG_DRIVER("iCLK5 Reg Value = %x\n", iClk5val);
 	}
 }
 
@@ -4737,12 +4926,15 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	intel_clock_t clock, reduced_clock;
 	u32 dspcntr, pipeconf, vsyncshift;
 	bool ok, has_reduced_clock = false, is_sdvo = false;
-	bool is_lvds = false, is_tv = false, is_dp = false, is_dsi = false;
+	bool is_lvds = false, is_tv = false, is_dp = false,
+			is_dsi = false, is_edp = false;
 	struct intel_encoder *encoder;
 	struct intel_dsi *intel_dsi;
 	const intel_limit_t *limit;
 	int ret;
 	struct intel_program_clock_bending clockbend;
+	bool dither = false;
+	unsigned int pipe_bpp = 0;
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		switch (encoder->type) {
@@ -4764,6 +4956,9 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		case INTEL_OUTPUT_DSI:
 			is_dsi = true;
 			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			break;
+		case INTEL_OUTPUT_EDP:
+			is_edp = true;
 			break;
 		}
 
@@ -4831,6 +5026,41 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		}
 	}
 
+	/* setup pipeconf */
+	pipeconf = I915_READ(PIPECONF(pipe));
+
+	/* default to 8bpc */
+	pipeconf &= ~(PIPECONF_BPC_MASK | PIPECONF_DITHER_EN);
+
+	/* Determine panel color depth like we do in ironlake */
+	dither = intel_choose_pipe_bpp_dither(crtc, &pipe_bpp, adjusted_mode);
+
+	switch (pipe_bpp) {
+	case 18:
+		pipeconf |= PIPECONF_6BPC;
+		break;
+	case 24:
+		pipeconf |= PIPECONF_8BPC;
+		break;
+	case 30:
+		pipeconf |= PIPECONF_10BPC;
+		break;
+	case 36:
+		pipeconf |= PIPECONF_12BPC;
+		break;
+	default:
+		WARN(1, "intel_choose_pipe_bpp returned invalid value %d\n",
+			pipe_bpp);
+		pipeconf |= PIPECONF_8BPC;
+		pipe_bpp = 24;
+		break;
+	}
+
+	/* Set intel_crtc->bpp before vlv_update_pll and i9xx_update_pll
+	 * as they use this value to call intel_dp_compute_m_n
+	 */
+	intel_crtc->bpp = pipe_bpp;
+
 	if (IS_GEN2(dev))
 		i8xx_update_pll(crtc, adjusted_mode, &clock, num_connectors);
 	else if (IS_VALLEYVIEW(dev)) {
@@ -4848,9 +5078,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		i9xx_update_pll(crtc, mode, adjusted_mode, &clock,
 				has_reduced_clock ? &reduced_clock : NULL,
 				num_connectors);
-
-	/* setup pipeconf */
-	pipeconf = I915_READ(PIPECONF(pipe));
 
 	/* Set up the display plane register */
 	dspcntr = DISPPLANE_GAMMA_ENABLE;
@@ -4874,8 +5101,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 			pipeconf &= ~PIPECONF_DOUBLE_WIDE;
 	}
 
-	/* default to 8bpc */
-	pipeconf &= ~(PIPECONF_BPC_MASK | PIPECONF_DITHER_EN);
 	if (is_dp) {
 		if (adjusted_mode->private_flags & INTEL_MODE_DP_FORCE_6BPC) {
 			pipeconf |= PIPECONF_6BPC |
@@ -4890,6 +5115,12 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 				PIPECONF_ENABLE |
 				I965_PIPECONF_ACTIVE;
 		}
+	}
+
+	/* Enable dithering */
+	if (is_edp && dither) {
+		pipeconf |= PIPECONF_DITHER_EN |
+			PIPECONF_DITHER_TYPE_SP;
 	}
 
 	DRM_DEBUG_KMS("Mode for pipe %c:\n", pipe == 0 ? 'A' : 'B');
@@ -4970,14 +5201,23 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		dev_priv->tmds_clock_speed = adjusted_mode->clock;
 	}
 
+/* Currently reducing the wait for DPLL since it adds 2 sec delay for
+ * modeset in HDMI dual mode scenarios. There is no artifacts observed.
+ * It can speed up the clone/extended mode modeset scenarios.
+ * ToDo: Need further investigation and hw team feedbacks.
+ */
 	/* Wait for Phy status bits to go low */
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
-			if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 2000))
+			/* if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0),
+				2000)) */
+			if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 20))
 				DRM_ERROR("DPLL %x failed to lock\n",
 						I915_READ(DPLL(0)));
 		} else if (encoder->type == INTEL_OUTPUT_HDMI) {
-			if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 2000))
+			/* if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0),
+				2000)) */
+			if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 20))
 				DRM_ERROR("DPLL %x failed to lock\n",
 						I915_READ(DPLL(0)));
 		}

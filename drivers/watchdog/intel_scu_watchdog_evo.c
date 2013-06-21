@@ -196,6 +196,8 @@ static void dump_softlock_debug(unsigned long data)
 	int i, reboot;
 	u64 system[NR_CPUS], num_jifs;
 
+	memset(system, 0, NR_CPUS*sizeof(u64));
+
 	num_jifs = jiffies - beattime;
 	for_each_possible_cpu(i) {
 		system[i] = kcpustat_cpu(i).cpustat[CPUTIME_SYSTEM] -

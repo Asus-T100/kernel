@@ -230,7 +230,7 @@ static int __imx_buf_reg_array(struct i2c_client *client,
 	case IMX_16BIT:
 		size = 2;
 		data16 = (u16 *)&ctrl->buffer.data[ctrl->index];
-		*data16 = (u16)next->val;
+		*data16 = cpu_to_be16((u16)next->val);
 		break;
 	default:
 		return -EINVAL;
@@ -457,18 +457,18 @@ static int imx_set_exposure_gain(struct v4l2_subdev *sd, u16 coarse_itg,
 		goto out;
 	dev->coarse_itg = coarse_itg;
 
-	if (dev->sensor_id == IMX135_ID)
-		ret = __imx_update_gain(sd, gain);
-	else
+	if (dev->sensor_id == IMX175_ID)
 		ret = __imx_update_gain(sd, dev->gain);
+	else
+		ret = __imx_update_gain(sd, gain);
 	if (ret)
 		goto out;
 	dev->gain = gain;
 
-	if (dev->sensor_id == IMX135_ID)
-		ret = __imx_update_digital_gain(client, digitgain);
-	else
+	if (dev->sensor_id == IMX175_ID)
 		ret = __imx_update_digital_gain(client, dev->digital_gain);
+	else
+		ret = __imx_update_digital_gain(client, digitgain);
 	if (ret)
 		goto out;
 	dev->digital_gain = digitgain;

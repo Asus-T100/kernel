@@ -77,6 +77,7 @@
 /* Default Alert threshold 85 C */
 #define DEFAULT_MAX_TEMP	85
 #define MIN_CRIT_TEMP		55
+#define PMIC_DIE_MIN_CRIT_TEMP	120
 
 /*
  * Default Hysteresis value: 15 corresponds to 3C.
@@ -94,8 +95,8 @@
 
 /* Constants defined in CrystalCove PMIC spec */
 #define PMIC_DIE_SENSOR		3
-#define PMIC_DIE_ADC_MIN	448
-#define PMIC_DIE_ADC_MAX	1004
+#define PMIC_DIE_ADC_MIN	488
+#define PMIC_DIE_ADC_MAX	802
 #define PMIC_DIE_TEMP_MIN	-40
 #define PMIC_DIE_TEMP_MAX	125
 
@@ -265,13 +266,13 @@ static inline void remove_pmic_thermal_debugfs(void) { }
 static inline int adc_to_pmic_die_temp(unsigned int val)
 {
 	/* return temperature in mC */
-	return val * 884 - 588640;
+	return 382100 - val * 526;
 }
 
 static inline int pmic_die_temp_to_adc(int temp)
 {
 	/* 'temp' is in C, convert to mC and then do calculations */
-	return ((temp * 1000) + 588640) / 884;
+	return (382100 - temp * 1000) / 526;
 }
 
 /**
@@ -521,6 +522,11 @@ static int program_tmax(struct device *dev)
 {
 	int i, ret, level;
 	int pmic_die_val, adc_val, val;
+	int pmic_die_crit_val;
+
+	ret = temp_to_adc(1, PMIC_DIE_MIN_CRIT_TEMP, &pmic_die_crit_val);
+	if (ret)
+		return ret;
 
 	ret = temp_to_adc(1, DEFAULT_MAX_TEMP, &pmic_die_val);
 	if (ret)
@@ -534,6 +540,9 @@ static int program_tmax(struct device *dev)
 	for (level = 0; level <= LEVEL_ALERT2; level++) {
 		for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
 			val = (i == PMIC_DIE_SENSOR) ? pmic_die_val : adc_val;
+
+			if (level == LEVEL_ALERT2 && i == PMIC_DIE_SENSOR)
+				val = pmic_die_crit_val;
 
 			ret = set_alert_temp(alert_regs_l[level][i],
 						val, level);
@@ -607,7 +616,7 @@ static ssize_t show_trip_hyst(struct thermal_zone_device *tzd,
 static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 				int trip, long trip_temp)
 {
-	int ret, adc_val;
+	int ret, adc_val, min_tcrit = MIN_CRIT_TEMP;
 	struct thermal_device_info *td_info = tzd->devdata;
 	int alert_reg_l = alert_regs_l[trip][td_info->sensor_index];
 
@@ -619,8 +628,13 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	/* Convert from mC to C */
 	trip_temp /= 1000;
 
-	if (trip == LEVEL_ALERT2 && trip_temp < MIN_CRIT_TEMP) {
-		dev_err(&tzd->device, "Tcrit should be more than 55C\n");
+	/* Minimum Tcrit for PMIC DIE is different from that of others */
+	if (td_info->sensor->direct)
+		min_tcrit = PMIC_DIE_MIN_CRIT_TEMP;
+
+	if (trip == LEVEL_ALERT2 && trip_temp < min_tcrit) {
+		dev_err(&tzd->device,
+			"Tcrit should be more than %dC\n", min_tcrit);
 		return -EINVAL;
 	}
 

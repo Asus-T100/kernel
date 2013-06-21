@@ -21,7 +21,6 @@ static char *entry_name[] = {
 
 static void history_record_init(struct saved_history_record *record)
 {
-	int i;
 	int cpu;
 
 	cpu = raw_smp_processor_id();
@@ -46,7 +45,6 @@ EXPORT_SYMBOL(get_new_history_record);
 
 static void print_saved_history_record(struct saved_history_record *record)
 {
-	int i;
 	unsigned long long ts = record->ts;
 	unsigned long nanosec_rem = do_div(ts, 1000000000);
 
@@ -72,7 +70,7 @@ static void print_saved_history_record(struct saved_history_record *record)
 		break;
 
 	case 4:
-		printk(KERN_INFO "name:[%s] ts[%5lu.%06lu] msvdx_stat[%#x]\n",
+		printk(KERN_INFO "name:[%s] ts[%5lu.%06lu] msvdx_stat[%#lx]\n",
 				entry_name[record->type],
 				(unsigned long)ts,
 				nanosec_rem / 1000,
@@ -80,14 +78,14 @@ static void print_saved_history_record(struct saved_history_record *record)
 		break;
 
 	case 5:
-		printk(KERN_INFO "name:[%s] ts[%5lu.%06lu] vdc_stat[%#x]\n",
+		printk(KERN_INFO "name:[%s] ts[%5lu.%06lu] vdc_stat[%#lx]\n",
 				entry_name[record->type],
 				(unsigned long)ts,
 				nanosec_rem / 1000,
 				record->record_value.vdc_stat);
 		break;
 
-	defalut:
+	default:
 		break;
 
 	}

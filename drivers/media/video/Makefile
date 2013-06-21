@@ -99,6 +99,10 @@ obj-$(CONFIG_VIDEO_MT9V113)  += mt9v113.o
 CFFLAGS_mt9v113.o = -Werror
 obj-$(CONFIG_VIDEO_OV5640)  += ov5640.o
 CFFLAGS_ov5640.o = -Werror
+
+obj-$(CONFIG_VIDEO_MSRLIST_HELPER) += libmsrlisthelper.o
+CFLAGS_libmsrlisthelper.o += -Werror
+
 obj-$(CONFIG_VIDEO_S5K8AAY)	+= s5k8aay.o
 CFLAGS_s5k8aay.o += -Werror
 
@@ -234,6 +238,6 @@ obj-$(CONFIG_ARCH_OMAP)	+= omap/
 ccflags-y += -I$(srctree)/drivers/media/dvb/dvb-core
 ccflags-y += -I$(srctree)/drivers/media/dvb/frontends
 ccflags-y += -I$(srctree)/drivers/media/common/tuners
-obj-$(CONFIG_VIDEO_ATOMISP_CSS15) += atomisp2/
-obj-$(CONFIG_VIDEO_ATOMISP_CSS20) += atomisp3/
+obj-$(CONFIG_VIDEO_ATOMISP) += atomisp2/
+obj-$(CONFIG_VIDEO_ATOMISP3) += atomisp3/
 obj-$(CONFIG_VIDEO_MT9E013) += mt9e013/

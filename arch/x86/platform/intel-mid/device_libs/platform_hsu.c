@@ -311,7 +311,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.type = gps_port,
 			.index = 2,
 			.name = HSU_GPS_PORT,
-			.idle = 100,
+			.idle = 30,
 			.preamble = 1,
 			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
@@ -328,7 +328,6 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.idle = 2000,
 			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
-			.hw_set_rts = intel_mid_hsu_rts,
 			.hw_suspend = intel_mid_hsu_suspend,
 			.hw_resume = intel_mid_hsu_resume,
 			.hw_get_clk = intel_mid_hsu_get_clk,
@@ -372,7 +371,6 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.idle = 2000,
 			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
-			.hw_set_rts = intel_mid_hsu_rts,
 			.hw_suspend = intel_mid_hsu_suspend,
 			.hw_resume = intel_mid_hsu_resume,
 			.hw_get_clk = intel_mid_hsu_get_clk,
@@ -381,7 +379,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.type = gps_port,
 			.index = 3,
 			.name = HSU_GPS_PORT,
-			.idle = 100,
+			.idle = 30,
 			.preamble = 1,
 			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
@@ -413,7 +411,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.type = gps_port,
 			.index = 1,
 			.name = HSU_GPS_PORT,
-			.idle = 100,
+			.idle = 30,
 			.preamble = 1,
 			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
@@ -431,7 +429,6 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.idle = 2000,
 			.hw_init = intel_mid_hsu_init,
 			.hw_set_alt = intel_mid_hsu_switch,
-			.hw_set_rts = intel_mid_hsu_rts,
 			.hw_suspend = intel_mid_hsu_suspend,
 			.hw_resume = intel_mid_hsu_resume,
 			.hw_get_clk = intel_mid_hsu_get_clk,
@@ -457,7 +454,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.type = gps_port,
 			.index = 1,
 			.name = HSU_GPS_PORT,
-			.idle = 100,
+			.idle = 30,
 			.preamble = 1,
 			.hw_ctrl_cts = 1,
 			.hw_init = intel_mid_hsu_init,
@@ -510,6 +507,8 @@ static void hsu_port_enable(int port)
 	if (info->tx_gpio) {
 		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
+		usleep_range(10, 10);
+		gpio_direction_output(info->tx_gpio, 0);
 
 	}
 	if (info->cts_gpio) {
@@ -533,6 +532,8 @@ static void hsu_port_disable(int port)
 	if (info->tx_gpio) {
 		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, LNW_GPIO);
+		usleep_range(10, 10);
+		gpio_direction_input(info->tx_gpio);
 	}
 	if (info->cts_gpio) {
 		lnw_gpio_set_alt(info->cts_gpio, LNW_GPIO);
@@ -578,6 +579,8 @@ void intel_mid_hsu_resume(int port, struct device *dev)
 	if (info->tx_gpio) {
 		gpio_direction_output(info->tx_gpio, 1);
 		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
+		usleep_range(10, 10);
+		gpio_direction_output(info->tx_gpio, 0);
 
 	}
 	if (info->cts_gpio) {

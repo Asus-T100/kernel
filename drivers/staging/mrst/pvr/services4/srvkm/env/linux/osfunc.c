@@ -731,7 +731,7 @@ IMG_VOID OSWaitus(IMG_UINT32 ui32Timeus)
 
 IMG_VOID OSSleepms(IMG_UINT32 ui32Timems)
 {
-	trace_printk("OSSleepms sleep for %dms start\n");
+	trace_printk("OSSleepms sleep for %dms start\n", ui32Timems);
 	/*
 	 * Accrording to the timers-howto.txt in kernel doc,
 	 * the sleep time is ( 10us - 20ms), we should use

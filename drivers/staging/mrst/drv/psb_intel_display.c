@@ -448,8 +448,8 @@ inline
 void intel_wait_for_pipe_enable_disable(struct drm_device *dev,
 		int pipe, bool state)
 {
-	int retry = 10000, ret = 0;
-	u32 pipeconf_reg = 0, pipeconf_val = 0;
+	int retry = 10000;
+	u32 pipeconf_reg = 0;
 	u32 pipe_state = 0;
 
 	switch (pipe) {
@@ -1209,23 +1209,15 @@ void mdfld_disable_crtc(struct drm_device *dev, int pipe)
 static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 {
 	struct drm_device *dev = crtc->dev;
-	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	int pipe = psb_intel_crtc->pipe;
 	int dpll_reg = DPLL_B;
 	int dspcntr_reg = DSPBCNTR;
 	int dspbase_reg = DSPBBASE;
 	int pipeconf_reg = PIPEBCONF;
-	u32 pipestat_reg = PIPEBSTAT;
-	u32 pipeconf = dev_priv->pipeconf;
-	u32 dspcntr = dev_priv->dspcntr;
-	u32 mipi_enable_reg = MIPIA_DEVICE_READY_REG;
 	u32 temp;
-	u32 mipi_port_ctrl = 0, mipi_dev_ready = 0;
 	bool enabled;
 	int timeout = 0;
-	struct mdfld_dsi_config *dsi_config = NULL;
-	struct mdfld_dsi_hw_registers *regs = NULL;
 
 	PSB_DEBUG_ENTRY("mode = %d, pipe = %d\n", mode, pipe);
 
@@ -1351,7 +1343,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 }
 
 static bool psb_intel_crtc_mode_fixup(struct drm_crtc *crtc,
-				  struct drm_display_mode *mode,
+				  const struct drm_display_mode *mode,
 				  struct drm_display_mode *adjusted_mode)
 {
 	return true;

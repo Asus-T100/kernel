@@ -60,4 +60,5 @@ obj-$(CONFIG_INTEL_OAKTRAIL)	+= intel_oaktrail.o
 obj-$(CONFIG_SAMSUNG_Q10)	+= samsung-q10.o
 obj-$(CONFIG_APPLE_GMUX)	+= apple-gmux.o
 obj-$(CONFIG_INTEL_MID_OSNIB_ILB)	+= intel_mid_osnib_ilb.o
+obj-$(CONFIG_INTEL_MODEM_NVRAM)		+= intel_modem_nvram.o
 obj-$(CONFIG_INTEL_CRYSTALCOVE_PWRSRC)	+= intel_crystalcove_pwrsrc.o

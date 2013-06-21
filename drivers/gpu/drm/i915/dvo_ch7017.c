@@ -202,7 +202,7 @@ static bool ch7017_init(struct intel_dvo_device *dvo,
 {
 	struct ch7017_priv *priv;
 	const char *str;
-	u8 val;
+	u8 val = 0;
 
 	priv = kzalloc(sizeof(struct ch7017_priv), GFP_KERNEL);
 	if (priv == NULL)
@@ -333,7 +333,7 @@ static void ch7017_mode_set(struct intel_dvo_device *dvo,
 /* set the CH7017 power state */
 static void ch7017_dpms(struct intel_dvo_device *dvo, int mode)
 {
-	uint8_t val;
+	uint8_t val = 0;
 
 	ch7017_read(dvo, CH7017_LVDS_POWER_DOWN, &val);
 
@@ -361,7 +361,7 @@ static void ch7017_dpms(struct intel_dvo_device *dvo, int mode)
 
 static void ch7017_dump_regs(struct intel_dvo_device *dvo)
 {
-	uint8_t val;
+	uint8_t val = 0;
 
 #define DUMP(reg)					\
 do {							\

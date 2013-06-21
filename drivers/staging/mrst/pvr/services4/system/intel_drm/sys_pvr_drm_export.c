@@ -239,7 +239,7 @@ SYSPVRFillCallback(struct drm_device *ddev)
 	pvr_ops->PVRSRVDrmUnload = PVRSRVDrmUnload;
 	pvr_ops->PVRSRVPerProcessData = PVRSRVPerProcessData;
 	pvr_ops->PVRSRVLookupHandle = PVRSRVLookupHandle;
-	pvr_ops->LinuxMemAreaToCpuPAddr = LinuxMemAreaToCpuPAddr;
+	pvr_ops->LinuxMemAreaToCpuPAddr = (void *) LinuxMemAreaToCpuPAddr;
 	pvr_ops->OSScheduleMISR2 = OSScheduleMISR2;
 
 	dev_priv->pvr_ops = pvr_ops;

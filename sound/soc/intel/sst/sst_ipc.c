@@ -662,7 +662,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			struct snd_sst_async_msg err_msg;
 			if (msg_low != sizeof(err_msg)) {
 				pr_err("Invalid async msg from FW:");
-				pr_err("Expected:%d, Got:%d\n",
+				pr_err("Expected:%zu, Got:%u\n",
 						sizeof(err_msg), msg_low);
 				goto end;
 			}

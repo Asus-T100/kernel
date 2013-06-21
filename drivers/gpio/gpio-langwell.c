@@ -1,5 +1,5 @@
 /* langwell_gpio.c Moorestown platform Langwell chip GPIO driver
- * Copyright (c) 2008 - 2009,  Intel Corporation.
+ * Copyright (c) 2008 - 2013,  Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -273,6 +273,56 @@ void lnw_gpio_set_alt(int gpio, int alt)
 	}
 }
 EXPORT_SYMBOL_GPL(lnw_gpio_set_alt);
+
+int gpio_get_alt(int gpio)
+{
+	struct lnw_gpio *lnw;
+	u32 __iomem *mem;
+	int reg;
+	int bit;
+	u32 value;
+	u32 offset;
+
+	 /* use this trick to get memio */
+	lnw = irq_get_chip_data(gpio_to_irq(gpio));
+	if (!lnw) {
+		dev_err(lnw->chip.dev, "langwell_gpio: can not find pin %d\n",
+					gpio);
+		return -1;
+	}
+	if (gpio < lnw->chip.base || gpio >= lnw->chip.base + lnw->chip.ngpio) {
+		dev_err(lnw->chip.dev,
+			"langwell_gpio: wrong pin %d to config alt\n", gpio);
+		return -1;
+	}
+	if (lnw->irq_base + gpio - lnw->chip.base != gpio_to_irq(gpio)) {
+		dev_err(lnw->chip.dev,
+			"langwell_gpio: wrong chip data for pin %d\n", gpio);
+		return -1;
+	}
+	gpio -= lnw->chip.base;
+
+	if (platform != INTEL_MID_CPU_CHIP_TANGIER) {
+		reg = gpio / 16;
+		bit = gpio % 16;
+
+		mem = gpio_reg(&lnw->chip, 0, GAFR);
+		value = readl(mem + reg);
+		value &= (3 << (bit * 2));
+		value >>= (bit * 2);
+	} else {
+		offset = lnw->get_flis_offset(gpio);
+		if (WARN(offset == -EINVAL, "invalid pin %d\n", gpio))
+			return -EINVAL;
+
+		mem = (void __iomem *)(lnw->flis_base + offset);
+
+		value = readl(mem) & 7;
+	}
+
+	return value;
+}
+EXPORT_SYMBOL_GPL(gpio_get_alt);
 
 static int lnw_gpio_set_debounce(struct gpio_chip *chip, unsigned offset,
 				 unsigned debounce)
@@ -764,6 +814,8 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 	lnw->chip.request = lnw_gpio_request;
 	lnw->chip.direction_input = lnw_gpio_direction_input;
 	lnw->chip.direction_output = lnw_gpio_direction_output;
+	lnw->chip.set_pinmux = lnw_gpio_set_alt;
+	lnw->chip.get_pinmux = gpio_get_alt;
 	lnw->chip.get = lnw_gpio_get;
 	lnw->chip.set = lnw_gpio_set;
 	lnw->chip.to_irq = lnw_gpio_to_irq;

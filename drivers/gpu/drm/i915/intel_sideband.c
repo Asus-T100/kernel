@@ -43,6 +43,9 @@ int intel_sideband_read32(struct drm_i915_private *dev_priv, u8 port_id,
 	opcode = IOSF_OPCODE_REG_READ;
 	devfn = 0x00;
 
+	if (port_id == IOSF_PORT_PMC)
+		opcode = 0x0;
+
 	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
 		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
 		(bar << IOSF_BAR_SHIFT);
@@ -54,6 +57,7 @@ int intel_sideband_read32(struct drm_i915_private *dev_priv, u8 port_id,
 		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		return -EAGAIN;
 	}
+
 
 	I915_WRITE(IOSF_ADDR, reg);
 	I915_WRITE(IOSF_DOORBELL_REQ, cmd);
@@ -84,10 +88,12 @@ int intel_sideband_write32(struct drm_i915_private *dev_priv, u8 port_id,
 	opcode = IOSF_OPCODE_REG_WRITE;
 	devfn = 0x00;
 
+	if (port_id == IOSF_PORT_PMC)
+		opcode = 0x1;
+
 	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
 		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
 		(bar << IOSF_BAR_SHIFT);
-
 
 	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
 	if (wait_for_atomic_us((I915_READ(IOSF_DOORBELL_REQ) &
@@ -245,4 +251,22 @@ int intel_gps_core_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 {
 	return intel_sideband_write32_bits(dev_priv,
 				IOSF_PORT_GPS_CORE, reg, val, mask);
+}
+
+int intel_pmc_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
+{
+
+	return intel_sideband_read32(dev_priv, IOSF_PORT_PMC, reg, val);
+}
+
+int intel_pmc_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val)
+{
+	return intel_sideband_write32(dev_priv, IOSF_PORT_PMC, reg, val);
+}
+
+int intel_pmc_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
+				u32 val, u32 mask)
+{
+	return intel_sideband_write32_bits(dev_priv,
+				IOSF_PORT_PMC, reg, val, mask);
 }

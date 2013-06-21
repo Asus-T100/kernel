@@ -38,8 +38,6 @@
 
 static unsigned int g_pid;
 
-static struct drm_device *g_dev;
-
 struct sock *nl_sk;
 
 static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
@@ -50,21 +48,22 @@ static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 			switch (cmd_hdr->cmd) {
 			case DISPMGR_TEST:
 				{
+					struct dispmgr_command_hdr send_cmd_hdr;
+					unsigned long data = 0xdeadbeef;
 					if (cmd_hdr->data_size) {
 						unsigned long value =
 						    *((unsigned long *)
 						      cmd_hdr->data);
 						printk
 						("kdispmgr: received DISPMGR_"
-						"TEST cmd data = 0x%x.\n",
+						"TEST cmd data = 0x%lx.\n",
 						value);
-					} else
+					} else {
 						printk
 						("kdispmgr: received DISPMGR_"
 						"TEST cmd NO data.\n");
+					}
 
-					struct dispmgr_command_hdr send_cmd_hdr;
-					unsigned long data = 0xdeadbeef;
 					send_cmd_hdr.data_size = sizeof(data);
 					send_cmd_hdr.data = &data;
 					send_cmd_hdr.module =
@@ -75,18 +74,18 @@ static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 				break;
 			case DISPMGR_TEST_TEXT:
 				{
+					struct dispmgr_command_hdr send_cmd_hdr;
+					char *data = "can you hear me?";
 					if (cmd_hdr->data_size) {
 						printk
 						("kdispmgr: received DISPMGR_"
 						"TEST_TEXT cmd text = 0x%s.\n",
 						(char *)cmd_hdr->data);
-					} else
+					} else {
 						printk
 						("kdispmgr: received DISPMGR_"
 						"TEST_TEXT cmd NO text.\n");
-
-					struct dispmgr_command_hdr send_cmd_hdr;
-					char *data = "can you hear me?";
+					}
 					send_cmd_hdr.module =
 					    DISPMGR_MOD_NETLINK;
 					send_cmd_hdr.cmd = DISPMGR_TEST_TEXT;
@@ -179,12 +178,14 @@ static void nl_recv_msg(struct sk_buff *skb)
 	execute_recv_command(&cmd_hdr);
 }
 
+#if DEBUG
 static void dispmgr_nl_exit(void)
 {
 	printk(KERN_INFO "kdispmgr: exiting hello module\n");
 	netlink_kernel_release(nl_sk);
 	g_pid = 0;
 }
+#endif
 
 static int dispmgr_nl_init(void)
 {

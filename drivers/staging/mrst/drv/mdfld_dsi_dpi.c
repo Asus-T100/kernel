@@ -998,9 +998,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	struct mdfld_dsi_config *dsi_config;
 	struct drm_connector *connector = NULL;
 	struct drm_encoder *encoder = NULL;
-	struct drm_display_mode *fixed_mode = NULL;
 	int pipe;
-	int ret;
 
 	PSB_DEBUG_ENTRY("\n");
  

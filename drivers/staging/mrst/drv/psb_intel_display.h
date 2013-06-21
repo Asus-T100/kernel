@@ -28,9 +28,11 @@
 
 /* MDFLD KSEL only one of them can be set to 1 */
 #ifdef CONFIG_CTP_CRYSTAL_38M4
+#define KSEL_BYPASS_83_100_ENABLE 0
 #define KSEL_CRYSTAL_19_ENABLED 0
 #define KSEL_CRYSTAL_38_ENABLED 1
 #else
+#define KSEL_BYPASS_83_100_ENABLE 0
 #define KSEL_CRYSTAL_19_ENABLED 1
 #define KSEL_CRYSTAL_38_ENABLED 0
 #endif

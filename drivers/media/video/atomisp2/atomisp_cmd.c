@@ -975,7 +975,6 @@ void atomisp_delayed_init_work(struct work_struct *work)
 	isp->delayed_init = ATOMISP_DELAYED_INIT_WORK_DONE;
 }
 
-
 void atomisp_wdt_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
@@ -1070,6 +1069,13 @@ void atomisp_wdt_work(struct work_struct *work)
 		atomisp_clear_css_buffer_counters(isp);
 		if (atomisp_acc_load_extensions(isp) < 0)
 			dev_err(isp->dev, "acc extension failed to reload\n");
+
+		/* The following frame after an ISP timeout
+		 * may be corrupted, so mark it so. */
+		isp->sw_contex.invalid_frame = 1;
+		isp->sw_contex.invalid_vf_frame = 1;
+		isp->sw_contex.invalid_s3a = 1;
+		isp->sw_contex.invalid_dis = 1;
 
 		atomisp_css_start(isp, css_pipe_id, true);
 
@@ -1414,10 +1420,18 @@ bool atomisp_is_mbuscode_raw(uint32_t code)
  */
 static void atomisp_update_capture_mode(struct atomisp_device *isp)
 {
-	if (isp->params.low_light)
-		atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_LOW_LIGHT);
-	else if (isp->params.gdc_cac_en)
+	if (isp->params.gdc_cac_en)
 		atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_ADVANCED);
+/*
+ * WORKAROUND:
+ * low_light binary can't be found when set LOW_LIGHT capture mode in css2.0,
+ * which will cause camera hang. This is css2.0 bug, should be assigned to
+ * firmware team. Once it is fixed, we can remove this workaround.
+ */
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+	else if (isp->params.low_light)
+		atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_LOW_LIGHT);
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	else
 		atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_PRIMARY);
 }
@@ -3135,26 +3149,41 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	}
 
 	if (isp->isp_subdev.continuous_mode->val) {
+
+		/*
+		 * Frame format of the RAW input buffer has dependencies
+		 * to which CSS modes should be enabled.
+		 */
+		const struct v4l2_rect *raw_res =
+			atomisp_subdev_get_rect(&isp->isp_subdev.subdev, NULL,
+						V4L2_SUBDEV_FORMAT_ACTIVE,
+						ATOMISP_SUBDEV_PAD_SINK,
+						V4L2_SEL_TGT_CROP);
+		if (!raw_res)
+			return -EINVAL;
+
 		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			ret = __enable_continuous_mode(isp, true);
 
 			/*
 			 * Enable only if resolution is >= 3M for ISP2400
 			 */
-			if (IS_ISP2400(isp) && (width >= 2048
-						|| height >= 1536)) {
+			if (IS_ISP2400(isp) && (raw_res->width >= 2048
+						|| raw_res->height >= 1536)) {
 				atomisp_css_enable_raw_binning(isp, true);
 				atomisp_css_input_set_two_pixels_per_clock(isp,
 									false);
 			}
 
 			if (!IS_ISP2400(isp)) {
-				/* enable raw binning for output >= 5M */
-				if (width >= 2576 || height >= 1936)
+				/* enable raw binning for >= 5M */
+				if (raw_res->width >= 2576 ||
+						raw_res->height >= 1936)
 					atomisp_css_enable_raw_binning(isp,
 									true);
-				/* enable 2ppc for CTP if output > 8M */
-				if (width > 3264 || height > 2448)
+				/* enable 2ppc for CTP if > 8M */
+				if (raw_res->width > 3264 ||
+						raw_res->height > 2448)
 					atomisp_css_input_set_two_pixels_per_clock(
 								isp, true);
 			}
@@ -3220,7 +3249,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			width, height, format->sh_fmt);
 		return -EINVAL;
 	}
-	if (isp->isp_subdev.continuous_mode->val) {
+	if (isp->isp_subdev.continuous_mode->val &&
+		configure_pp_input == atomisp_css_preview_configure_pp_input) {
+		/* See PSI BZ 115124. preview_configure_pp_input()
+		 * API does not work correctly in continuous mode and
+		 * and must be disabled by setting it to (0, 0).
+		 */
 		configure_pp_input(isp, 0, 0);
 	} else {
 		ret = configure_pp_input(isp, isp_sink_crop->width,

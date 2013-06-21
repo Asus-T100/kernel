@@ -865,7 +865,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	}
 
 	DRM_DEBUG("Got Kernel MemInfo for handle %lx\n",
-		  (IMG_UINT32)hKernelMemInfo);
+		  (unsigned long) hKernelMemInfo);
 
 	/* JB: TODO not drop, make smarter */
 	size = psKernelMemInfo->uAllocSize;
@@ -1048,7 +1048,7 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	info = framebuffer_alloc(sizeof(struct psb_fbdev), device);
 	if(!info) {
 		ret = -ENOMEM;
-		goto out_err1;
+		goto out_err0;
 	}
 
 	info->par = fbdev;
@@ -1590,8 +1590,6 @@ static int psb_intel_connector_clones(struct drm_device *dev, int type_mask)
 
 static void psb_setup_outputs(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *) dev->dev_private;
 	struct drm_connector *connector;
 
 	PSB_DEBUG_ENTRY("\n");

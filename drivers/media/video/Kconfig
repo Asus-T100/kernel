@@ -345,14 +345,18 @@ config VIDEO_KS0127
 source "drivers/media/video/mt9e013/Kconfig"
 
 config VIDEO_ATOMISP
-        bool "Intel Atom Image Signal Processor Driver"
+	tristate "Intel Atom Image Signal Processor Driver"
         depends on VIDEO_V4L2
+	select VIDEOBUF_VMALLOC
         ---help---
           Say Y here if your platform supports Intel Atom SoC
           camera imaging subsystem.
 
-          To enable a specific atomisp driver, see CONFIG_VIDEO_ATOMISP_CSS1
-          and related options.
+	  To compile this driver as a module, choose M here: the
+	  module will be called atomisp.
+
+config VIDEO_ATOMISP_TMP
+	tristate "temporary Kconfig variable for atomisp2 and atomisp3"
 
 config VIDEO_OV9724
 	tristate "OVT ov9724 sensor support"
@@ -385,9 +389,19 @@ config VIDEO_OV8830
 
 	  It currently only works with the atomisp driver.
 
+config VIDEO_MSRLIST_HELPER
+	tristate "Helper library to load, parse and apply large register lists."
+	depends on I2C
+	---help---
+	  This is a helper library to be used from a sensor driver to load, parse
+	  and apply large register lists.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called libmsrlisthelper.
+
 config VIDEO_S5K8AAY
 	tristate "Samsung S5K8AAY (EVT1) sensor support"
-	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP
+	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP && VIDEO_MSRLIST_HELPER
 	---help---
 	  This is a Video4Linux2 sensor-level driver for the Samsung
 	  S5K8AAY (EVT1) 1/8" 1.2MP SoC sensor.

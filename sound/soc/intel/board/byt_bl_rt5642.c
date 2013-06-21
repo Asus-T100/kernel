@@ -39,6 +39,9 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include "../../codecs/rt5640.h"
+static int debounce = 100;
+module_param(debounce, int, 0644);
+
 
 struct byt_mc_private {
 	struct snd_soc_jack jack;
@@ -95,27 +98,35 @@ static int byt_hp_detection(void)
 	case RT5640_J_IN_EVENT:
 		pr_debug("Jack insert intr");
 		set_mic_bias(codec, "micbias1", true);
+		set_mic_bias(codec, "LDO2", true);
 		status = rt5640_headset_detect(codec, true);
 		if (status == RT5640_HEADPHO_DET)
 			jack_type = SND_JACK_HEADPHONE;
-		else if (status == RT5640_HEADSET_DET)
+		else if (status == RT5640_HEADSET_DET) {
 			jack_type = SND_JACK_HEADSET;
-		else /* RT5640_NO_JACK */
+			if (debounce)
+				gpio->debounce_time = debounce;
+			pr_debug("debounce = %d\n", gpio->debounce_time);
+		} else /* RT5640_NO_JACK */
 			jack_type = 0;
 
 		byt_jack_report(jack_type);
 
-		if (jack_type != SND_JACK_HEADSET)
+		if (jack_type != SND_JACK_HEADSET) {
 			set_mic_bias(codec, "micbias1", false);
+			set_mic_bias(codec, "LDO2", false);
+		}
 
 		pr_debug("Jack type detected:%d", jack_type);
 		break;
 	case RT5640_J_OUT_EVENT:
 		pr_debug("Jack remove intr");
+		gpio->debounce_time = 100;
 		status = rt5640_headset_detect(codec, false);
 		jack_type = 0;
 		byt_jack_report(jack_type);
 		set_mic_bias(codec, "micbias1", false);
+		set_mic_bias(codec, "LDO2", false);
 		break;
 	case RT5640_BR_EVENT:
 		pr_debug("BR event received");
@@ -123,7 +134,7 @@ static int byt_hp_detection(void)
 		break;
 	case RT5640_BP_EVENT:
 		pr_debug("BP event received");
-		jack_type = status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+		jack_type = SND_JACK_HEADSET | SND_JACK_BTN_0;
 		break;
 	case RT5640_UN_EVENT:
 		pr_debug("Reported invalid/RT5640_UN_EVENT");

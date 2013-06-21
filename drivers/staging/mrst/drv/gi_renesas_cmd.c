@@ -98,13 +98,14 @@ static u8 gi_er61529_set_page_address[] = {
 	0xdf
 };
 static u8 gi_er61529_set_address_mode[] = {0x36, 0x00};
+
+#if DEBUG
 static u8 gi_er61529_set_ddb_write_cntr[] = {
 	0xe1, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00
 };
 static u8 gi_er61529_nvm_load_cntr[] = {0xe2, 0x80};
 static u8 gi_er61529_dcs_exit_sleep_mode[] = {0x11};
-static u8 gi_er61529_dcs_set_display_on[] = {0x29};
 static u8 gi_dbc_control_on_data[] = {
 	0xb8, 0x00, 0x02, 0x02,
 	0xf0, 0xf0, 0xc0, 0xc0,
@@ -113,6 +114,8 @@ static u8 gi_dbc_control_on_data[] = {
 	0x00, 0x00, 0x00, 0x00,
 	0x00
 };
+#endif
+static u8 gi_er61529_dcs_set_display_on[] = {0x29};
 static u8 gi_er61529_enter_sleep_mode[] = {0x10, 0x00, 0x00, 0x00};
 static u8 gi_er61529_exit_sleep_mode[]	= {0x11, 0x00, 0x00, 0x00};
 static u8 gi_er61529_backlight_cntr[]	= {0xb9, 0x01, 0x00, 0xff, 0x18};
@@ -289,10 +292,6 @@ struct drm_display_mode *gi_renesas_cmd_get_config_mode(void)
 static
 int __gi_renesas_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 {
-	struct drm_device *dev = dsi_config->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dsi_hw_registers *regs =
-		&dsi_config->regs;
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int err = 0;

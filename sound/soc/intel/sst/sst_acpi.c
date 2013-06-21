@@ -198,20 +198,6 @@ static int sst_platform_get_resources(struct intel_sst_drv *ctx,
 	if (ret)
 		return ret;
 	pr_debug("Registered IRQ %#x\n", irq);
-
-	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 5);
-	if (!rsrc) {
-		pr_err("Invalid PMCSR base from IFWI");
-		return -EIO;
-	}
-	ctx->pmcsr_base = rsrc->start;
-	pr_info("PMCSR base: %#x", ctx->pmcsr_base);
-	ctx->pmcsr = devm_ioremap_nocache(ctx->dev, ctx->pmcsr_base,
-					 resource_size(rsrc));
-	if (!ctx->pmcsr) {
-		pr_err("unable to map DRAM");
-		return -EIO;
-	}
 	return 0;
 }
 
@@ -312,6 +298,7 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, ctx);
+	pm_runtime_enable(dev);
 	register_sst(dev);
 	sst_debugfs_init(ctx);
 	sst_set_fw_state_locked(ctx, SST_UN_INIT);

@@ -79,7 +79,6 @@ extern int drm_psb_3D_vblank;
 /*for JB, android use three swap buffer*/
 #define SWAP_BUFFER_COUNT              3
 
-static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
 static int FirstCleanFlag = 1;
 static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo,
 					IMG_BOOL bAlpha);
@@ -131,7 +130,6 @@ static inline void MRSTFBFlipComplete(MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_VS
 {
 	MRSTLFB_VSYNC_FLIP_ITEM *psLastItem;
 	MRST_BOOL bMISRScheduled = MRST_FALSE;
-	struct drm_driver         *psDrmDriver;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)psSwapChain->psDrmDev->dev_private;
 
@@ -2028,14 +2026,11 @@ Unlock:
 		mdfld_dsi_dsr_allow_locked(dsi_config);
 		mutex_unlock(&dsi_config->context_lock);
 	}
-	return IMG_TRUE;
 }
 
 
 static void DisplayFlipWork(struct work_struct *work)
 {
-	struct display_flip_work *p_flip_work =
-		container_of(work, struct display_flip_work, flip_work);
 	u32 read_index;
 	IMG_HANDLE  hCmdCookie;
 	IMG_UINT32  ui32DataSize;

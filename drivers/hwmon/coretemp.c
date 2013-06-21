@@ -587,6 +587,9 @@ static void core_threshold_work_fn(struct work_struct *work)
 	 */
 	update_temp(tdata);
 
+	pr_info("Thermal Event: sensor: Core %u, cur_temp: %d, event: %d, level: %d\n",
+			tdata->cpu_core_id, tdata->temp, event, thresh);
+
 	thermal_event[0] = kasprintf(GFP_KERNEL, "NAME=Core %u",
 						tdata->cpu_core_id);
 	thermal_event[1] = kasprintf(GFP_KERNEL, "TEMP=%d", tdata->temp);

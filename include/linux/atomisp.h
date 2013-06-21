@@ -153,7 +153,7 @@ struct atomisp_3a_config {
 	int af_fir2_coef[7];	/* [factor] AF FIR coefficients of fir2 */
 };
 
-#ifdef ATOMISP_CSS2
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
 struct atomisp_grid_info {
 	uint32_t enable;
 	uint32_t use_dmem;
@@ -166,7 +166,7 @@ struct atomisp_grid_info {
 	uint32_t deci_factor_log2;
 	uint32_t elem_bit_depth;
 };
-#else
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 /* structure that describes the 3A and DIS grids shared with 3A lib*/
 struct atomisp_grid_info {
 	/* ISP input size that is visible for user */
@@ -185,7 +185,7 @@ struct atomisp_grid_info {
 	unsigned int dis_hor_coef_num;
 	unsigned int dis_ver_coef_num;
 };
-#endif
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 struct atomisp_dis_vector {
 	int x;
 	int y;
@@ -210,18 +210,18 @@ struct atomisp_3a_rgby_output {
 	uint32_t y;
 };
 
-#ifdef ATOMISP_CSS2
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
 struct atomisp_3a_statistics {
 	struct atomisp_grid_info  grid_info;
 	struct atomisp_3a_output __user *data;
 	struct atomisp_3a_rgby_output __user *rgby_data;
 };
-#else
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 struct atomisp_3a_statistics {
 	struct atomisp_grid_info  grid_info;
 	struct atomisp_3a_output __user *data;
 };
-#endif
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 /**
  * struct atomisp_cont_capture_conf - continuous capture parameters
  * @num_captures: number of still images to capture
@@ -303,7 +303,7 @@ struct atomisp_parm {
 	struct atomisp_tnr_config tnr_config;
 };
 
-#ifdef ATOMISP_CSS2
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
 struct atomisp_parameters {
 	struct atomisp_wb_config   *wb_config;  /* White Balance config */
 	struct atomisp_cc_config   *cc_config;  /* Color Correction config */
@@ -346,7 +346,7 @@ struct atomisp_parameters {
 	struct atomisp_capture_config   *capture_config;
 	struct atomisp_anr_thres   *anr_thres;
 };
-#else
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 struct atomisp_parameters {
 	struct atomisp_wb_config *wb_config;
 	struct atomisp_cc_config *cc_config;
@@ -366,7 +366,7 @@ struct atomisp_parameters {
 	struct atomisp_gc_config *gc_config;
 	struct atomisp_3a_config *a3a_config;
 };
-#endif
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 #define ATOMISP_GAMMA_TABLE_SIZE        1024
 struct atomisp_gamma_table {
 	unsigned short data[ATOMISP_GAMMA_TABLE_SIZE];

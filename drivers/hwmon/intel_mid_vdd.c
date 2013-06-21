@@ -48,6 +48,7 @@
 #include <linux/mfd/intel_mid_pmic.h>
 #include <asm/intel-mid.h>
 #include <linux/i2c.h>
+#include <linux/workqueue.h>
 
 #ifdef CONFIG_BOARD_CTP
 
@@ -120,6 +121,7 @@
 
 /* check whether bit is sticky or not by checking 3rd bit */
 #define IS_STICKY(data)		(data & 0x04)
+#define MASK_VCRIT		0x04
 
 #define SET_ACTION_MASK(data, value, bit) (data | (value << bit))
 
@@ -151,13 +153,17 @@
 #define INIT_BCUPROCHOT		0x06
 #define	INIT_MBCU		0x00
 
+#define BCU_QUEUE		"bcu-queue"
+#define BASE_TIME		30
+#define STEP_TIME		15
 /* Defined to match the correponding bit positions of the interrupt */
 enum { VWARNB_EVENT = 1, VWARNA_EVENT = 2, VCRIT_EVENT = 4};
 
 static DEFINE_MUTEX(vdd_update_lock);
 static DEFINE_SPINLOCK(vdd_interrupt_lock);
 
-/* defining the fifo to store the interrupt value */
+static struct workqueue_struct *bcu_workqueue;
+static void unmask_theburst(struct work_struct *work);
 
 struct vdd_info {
 	unsigned int irq;
@@ -165,6 +171,9 @@ struct vdd_info {
 	struct platform_device *pdev;
 	/* mapping SRAM address for BCU interrupts */
 	void __iomem *bcu_intr_addr;
+	unsigned int delay;
+	u64 seed_time;
+	struct delayed_work vcrit_burst;
 };
 
 static uint8_t global_irq_data;
@@ -419,6 +428,15 @@ static ssize_t show_action_status(struct device *dev,
 	return sprintf(buf, "%x\n", action_status);
 }
 
+static void unmask_theburst(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct vdd_info *vinfo = container_of(dwork, struct vdd_info,
+				 vcrit_burst);
+	intel_scu_ipc_update_register(MBCUIRQ, ~MASK_VCRIT, MASK_VCRIT);
+	vinfo->seed_time = jiffies_64;
+}
+
 /**
   * handle_events - handle different type of interrupts related to BCU
   * @flag - define what type of interrupt it is
@@ -437,13 +455,29 @@ static void handle_events(int flag, void *dev_data)
 	if (flag & VCRIT_EVENT) {
 		pr_info_ratelimited("%s: VCRIT_EVENT occurred\n",
 					DRIVER_NAME);
+		if (vinfo->seed_time && time_before((unsigned long)(jiffies_64 -
+			vinfo->seed_time), (unsigned long)
+			msecs_to_jiffies(STEP_TIME))) {
+			vinfo->delay += STEP_TIME;
+		} else {
+			vinfo->delay = BASE_TIME;
+		}
+		if (bcu_workqueue) {
+			ret = intel_scu_ipc_update_register(MBCUIRQ,
+				MASK_VCRIT, MASK_VCRIT);
+			if (ret) {
+				dev_err(&vinfo->pdev->dev,
+				"VCRIT mask failed\n");
+			} else {
+				queue_delayed_work(bcu_workqueue,
+				&(vinfo->vcrit_burst),
+				msecs_to_jiffies(vinfo->delay));
+			}
+		} else {
+			dev_warn(&vinfo->pdev->dev,
+				"Workqueue is not present\n");
+		}
 		if (!(irq_data & SVCRIT)) {
-			/*
-			 * interrupt up for VCRIT timers are removed as
-			 * as it is causing hang in system, it will be done
-			 * later as enhancement.
-			 * Vsys is above VCRIT level
-			 */
 			ret = intel_scu_ipc_ioread8(BCUDISCRIT_BEH,
 				&sticky_data);
 			if (ret)
@@ -711,15 +745,20 @@ static int mid_vdd_probe(struct platform_device *pdev)
 		goto vdd_error2;
 	}
 	ret = request_threaded_irq(vinfo->irq, vdd_intrpt_handler,
-						vdd_interrupt_thread_handler,
-						IRQF_TRIGGER_FALLING,
-						DRIVER_NAME, vinfo);
+					vdd_interrupt_thread_handler,
+					IRQF_TRIGGER_FALLING|IRQF_ONESHOT,
+					DRIVER_NAME, vinfo);
 	if (ret) {
 		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n",
 			ret);
 		goto vdd_error3;
 	}
 
+	bcu_workqueue = create_singlethread_workqueue(BCU_QUEUE);
+	if (!bcu_workqueue)
+		dev_err(&pdev->dev, "workqueue creation failed\n");
+	else
+		INIT_DELAYED_WORK(&(vinfo->vcrit_burst), unmask_theburst);
 	ret = program_bcu(pdev, vinfo);
 	if (!ret)
 		return ret;
@@ -747,6 +786,8 @@ static int mid_vdd_remove(struct platform_device *pdev)
 	struct vdd_info *vinfo = platform_get_drvdata(pdev);
 
 	if (vinfo) {
+		if (bcu_workqueue)
+			destroy_workqueue(bcu_workqueue);
 		free_irq(vinfo->irq, vinfo);
 		hwmon_device_unregister(vinfo->dev);
 		sysfs_remove_group(&pdev->dev.kobj, &mid_vdd_gr);

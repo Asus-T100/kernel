@@ -81,8 +81,10 @@ bool is_cmd_mode_panel(struct drm_device *dev)
 
 static void init_panel(struct drm_device *dev, int pipe)
 {
+#ifdef CONFIG_SUPPORT_HDMI
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+#endif
 	int ret = 0;
 
 #ifdef CONFIG_SUPPORT_HDMI
