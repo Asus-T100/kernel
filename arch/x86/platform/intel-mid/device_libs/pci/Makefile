@@ -8,3 +8,5 @@ obj-$(subst m,y,$(CONFIG_USB_EHCI_HCD_SPH))				+= platform_ehci_sph.o
 # Vibra driver platform data
 obj-$(subst m,y,$(CONFIG_INPUT_INTEL_MID_VIBRA))			+= platform_mid_vibra.o
 obj-$(subst m,y,$(CONFIG_SND_INTEL_SST))					+= platform_sst_pci.o
+# USB XHCI controller platform change
+obj-$(subst m,y,$(CONFIG_USB_XHCI_HCD))					+= platform_usb_xhci.o
