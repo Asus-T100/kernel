@@ -1186,6 +1186,14 @@ void atomisp_wdt_work(struct work_struct *work)
 			    ATOMISP_DEVICE_STREAMING_STARTING)
 				continue;
 
+			if (isp->inputs[isp_subdev->input_curr].type !=
+			    TEST_PATTERN
+			    && isp->inputs[isp_subdev->input_curr].type !=
+			    FILE_INPUT) {
+				ia_css_input_set_mode(isp_subdev,
+				      IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
+			}
+
 			if (ia_css_start(isp_subdev, true) !=
 			    IA_CSS_SUCCESS)
 				v4l2_warn(&atomisp_dev,
