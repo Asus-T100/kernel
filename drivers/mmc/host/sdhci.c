@@ -3560,23 +3560,27 @@ int sdhci_resume_host(struct sdhci_host *host)
 {
 	int ret;
 	unsigned long flags;
-	unsigned int present;
 
-	if (host->quirks2 & SDHCI_QUIRK2_2MS_DELAY) {
+	if (host->quirks2 & SDHCI_QUIRK2_CARD_CD_DELAY) {
+		int loop = 0;
+		unsigned int present;
 		present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
-				SDHCI_CARD_PRESENT;
-		/* BYT eMMC4.5 silicon issue workaround: 4599639 */
-		if (!present) {
+			SDHCI_CARD_PRESENT;
+		/*
+		 * delay 10ms to wait for present register stable
+		 * try 5 loops, and each loops will wait 2ms
+		 */
+		while (!present && loop < 5) {
+			/* BYT eMMC4.5 silicon issue workaround: 4599639 */
 			mdelay(2);
-			/* re-check */
 			present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
-					SDHCI_CARD_PRESENT;
-			if (!present) {
-				mdelay(2);
-				pr_warn("%s %s: PRESENT bit16 is not recover\n",
-						__func__,
-						mmc_hostname(host->mmc));
-			}
+				SDHCI_CARD_PRESENT;
+			loop++;
+		}
+		if (loop == 5) {
+			WARN_ON(1);
+			pr_warn("%s %s: PRESENT bit16 is not recover\n",
+					__func__, mmc_hostname(host->mmc));
 		}
 	}
 
@@ -3685,23 +3689,27 @@ int sdhci_runtime_resume_host(struct sdhci_host *host)
 {
 	unsigned long flags;
 	int ret = 0, host_flags = host->flags;
-	unsigned int present;
 
-	if (host->quirks2 & SDHCI_QUIRK2_2MS_DELAY) {
+	if (host->quirks2 & SDHCI_QUIRK2_CARD_CD_DELAY) {
+		int loop = 0;
+		unsigned int present;
 		present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
-				SDHCI_CARD_PRESENT;
-		/* BYT eMMC4.5 silicon issue workaround: 4599639 */
-		if (!present) {
+			SDHCI_CARD_PRESENT;
+		/*
+		 * delay 10ms to wait for present register stable
+		 * try 5 loops, and each loops will wait 2ms
+		 */
+		while (!present && loop < 5) {
+			/* BYT eMMC4.5 silicon issue workaround: 4599639 */
 			mdelay(2);
-			/* re-check */
 			present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
-					SDHCI_CARD_PRESENT;
-			if (!present) {
-				mdelay(2);
-				pr_warn("%s %s: PRESENT bit16 is not recover\n",
-						__func__,
-						mmc_hostname(host->mmc));
-			}
+				SDHCI_CARD_PRESENT;
+			loop++;
+		}
+		if (loop == 5) {
+			WARN_ON(1);
+			pr_warn("%s %s: PRESENT bit16 is not recover\n",
+					__func__, mmc_hostname(host->mmc));
 		}
 	}
 
