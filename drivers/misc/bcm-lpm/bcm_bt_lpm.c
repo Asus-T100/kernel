@@ -139,7 +139,13 @@ static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
 
 	if (ACPI_FAILURE(acpi_evaluate_integer(handle, "UART", NULL, &port))) {
 		dev_err(&pdev->dev, "Error evaluating UART port number\n");
-		return -EINVAL;
+
+		/* FIXME - Force port 0 if the information is missing from the
+		 * ACPI table.
+		 * That will be removed once the ACPI tables will all have been
+		 * updated.
+		 */
+		 port = 0;
 	}
 
 	bt_lpm.port = port;
