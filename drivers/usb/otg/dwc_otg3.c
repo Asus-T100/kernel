@@ -1224,7 +1224,7 @@ stay_init:
 
 	if (events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT\n");
-		state = DWC_STATE_CHARGER_DETECTION;
+		return DWC_STATE_CHARGER_DETECTION;
 	}
 
 	if (events & OEVT_CONN_ID_STS_CHNG_EVNT) {
@@ -1238,26 +1238,22 @@ stay_init:
 			otg_dbg(otg, "Stay DWC_STATE_INIT\n");
 			goto stay_init;
 		}
-		state = DWC_STATE_WAIT_VBUS_RAISE;
+		return DWC_STATE_WAIT_VBUS_RAISE;
 	}
 
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	if (user_events & USER_ID_A_CHANGE_EVENT) {
 		otg_dbg(otg, "events is user id A change\n");
-		state = DWC_STATE_A_HOST;
+		return DWC_STATE_A_HOST;
 	}
 
 	if (user_events & USER_ID_B_CHANGE_EVENT) {
 		otg_dbg(otg, "events is user id B change\n");
-		state = DWC_STATE_B_PERIPHERAL;
+		return DWC_STATE_B_PERIPHERAL;
 	}
 #endif
 
-	/** TODO: This is a workaround for latest hibernation-enabled bitfiles
-     ** which have problems before initializing SRP.*/
-	mdelay(50);
-
-	return state;
+	return DWC_STATE_INIT;
 }
 
 static void reset_hw(struct dwc_otg2 *otg)
