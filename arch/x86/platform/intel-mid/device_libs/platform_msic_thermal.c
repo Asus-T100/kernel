@@ -65,7 +65,7 @@ static struct intel_mid_thermal_sensor ctp_sensors[] = {
 /* VB sensor list */
 static struct intel_mid_thermal_sensor vb_sensors[] = {
 	{
-		.name = SKIN0_NAME,
+		.name = "skin0",
 		.index = 0,
 		.slope = 631,
 		.intercept = 10445,
@@ -74,7 +74,7 @@ static struct intel_mid_thermal_sensor vb_sensors[] = {
 		.direct = false,
 	},
 	{
-		.name = SKIN1_NAME,
+		.name = "skin1",
 		.index = 1,
 		.slope = 454,
 		.intercept = 15574,
@@ -100,11 +100,11 @@ static struct intel_mid_thermal_sensor vb_sensors[] = {
 		.direct = false,
         },
 	{
-		.name = SYSTHERM2,
+		.name = "skin0_1",
 		.index = 4,
-		.slope = 1000,
-		.intercept = 0,
-		.adc_channel = 0x06 | CH_NEED_VCALIB,
+		.slope = 709,
+		.intercept = 6708,
+		.adc_channel = 0x06 | CH_NEED_VREF | CH_NEED_VCALIB,
 		.direct = false,
 	},
 };
