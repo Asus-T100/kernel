@@ -211,7 +211,7 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 	/* Disable the adapter */
 	i2c_dw_disable(dev);
 
-	if (dev->get_scl_cfg && !dev->use_dyn_clk)
+	if (dev->get_scl_cfg)
 		dev->get_scl_cfg(dev);
 	else {
 		/* set standard and fast speed deviders for high/low periods */
@@ -251,10 +251,7 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 	dw_writel(dev, 0, DW_IC_RX_TL);
 
 	/* configure the i2c master */
-	if (!dev->use_dyn_clk)
-		dw_writel(dev, dev->master_cfg , DW_IC_CON);
-	else
-		dw_writel(dev, INTEL_MID_STD_CFG | dev->speed_cfg, DW_IC_CON);
+	dw_writel(dev, dev->master_cfg , DW_IC_CON);
 
 	return 0;
 }
