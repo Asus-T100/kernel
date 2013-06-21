@@ -3954,6 +3954,7 @@ i915_gem_init_hw(struct drm_device *dev)
 	}
 
 	dev_priv->next_seqno = 1;
+	dev_priv->last_seqno = 1;
 
 	/*
 	 * XXX: There was some w/a described somewhere suggesting loading

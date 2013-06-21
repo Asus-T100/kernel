@@ -385,6 +385,12 @@ static void notify_ring(struct drm_device *dev,
 	trace_i915_gem_request_complete(ring, ring->last_irq_seqno);
 
 	wake_up_all(&ring->irq_queue);
+
+#if defined(CONFIG_I915_HW_SYNC)
+	if (ring->timeline)
+		i915_sync_timeline_signal(ring->timeline,
+			ring->get_seqno(ring, false), 1);
+#endif
 }
 
 /**
@@ -2519,9 +2525,14 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 	I915_WRITE(GTIIR, I915_READ(GTIIR));
 	dev_priv->gt_irq_mask = ~(GT_GEN7_L3_PARITY_ERROR_INTERRUPT |
 				GT_GEN6_BSD_WATCHDOG_INTERRUPT |
-				GT_GEN6_RENDER_WATCHDOG_INTERRUPT);
+				GT_GEN6_RENDER_WATCHDOG_INTERRUPT |
+				GT_USER_INTERRUPT |
+				GT_GEN6_BSD_USER_INTERRUPT |
+				GT_GEN6_BLT_USER_INTERRUPT);
+
 	if (dev_priv->perfmon_interrupt_enabled)
 		dev_priv->gt_irq_mask &= ~GT_GEN6_PERFMON_BUFFER_INTERRUPT;
+
 	I915_WRITE(GTIMR, dev_priv->gt_irq_mask);
 
 	render_irqs = GT_USER_INTERRUPT | GEN6_BSD_USER_INTERRUPT |
