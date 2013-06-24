@@ -54,6 +54,7 @@
 #include <linux/atomic.h>
 #include <linux/wakelock.h>
 #include <linux/rpmsg.h>
+#include <linux/pm_qos.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/nmi.h>
 #include <asm/irq.h>
@@ -112,6 +113,9 @@
 /* Statics */
 static struct intel_scu_watchdog_dev watchdog_device;
 static unsigned char osnib_reset = OSNIB_WRITE_VALUE;
+
+/* PM Qos struct */
+static struct pm_qos_request *qos;
 
 /* Module params */
 static bool kicking_active = true;
@@ -241,6 +245,9 @@ static int watchdog_set_timeouts(int warning_pretimeout,
 	int ret = 0;
 	int error = 0;
 
+	/* Prevent C-states beyond C4 */
+	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_C6 - 1);
+
 	/******** TIMER 0 *******/
 
 	/* disable timer */
@@ -317,6 +324,9 @@ static int watchdog_set_timeouts(int warning_pretimeout,
 		error = -EIO;
 	}
 
+	/* Re-enable Deeper C-states beyond C4 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+
 	return error;
 }
 
@@ -359,6 +369,9 @@ static int intel_scu_stop(void)
 
 	pr_crit(PFX "%s\n", __func__);
 
+	/* Prevent C-states beyond C4 */
+	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_C6 - 1);
+
 	/* disable timers */
 	ipc_wbuf = XTMR_DISABLE | XTMR_USERDEF_COUNTDOWN;
 
@@ -386,6 +399,9 @@ static int intel_scu_stop(void)
 		pr_crit(PFX "Error disabling watchdog timers: %d\n", ret);
 		goto err;
 	}
+
+	/* Re-enable Deeper C-states beyond C4 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
 
 	watchdog_device.started = false;
 
@@ -506,9 +522,6 @@ static ssize_t intel_scu_write(struct file *file, char const *data, size_t len,
 	if (watchdog_device.started) {
 		/* Watchdog already started, keep it alive */
 		watchdog_keepalive();
-	} else {
-		/* Start watchdog with timer value set by init */
-		watchdog_config_and_start(timeout, pre_timeout);
 	}
 
 	return len;
@@ -1403,6 +1416,15 @@ static int intel_scu_watchdog_init(void)
 		goto error_sysfs_entry;
 	}
 
+	qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
+	if (!qos) {
+		pr_err(PFX "%s: Error allocating qos\n", __func__);
+		ret = -ENOMEM;
+		goto error_sysfs_entry;
+	}
+
+	pm_qos_add_request(qos, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
+
 	return ret;
 
 error_sysfs_entry:
@@ -1440,6 +1462,8 @@ static void intel_scu_watchdog_exit(void)
 	ret = intel_scu_stop();
 	if (ret != 0)
 		pr_err(PFX "cant disable timer\n");
+
+	pm_qos_remove_request(qos);
 
 	misc_deregister(&watchdog_device.miscdev);
 	unregister_reboot_notifier(&watchdog_device.reboot_notifier);
