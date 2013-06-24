@@ -93,6 +93,8 @@ static void uart_disable(struct device *tty)
 static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
 {
 	struct acpi_gpio_info info;
+	acpi_handle handle;
+	acpi_integer port;
 
 	/*
 	 * Handle ACPI specific initializations.
@@ -102,7 +104,7 @@ static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
 	bt_lpm.gpio_enable_bt = acpi_get_gpio_by_index(&pdev->dev,
 						gpio_enable_bt_acpi_idx, &info);
 	if (!gpio_is_valid(bt_lpm.gpio_enable_bt)) {
-		pr_err("%s: gpio %d not valid\n", __func__,
+		pr_err("%s: gpio %d for gpio_enable_bt not valid\n", __func__,
 							bt_lpm.gpio_enable_bt);
 		return -EINVAL;
 	}
@@ -111,14 +113,15 @@ static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
 	bt_lpm.gpio_wake = acpi_get_gpio_by_index(&pdev->dev,
 						gpio_wake_acpi_idx, &info);
 	if (!gpio_is_valid(bt_lpm.gpio_wake)) {
-		pr_err("%s: gpio %d not valid\n", __func__, bt_lpm.gpio_wake);
+		pr_err("%s: gpio %d for gpio_wake not valid\n", __func__,
+							bt_lpm.gpio_wake);
 		return -EINVAL;
 	}
 
 	bt_lpm.gpio_host_wake = acpi_get_gpio_by_index(&pdev->dev,
 						host_wake_acpi_idx, &info);
 	if (!gpio_is_valid(bt_lpm.gpio_host_wake)) {
-		pr_err("%s: gpio %d not valid\n", __func__,
+		pr_err("%s: gpio %d for gpio_host_wake not valid\n", __func__,
 							bt_lpm.gpio_host_wake);
 		return -EINVAL;
 	}
@@ -131,6 +134,16 @@ static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
 							bt_lpm.gpio_host_wake,
 							bt_lpm.int_host_wake);
 #endif
+
+	handle = DEVICE_ACPI_HANDLE(&pdev->dev);
+
+	if (ACPI_FAILURE(acpi_evaluate_integer(handle, "UART", NULL, &port))) {
+		dev_err(&pdev->dev, "Error evaluating UART port number\n");
+		return -EINVAL;
+	}
+
+	bt_lpm.port = port;
+	pr_debug("%s: UART port %d\n", __func__, bt_lpm.port);
 
 	return 0;
 }
@@ -381,9 +394,9 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 		pr_debug("%s for ACPI device %s\n", __func__,
 							dev_name(&pdev->dev));
 		if (bcm_bt_lpm_acpi_probe(pdev) < 0)
-			return -EINVAL;
+			ret = -EINVAL;
 	} else
-		return -EINVAL;
+		ret = -ENODEV;
 #else
 	ret = bcm43xx_bluetooth_pdata_probe(pdev);
 #endif
