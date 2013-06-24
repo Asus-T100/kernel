@@ -67,7 +67,7 @@ static void pch_crt_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 temp;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 
 	temp = I915_READ(PCH_ADPA);
 	temp &= ~ADPA_DAC_ENABLE;
@@ -85,7 +85,7 @@ static void pch_crt_dpms(struct drm_encoder *encoder, int mode)
 
 	I915_WRITE(PCH_ADPA, temp);
 
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static void gmch_crt_dpms(struct drm_encoder *encoder, int mode)
@@ -94,7 +94,7 @@ static void gmch_crt_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 temp;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 
 	temp = I915_READ(ADPA);
 	temp &= ~(ADPA_HSYNC_CNTL_DISABLE | ADPA_VSYNC_CNTL_DISABLE);
@@ -119,7 +119,7 @@ static void gmch_crt_dpms(struct drm_encoder *encoder, int mode)
 	}
 
 	I915_WRITE(ADPA, temp);
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static int intel_crt_mode_valid(struct drm_connector *connector,
@@ -165,7 +165,7 @@ static void intel_crt_mode_set(struct drm_encoder *encoder,
 	int dpll_md_reg;
 	u32 adpa, dpll_md;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	dpll_md_reg = DPLL_MD(intel_crtc->pipe);
 
 	/*
@@ -196,7 +196,7 @@ static void intel_crt_mode_set(struct drm_encoder *encoder,
 		I915_WRITE(BCLRPAT(intel_crtc->pipe), 0);
 
 	I915_WRITE(crt->adpa_reg, adpa);
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static bool intel_ironlake_crt_detect_hotplug(struct drm_connector *connector)

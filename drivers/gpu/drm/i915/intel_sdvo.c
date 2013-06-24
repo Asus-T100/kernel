@@ -1049,7 +1049,7 @@ static void intel_sdvo_mode_set(struct drm_encoder *encoder,
 	in_out.in0 = intel_sdvo->attached_output;
 	in_out.in1 = 0;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	intel_sdvo_set_value(intel_sdvo,
 			     SDVO_CMD_SET_IN_OUT_MAP,
 			     &in_out, sizeof(in_out));
@@ -1145,7 +1145,7 @@ static void intel_sdvo_mode_set(struct drm_encoder *encoder,
 		sdvox |= SDVO_STALL_SELECT;
 	intel_sdvo_write_sdvox(intel_sdvo, sdvox);
 out:
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static void intel_sdvo_dpms(struct drm_encoder *encoder, int mode)
@@ -1156,7 +1156,7 @@ static void intel_sdvo_dpms(struct drm_encoder *encoder, int mode)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	u32 temp;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	if (mode != DRM_MODE_DPMS_ON) {
 		intel_sdvo_set_active_outputs(intel_sdvo, 0);
 		if (0)
@@ -1193,7 +1193,7 @@ static void intel_sdvo_dpms(struct drm_encoder *encoder, int mode)
 			intel_sdvo_set_encoder_power_state(intel_sdvo, mode);
 		intel_sdvo_set_active_outputs(intel_sdvo, intel_sdvo->attached_output);
 	}
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 	return;
 }
 
