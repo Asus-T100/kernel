@@ -2871,10 +2871,9 @@ static int rt5640_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return 0;
 }
 
-static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
-				 int clk_id, unsigned int freq, int dir)
+static int rt5640_set_sysclk(struct snd_soc_codec *codec,
+			     int clk_id, int source, unsigned int freq, int dir)
 {
-	struct snd_soc_codec *codec = dai->codec;
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 
 	set_sys_clk(codec, clk_id);
@@ -2885,30 +2884,18 @@ static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
 		snd_soc_write(codec, RT5640_ASRC_4, 0x23d7);
 		snd_soc_write(codec, RT5640_ASRC_5, 0x23d7);
 	}
-/*
-	switch (clk_id) {
-	case RT5640_SCLK_S_MCLK:
-		reg_val |= RT5640_SCLK_SRC_MCLK;
-		break;
-	case RT5640_SCLK_S_PLL1:
-		reg_val |= RT5640_SCLK_SRC_PLL1;
-		break;
-	case RT5640_SCLK_S_RCCLK:
-		reg_val |= RT5640_SCLK_SRC_RCCLK;
-		break;
-	default:
-		dev_err(codec->dev, "Invalid clock id (%d)\n", clk_id);
-		return -EINVAL;
-	}
-	snd_soc_update_bits(codec, RT5640_GLB_CLK,
-			    RT5640_SCLK_SRC_MASK, reg_val);
-*/
 	rt5640->sysclk = freq;
 	rt5640->sysclk_src = clk_id;
 
-	dev_dbg(dai->dev, "Sysclk is %dHz and clock id is %d\n", freq, clk_id);
+	dev_dbg(codec->dev, "Sysclk is %dHz and clock id is %d\n", freq, clk_id);
 
 	return 0;
+}
+
+static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
+				 int clk_id, unsigned int freq, int dir)
+{
+	return rt5640_set_sysclk(dai->codec, clk_id, 0, freq, dir);
 }
 
 /**
@@ -3237,7 +3224,6 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_STANDBY:
 		pr_debug("In case SND_SOC_BIAS_STANDBY:\n");
-		snd_soc_write(codec, RT5640_GLB_CLK, 0x8000);
 #ifdef USE_ASRC
 		snd_soc_write(codec, RT5640_ASRC_1, 0x00);
 		snd_soc_write(codec, RT5640_ASRC_2, 0x00);
@@ -3527,6 +3513,7 @@ static struct snd_soc_codec_driver soc_codec_dev_rt5640 = {
 	.num_dapm_widgets = ARRAY_SIZE(rt5640_dapm_widgets),
 	.dapm_routes = rt5640_dapm_routes,
 	.num_dapm_routes = ARRAY_SIZE(rt5640_dapm_routes),
+	.set_sysclk = rt5640_set_sysclk,
 };
 
 static const struct i2c_device_id rt5640_i2c_id[] = {
