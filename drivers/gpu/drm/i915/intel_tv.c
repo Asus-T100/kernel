@@ -842,7 +842,7 @@ intel_tv_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	switch (mode) {
 	case DRM_MODE_DPMS_ON:
 		I915_WRITE(TV_CTL, I915_READ(TV_CTL) | TV_ENC_ENABLE);
@@ -853,7 +853,7 @@ intel_tv_dpms(struct drm_encoder *encoder, int mode)
 		I915_WRITE(TV_CTL, I915_READ(TV_CTL) & ~TV_ENC_ENABLE);
 		break;
 	}
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static const struct tv_mode *
@@ -936,7 +936,7 @@ intel_tv_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	if (!tv_mode)
 		return;	/* can't happen (mode_prepare prevents this) */
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	tv_ctl = I915_READ(TV_CTL);
 	tv_ctl &= TV_CTL_SAVE;
 
@@ -1130,7 +1130,7 @@ intel_tv_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 		I915_WRITE(TV_V_CHROMA_0 + (i<<2), tv_mode->filter_table[j++]);
 	I915_WRITE(TV_DAC, I915_READ(TV_DAC) & TV_DAC_SAVE);
 	I915_WRITE(TV_CTL, tv_ctl);
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static const struct drm_display_mode reported_modes[] = {

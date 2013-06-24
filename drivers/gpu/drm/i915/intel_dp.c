@@ -841,7 +841,7 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	struct drm_crtc *crtc = intel_dp->base.base.crtc;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	/* Turn on the eDP PLL if needed */
 	if (is_edp(intel_dp)) {
 		if (!is_pch_edp(intel_dp))
@@ -952,7 +952,7 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	} else {
 		intel_dp->DP |= DP_LINK_TRAIN_OFF_CPT;
 	}
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 #define IDLE_ON_MASK		(PP_ON | 0 	  | PP_SEQUENCE_MASK | 0                     | PP_SEQUENCE_STATE_MASK)

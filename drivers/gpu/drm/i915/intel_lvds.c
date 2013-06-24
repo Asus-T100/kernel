@@ -269,7 +269,7 @@ static bool intel_lvds_mode_fixup(struct drm_encoder *encoder,
 		return true;
 	}
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	/* Native modes don't need fitting */
 	if (adjusted_mode->hdisplay == mode->hdisplay &&
 	    adjusted_mode->vdisplay == mode->vdisplay)
@@ -403,7 +403,7 @@ out:
 	 * user's requested refresh rate.
 	 */
 
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 	return true;
 }
 
