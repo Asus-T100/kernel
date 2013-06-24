@@ -1505,7 +1505,7 @@ int i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj,
 				  u32 *offset);
 int __must_check i915_mutex_lock_interruptible(struct drm_device *dev);
 int i915_gem_object_sync(struct drm_i915_gem_object *obj,
-			 struct intel_ring_buffer *to);
+			 struct intel_ring_buffer *to, bool add_request);
 void i915_gem_object_move_to_active(struct drm_i915_gem_object *obj,
 				    struct intel_ring_buffer *ring,
 				    u32 seqno);
