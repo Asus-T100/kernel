@@ -218,6 +218,9 @@ void irq_controller_get_state(
 assert(ID < N_IRQ_ID);
 assert(state != NULL);
 
+	if (state == NULL)
+		return ;
+
 	state->irq_edge = irq_reg_load(ID,
 		_HRT_IRQ_CONTROLLER_EDGE_REG_IDX);
 	state->irq_mask = irq_reg_load(ID,
@@ -240,6 +243,9 @@ void virq_enable_channel(
 	irq_ID_t		ID = virq_get_irq_id(irq_ID, &channel_ID);
 	
 assert(ID < N_IRQ_ID);
+
+	if (ID >= N_IRQ_ID)
+		return ;
 
 	if (en) {
 		irq_enable_channel(ID, channel_ID);
@@ -275,6 +281,9 @@ enum hrt_isp_css_irq_status virq_get_channel_signals(
 	irq_ID_t ID;
 
 assert(irq_info != NULL);
+
+	if (irq_info == NULL)
+		return hrt_isp_css_irq_status_error;
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 		if (any_irq_channel_enabled(ID)) {
@@ -412,6 +421,9 @@ STORAGE_CLASS_INLINE irq_ID_t virq_get_irq_id(
 	irq_ID_t ID;
 
 assert(channel_ID != NULL);
+
+	if (channel_ID == NULL)
+		return 0;
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 		if (irq_ID < IRQ_N_ID_OFFSET[ID + 1]) {

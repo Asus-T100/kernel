@@ -43,6 +43,9 @@ void input_system_get_state(
 assert(ID < N_INPUT_SYSTEM_ID);
 assert(state != NULL);
 
+	if (state == NULL)
+		return ;
+
 	state->str_multicastA_sel = input_system_sub_system_reg_load(ID,
 		GPREGS_UNIT0_ID,
 		HIVE_ISYS_GPREG_MULTICAST_A_IDX);
@@ -102,6 +105,9 @@ void receiver_get_state(
 
 assert(ID < N_RX_ID);
 assert(state != NULL);
+
+	if (state == NULL)
+		return ;
 
 	state->fs_to_ls_delay = (uint8_t)receiver_reg_load(ID,
 		_HRT_CSS_RECEIVER_FS_TO_LS_DELAY_REG_IDX);
@@ -282,6 +288,9 @@ STORAGE_CLASS_INLINE void capture_unit_get_state(
 assert(state != NULL);
 assert(/*(sub_id >= CAPTURE_UNIT0_ID) &&*/ (sub_id <= CAPTURE_UNIT2_ID));
 
+	if (state == NULL)
+		return ;
+
 	state->StartMode = input_system_sub_system_reg_load(ID,
 		sub_id,
 		CAPT_START_MODE_REG_ID);
@@ -342,6 +351,9 @@ STORAGE_CLASS_INLINE void acquisition_unit_get_state(
 assert(state != NULL);
 assert(sub_id == ACQUISITION_UNIT0_ID);
 
+	if (state == NULL)
+		return ;
+
 	state->Start_Addr = input_system_sub_system_reg_load(ID,
 		sub_id,
 		ACQ_START_ADDR_REG_ID);
@@ -389,6 +401,9 @@ STORAGE_CLASS_INLINE void ctrl_unit_get_state(
 {
 assert(state != NULL);
 assert(sub_id == CTRL_UNIT0_ID);
+
+	if (state == NULL)
+		return ;
 
 	state->captA_start_addr = input_system_sub_system_reg_load(ID,
 		sub_id,
@@ -474,6 +489,9 @@ assert(ID < N_RX_ID);
 assert(port_ID < N_MIPI_PORT_ID);
 assert(state != NULL);
 
+	if (state == NULL)
+		return ;
+
 	state->device_ready = receiver_port_reg_load(ID,
 		port_ID, _HRT_CSS_RECEIVER_DEVICE_READY_REG_IDX);
 	state->irq_status = receiver_port_reg_load(ID,
@@ -509,6 +527,9 @@ STORAGE_CLASS_INLINE void rx_channel_get_state(
 assert(ID < N_RX_ID);
 assert(ch_id < N_RX_CHANNEL_ID);
 assert(state != NULL);
+
+	if (state == NULL)
+		return ;
 
 	switch (ch_id) {
 		case 0:
