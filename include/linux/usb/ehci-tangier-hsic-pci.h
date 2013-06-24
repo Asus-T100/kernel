@@ -26,10 +26,10 @@
 #define PMU_HW_PEN1 0x10C
 
 /* Port Inactivity Duratoin is default value for L2 suspend */
-#define HSIC_PORT_INACTIVITYDURATION              1500
+#define HSIC_PORT_INACTIVITYDURATION              500
 /* This is the default value for L2 autosuspend enable */
 #define HSIC_AUTOSUSPEND                          1
-#define HSIC_BUS_INACTIVITYDURATION               1500
+#define HSIC_BUS_INACTIVITYDURATION               500
 #define HSIC_REMOTEWAKEUP                         1
 
 struct hsic_tangier_priv {
