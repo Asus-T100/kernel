@@ -53,6 +53,10 @@ KERNEL_CROSS_COMP := "ccache $(KERNEL_CROSS_COMP)"
 KERNEL_PATH := $(KERNEL_PATH):$(ANDROID_BUILD_TOP)/$(dir $(KERNEL_CCACHE))
 endif
 
+#remove time_macros from ccache options, it breaks signing process
+KERNEL_CCSLOP := $(filter-out time_macros,$(subst $(comma), ,$(CCACHE_SLOPPINESS)))
+KERNEL_CCSLOP := $(subst $(space),$(comma),$(KERNEL_CCSLOP))
+
 KERNEL_OUT_DIR := $(PRODUCT_OUT)/linux/kernel
 KERNEL_MODULES_ROOT := $(PRODUCT_OUT)/root/lib/modules
 KERNEL_CONFIG := $(KERNEL_OUT_DIR)/.config
@@ -63,7 +67,8 @@ KERNEL_BLD_FLAGS := \
     $(KERNEL_EXTRA_FLAGS)
 
 KERNEL_BLD_ENV := CROSS_COMPILE=$(KERNEL_CROSS_COMP) \
-    PATH=$(KERNEL_PATH):$(PATH)
+    PATH=$(KERNEL_PATH):$(PATH) \
+    CCACHE_SLOPPINESS=$(KERNEL_CCSLOP)
 KERNEL_FAKE_DEPMOD := $(KERNEL_OUT_DIR)/fakedepmod/lib/modules
 
 KERNEL_DEFCONFIG := $(KERNEL_SRC_DIR)/arch/x86/configs/$(KERNEL_ARCH)_$(KERNEL_SOC)_defconfig
