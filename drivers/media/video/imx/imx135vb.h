@@ -917,6 +917,63 @@ static struct imx_reg const imx135vb_3m_binning[] = {
 	{IMX_TOK_TERM, 0, 0},
 };
 
+/* 1080P 1936x1104 */
+static struct imx_reg const imx135vb_1080p_binning[] = {
+	GROUPED_PARAMETER_HOLD_ENABLE,
+	PLL_SETTINGS_FOR_MIPI_209_6MHZ,
+	/* Mode setting */
+	{IMX_8BIT, 0x0108, 0x03},
+	{IMX_8BIT, 0x0112, 0x0A},
+	{IMX_8BIT, 0x0113, 0x0A},
+	{IMX_8BIT, 0x0381, 0x01},
+	{IMX_8BIT, 0x0383, 0x01},
+	{IMX_8BIT, 0x0385, 0x01},
+	{IMX_8BIT, 0x0387, 0x01},
+	{IMX_8BIT, 0x0390, 0x01},
+	{IMX_8BIT, 0x0391, 0x22},
+	{IMX_8BIT, 0x0392, 0x00},
+	{IMX_8BIT, 0x0401, 0x02},
+	{IMX_8BIT, 0x0404, 0x00},
+	{IMX_8BIT, 0x0405, 0x11},
+	{IMX_8BIT, 0x4082, 0x00},
+	{IMX_8BIT, 0x4083, 0x00},
+	{IMX_8BIT, 0x7006, 0x04},
+	/* Size setting */
+	{IMX_8BIT, 0x0344, 0x00},
+	{IMX_8BIT, 0x0345, 0x2E},
+	{IMX_8BIT, 0x0346, 0x01},
+	{IMX_8BIT, 0x0347, 0x84},
+	{IMX_8BIT, 0x0348, 0x10},
+	{IMX_8BIT, 0x0349, 0x41},
+	{IMX_8BIT, 0x034A, 0x0A},
+	{IMX_8BIT, 0x034B, 0xAF},
+	{IMX_8BIT, 0x034C, 0x07},
+	{IMX_8BIT, 0x034D, 0x90},
+	{IMX_8BIT, 0x034E, 0x04},
+	{IMX_8BIT, 0x034F, 0x50},
+	{IMX_8BIT, 0x0350, 0x00},
+	{IMX_8BIT, 0x0351, 0x00},
+	{IMX_8BIT, 0x0352, 0x00},
+	{IMX_8BIT, 0x0353, 0x00},
+	{IMX_8BIT, 0x0354, 0x08},
+	{IMX_8BIT, 0x0355, 0x0A},
+	{IMX_8BIT, 0x0356, 0x04},
+	{IMX_8BIT, 0x0357, 0x96},
+	{IMX_8BIT, 0x301D, 0x30},
+	{IMX_8BIT, 0x3310, 0x07},
+	{IMX_8BIT, 0x3311, 0x90},
+	{IMX_8BIT, 0x3312, 0x04},
+	{IMX_8BIT, 0x3313, 0x50},
+	{IMX_8BIT, 0x331C, 0x01},
+	{IMX_8BIT, 0x331D, 0x00},
+	{IMX_8BIT, 0x4084, 0x07},
+	{IMX_8BIT, 0x4085, 0x90},
+	{IMX_8BIT, 0x4086, 0x04},
+	{IMX_8BIT, 0x4087, 0x50},
+	{IMX_8BIT, 0x4400, 0x00},
+	{IMX_TOK_TERM, 0, 0},
+};
+
 /******************* Video Modes ******************/
 
 /* 1080P DVS 2336x1320 */
@@ -1398,6 +1455,29 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.bin_factor_y = 2,
 	},
 	{
+		 .desc = "imx135vb_480p_binning_preview",
+		 .regs = imx135vb_480p_dvs_binning,
+		 .width = 936,
+		 .height = 602,
+		 .fps = 30,
+		 .pixels_per_line = 5464, /* Binning Pixel clock: 335.36MHz */
+		 .lines_per_frame = 2046,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+	},
+	{
+		.desc = "imx135vb_1080p_binning_preview",
+		.regs = imx135vb_1080p_binning,
+		.width = 1936,
+		.height = 1104,
+		.fps = 30,
+		.pixels_per_line = 5464, /* Binning Pixel clock: 335.36MHz */
+		.lines_per_frame = 2046,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
+		.used = 0,
+	},
+	{
 		.desc = "imx135vb_3m__cont_cap",
 		.regs = imx135vb_3m_binning,
 		.width = 2064,
@@ -1415,7 +1495,7 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.width = 3280,
 		.height = 1852,
 		.fps = 30,
-		.pixels_per_line = 4572,
+		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
 		.lines_per_frame = 2624,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
@@ -1427,7 +1507,7 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.width = 3280,
 		.height = 2464,
 		.fps = 24,
-		.pixels_per_line = 4572,
+		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
 		.lines_per_frame = 3280,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
@@ -1480,6 +1560,29 @@ struct imx_resolution imx135vb_res_still[] = {
 		.lines_per_frame = 1226,
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
+	},
+	{
+		 .desc = "imx135vb_480p_binning_still",
+		 .regs = imx135vb_480p_dvs_binning,
+		 .width = 936,
+		 .height = 602,
+		 .fps = 30,
+		 .pixels_per_line = 9114, /* Binning Pixel clock: 335.36MHz */
+		 .lines_per_frame = 2453,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+	},
+	{
+		.desc = "imx135vb_1080p_binning_still",
+		.regs = imx135vb_1080p_binning,
+		.width = 1936,
+		.height = 1104,
+		.fps = 15,
+		.pixels_per_line = 9114, /* Binning Pixel clock: 335.36MHz */
+		.lines_per_frame = 2453,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
+		.used = 0,
 	},
 	{
 		.desc = "imx135vb_3m__still",
