@@ -1020,20 +1020,38 @@ i915_pci_remove(struct pci_dev *pdev)
 }
 
 #ifdef CONFIG_DRM_VXD_BYT
+#define DRM_PSB_FILE_PAGE_OFFSET ((0x100000000ULL >> PAGE_SHIFT) * 18)
+#define VXD_TTM_MMAP_OFFSET_START DRM_PSB_FILE_PAGE_OFFSET
+#define VXD_TTM_MMAP_OFFSET_END (DRM_PSB_FILE_PAGE_OFFSET + 0x10000000)
+#define DRM_COMMAND_VXD_BASE 0x80
+
 static int i915_mmap(struct file *filp, struct vm_area_struct *vma)
 {
+	struct drm_file *file_priv = filp->private_data;
+	struct drm_device *dev = file_priv->minor->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	if (vma->vm_pgoff < VXD_TTM_MMAP_OFFSET_START ||
-	    vma->vm_pgoff > VXD_TTM_MMAP_OFFSET_END)
+	    vma->vm_pgoff > VXD_TTM_MMAP_OFFSET_END) {
 		return drm_gem_mmap(filp, vma);
-	else
-		return psb_mmap(filp, vma);
+	} else {
+		if (dev_priv->psb_mmap)
+			return dev_priv->psb_mmap(filp, vma);
+		else
+			return 0;
+	}
 }
 
 static int i915_release(struct inode *inode, struct file *filp)
 {
-	int ret;
-	vxd_release(inode, filp);
-	ret = drm_release(inode, filp);
+	int ret = 0;
+	struct drm_file *file_priv = filp->private_data;
+	struct drm_device *dev = file_priv->minor->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (dev_priv->vxd_release)
+		ret = dev_priv->vxd_release(inode, filp);
+	drm_release(inode, filp);
 
 	return ret;
 }
@@ -1046,13 +1064,14 @@ static long i915_ioctl(struct file *filp,
 	struct drm_file *file_priv = filp->private_data;
 	struct drm_device *dev;
 	dev = file_priv->minor->dev;
-
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
 #ifdef CONFIG_DRM_VXD_BYT
 	if ((nr >= DRM_COMMAND_VXD_BASE) &&
-			(nr < DRM_COMMAND_VXD_BASE + 0x20))
-		return vxd_ioctl(filp, cmd, arg);
-	else
+		(nr < DRM_COMMAND_VXD_BASE + 0x20)) {
+		BUG_ON(!dev_priv->vxd_ioctl);
+		return dev_priv->vxd_ioctl(filp, cmd, arg);
+	} else
 #endif
 	{
 		int ret;

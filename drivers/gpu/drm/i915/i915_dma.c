@@ -56,6 +56,11 @@
 #define ADVANCE_LP_RING() \
 	intel_ring_advance(LP_RING(dev_priv))
 
+#ifdef CONFIG_DRM_VXD_BYT
+struct drm_device *i915_drm_dev;
+EXPORT_SYMBOL(i915_drm_dev);
+#endif
+
 /**
  * Lock test for when it's just for synchronization of ring access.
  *
@@ -1668,8 +1673,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		intel_gpu_ips_init(dev_priv);
 
 #ifdef CONFIG_DRM_VXD_BYT
-	if (IS_VALLEYVIEW(dev))
-		vxd_driver_load(dev);
+	/* Delay vxd driver load to vxd module init */
+	i915_drm_dev = dev;
 #endif
 	return 0;
 
@@ -1708,9 +1713,6 @@ int i915_driver_unload(struct drm_device *dev)
 	int ret;
 	uint32_t i;
 
-#ifdef CONFIG_DRM_VXD_BYT
-	vxd_driver_unload(dev);
-#endif
 	intel_gpu_ips_teardown();
 
 	i915_teardown_sysfs(dev);
@@ -1806,6 +1808,7 @@ int i915_driver_unload(struct drm_device *dev)
 int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct drm_i915_file_private *file_priv;
+	drm_i915_private_t *dev_priv = dev->dev_private;
 
 	DRM_DEBUG_DRIVER("\n");
 	file_priv = kmalloc(sizeof(*file_priv), GFP_KERNEL);
@@ -1820,7 +1823,10 @@ int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 	idr_init(&file_priv->context_idr);
 
 #ifdef CONFIG_DRM_VXD_BYT
-	return vxd_driver_open(dev, file);
+	if (dev_priv->vxd_driver_open)
+		return dev_priv->vxd_driver_open(dev, file);
+	else
+		return 0;
 #else
 	return 0;
 #endif
@@ -1849,7 +1855,8 @@ void i915_driver_lastclose(struct drm_device * dev)
 		return;
 
 #ifdef CONFIG_DRM_VXD_BYT
-	vxd_lastclose(dev);
+	if (dev_priv->vxd_lastclose)
+		dev_priv->vxd_lastclose(dev);
 #endif
 
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {

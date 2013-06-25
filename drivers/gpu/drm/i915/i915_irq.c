@@ -37,9 +37,7 @@
 #include "i915_trace.h"
 #include "intel_drv.h"
 #include "intel_ringbuffer.h"
-#ifdef CONFIG_DRM_VXD_BYT
-#include "psb_msvdx.h"
-#endif
+
 /* Added for HDMI Audio */
 #include "hdmi_audio_if.h"
 
@@ -644,7 +642,8 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 		}
 #ifdef CONFIG_DRM_VXD_BYT
 		if (iir & VED_BLOCK_INTERRUPT) {
-			psb_msvdx_interrupt(dev);
+			if (dev_priv->psb_msvdx_interrupt)
+				dev_priv->psb_msvdx_interrupt(dev);
 		}
 #endif
 		if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
