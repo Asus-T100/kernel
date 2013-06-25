@@ -136,6 +136,22 @@
 #define ACADETEN_MASK		(0x01 << 1)
 
 #define USBIDSTAT_ADDR		0x1A
+#define ID_SHORT		D4
+#define ID_SHORT_VBUS		(1 << 4)
+#define ID_NOT_SHORT_VBUS	0
+#define ID_FLOAT_STS		D3
+#define R_ID_FLOAT_DETECT	(1 << 3)
+#define R_ID_FLOAT_NOT_DETECT	0
+#define ID_RAR_BRC_STS		((D2 | D1))
+#define ID_ACA_NOT_DETECTED	0
+#define R_ID_A			(1 << 1)
+#define R_ID_B			(2 << 1)
+#define R_ID_C			(3 << 1)
+#define ID_GND			D0
+#define ID_TYPE_A		0
+#define ID_TYPE_B		1
+#define is_aca(x) ((x & R_ID_A) || (x & R_ID_B) || (x & R_ID_C))
+
 #define WAKESRC_ADDR		0x24
 
 #define CHRTTADDR_ADDR		0x56

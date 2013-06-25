@@ -736,7 +736,8 @@ int pmic_set_cc(int new_cc)
 				bcprof->temp_mon_range[i].full_chrg_cur);
 
 		if (new_cc1 != r_bcprof->temp_mon_range[i].full_chrg_cur) {
-			chc.pdata->cc_to_reg(new_cc1, &reg_val);
+			if (chc.pdata->cc_to_reg)
+				chc.pdata->cc_to_reg(new_cc1, &reg_val);
 			ret = update_zone_cc(i, reg_val);
 			if (unlikely(ret))
 				return ret;
@@ -774,7 +775,8 @@ int pmic_set_cv(int new_cv)
 				bcprof->temp_mon_range[i].full_chrg_vol);
 
 		if (new_cv1 != r_bcprof->temp_mon_range[i].full_chrg_vol) {
-			chc.pdata->cv_to_reg(new_cv1, &reg_val);
+			if (chc.pdata->cv_to_reg)
+				chc.pdata->cv_to_reg(new_cv1, &reg_val);
 
 			ret = update_zone_cv(i, reg_val);
 			if (unlikely(ret))
@@ -913,34 +915,48 @@ static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 {
 	int mask;
+	u8 usb_id_sts;
+	int ret;
 
 	if (!int_reg)
 		return;
 
 	mask = !!(int_reg & stat_reg);
-
 	if (int_reg & CHRGRIRQ1_SUSBIDDET_MASK) {
-			if (mask)
-				dev_info(chc.dev, "USB ID Detected. Notifying OTG driver\n");
-			else {
-				if (wake_lock_active(&chc.wakelock))
-					wake_unlock(&chc.wakelock);
-				dev_info(chc.dev, "USB ID Removed. Notifying OTG driver\n");
-			}
-			atomic_notifier_call_chain(&chc.otg->notifier,
+		if (mask)
+			dev_info(chc.dev, "USB ID Detected. Notifying OTG driver\n");
+		else
+			dev_info(chc.dev, "USB ID Removed. Notifying OTG driver\n");
+		atomic_notifier_call_chain(&chc.otg->notifier,
 				USB_EVENT_ID, &mask);
 	}
 
 	if (int_reg & CHRGRIRQ1_SVBUSDET_MASK) {
-		if (mask)
-			dev_info(chc.dev, "USB VBUS Detected. Notifying OTG driver\n");
-		else {
-			if (wake_lock_active(&chc.wakelock))
-				wake_unlock(&chc.wakelock);
+		if (mask) {
+			dev_info(chc.dev,
+				"USB VBUS Detected. Notifying OTG driver\n");
+			ret = intel_scu_ipc_ioread8(USBIDSTAT_ADDR,
+							&usb_id_sts);
+			if (unlikely(ret))
+				return ret;
+			if ((stat_reg & CHRGRIRQ1_SUSBIDDET_MASK) &&
+				(!(is_aca(usb_id_sts)))) {
+				dev_dbg(chc.dev, "VBUS drive for device!!\n");
+				if (wake_lock_active(&chc.wakelock)) {
+					dev_dbg(chc.dev,
+						"Releasing wakelock for device!!\n");
+					wake_unlock(&chc.wakelock);
+				}
+			}
+		} else {
 			dev_info(chc.dev, "USB VBUS Removed. Notifying OTG driver\n");
+			if (wake_lock_active(&chc.wakelock)) {
+				dev_dbg(chc.dev, "Releasing the wakelock!!\n");
+				wake_unlock(&chc.wakelock);
+			}
 		}
 		atomic_notifier_call_chain(&chc.otg->notifier,
-			USB_EVENT_VBUS, &mask);
+				USB_EVENT_VBUS, &mask);
 	}
 
 	return;
@@ -1107,8 +1123,9 @@ static int pmic_init(void)
 				i);
 			return ret;
 		}
-		chc.pdata->cc_to_reg(bcprof->temp_mon_range[i].
-				full_chrg_cur, &reg_val);
+		if (chc.pdata->cc_to_reg)
+			chc.pdata->cc_to_reg(bcprof->temp_mon_range[i].
+					full_chrg_cur, &reg_val);
 
 		ret = update_zone_cc(i, reg_val);
 		if (unlikely(ret)) {
@@ -1118,8 +1135,9 @@ static int pmic_init(void)
 			return ret;
 		}
 
-		chc.pdata->cv_to_reg(bcprof->temp_mon_range[i].
-				full_chrg_vol, &reg_val);
+		if (chc.pdata->cv_to_reg)
+			chc.pdata->cv_to_reg(bcprof->temp_mon_range[i].
+					full_chrg_vol, &reg_val);
 
 		ret = update_zone_cv(i, reg_val);
 		if (unlikely(ret)) {
