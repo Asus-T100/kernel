@@ -1278,6 +1278,9 @@ out:
 		v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				video, s_stream, 1);
 
+	if (isp->acc.pipeline && css_pipe_done)
+		atomisp_css_acc_done(asd);
+
 	dev_dbg(isp->dev, "<%s\n", __func__);
 
 	return IRQ_HANDLED;

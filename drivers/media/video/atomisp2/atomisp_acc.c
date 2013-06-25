@@ -41,15 +41,14 @@
 #include "sh_css_accelerate.h"
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 static const struct {
 	unsigned int flag;
-	enum sh_css_pipe_id pipe_id;
+	enum atomisp_css_pipe_id pipe_id;
 } acc_flag_to_pipe[] = {
-	{ ATOMISP_ACC_FW_LOAD_FL_PREVIEW, SH_CSS_PREVIEW_PIPELINE },
-	{ ATOMISP_ACC_FW_LOAD_FL_COPY, SH_CSS_COPY_PIPELINE },
-	{ ATOMISP_ACC_FW_LOAD_FL_VIDEO, SH_CSS_VIDEO_PIPELINE },
-	{ ATOMISP_ACC_FW_LOAD_FL_CAPTURE, SH_CSS_CAPTURE_PIPELINE },
+	{ ATOMISP_ACC_FW_LOAD_FL_PREVIEW, CSS_PIPE_ID_PREVIEW },
+	{ ATOMISP_ACC_FW_LOAD_FL_COPY, CSS_PIPE_ID_COPY },
+	{ ATOMISP_ACC_FW_LOAD_FL_VIDEO, CSS_PIPE_ID_VIDEO },
+	{ ATOMISP_ACC_FW_LOAD_FL_CAPTURE, CSS_PIPE_ID_CAPTURE }
 };
 
 /*
@@ -106,33 +105,24 @@ static struct atomisp_map *acc_get_map(struct atomisp_device *isp,
 
 static void acc_stop_acceleration(struct atomisp_device *isp)
 {
-	if (sh_css_acceleration_stop() != sh_css_success)
-		dev_err(isp->dev, "cannot stop acceleration pipeline\n");
-
-	sh_css_destroy_pipeline(isp->acc.pipeline);
-	isp->acc.pipeline = NULL;
+	atomisp_css_stop_acc_pipe(&isp->asd);
+	atomisp_css_destroy_acc_pipe(&isp->asd);
 }
 
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 void atomisp_acc_init(struct atomisp_device *isp)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	INIT_LIST_HEAD(&isp->acc.fw);
 	INIT_LIST_HEAD(&isp->acc.memory_maps);
 	ida_init(&isp->acc.ida);
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
 void atomisp_acc_cleanup(struct atomisp_device *isp)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	ida_destroy(&isp->acc.ida);
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
 void atomisp_acc_release(struct atomisp_device *isp)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_acc_fw *acc_fw, *ta;
 	struct atomisp_map *atomisp_map, *tm;
 
@@ -153,13 +143,11 @@ void atomisp_acc_release(struct atomisp_device *isp)
 		mmgr_free(atomisp_map->ptr);
 		kfree(atomisp_map);
 	}
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
 int atomisp_acc_load_to_pipe(struct atomisp_device *isp,
 			     struct atomisp_acc_fw_load_to_pipe *user_fw)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	static const unsigned int pipeline_flags =
 		ATOMISP_ACC_FW_LOAD_FL_PREVIEW |
 		ATOMISP_ACC_FW_LOAD_FL_COPY |
@@ -207,16 +195,36 @@ int atomisp_acc_load_to_pipe(struct atomisp_device *isp,
 	acc_fw->handle = handle;
 	acc_fw->flags = user_fw->flags;
 	acc_fw->type = user_fw->type;
-	list_add_tail(&acc_fw->list, &isp->acc.fw);
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	/*
+	 * correct isp firmware type in order ISP firmware can be appended
+	 * to correct pipe properly
+	 */
+	if (acc_fw->fw->type == ia_css_isp_firmware) {
+		switch (acc_fw->type) {
+		case ATOMISP_ACC_FW_LOAD_TYPE_OUTPUT:
+			acc_fw->fw->info.isp.type = IA_CSS_ACC_OUTPUT;
+			break;
+
+		case ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER:
+			acc_fw->fw->info.isp.type = IA_CSS_ACC_VIEWFINDER;
+			break;
+
+		case ATOMISP_ACC_FW_LOAD_TYPE_STANDALONE:
+			acc_fw->fw->info.isp.type = IA_CSS_ACC_STANDALONE;
+			break;
+		}
+	}
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+
+	list_add_tail(&acc_fw->list, &isp->acc.fw);
 	return 0;
 }
 
 int atomisp_acc_load(struct atomisp_device *isp,
 		     struct atomisp_acc_fw_load *user_fw)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_acc_fw_load_to_pipe ltp = {0};
 	int r;
 
@@ -227,14 +235,10 @@ int atomisp_acc_load(struct atomisp_device *isp,
 	r = atomisp_acc_load_to_pipe(isp, &ltp);
 	user_fw->fw_handle = ltp.fw_handle;
 	return r;
-#else
-	return 0;
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
 int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_acc_fw *acc_fw;
 
 	if (isp->acc.pipeline || isp->acc.extension_mode)
@@ -247,39 +251,16 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	list_del(&acc_fw->list);
 	ida_remove(&isp->acc.ida, acc_fw->handle);
 	acc_free_fw(acc_fw);
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	return 0;
-}
-
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
-/* Set the binary arguments */
-static int acc_set_parameters(struct atomisp_acc_fw *acc_fw)
-{
-	struct sh_css_hmm_section sec;
-	unsigned int mem;
-
-	for (mem = 0; mem < ATOMISP_ACC_NR_MEMORY; mem++) {
-		if (acc_fw->args[mem].length == 0)
-			continue;
-
-		sec.ddr_address = acc_fw->args[mem].css_ptr;
-		sec.ddr_size = acc_fw->args[mem].length;
-		if (sh_css_acc_set_firmware_parameters(acc_fw->fw, mem, sec)
-		    != sh_css_success)
-			return -EIO;
-	}
 
 	return 0;
 }
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_sub_device *asd = &isp->asd;
 	struct atomisp_acc_fw *acc_fw;
 	int ret;
 	unsigned int nbin;
-	unsigned int i = 0;
 
 	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
@@ -287,9 +268,9 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	/* Invalidate caches. FIXME: should flush only necessary buffers */
 	wbinvd();
 
-	isp->acc.pipeline = sh_css_create_pipeline();
-	if (!isp->acc.pipeline)
-		return -EBADE;
+	ret = atomisp_css_create_acc_pipe(asd);
+	if (ret)
+		return ret;
 
 	nbin = 0;
 	list_for_each_entry(acc_fw, &isp->acc.fw, list) {
@@ -300,69 +281,62 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 			continue;
 
 		/* Add the binary into the pipeline */
-		if (sh_css_pipeline_add_acc_stage(
-		    isp->acc.pipeline, acc_fw->fw) != sh_css_success) {
-			ret = -EBADSLT;
+		ret = atomisp_css_load_acc_binary(asd, acc_fw->fw, nbin);
+		if (ret < 0) {
+			dev_err(isp->dev, "acc_load_binary failed\n");
+			goto err_stage;
+		}
+
+		ret = atomisp_css_set_acc_parameters(acc_fw);
+		if (ret < 0) {
+			dev_err(isp->dev, "acc_set_parameters failed\n");
 			goto err_stage;
 		}
 		nbin++;
-
-		ret = acc_set_parameters(acc_fw);
-		if (ret < 0)
-			goto err_stage;
 	}
 	if (nbin < 1) {
 		/* Refuse creating pipelines with no binaries */
+		dev_err(isp->dev, "%s: no acc binary available\n", __func__);
 		ret = -EINVAL;
 		goto err_stage;
 	}
 
-	sh_css_start_pipeline(SH_CSS_ACC_PIPELINE, isp->acc.pipeline);
-	/* wait 2-4ms before failing */
-	while (!sh_css_sp_has_booted()) {
-		if (i > 100) {
-			atomisp_reset(isp);
-			ret = -EIO;
-			goto err_stage;
-		}
-		usleep_range(20, 40);
-		i++;
+	ret = atomisp_css_start_acc_pipe(asd);
+	if (ret) {
+		dev_err(isp->dev, "%s: atomisp_acc_start_acc_pipe failed\n",
+			__func__);
+		goto err_stage;
 	}
-	sh_css_init_buffer_queues();
+
 	return 0;
 
 err_stage:
-	sh_css_destroy_pipeline(isp->acc.pipeline);
-	isp->acc.pipeline = NULL;
+	atomisp_css_destroy_acc_pipe(asd);
 	return ret;
-#else
-	return 0;
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
 int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_sub_device *asd = &isp->asd;
+	int ret;
+
 	if (!isp->acc.pipeline)
 		return -ENOENT;
 
 	if (*handle && !acc_get_fw(isp, *handle))
 		return -EINVAL;
 
-	if (sh_css_wait_for_completion(SH_CSS_ACC_PIPELINE) != sh_css_success)
-		return -EIO;
+	ret = atomisp_css_wait_acc_finish(asd);
 	acc_stop_acceleration(isp);
 
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	return 0;
+	return ret;
 }
 
 int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
-	int pgnr;
-	hrt_vaddress cssptr;
 	struct atomisp_map *atomisp_map;
+	hrt_vaddress cssptr;
+	int pgnr;
 
 	if (map->flags || !map->user_ptr || map->css_ptr)
 		return -EINVAL;
@@ -394,14 +368,14 @@ int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	atomisp_map->length = map->length;
 	list_add(&atomisp_map->list, &isp->acc.memory_maps);
 
+	dev_dbg(isp->dev, "%s: userptr 0x%x, css_address 0x%x, size %d\n",
+		__func__, (unsigned int)map->user_ptr, cssptr, map->length);
 	map->css_ptr = cssptr;
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	return 0;
 }
 
 int atomisp_acc_unmap(struct atomisp_device *isp, struct atomisp_acc_map *map)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_map *atomisp_map;
 
 	if (map->flags)
@@ -417,14 +391,12 @@ int atomisp_acc_unmap(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	list_del(&atomisp_map->list);
 	mmgr_free(atomisp_map->ptr);
 	kfree(atomisp_map);
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	return 0;
 }
 
 int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 			     struct atomisp_acc_s_mapped_arg *arg)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_acc_fw *acc_fw;
 
 	if (arg->memory >= ATOMISP_ACC_NR_MEMORY)
@@ -445,7 +417,9 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 
 	acc_fw->args[arg->memory].length = arg->length;
 	acc_fw->args[arg->memory].css_ptr = arg->css_ptr;
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+
+	dev_dbg(isp->dev, "%s: mem %d, address 0x%x, size %d\n",
+		__func__, arg->memory, (unsigned int)arg->css_ptr, arg->length);
 	return 0;
 }
 
@@ -455,9 +429,10 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
  */
 int atomisp_acc_load_extensions(struct atomisp_device *isp)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_acc_fw *acc_fw;
-	int ret, i;
+	bool ext_loaded = false;
+	int ret = 0, i;
+	struct atomisp_sub_device *asd = &isp->asd;
 
 	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
@@ -472,20 +447,30 @@ int atomisp_acc_load_extensions(struct atomisp_device *isp)
 
 		for (i = 0; i < ARRAY_SIZE(acc_flag_to_pipe); i++) {
 			if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
-				/* Add the binary into the pipeline */
-				if (sh_css_load_extension(acc_fw->fw,
-					     acc_flag_to_pipe[i].pipe_id,
-					     acc_fw->type) != sh_css_success) {
+				ret = atomisp_css_load_acc_extension(asd,
+					acc_fw->fw,acc_flag_to_pipe[i].pipe_id,
+					acc_fw->type);
+				if (ret) {
 					i--;
-					ret = -EBADSLT;
 					goto error;
 				}
+
+				ext_loaded = true;
 			}
 		}
 
-		ret = acc_set_parameters(acc_fw);
+		ret = atomisp_css_set_acc_parameters(acc_fw);
 		if (ret < 0)
 			goto error;
+	}
+
+	if (!ext_loaded)
+		return ret;
+
+	ret = atomisp_css_update_stream(asd);
+	if (ret) {
+		dev_err(isp->dev, "%s: update stream failed.\n", __func__);
+		goto error;
 	}
 
 	isp->acc.extension_mode = true;
@@ -494,8 +479,8 @@ int atomisp_acc_load_extensions(struct atomisp_device *isp)
 error:
 	for (; i >= 0; i--) {
 		if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
-			sh_css_unload_extension(acc_fw->fw,
-				acc_flag_to_pipe[i].pipe_id);
+			atomisp_css_unload_acc_extension(asd, acc_fw->fw,
+					acc_flag_to_pipe[i].pipe_id);
 		}
 	}
 
@@ -506,20 +491,18 @@ error:
 
 		for (i = ARRAY_SIZE(acc_flag_to_pipe) - 1; i >= 0; i--) {
 			if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
-				sh_css_unload_extension(acc_fw->fw,
+				atomisp_css_unload_acc_extension(asd,
+					acc_fw->fw,
 					acc_flag_to_pipe[i].pipe_id);
 			}
 		}
 	}
 	return ret;
-#else
-	return 0;
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
 void atomisp_acc_unload_extensions(struct atomisp_device *isp)
 {
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_sub_device *asd = &isp->asd;
 	struct atomisp_acc_fw *acc_fw;
 	int i;
 
@@ -533,13 +516,12 @@ void atomisp_acc_unload_extensions(struct atomisp_device *isp)
 
 		for (i = ARRAY_SIZE(acc_flag_to_pipe) - 1; i >= 0; i--) {
 			if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
-				/* Remove the binary from the pipeline */
-				sh_css_unload_extension(acc_fw->fw,
+				atomisp_css_unload_acc_extension(asd,
+					acc_fw->fw,
 					acc_flag_to_pipe[i].pipe_id);
 			}
 		}
 	}
 
 	isp->acc.extension_mode = false;
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }

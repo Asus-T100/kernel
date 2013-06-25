@@ -173,7 +173,7 @@ struct atomisp_sw_contex {
 };
 
 struct atomisp_acc_fw {
-	struct sh_css_fw_info *fw;
+	struct atomisp_css_fw_info *fw;
 	unsigned int handle;
 	unsigned int flags;
 	unsigned int type;
@@ -220,6 +220,8 @@ struct atomisp_device {
 		struct atomisp_css_pipeline *pipeline;
 		bool extension_mode;
 		struct ida ida;
+		struct completion acc_done;
+		void *acc_stages;
 	} acc;
 
 	unsigned int s3a_bufs_in_css[CSS_PIPE_ID_NUM];

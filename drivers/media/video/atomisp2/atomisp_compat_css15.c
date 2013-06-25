@@ -31,6 +31,8 @@
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
 
+#include "sh_css_accelerate.h"
+
 void atomisp_store_uint32(hrt_address addr, uint32_t data)
 {
 	device_store_uint32(addr, data);
@@ -1354,4 +1356,121 @@ void atomisp_css_set_cont_prev_start_time(struct atomisp_device *isp,
 					unsigned int overlap)
 {
 	sh_css_set_cont_prev_start_time(overlap);
+}
+
+int atomisp_css_update_stream(struct atomisp_sub_device *asd)
+{
+	return 0;
+}
+
+int atomisp_css_wait_acc_finish(struct atomisp_sub_device *asd)
+{
+	if (sh_css_wait_for_completion(SH_CSS_ACC_PIPELINE) != sh_css_success)
+		return -EIO;
+
+	return 0;
+}
+
+void atomisp_css_acc_done(struct atomisp_sub_device *asd)
+{
+}
+
+int atomisp_css_create_acc_pipe(struct atomisp_sub_device *asd)
+{
+	struct atomisp_device *isp = asd->isp;
+
+	isp->acc.pipeline = sh_css_create_pipeline();
+	if (!isp->acc.pipeline)
+		return -EBADE;
+
+	return 0;
+}
+
+int atomisp_css_start_acc_pipe(struct atomisp_sub_device *asd)
+{
+	unsigned int i = 0;
+	struct atomisp_device *isp = asd->isp;
+
+	sh_css_start_pipeline(SH_CSS_ACC_PIPELINE, isp->acc.pipeline);
+	/* wait 2-4ms before failing */
+	while (!sh_css_sp_has_booted()) {
+		if (i > 100) {
+			atomisp_reset(isp);
+			return -EIO;
+		}
+		usleep_range(20, 40);
+		i++;
+	}
+
+	sh_css_init_buffer_queues();
+	return 0;
+}
+
+void atomisp_css_stop_acc_pipe(struct atomisp_sub_device *asd)
+{
+	if (sh_css_acceleration_stop() != sh_css_success)
+		dev_err(asd->isp->dev, "cannot stop acceleration pipeline\n");
+}
+
+void atomisp_css_destroy_acc_pipe(struct atomisp_sub_device *asd)
+{
+	struct atomisp_device *isp = asd->isp;
+
+	if (isp->acc.pipeline) {
+		sh_css_destroy_pipeline(isp->acc.pipeline);
+		isp->acc.pipeline = NULL;
+	}
+}
+
+/* Set the ACC binary arguments */
+int atomisp_css_set_acc_parameters(struct atomisp_acc_fw *acc_fw)
+{
+	struct sh_css_hmm_section sec;
+	unsigned int mem;
+
+	for (mem = 0; mem < ATOMISP_ACC_NR_MEMORY; mem++) {
+		if (acc_fw->args[mem].length == 0)
+			continue;
+
+		sec.ddr_address = acc_fw->args[mem].css_ptr;
+		sec.ddr_size = acc_fw->args[mem].length;
+		if (sh_css_acc_set_firmware_parameters(acc_fw->fw, mem, sec)
+			!= sh_css_success)
+			return -EIO;
+	}
+
+	return 0;
+}
+
+/* Load acc binary extension */
+int atomisp_css_load_acc_extension(struct atomisp_sub_device *asd,
+					struct atomisp_css_fw_info *fw,
+					enum atomisp_css_pipe_id pipe_id,
+					unsigned int type)
+{
+	if (sh_css_load_extension(fw, pipe_id, type) != sh_css_success)
+		return -EBADSLT;
+
+	return 0;
+}
+
+/* Unload acc binary extension */
+void atomisp_css_unload_acc_extension(struct atomisp_sub_device *asd,
+					struct atomisp_css_fw_info *fw,
+					enum atomisp_css_pipe_id pipe_id)
+{
+	sh_css_unload_extension(fw, pipe_id);
+}
+
+int atomisp_css_load_acc_binary(struct atomisp_sub_device *asd,
+					struct atomisp_css_fw_info *fw,
+					unsigned int index)
+{
+	struct atomisp_device *isp = asd->isp;
+
+	if (sh_css_pipeline_add_acc_stage(
+	    isp->acc.pipeline, fw) != sh_css_success)
+		return -EBADSLT;
+
+	return 0;
 }

@@ -26,6 +26,7 @@
 
 #include "ia_css.h"
 #include "ia_css_types.h"
+#include "ia_css_acc_types.h"
 #include "sh_css_legacy.h"
 
 #define ATOMISP_CSS2_PIPE_MAX	2
@@ -71,6 +72,7 @@
 #define atomisp_css_3a_grid_info	ia_css_3a_grid_info
 #define atomisp_css_shading_table	ia_css_shading_table
 #define atomisp_css_morph_table	ia_css_morph_table
+#define atomisp_css_fw_info	ia_css_fw_info
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
