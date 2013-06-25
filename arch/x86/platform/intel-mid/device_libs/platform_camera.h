@@ -35,4 +35,27 @@ extern void intel_register_i2c_camera_device(
 				struct sfi_device_table_entry *pentry,
 				struct devs_id *dev)
 				__attribute__((weak));
+
+/*
+ * FIXME! This PMIC power access workaround for BTY
+ * since currently no VRF for BTY
+ */
+#ifdef CONFIG_CRYSTAL_COVE
+#define VPROG_2P8V 0x66
+#define VPROG_1P8V 0x5D
+#define VPROG_ENABLE 0x3
+#define VPROG_DISABLE 0x2
+
+enum camera_pmic_pin {
+	CAMERA_1P8V,
+	CAMERA_2P8V,
+	CAMERA_POWER_NUM,
+};
+
+struct vprog_status {
+	unsigned int user;
+};
+
+int camera_set_pmic_power(enum camera_pmic_pin pin, bool flag);
+#endif
 #endif

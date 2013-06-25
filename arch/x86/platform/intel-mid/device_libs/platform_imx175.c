@@ -121,10 +121,16 @@ static int imx175_power_ctrl(struct v4l2_subdev *sd, int flag)
 			    INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 				ret = intel_scu_ipc_msic_vprog1(1);
 #ifdef CONFIG_CRYSTAL_COVE
-			ret = intel_mid_pmic_writeb(VPROG_2P8V, VPROG_ENABLE);
+			/*
+			 * This should call VRF APIs.
+			 *
+			 * VRF not implemented for BTY, so call this
+			 * as WAs
+			 */
+			ret = camera_set_pmic_power(CAMERA_2P8V, true);
 			if (ret)
 				return ret;
-			ret = intel_mid_pmic_writeb(VPROG_1P8V, VPROG_ENABLE);
+			ret = camera_set_pmic_power(CAMERA_1P8V, true);
 #endif
 			if (!ret) {
 				/* imx1x5 VDIG rise to XCLR release */
@@ -139,10 +145,10 @@ static int imx175_power_ctrl(struct v4l2_subdev *sd, int flag)
 			    INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 				ret = intel_scu_ipc_msic_vprog1(0);
 #ifdef CONFIG_CRYSTAL_COVE
-			ret = intel_mid_pmic_writeb(VPROG_2P8V, VPROG_DISABLE);
+			ret = camera_set_pmic_power(CAMERA_2P8V, false);
 			if (ret)
 				return ret;
-			ret = intel_mid_pmic_writeb(VPROG_1P8V, VPROG_DISABLE);
+			ret = camera_set_pmic_power(CAMERA_1P8V, false);
 #endif
 			if (!ret)
 				camera_vprog1_on = 0;

@@ -18,7 +18,9 @@
 #include <media/v4l2-subdev.h>
 #include <asm/intel-mid.h>
 #include "platform_camera.h"
-
+#ifdef CONFIG_CRYSTAL_COVE
+#include <linux/mfd/intel_mid_pmic.h>
+#endif
 /*
  * TODO: Check whether we can move this info to OEM table or
  *       set this info in the platform data of each sensor
@@ -354,3 +356,41 @@ const struct camera_af_platform_data *camera_get_af_platform_data(void)
 	return &platform_data;
 }
 EXPORT_SYMBOL_GPL(camera_get_af_platform_data);
+
+#ifdef CONFIG_CRYSTAL_COVE
+/*
+ * WA for BTY as simple VRF management
+ */
+int camera_set_pmic_power(enum camera_pmic_pin pin, bool flag)
+{
+	u8 reg_addr[CAMERA_POWER_NUM] = {VPROG_1P8V, VPROG_2P8V};
+	u8 reg_value[2] = {VPROG_DISABLE, VPROG_ENABLE};
+	static struct vprog_status status[CAMERA_POWER_NUM];
+	static DEFINE_MUTEX(mutex_power);
+	int ret = 0;
+
+	mutex_lock(&mutex_power);
+	/*
+	 * only set power at:
+	 * first to power on
+	 * last to power off
+	 */
+	if ((flag && status[pin].user == 0)
+	    || (!flag && status[pin].user == 1))
+		ret = intel_mid_pmic_writeb(reg_addr[pin], reg_value[flag]);
+
+	/* no update counter if config failed */
+	if (ret)
+		goto done;
+
+	if (flag)
+		status[pin].user++;
+	else
+		if (status[pin].user)
+			status[pin].user--;
+done:
+	mutex_unlock(&mutex_power);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(camera_set_pmic_power);
+#endif
