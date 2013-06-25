@@ -357,6 +357,7 @@ static irqreturn_t mpu_isr(int irq, void *dev)
 		 * Don't report data when PLL is just ready, data is
 		 * not correct at this time.
 		 */
+		ret = IRQ_HANDLED;
 		dev_dbg(&client->dev, "MPU PLL ready\n");
 		goto out;
 	}
