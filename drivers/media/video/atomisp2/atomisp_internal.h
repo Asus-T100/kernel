@@ -268,7 +268,6 @@ struct atomisp_device {
 	struct timer_list wdt;
 	atomic_t wdt_count;
 	unsigned int wdt_duration;	/* in jiffies */
-	enum atomisp_frame_status fr_status;
 
 	atomic_t sof_count;
 	atomic_t sequence;      /* Sequence value that is assigned to buffer. */
