@@ -1888,6 +1888,9 @@ static int standby_enter(void)
 	writel(mid_pmu_cxt->ss_config->wake_state.wake_enable[1],
 		       &mid_pmu_cxt->pmu_reg->pm_wkc[1]);
 
+	mid_pmu_cxt->camera_off = 0;
+	mid_pmu_cxt->display_off = 0;
+
 	if (platform_is(INTEL_ATOM_MRFLD))
 		up(&mid_pmu_cxt->scu_ready_sem);
 
