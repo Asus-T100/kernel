@@ -58,7 +58,6 @@ static struct snd_soc_jack_gpio hs_gpio = {
 					  SND_JACK_BTN_0,
 		.debounce_time		= 100,
 		.jack_status_check	= byt_hp_detection,
-		.irq_flags		= IRQF_TRIGGER_RISING,
 };
 
 static inline void byt_jack_report(int status)
