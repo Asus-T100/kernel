@@ -29,7 +29,6 @@
 */
 #ifndef __PLATFORM_IPC_V2_H__
 #define __PLATFORM_IPC_V2_H__
-
 #define MAX_NUM_STREAMS_MRST 3
 #define MAX_NUM_STREAMS_MFLD 5
 #define MAX_NUM_STREAMS_MRFLD 23
@@ -62,7 +61,7 @@
 #define IPC_IA_GET_FW_INFO 0x06
 #define IPC_IA_GET_FW_CTXT 0x07
 #define IPC_IA_SET_FW_CTXT 0x08
-
+#define IPC_IA_PREPARE_SHUTDOWN 0x31
 /* I2L Codec Config/control msgs */
 #define IPC_PREP_D3 0x10
 #define IPC_IA_SET_CODEC_PARAMS 0x10

@@ -1153,7 +1153,38 @@ static int intel_sst_runtime_idle(struct device *dev)
 */
 static void sst_shutdown(struct pci_dev *pci)
 {
+	int retval = 0;
+	unsigned int pvt_id;
+	unsigned long irq_flags;
+	struct ipc_post *msg = NULL;
+	struct sst_block *block = NULL;
+
 	pr_debug(" %s called\n", __func__);
+	if (sst_drv_ctx->sst_state == SST_SUSPENDED ||
+			sst_drv_ctx->sst_state == SST_UN_INIT) {
+		sst_set_fw_state_locked(sst_drv_ctx, SST_SHUTDOWN);
+		goto disable;
+	}
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		sst_set_fw_state_locked(sst_drv_ctx, SST_SHUTDOWN);
+		flush_workqueue(sst_drv_ctx->post_msg_wq);
+		flush_workqueue(sst_drv_ctx->process_msg_wq);
+		flush_workqueue(sst_drv_ctx->process_reply_wq);
+		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+		retval = sst_create_block_and_ipc_msg(&msg, false,
+				sst_drv_ctx, &block,
+				IPC_IA_PREPARE_SHUTDOWN, pvt_id);
+		if (retval)
+			goto disable;
+		sst_fill_header(&msg->header, IPC_IA_PREPARE_SHUTDOWN, 0, pvt_id);
+		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+		sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+		sst_wait_timeout(sst_drv_ctx, block);
+		sst_free_block(sst_drv_ctx, block);
+	}
+disable:
 	disable_irq_nosync(pci->irq);
 }
 
