@@ -1320,6 +1320,19 @@ static int ov8830_detect(struct i2c_client *client, u16 *id, u8 *revision)
 	if (id35 == 0x35)
 		*id = OV8835_CHIP_ID;
 
+	/*
+	 * Workaround: for PRH project (using ISP2400A0), HW team already
+	 * mixed up the ov8830 and ov8835, but ov8835 is the POR sensor of
+	 * PRH. To save RD effort on debugging ov8830 setting issues, force
+	 * apply ov8835 settings for ov8830 sensor.
+	 */
+#ifdef CONFIG_ISP2400
+	if (id35 != 0x35) {
+		dev_warn(&client->dev, "[PRH]Force apply OV8835 settings\n");
+		*id = OV8835_CHIP_ID;
+	}
+#endif
+
 	dev_info(&client->dev, "sensor is ov%4.4x\n", *id);
 
 	/* REVISIT: HACK: Driver is currently forcing revision to 0 */
