@@ -1805,6 +1805,7 @@ static int imx_remove(struct i2c_client *client)
 
 static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
 {
+	int ret = 0;
 	switch (sensor_id) {
 	case IMX175_ID:
 		if (intel_mid_identify_cpu() ==
@@ -1836,8 +1837,9 @@ static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
 	default:
 		return -EINVAL;
 	}
-
-	return dev->vcm_driver->init(&dev->sd);
+	if (dev->vcm_driver && dev->vcm_driver->init)
+		ret = dev->vcm_driver->init(&dev->sd);
+	return ret;
 }
 
 static int imx_probe(struct i2c_client *client,
