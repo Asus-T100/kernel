@@ -1519,7 +1519,7 @@ ia_css_get_dvs_statistics(struct ia_css_dvs_statistics           *host_stats,
 			  const struct ia_css_isp_dvs_statistics *isp_stats)
 {
 	unsigned int hor_num_isp, ver_num_isp,
-#ifdef __KERNEL__
+#ifndef __KERNEL__	/* dVS statistics Size mis-match */
 		     hor_bytes, ver_bytes;
 #else
 		     hor_num_dvs, ver_num_dvs, i;
@@ -1549,7 +1549,7 @@ ia_css_get_dvs_statistics(struct ia_css_dvs_statistics           *host_stats,
 		host_stats->hor_proj, host_stats->ver_proj,
 		isp_stats->hor_proj, isp_stats->ver_proj);
 
-#ifdef __KERNEL__
+#ifndef __KERNEL__	/* dVS statistics Size mis-match */
 	/* This is the optimized code that uses the aligned_width and
 	 * aligned_height for the projections. This should be enabled in the
 	 * same patch set that adds the correct handling of these strides to

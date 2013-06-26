@@ -3,8 +3,11 @@
 
 #define IS_GDC_VERSION_2
 
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
-
+#endif
 #include "gdc_v2_defs.h"
 
 /*

@@ -25,8 +25,11 @@
 #include "ia_css.h"
 #include "sh_css_param_dvs.h"
 #include "sh_css_debug.h"
-
+#ifdef __KERNEL__
+#include <linux/string.h>		/* memcpy() */
+#else
 #include <string.h>		/* memcpy() */
+#endif
 
 
 struct ia_css_dvs_6axis_config *
