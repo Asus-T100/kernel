@@ -1182,12 +1182,16 @@ static inline int bq24192_set_iterm(struct bq24192_chip *chip, int iterm)
 {
 	u8 reg_val;
 
+	if (iterm > BQ24192_CHRG_ITERM_OFFSET)
+		dev_warn(&chip->client->dev,
+			"%s ITERM set for >128mA", __func__);
+
 	reg_val = chrg_iterm_to_reg(iterm);
 	msleep(500);
 
-	return bq24192_reg_read_modify(chip->client,
-					BQ24192_PRECHRG_TERM_CUR_CNTL_REG,
-					reg_val, true);
+	return bq24192_write_reg(chip->client,
+			BQ24192_PRECHRG_TERM_CUR_CNTL_REG,
+				(BQ24192_PRE_CHRG_CURR_256 | reg_val));
 }
 
 static enum bq24192_chrgr_stat bq24192_is_charging(struct bq24192_chip *chip)
