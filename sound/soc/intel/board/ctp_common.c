@@ -692,11 +692,14 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 		goto free_jack;
 	}
 
+	if (!snd_soc_card_ctp.instantiated)
+		goto free_jack;
+
 	platform_set_drvdata(pdev, &snd_soc_card_ctp);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 free_jack:
-	free_jack_wake_lock(ctx);
+	snd_ctp_unregister_jack(ctx, pdev);
 	return ret_val;
 }
 
