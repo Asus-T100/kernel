@@ -200,8 +200,7 @@ int atomisp_q_video_buffer_to_css(struct atomisp_sub_device *asd,
 {
 	enum sh_css_err err;
 
-	err = sh_css_queue_buffer(css_pipe_id, css_buf_type,
-						vm_mem->vaddr);
+	err = sh_css_queue_buffer(css_pipe_id, css_buf_type, vm_mem->vaddr);
 	if (err != sh_css_success)
 		return -EINVAL;
 
@@ -212,8 +211,7 @@ int atomisp_q_s3a_buffer_to_css(struct atomisp_sub_device *asd,
 			struct atomisp_s3a_buf *s3a_buf,
 			enum atomisp_css_pipe_id css_pipe_id)
 {
-	if (sh_css_queue_buffer(css_pipe_id,
-				SH_CSS_BUFFER_TYPE_3A_STATISTICS,
+	if (sh_css_queue_buffer(css_pipe_id, SH_CSS_BUFFER_TYPE_3A_STATISTICS,
 				&s3a_buf->s3a_data)) {
 		dev_dbg(asd->isp->dev, "failed to q s3a stat buffer\n");
 		return -EINVAL;
@@ -402,8 +400,7 @@ int atomisp_css_get_grid_info(struct atomisp_sub_device *asd,
 				enum atomisp_css_pipe_id pipe_id)
 {
 	enum sh_css_err err;
-	struct atomisp_css_grid_info old_info =
-		asd->params.curr_grid_info;
+	struct atomisp_css_grid_info old_info = asd->params.curr_grid_info;
 
 	switch (asd->run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:
@@ -440,8 +437,7 @@ int atomisp_css_get_grid_info(struct atomisp_sub_device *asd,
 	/* If the grid info has not changed and the buffers for 3A and
 	 * DIS statistics buffers are allocated or buffer size would be zero
 	 * then no need to do anything. */
-	if ((!memcmp(&old_info, &asd->params.curr_grid_info,
-		     sizeof(old_info))
+	if ((!memcmp(&old_info, &asd->params.curr_grid_info, sizeof(old_info))
 	    && asd->params.s3a_output_buf
 	    && asd->params.dis_hor_coef_buf)
 	    || asd->params.curr_grid_info.s3a_grid.width == 0
@@ -459,8 +455,7 @@ int atomisp_alloc_3a_output_buf(struct atomisp_sub_device *asd)
 		asd->params.curr_grid_info.s3a_grid.height *
 		sizeof(*asd->params.s3a_output_buf);
 
-	dev_dbg(asd->isp->dev,
-		"asd->params.s3a_output_bytes: %d\n",
+	dev_dbg(asd->isp->dev, "asd->params.s3a_output_bytes: %d\n",
 		asd->params.s3a_output_bytes);
 	asd->params.s3a_output_buf = vmalloc(
 					asd->params.s3a_output_bytes);
@@ -469,8 +464,7 @@ int atomisp_alloc_3a_output_buf(struct atomisp_sub_device *asd)
 	    && asd->params.s3a_output_bytes != 0)
 		return -ENOMEM;
 
-	memset(asd->params.s3a_output_buf, 0,
-	       asd->params.s3a_output_bytes);
+	memset(asd->params.s3a_output_buf, 0, asd->params.s3a_output_bytes);
 	asd->params.s3a_buf_data_valid = false;
 
 	return 0;
@@ -535,8 +529,7 @@ int atomisp_css_get_3a_statistics(struct atomisp_sub_device *asd,
 {
 	enum sh_css_err err;
 
-	if (asd->params.s3a_output_buf &&
-		asd->params.s3a_output_bytes) {
+	if (asd->params.s3a_output_buf && asd->params.s3a_output_bytes) {
 		/* To avoid racing with atomisp_3a_stat() */
 		err = sh_css_get_3a_statistics(
 			asd->params.s3a_output_buf,
@@ -784,8 +777,7 @@ int atomisp_css_continuous_set_num_raw_frames(
 	int max_raw_frames = sh_css_continuous_get_max_raw_frames();
 
 	if (num_frames > max_raw_frames) {
-		dev_warn(asd->isp->dev,
-			 "continuous_num_raw_frames %d->%d\n",
+		dev_warn(asd->isp->dev, "continuous_num_raw_frames %d->%d\n",
 				num_frames, max_raw_frames);
 		num_frames = max_raw_frames;
 	}
@@ -1009,8 +1001,7 @@ int atomisp_get_css_frame_info(struct atomisp_sub_device *asd,
 			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
 		else if (!atomisp_is_mbuscode_raw(
-				asd->
-				fmt[asd->capture_pad].fmt.code))
+				asd->fmt[asd->capture_pad].fmt.code))
 			ret = sh_css_capture_get_viewfinder_frame_info(
 					frame_info);
 		break;
@@ -1188,12 +1179,10 @@ int atomisp_css_set_dis_coefs(struct atomisp_sub_device *asd,
 		return -EINVAL;
 
 	if (copy_from_user(asd->params.dis_hor_coef_buf,
-	    coefs->horizontal_coefficients,
-	    asd->params.dis_hor_coef_bytes))
+	    coefs->horizontal_coefficients, asd->params.dis_hor_coef_bytes))
 		return -EFAULT;
 	if (copy_from_user(asd->params.dis_ver_coef_buf,
-	    coefs->vertical_coefficients,
-	    asd->params.dis_ver_coef_bytes))
+	    coefs->vertical_coefficients, asd->params.dis_ver_coef_bytes))
 		return -EFAULT;
 
 	sh_css_set_dis_coefficients(asd->params.dis_hor_coef_buf,

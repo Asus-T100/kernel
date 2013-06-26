@@ -149,11 +149,9 @@ int atomisp_acc_load_to_pipe(struct atomisp_device *isp,
 			     struct atomisp_acc_fw_load_to_pipe *user_fw)
 {
 	static const unsigned int pipeline_flags =
-		ATOMISP_ACC_FW_LOAD_FL_PREVIEW |
-		ATOMISP_ACC_FW_LOAD_FL_COPY |
+		ATOMISP_ACC_FW_LOAD_FL_PREVIEW | ATOMISP_ACC_FW_LOAD_FL_COPY |
 		ATOMISP_ACC_FW_LOAD_FL_VIDEO |
-		ATOMISP_ACC_FW_LOAD_FL_CAPTURE |
-		ATOMISP_ACC_FW_LOAD_FL_ACC;
+		ATOMISP_ACC_FW_LOAD_FL_CAPTURE | ATOMISP_ACC_FW_LOAD_FL_ACC;
 
 	struct atomisp_acc_fw *acc_fw;
 	int handle;

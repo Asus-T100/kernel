@@ -159,8 +159,7 @@ static int isp_subdev_set_power(struct v4l2_subdev *sd, int on)
 }
 
 static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
-	struct v4l2_fh *fh,
-	struct v4l2_event_subscription *sub)
+	struct v4l2_fh *fh, struct v4l2_event_subscription *sub)
 {
 	if (sub->type != V4L2_EVENT_FRAME_SYNC &&
 	    sub->type != V4L2_EVENT_ATOMISP_3A_STATS_READY)
@@ -170,8 +169,7 @@ static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
 }
 
 static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,
-	struct v4l2_fh *fh,
-	struct v4l2_event_subscription *sub)
+	struct v4l2_fh *fh, struct v4l2_event_subscription *sub)
 {
 	return v4l2_event_unsubscribe(fh, sub);
 }
@@ -184,8 +182,7 @@ static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,
  * return -EINVAL or zero on success
  */
 static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh,
-	struct v4l2_subdev_mbus_code_enum *code)
+	struct v4l2_subdev_fh *fh, struct v4l2_subdev_mbus_code_enum *code)
 {
 	if (code->index >= ARRAY_SIZE(atomisp_in_fmt_conv) - 1)
 		return -EINVAL;
@@ -580,8 +577,7 @@ static int isp_subdev_set_format(struct v4l2_subdev *sd,
 
 /* V4L2 subdev core operations */
 static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
-	 .ioctl = isp_subdev_ioctl,
-	 .s_power = isp_subdev_set_power,
+	 .ioctl = isp_subdev_ioctl, .s_power = isp_subdev_set_power,
 	 .subscribe_event = isp_subdev_subscribe_event,
 	 .unsubscribe_event = isp_subdev_unsubscribe_event,
 };
@@ -589,8 +585,7 @@ static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
 /* V4L2 subdev pad operations */
 static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 	 .enum_mbus_code = isp_subdev_enum_mbus_code,
-	 .get_fmt = isp_subdev_get_format,
-	 .set_fmt = isp_subdev_set_format,
+	 .get_fmt = isp_subdev_get_format, .set_fmt = isp_subdev_set_format,
 	 .get_selection = isp_subdev_get_selection,
 	 .set_selection = isp_subdev_set_selection,
 	 .link_validate = v4l2_subdev_link_validate_default,
@@ -598,8 +593,7 @@ static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 
 /* V4L2 subdev operations */
 static const struct v4l2_subdev_ops isp_subdev_v4l2_ops = {
-	 .core = &isp_subdev_v4l2_core_ops,
-	 .pad = &isp_subdev_v4l2_pad_ops,
+	 .core = &isp_subdev_v4l2_core_ops, .pad = &isp_subdev_v4l2_pad_ops,
 };
 
 static void isp_subdev_init_params(struct atomisp_sub_device *asd)
@@ -907,20 +901,16 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *asd)
 	if (ret < 0)
 		return ret;
 
-	atomisp_init_subdev_pipe(asd,
-			&asd->video_in,
+	atomisp_init_subdev_pipe(asd, &asd->video_in,
 			V4L2_BUF_TYPE_VIDEO_OUTPUT);
 
-	atomisp_init_subdev_pipe(asd,
-			&asd->video_out_preview,
+	atomisp_init_subdev_pipe(asd, &asd->video_out_preview,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	atomisp_init_subdev_pipe(asd,
-			&asd->video_out_vf,
+	atomisp_init_subdev_pipe(asd, &asd->video_out_vf,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	atomisp_init_subdev_pipe(asd,
-			&asd->video_out_capture,
+	atomisp_init_subdev_pipe(asd, &asd->video_out_capture,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
 	ret = atomisp_video_init(&asd->video_in, "MEMORY");
@@ -973,11 +963,9 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *asd)
 						    &ctrl_run_mode, NULL);
 	asd->vfpp = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 						&ctrl_vfpp, NULL);
-	asd->continuous_mode =
-			v4l2_ctrl_new_custom(&asd->ctrl_handler,
+	asd->continuous_mode = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_continuous_mode, NULL);
-	asd->continuous_viewfinder =
-			v4l2_ctrl_new_custom(&asd->ctrl_handler,
+	asd->continuous_viewfinder = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_continuous_viewfinder,
 					     NULL);
 	asd->continuous_raw_buffer_size =

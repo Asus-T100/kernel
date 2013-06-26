@@ -501,8 +501,7 @@ static int atomisp_g_chip_ident(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 
 	int ret = 0;
 
@@ -510,8 +509,7 @@ static int atomisp_g_chip_ident(struct file *file, void *fh,
 			       core, g_chip_ident, chip);
 
 	if (ret)
-		v4l2_err(&atomisp_dev,
-			    "failed to g_chip_ident for sensor\n");
+		v4l2_err(&atomisp_dev, "failed to g_chip_ident for sensor\n");
 	return ret;
 }
 
@@ -575,8 +573,7 @@ static int atomisp_g_input(struct file *file, void *fh, unsigned int *input)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 
 	mutex_lock(&isp->mutex);
 	*input = asd->input_curr;
@@ -591,8 +588,7 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	struct v4l2_subdev *camera = NULL;
 	int ret;
 
@@ -606,8 +602,7 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 
 	camera = isp->inputs[input].camera;
 	if (!camera) {
-		v4l2_err(&atomisp_dev,
-			 "%s, no camera\n",__func__);
+		v4l2_err(&atomisp_dev, "%s, no camera\n",__func__);
 		ret = -EINVAL;
 		goto error;
 	}
@@ -629,8 +624,7 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 	}
 
 	/* powe on the new sensor */
-	ret = v4l2_subdev_call(isp->inputs[input].camera,
-			       core, s_power, 1);
+	ret = v4l2_subdev_call(isp->inputs[input].camera, core, s_power, 1);
 	if (ret) {
 		v4l2_err(&atomisp_dev, "Failed to power-on sensor\n");
 		goto error;
@@ -763,8 +757,7 @@ static int atomisp_enum_frameintervals(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	int ret;
 
 	if (arg->index != 0)
@@ -849,8 +842,7 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_sub_device *asd)
 			goto error;
 		}
 
-		if (atomisp_css_allocate_3a_dis_bufs(asd, s3a_buf,
-						     dis_buf)) {
+		if (atomisp_css_allocate_3a_dis_bufs(asd, s3a_buf, dis_buf)) {
 			kfree(s3a_buf);
 			kfree(dis_buf);
 			goto error;
@@ -1030,8 +1022,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 	if (!buf || buf->index >= VIDEO_MAX_FRAME ||
 		!pipe->capq.bufs[buf->index]) {
-		v4l2_err(&atomisp_dev,
-			    "Invalid index for qbuf.\n");
+		v4l2_err(&atomisp_dev, "Invalid index for qbuf.\n");
 		ret = -EINVAL;
 		goto error;
 	}
@@ -1138,8 +1129,7 @@ static int atomisp_qbuf_file(struct file *file, void *fh,
 
 	if (!buf || buf->index >= VIDEO_MAX_FRAME ||
 		!pipe->outq.bufs[buf->index]) {
-		v4l2_err(&atomisp_dev,
-			    "Invalid index for qbuf.\n");
+		v4l2_err(&atomisp_dev, "Invalid index for qbuf.\n");
 		ret = -EINVAL;
 		goto error;
 	}
@@ -1468,16 +1458,14 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	 * case of continuous capture
 	 */
 	if (isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->asd.continuous_mode->val &&
-	    atomisp_subdev_source_pad(vdev)
+	    isp->asd.continuous_mode->val && atomisp_subdev_source_pad(vdev)
 	    != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
 
 		/* stop continuous still capture if needed */
 		if (atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    asd->params.offline_parm.num_captures == -1)
-			atomisp_css_offline_capture_configure(asd, 0, 0,
-							      0);
+			atomisp_css_offline_capture_configure(asd, 0, 0, 0);
 		/*
 		 * Currently there is no way to flush buffers queued to css.
 		 * When doing videobuf_streamoff, active buffers will be
@@ -1636,8 +1624,7 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	struct v4l2_control *control)
 {
 	struct video_device *vdev = video_devdata(file);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int i, ret = -EINVAL;
 
@@ -1711,8 +1698,7 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 			  struct v4l2_control *control)
 {
 	struct video_device *vdev = video_devdata(file);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int i, ret = -EINVAL;
 
@@ -1807,8 +1793,7 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 	struct v4l2_ext_controls *c)
 {
 	struct video_device *vdev = video_devdata(file);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct v4l2_control ctrl;
 	int i;
@@ -1909,8 +1894,7 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 	struct v4l2_ext_controls *c)
 {
 	struct video_device *vdev = video_devdata(file);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct v4l2_control ctrl;
 	int i;
@@ -1973,8 +1957,7 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 			mutex_unlock(&isp->mutex);
 			break;
 		default:
-			ctr = v4l2_ctrl_find(&isp->asd.ctrl_handler,
-					     ctrl.id);
+			ctr = v4l2_ctrl_find(&isp->asd.ctrl_handler, ctrl.id);
 			if (ctr)
 				ret = v4l2_ctrl_s_ctrl(ctr, ctrl.value);
 			else
@@ -2026,8 +2009,7 @@ static int atomisp_g_parm(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupport v4l2 buf type\n");
+		v4l2_err(&atomisp_dev, "unsupport v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -2043,14 +2025,12 @@ static int atomisp_s_parm(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	int mode;
 	int rval;
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupport v4l2 buf type\n");
+		v4l2_err(&atomisp_dev, "unsupport v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -2118,8 +2098,7 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_sub_device *asd =
-		atomisp_to_video_pipe(vdev)->asd;
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	int err;
 
 	mutex_lock(&isp->mutex);

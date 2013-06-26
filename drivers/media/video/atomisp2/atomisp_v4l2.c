@@ -351,8 +351,7 @@ static int atomisp_mrfld_power_down(struct atomisp_device *isp)
 			return 0;
 
 		if (time_after(jiffies, timeout)) {
-			dev_err(isp->dev,
-				"power-off iunit timeout.\n");
+			dev_err(isp->dev, "power-off iunit timeout.\n");
 			return -EBUSY;
 		}
 		/* FIXME: experienced value for delay */
@@ -384,8 +383,7 @@ static int atomisp_mrfld_power_up(struct atomisp_device *isp)
 			return 0;
 
 		if (time_after(jiffies, timeout)) {
-			dev_err(isp->dev,
-				"power-on iunit timeout.\n");
+			dev_err(isp->dev, "power-on iunit timeout.\n");
 			return -EBUSY;
 		}
 		/* FIXME: experienced value for delay */
@@ -433,8 +431,7 @@ static int atomisp_runtime_resume(struct device *dev)
 		/*Turn on ISP d-phy */
 		ret = atomisp_ospm_dphy_up(isp);
 		if (ret) {
-			v4l2_err(&atomisp_dev,
-				    "Failed to power up ISP!.\n");
+			v4l2_err(&atomisp_dev, "Failed to power up ISP!.\n");
 			return -EINVAL;
 		}
 	}
@@ -511,8 +508,7 @@ static int atomisp_resume(struct device *dev)
 	/*Turn on ISP d-phy */
 	ret = atomisp_ospm_dphy_up(isp);
 	if (ret) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to power up ISP!.\n");
+		v4l2_err(&atomisp_dev, "Failed to power up ISP!.\n");
 		return -EINVAL;
 	}
 
@@ -784,8 +780,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		goto tpg_register_failed;
 	}
 
-	ret =
-	atomisp_subdev_register_entities(&isp->asd, &isp->v4l2_dev);
+	ret = atomisp_subdev_register_entities(&isp->asd, &isp->v4l2_dev);
 	if (ret < 0) {
 		v4l2_err(&atomisp_dev,
 			"atomisp_subdev_register_entities fail\n");

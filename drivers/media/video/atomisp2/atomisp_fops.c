@@ -144,8 +144,7 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *asd,
 				struct atomisp_s3a_buf, list);
 		list_move_tail(&s3a_buf->list, &asd->s3a_stats);
 
-		if (atomisp_q_s3a_buffer_to_css(asd, s3a_buf,
-						css_pipe_id))
+		if (atomisp_q_s3a_buffer_to_css(asd, s3a_buf, css_pipe_id))
 			return -EINVAL;
 
 		asd->s3a_bufs_in_css[css_pipe_id]++;
@@ -168,8 +167,7 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *asd,
 				   struct atomisp_dis_buf, list);
 		list_move_tail(&dis_buf->list, &asd->dis_stats);
 
-		if (atomisp_q_dis_buffer_to_css(asd, dis_buf,
-						css_pipe_id))
+		if (atomisp_q_dis_buffer_to_css(asd, dis_buf, css_pipe_id))
 			return -EINVAL;
 
 		asd->dis_bufs_in_css++;
@@ -224,16 +222,14 @@ int atomisp_qbuffers_to_css(struct atomisp_sub_device *asd)
 		/* ATOMISP_RUN_MODE_STILL_CAPTURE */
 		capture_pipe = &asd->video_out_capture;
 		if (!atomisp_is_mbuscode_raw(
-			    asd->
-			    fmt[asd->capture_pad].fmt.code))
+			    asd->fmt[asd->capture_pad].fmt.code))
 			vf_pipe = &asd->video_out_vf;
 		css_capture_pipe_id = CSS_PIPE_ID_CAPTURE;
 	}
 
 	if (capture_pipe) {
 		buf_type = atomisp_get_css_buf_type(
-			asd,
-			atomisp_subdev_source_pad(&capture_pipe->vdev));
+			asd, atomisp_subdev_source_pad(&capture_pipe->vdev));
 		atomisp_q_video_buffers_to_css(asd, capture_pipe,
 					       buf_type, css_capture_pipe_id);
 	}
@@ -247,8 +243,7 @@ int atomisp_qbuffers_to_css(struct atomisp_sub_device *asd)
 
 	if (preview_pipe) {
 		buf_type = atomisp_get_css_buf_type(
-			asd,
-			atomisp_subdev_source_pad(&preview_pipe->vdev));
+			asd, atomisp_subdev_source_pad(&preview_pipe->vdev));
 		atomisp_q_video_buffers_to_css(asd, preview_pipe,
 					       buf_type, css_preview_pipe_id);
 	}
@@ -285,8 +280,7 @@ static void atomisp_buf_release(struct videobuf_queue *vq,
 }
 
 static int atomisp_buf_setup_output(struct videobuf_queue *vq,
-				    unsigned int *count,
-				    unsigned int *size)
+				    unsigned int *count, unsigned int *size)
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
@@ -349,17 +343,14 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 				    &pipe->irq_lock,
 				    V4L2_BUF_TYPE_VIDEO_CAPTURE,
 				    V4L2_FIELD_NONE,
-				    sizeof(struct atomisp_buffer),
-				    pipe,
+				    sizeof(struct atomisp_buffer), pipe,
 				    NULL);	/* ext_lock: NULL */
 
-	videobuf_queue_vmalloc_init(&pipe->outq,
-				    &videobuf_qops_output, NULL,
+	videobuf_queue_vmalloc_init(&pipe->outq, &videobuf_qops_output, NULL,
 				    &pipe->irq_lock,
 				    V4L2_BUF_TYPE_VIDEO_OUTPUT,
 				    V4L2_FIELD_NONE,
-				    sizeof(struct atomisp_buffer),
-				    pipe,
+				    sizeof(struct atomisp_buffer), pipe,
 				    NULL);	/* ext_lock: NULL */
 
 	INIT_LIST_HEAD(&pipe->activeq);
@@ -378,8 +369,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	/* FIXME: only has one isp_subdev at present */
 	asd = &isp->asd;
 
-	v4l2_ctrl_s_ctrl(isp->asd.run_mode,
-			 ATOMISP_RUN_MODE_STILL_CAPTURE);
+	v4l2_ctrl_s_ctrl(isp->asd.run_mode, ATOMISP_RUN_MODE_STILL_CAPTURE);
 	asd->params.color_effect = V4L2_COLORFX_NONE;
 	asd->params.bad_pixel_en = 1;
 	asd->params.gdc_cac_en = 0;
@@ -763,8 +753,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		}
 
 		ret = remove_pad_from_frame(isp, raw_virt_addr,
-				      pipe->pix.width,
-				      pipe->pix.height);
+				      pipe->pix.width, pipe->pix.height);
 		if (ret < 0) {
 			dev_err(isp->dev, "remove pad failed.\n");
 			goto error;
