@@ -32,6 +32,16 @@ struct intel_mid_thermal_sensor {
 };
 
 /**
+ * struct soc_throttle_data - SoC level power limits for thermal throttling
+ * @power_limit:	power limit value
+ * @floor_freq:		The CPU frequency may not go below this value
+ */
+struct soc_throttle_data {
+	int power_limit;
+	int floor_freq;
+};
+
+/**
  * struct intel_mid_thermal_platform_data - Platform data for
  *		intel mid thermal driver
  *
