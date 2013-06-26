@@ -51,7 +51,7 @@ static void tangier_power_off(void)
 {
 #if defined(CONFIG_INTEL_MID_OSIP) && !defined(CONFIG_BOARD_REDRIDGE)
 	if (!get_force_shutdown_occured() &&
-	    power_supply_is_system_supplied()) {
+	    get_shutdown_power_supply_supplied()) {
 #else
 	if (power_supply_is_system_supplied()) {
 #endif

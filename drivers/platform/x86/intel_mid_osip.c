@@ -72,6 +72,10 @@ struct OSIP_header {            /* os image profile */
     force shuts down */
 static int force_shutdown_occured;
 
+/* A boolean variable, that is set to check if a power supply
+   is present during shutdown. */
+static int shutdown_power_supply_supplied;
+
 int mmcblk0_match(struct device *dev, void *data)
 {
 	if (strcmp(dev_name(dev), OSIP_BLKDEVICE) == 0)
@@ -199,6 +203,16 @@ bd_put:
 #define SIGNED_RECOVERY_ATTR	0x0C
 #define SIGNED_POSCOS_ATTR	0x10
 
+static int shutdown_power_supply_is_supplied()
+{
+	shutdown_power_supply_supplied = power_supply_is_system_supplied();
+
+	pr_info("%s, power_supply_supplied=%d\n",
+		__func__, shutdown_power_supply_supplied);
+
+	return shutdown_power_supply_supplied;
+}
+
 static int osip_reboot_notifier_call(struct notifier_block *notifier,
 				     unsigned long what, void *data)
 {
@@ -214,7 +228,8 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 	if (what != SYS_RESTART) {
 		if (what == SYS_HALT || what == SYS_POWER_OFF) {
 			pr_info("%s(): sys power off ...\n", __func__);
-			if (power_supply_is_system_supplied()) {
+
+			if (shutdown_power_supply_is_supplied()) {
 				if ((intel_mid_identify_cpu() ==
 				INTEL_MID_CPU_CHIP_TANGIER) &&
 				get_force_shutdown_occured()) {
@@ -335,6 +350,14 @@ int get_force_shutdown_occured()
 	return force_shutdown_occured;
 }
 EXPORT_SYMBOL(get_force_shutdown_occured);
+
+int get_shutdown_power_supply_supplied()
+{
+	pr_info("%s, shutdown_power_supply_supplied=%d\n",
+		__func__, shutdown_power_supply_supplied);
+	return shutdown_power_supply_supplied;
+}
+EXPORT_SYMBOL(get_shutdown_power_supply_supplied);
 
 static struct notifier_block osip_reboot_notifier = {
 	.notifier_call = osip_reboot_notifier_call,
