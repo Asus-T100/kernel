@@ -50,16 +50,21 @@ static int d3hot_wa_enabled(struct dwc_otg2 *otg)
 	return otg->otg_data->d3hot_wa;
 }
 
-static void enable_d3hot_wa(void)
+static int enable_d3hot_wa(void)
 {
 	void __iomem *addr;
 	unsigned int val = 0;
 
 	addr = ioremap_nocache(APBFB_OTG3_MISC1, 4);
+	if (!addr)
+		return -EFAULT;
+
 	val = readl(addr);
 	val |= OTG3_MISC1_DO_D3COLD_RESUME;
 	writel(val, addr);
 	iounmap(addr);
+
+	return 0;
 }
 
 static int is_hybridvp(struct dwc_otg2 *otg)
@@ -1844,7 +1849,11 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
 	if (d3hot_wa_enabled(otg)) {
 		otg->reset_host	= dwc_otg2_reset_host;
-		enable_d3hot_wa();
+		if (enable_d3hot_wa()) {
+			printk(KERN_ERR "dwc-otg3: Enable D3hot WA failed.\n");
+			retval = -EFAULT;
+			goto exit;
+		}
 	}
 
 	otg->state = DWC_STATE_INIT;
@@ -2020,6 +2029,9 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	}
 	pm_runtime_forbid(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
+
+	if (otg->otg.phy->io_priv)
+		iounmap(otg->otg.phy->io_priv);
 
 	pci_disable_device(pdev);
 	usb_set_transceiver(NULL);
