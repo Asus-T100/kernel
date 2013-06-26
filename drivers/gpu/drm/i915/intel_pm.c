@@ -2503,13 +2503,15 @@ void gen6_set_rps(struct drm_device *dev, u8 val)
 	dev_priv->rps.cur_delay = val;
 }
 
-void valleyview_update_cur_delay(struct drm_device *dev)
+bool valleyview_update_cur_delay(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 val = 0;
 
 	valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
 	dev_priv->rps.cur_delay = val >> 8;
+
+	return true;
 }
 
 void valleyview_set_rps(struct drm_device *dev, u8 val)
@@ -2878,6 +2880,73 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 	valleyview_punit_write(dev_priv, 0xd2, 0x1EF53);
 }
 
+/* vlv_rps_timer_work: Set the frequency to Rpe if Gfx clocks are down
+ * @work: work_struct
+ *
+ * If Gfx clock is UP, then reset the timer as there is a possibility
+ * that normal Turbo logic can bring down the freq to Rpe.
+ * If Gfx clock is Down, then
+ * 1. Mask Turbo interrupts
+ * 2. Bring up Gfx clock
+ * 3. Change the freq to Rpe and wait till P-Unit updates freq
+ * 4. Clear the Force GFX CLK ON bit so that Gfx can down
+ * 5. Unmask Turbo interrupts
+*/
+static void vlv_rps_timer_work(struct work_struct *work)
+{
+	drm_i915_private_t *dev_priv = container_of(work, drm_i915_private_t,
+							rps.rps_timer_work);
+
+	mutex_lock(&dev_priv->dev->struct_mutex);
+
+	if (I915_READ(VLV_GTLC_SURVIVABILITY_REG) & VLV_GFX_CLK_STATUS_BIT) {
+		/* GT is not power gated. Cancel any pending ones
+		 * and reschedule again
+		 */
+		cancel_delayed_work(&dev_priv->rps.rps_timer_work);
+
+		queue_delayed_work(dev_priv->wq, &dev_priv->rps.rps_timer_work,
+				msecs_to_jiffies(VLV_RPS_TIMER_VALUE));
+	} else {
+		/* Mask turbo interrupt so that they will not come in between */
+		I915_WRITE(GEN6_PMINTRMSK, 0xffffffff);
+
+		/* Bring up the Gfx clock */
+		I915_WRITE(VLV_GTLC_SURVIVABILITY_REG,
+			 I915_READ(VLV_GTLC_SURVIVABILITY_REG) |
+				VLV_GFX_CLK_FORCE_ON_BIT);
+
+		if (wait_for(((VLV_GFX_CLK_STATUS_BIT &
+		     I915_READ(VLV_GTLC_SURVIVABILITY_REG)) != 0), 500)) {
+			DRM_ERROR("GFX_CLK_ON request timed out\n");
+			mutex_unlock(&dev_priv->dev->struct_mutex);
+			return;
+		}
+
+		/* Set Rpe */
+		valleyview_set_rps(dev_priv->dev, dev_priv->rps.rpe_delay);
+
+		/* Make sure Rpe is set by P-Unit*/
+		if (wait_for((valleyview_update_cur_delay(dev_priv->dev) &&
+		   (dev_priv->rps.cur_delay == dev_priv->rps.rpe_delay)),
+		   100))
+			DRM_DEBUG_DRIVER("Not able to set Rpe\n");
+
+		/* Release the Gfx clock */
+		I915_WRITE(VLV_GTLC_SURVIVABILITY_REG,
+			I915_READ(VLV_GTLC_SURVIVABILITY_REG) &
+				~VLV_GFX_CLK_FORCE_ON_BIT);
+
+		/* Unmask Turbo interrupts */
+		if (dev_priv->use_RC0_residency_for_turbo)
+			I915_WRITE(GEN6_PMINTRMSK, ~VLV_PM_DEFERRED_EVENTS);
+		else
+			I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
+	}
+
+	mutex_unlock(&dev_priv->dev->struct_mutex);
+}
+
 bool vlv_turbo_initialize(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -2915,6 +2984,9 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE12, &val);
 	dev_priv->rps.min_delay = dev_priv->rps.min_delay | ((val & 0x7) << 5);
 	DRM_DEBUG_DRIVER("min GPU freq: %d\n", dev_priv->rps.min_delay);
+
+	/* This min_delay is rpe. Cache it seperately for tracking*/
+	dev_priv->rps.rpe_delay = dev_priv->rps.min_delay;
 
 	valleyview_punit_read(dev_priv, PUNIT_FUSE_BUS2, &val);
 	DRM_DEBUG_DRIVER("max GPLL freq: %d\n", val);
@@ -2984,10 +3056,18 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	I915_WRITE(GEN6_PMIMR, 0);
 	spin_unlock_irqrestore(&dev_priv->rps.lock, flags);
 
+	/* Upon RC6 entry, VLV_DEFRRED_EVENTS will not be generated
+	 * and if freq is more than Rpe, it will consume more power
+	 * Have a delayed work item to track this and bring freq to Rpe
+	 */
+	INIT_DELAYED_WORK(&dev_priv->rps.rps_timer_work,
+		vlv_rps_timer_work);
+
 	/* Use RC0 residency method for rps control as WA */
 	if (dev_priv->use_RC0_residency_for_turbo) {
 		I915_WRITE(GEN6_PMIER, VLV_PM_DEFERRED_EVENTS);
 		I915_WRITE(GEN6_PMINTRMSK, ~VLV_PM_DEFERRED_EVENTS);
+
 	} else {
 		I915_WRITE(GEN6_PMIER, GEN6_PM_DEFERRED_EVENTS);
 		I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
@@ -3000,6 +3080,9 @@ void vlv_turbo_disable(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
+
+	/* Cancel the timer work item first */
+	cancel_delayed_work_sync(&dev_priv->rps.rps_timer_work);
 
 	I915_WRITE(GEN6_PMINTRMSK, 0xffffffff);
 	I915_WRITE(GEN6_PMIER, 0);
