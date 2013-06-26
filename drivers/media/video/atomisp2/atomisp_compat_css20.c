@@ -809,7 +809,6 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 {
 	struct atomisp_s3a_buf *s3a_buf, *_s3a_buf;
 	struct atomisp_dis_buf *dis_buf, *_dis_buf;
-	struct atomisp_device *isp = asd->isp;
 
 	/* 3A statistics use vmalloc, DIS use kmalloc */
 	if (asd->params.curr_grid_info.dvs_grid.enable) {
@@ -823,7 +822,7 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 		asd->params.dvs_ver_coef_bytes = 0;
 		asd->params.dis_proj_data_valid = false;
 		list_for_each_entry_safe(dis_buf, _dis_buf,
-						&isp->dis_stats, list) {
+						&asd->dis_stats, list) {
 			ia_css_isp_dvs_statistics_free(dis_buf->dis_data);
 			list_del(&dis_buf->list);
 			kfree(dis_buf);
@@ -835,7 +834,7 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 		asd->params.s3a_buf_data_valid = false;
 		asd->params.s3a_output_bytes = 0;
 		list_for_each_entry_safe(s3a_buf, _s3a_buf,
-						&isp->s3a_stats, list) {
+						&asd->s3a_stats, list) {
 			ia_css_isp_3a_statistics_free(s3a_buf->s3a_data);
 			list_del(&s3a_buf->list);
 			kfree(s3a_buf);

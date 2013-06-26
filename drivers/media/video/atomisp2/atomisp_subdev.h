@@ -263,6 +263,23 @@ struct atomisp_sub_device {
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_stream_env stream_env;
 #endif
+	unsigned int s3a_bufs_in_css[CSS_PIPE_ID_NUM];
+	unsigned int dis_bufs_in_css;
+
+	struct list_head s3a_stats;
+	struct list_head dis_stats;
+
+	struct atomisp_css_frame *vf_frame; /* TODO: needed? */
+	struct atomisp_css_frame *raw_output_frame;
+	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
+
+	int input_curr;
+
+	atomic_t sof_count;
+	atomic_t sequence;      /* Sequence value that is assigned to buffer. */
+	atomic_t sequence_temp;
+
+	unsigned int streaming; /* Hold both mutex and lock to change this */
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];
@@ -295,7 +312,7 @@ void atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			     uint32_t which, uint32_t pad,
 			     struct v4l2_mbus_framefmt *ffmt);
 
-int atomisp_update_run_mode(struct atomisp_device *isp);
+int atomisp_update_run_mode(struct atomisp_sub_device *asd);
 
 void atomisp_subdev_unregister_entities(struct atomisp_sub_device *asd);
 int atomisp_subdev_register_entities(struct atomisp_sub_device *asd,

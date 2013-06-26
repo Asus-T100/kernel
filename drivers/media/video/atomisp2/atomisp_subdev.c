@@ -356,7 +356,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			crop[pad]->width -= pad_w, crop[pad]->height -= pad_h;
 
 		/* if subdev type is SOC camera,we do not need to set DVS */
-		if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
+		if (isp->inputs[isp_sd->input_curr].type == SOC_CAMERA)
 			isp_sd->params.video_dis_en = 0;
 
 		if (isp_sd->params.video_dis_en &&
@@ -460,22 +460,23 @@ static int isp_subdev_set_selection(struct v4l2_subdev *sd,
 					    sel->target, sel->flags, &sel->r);
 }
 
-static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
+static int atomisp_get_sensor_bin_factor(struct atomisp_sub_device *asd)
 {
 	struct v4l2_control ctrl = {0};
+	struct atomisp_device *isp = asd->isp;
 	int hbin, vbin;
 	int ret;
 
-	if (isp->inputs[isp->input_curr].type == FILE_INPUT ||
-		isp->inputs[isp->input_curr].type == TEST_PATTERN)
+	if (isp->inputs[asd->input_curr].type == FILE_INPUT ||
+		isp->inputs[asd->input_curr].type == TEST_PATTERN)
 		return 0;
 
 	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
+	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera, core,
 			       g_ctrl, &ctrl);
 	hbin = ctrl.value;
 	ctrl.id = V4L2_CID_BIN_FACTOR_VERT;
-	ret |= v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
+	ret |= v4l2_subdev_call(isp->inputs[asd->input_curr].camera, core,
 				g_ctrl, &ctrl);
 	vbin = ctrl.value;
 
@@ -525,7 +526,7 @@ void atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		if (which == V4L2_SUBDEV_FORMAT_ACTIVE) {
 			atomisp_css_input_set_resolution(isp_sd, ffmt);
 			atomisp_css_input_set_binning_factor(isp_sd,
-				atomisp_get_sensor_bin_factor(isp));
+				atomisp_get_sensor_bin_factor(isp_sd));
 			atomisp_css_input_set_bayer_order(isp_sd,
 							  fc->bayer_order);
 			atomisp_css_input_set_format(isp_sd, fc->in_sh_fmt);
@@ -604,6 +605,8 @@ static const struct v4l2_subdev_ops isp_subdev_v4l2_ops = {
 static void isp_subdev_init_params(struct atomisp_sub_device *asd)
 {
 	/* parameters initialization */
+	INIT_LIST_HEAD(&asd->s3a_stats);
+	INIT_LIST_HEAD(&asd->dis_stats);
 }
 
 /*
@@ -685,8 +688,9 @@ static const struct media_entity_operations isp_subdev_media_ops = {
 /*	 .set_power = v4l2_subdev_set_power,	*/
 };
 
-static int __atomisp_update_run_mode(struct atomisp_device *isp)
+static int __atomisp_update_run_mode(struct atomisp_sub_device *asd)
 {
+	struct atomisp_device *isp = asd->isp;
 	struct v4l2_ctrl *ctrl = isp->asd.run_mode;
 	struct v4l2_ctrl *c;
 	struct v4l2_streamparm p = {0};
@@ -704,7 +708,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 		mode = ctrl->val;
 
 	c = v4l2_ctrl_find(
-		isp->inputs[isp->input_curr].camera->ctrl_handler,
+		isp->inputs[asd->input_curr].camera->ctrl_handler,
 		V4L2_CID_RUN_MODE);
 
 	if (c)
@@ -714,28 +718,28 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 	p.parm.capture.capturemode = modes[mode];
 
 	return v4l2_subdev_call(
-		isp->inputs[isp->input_curr].camera, video, s_parm, &p);
+		isp->inputs[asd->input_curr].camera, video, s_parm, &p);
 }
 
-int atomisp_update_run_mode(struct atomisp_device *isp)
+int atomisp_update_run_mode(struct atomisp_sub_device *asd)
 {
 	int rval;
 
-	mutex_lock(isp->asd.ctrl_handler.lock);
-	rval = __atomisp_update_run_mode(isp);
-	mutex_unlock(isp->asd.ctrl_handler.lock);
+	mutex_lock(asd->ctrl_handler.lock);
+	rval = __atomisp_update_run_mode(asd);
+	mutex_unlock(asd->ctrl_handler.lock);
 
 	return rval;
 }
 
 static int s_ctrl(struct v4l2_ctrl *ctrl)
 {
-	struct atomisp_device *isp = container_of(
-		ctrl->handler, struct atomisp_sub_device, ctrl_handler)->isp;
+	struct atomisp_sub_device *asd = container_of(
+		ctrl->handler, struct atomisp_sub_device, ctrl_handler);
 
 	switch (ctrl->id) {
 	case V4L2_CID_RUN_MODE:
-		return __atomisp_update_run_mode(isp);
+		return __atomisp_update_run_mode(asd);
 	}
 
 	return 0;

@@ -453,6 +453,8 @@ static int atomisp_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
+	/* FIXME: only has one isp_subdev at present */
+	struct atomisp_sub_device *asd = &isp->asd;
 	unsigned long flags;
 	int ret;
 
@@ -464,7 +466,7 @@ static int atomisp_suspend(struct device *dev)
 		return -EBUSY;
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
+	if (asd->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		v4l2_err(&atomisp_dev,
 			    "atomisp cannot suspend at this time.\n");
@@ -1047,9 +1049,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		err = -ENOENT;
 		goto load_fw_fail;
 	}
-
-	INIT_LIST_HEAD(&isp->s3a_stats);
-	INIT_LIST_HEAD(&isp->dis_stats);
 
 	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
 	if (isp->wdt_work_queue == NULL) {

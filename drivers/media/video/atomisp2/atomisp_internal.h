@@ -224,8 +224,6 @@ struct atomisp_device {
 		void *acc_stages;
 	} acc;
 
-	unsigned int s3a_bufs_in_css[CSS_PIPE_ID_NUM];
-	unsigned int dis_bufs_in_css;
 
 	/* ISP modules */
 	struct atomisp_sub_device asd;
@@ -245,15 +243,8 @@ struct atomisp_device {
 	 * "mutex".
 	 */
 	struct mutex streamoff_mutex;
-	struct list_head s3a_stats;
-	struct list_head dis_stats;
-
-	struct atomisp_css_frame *vf_frame; /* TODO: needed? */
-	struct atomisp_css_frame *raw_output_frame;
-	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
 
 	int input_cnt;
-	int input_curr;
 	struct atomisp_input_subdev inputs[ATOM_ISP_MAX_INPUTS];
 	struct v4l2_subdev *flash;
 	struct v4l2_subdev *motor;
@@ -271,12 +262,7 @@ struct atomisp_device {
 	atomic_t wdt_count;
 	unsigned int wdt_duration;	/* in jiffies */
 
-	atomic_t sof_count;
-	atomic_t sequence;      /* Sequence value that is assigned to buffer. */
-	atomic_t sequence_temp;
-
 	spinlock_t lock; /* Just for streaming below */
-	unsigned int streaming; /* Hold both mutex and lock to change this */
 
 	bool need_gfx_throttle;
 

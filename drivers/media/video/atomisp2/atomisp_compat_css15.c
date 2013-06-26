@@ -363,7 +363,6 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 {
 	struct atomisp_s3a_buf *s3a_buf, *_s3a_buf;
 	struct atomisp_dis_buf *dis_buf, *_dis_buf;
-	struct atomisp_device *isp = asd->isp;
 
 	/* 3A statistics use vmalloc, DIS use kmalloc */
 	vfree(asd->params.s3a_output_buf);
@@ -386,13 +385,13 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 	asd->params.dis_ver_coef_bytes = 0;
 	asd->params.dis_proj_data_valid = false;
 
-	list_for_each_entry_safe(s3a_buf, _s3a_buf, &isp->s3a_stats, list) {
+	list_for_each_entry_safe(s3a_buf, _s3a_buf, &asd->s3a_stats, list) {
 		sh_css_free_stat_buffers(&s3a_buf->s3a_data, NULL);
 		list_del(&s3a_buf->list);
 		kfree(s3a_buf);
 	}
 
-	list_for_each_entry_safe(dis_buf, _dis_buf, &isp->dis_stats, list) {
+	list_for_each_entry_safe(dis_buf, _dis_buf, &asd->dis_stats, list) {
 		sh_css_free_stat_buffers(NULL, &dis_buf->dis_data);
 		list_del(&dis_buf->list);
 		kfree(dis_buf);

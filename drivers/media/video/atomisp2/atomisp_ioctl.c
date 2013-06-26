@@ -501,9 +501,12 @@ static int atomisp_g_chip_ident(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct atomisp_sub_device *asd =
+		atomisp_to_video_pipe(vdev)->asd;
+
 	int ret = 0;
 
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 			       core, g_chip_ident, chip);
 
 	if (ret)
@@ -572,9 +575,11 @@ static int atomisp_g_input(struct file *file, void *fh, unsigned int *input)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct atomisp_sub_device *asd =
+		atomisp_to_video_pipe(vdev)->asd;
 
 	mutex_lock(&isp->mutex);
-	*input = isp->input_curr;
+	*input = asd->input_curr;
 	mutex_unlock(&isp->mutex);
 
 	return 0;
@@ -586,6 +591,8 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct atomisp_sub_device *asd =
+		atomisp_to_video_pipe(vdev)->asd;
 	struct v4l2_subdev *camera = NULL;
 	int ret;
 
@@ -613,8 +620,8 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 	}
 
 	/* power off the current sensor, as it is not used this time */
-	if (isp->input_curr != input) {
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	if (asd->input_curr != input) {
+		ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 				       core, s_power, 0);
 		if (ret)
 			v4l2_warn(&atomisp_dev,
@@ -633,7 +640,7 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		ret = v4l2_subdev_call(isp->inputs[input].motor, core,
 				       init, 1);
 
-	isp->input_curr = input;
+	asd->input_curr = input;
 	mutex_unlock(&isp->mutex);
 
 	return 0;
@@ -756,6 +763,8 @@ static int atomisp_enum_frameintervals(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct atomisp_sub_device *asd =
+		atomisp_to_video_pipe(vdev)->asd;
 	int ret;
 
 	if (arg->index != 0)
@@ -768,7 +777,7 @@ static int atomisp_enum_frameintervals(struct file *file, void *fh,
 		return -EINVAL;
 
 	mutex_lock(&isp->mutex);
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 		video, enum_frameintervals, arg);
 
 	if (ret) {
@@ -821,7 +830,7 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_sub_device *asd)
 	int count = ATOMISP_CSS_Q_DEPTH * 2;
 	struct atomisp_device *isp = asd->isp;
 
-	if (!list_empty(&isp->s3a_stats) && !list_empty(&isp->dis_stats))
+	if (!list_empty(&asd->s3a_stats) && !list_empty(&asd->dis_stats))
 		return 0;
 
 	dev_dbg(isp->dev, "allocating %d 3a & dis buffers\n", count);
@@ -847,8 +856,8 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_sub_device *asd)
 			goto error;
 		}
 
-		list_add_tail(&s3a_buf->list, &isp->s3a_stats);
-		list_add_tail(&dis_buf->list, &isp->dis_stats);
+		list_add_tail(&s3a_buf->list, &asd->s3a_stats);
+		list_add_tail(&dis_buf->list, &asd->dis_stats);
 	}
 
 	return 0;
@@ -856,13 +865,13 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_sub_device *asd)
 error:
 	dev_err(isp->dev, "failed to allocate statistics buffers\n");
 
-	list_for_each_entry_safe(dis_buf, _dis_buf, &isp->dis_stats, list) {
+	list_for_each_entry_safe(dis_buf, _dis_buf, &asd->dis_stats, list) {
 		atomisp_css_free_dis_buffers(dis_buf);
 		list_del(&dis_buf->list);
 		kfree(dis_buf);
 	}
 
-	list_for_each_entry_safe(s3a_buf, _s3a_buf, &isp->s3a_stats, list) {
+	list_for_each_entry_safe(s3a_buf, _s3a_buf, &asd->s3a_stats, list) {
 		atomisp_css_free_3a_buffers(s3a_buf);
 		list_del(&s3a_buf->list);
 		kfree(s3a_buf);
@@ -878,7 +887,6 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	struct v4l2_requestbuffers *req)
 {
 	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct atomisp_sub_device *asd = pipe->asd;
 	struct atomisp_css_frame_info frame_info;
@@ -933,8 +941,8 @@ error:
 		atomisp_css_frame_free(vm_mem->vaddr);
 	}
 
-	if (isp->vf_frame)
-		atomisp_css_frame_free(isp->vf_frame);
+	if (asd->vf_frame)
+		atomisp_css_frame_free(asd->vf_frame);
 
 	return -ENOMEM;
 }
@@ -1014,7 +1022,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		goto error;
 	}
 
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
+	if (asd->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
 		v4l2_err(&atomisp_dev, "ISP ERROR\n");
 		ret = -EIO;
 		goto error;
@@ -1097,10 +1105,10 @@ done:
 		goto error;
 
 	/* TODO: do this better, not best way to queue to css */
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (asd->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
 		atomisp_qbuffers_to_css(asd);
 
-		if (!timer_pending(&isp->wdt) && atomisp_buffers_queued(isp))
+		if (!timer_pending(&isp->wdt) && atomisp_buffers_queued(asd))
 			mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	}
 	mutex_unlock(&isp->mutex);
@@ -1165,6 +1173,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
+	struct atomisp_sub_device *asd = pipe->asd;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int ret = 0;
 
@@ -1175,7 +1184,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		return -EIO;
 	}
 
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
+	if (asd->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
 		mutex_unlock(&isp->mutex);
 		v4l2_err(&atomisp_dev, "ISP ERROR\n");
 		return -EIO;
@@ -1191,7 +1200,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	}
 	mutex_lock(&isp->mutex);
 	buf->bytesused = pipe->pix.sizeimage;
-	buf->reserved = isp->frame_status[buf->index];
+	buf->reserved = asd->frame_status[buf->index];
 	mutex_unlock(&isp->mutex);
 
 	dev_dbg(isp->dev, "dqbuf buffer %d (%s)\n", buf->index, vdev->name);
@@ -1271,7 +1280,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
+	if (asd->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
 		ret = -EBUSY;
 		goto out;
 	}
@@ -1325,7 +1334,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto out;
 	}
 
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (asd->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
 		atomisp_qbuffers_to_css(asd);
 		goto start_sensor;
 	}
@@ -1371,15 +1380,16 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	/* Make sure that update_isp_params is called at least once.*/
 	asd->params.css_update_params_needed = true;
-	isp->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
-	atomic_set(&isp->sof_count, -1);
-	atomic_set(&isp->sequence, -1);
-	atomic_set(&isp->sequence_temp, -1);
+	asd->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
+	atomic_set(&asd->sof_count, -1);
+	atomic_set(&asd->sequence, -1);
+	atomic_set(&asd->sequence_temp, -1);
 	atomic_set(&isp->wdt_count, 0);
 	if (isp->sw_contex.file_input)
 		isp->wdt_duration = ATOMISP_ISP_FILE_TIMEOUT_DURATION;
 	else
 		isp->wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
+
 	isp->sw_contex.invalid_frame = false;
 	asd->params.dis_proj_data_valid = false;
 
@@ -1412,14 +1422,14 @@ start_sensor:
 	}
 
 	/* stream on the sensor */
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 			       video, s_stream, 1);
 	if (ret) {
 		atomisp_reset(isp);
 		ret = -EINVAL;
 	}
 
-	if (atomisp_buffers_queued(isp))
+	if (atomisp_buffers_queued(asd))
 		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 
 out:
@@ -1487,8 +1497,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		return 0;
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
-		isp->streaming = ATOMISP_DEVICE_STREAMING_STOPPING;
+	if (asd->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
+		asd->streaming = ATOMISP_DEVICE_STREAMING_STOPPING;
 		first_streamoff = true;
 	}
 	spin_unlock_irqrestore(&isp->lock, flags);
@@ -1503,7 +1513,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		 * the pipeline.
 		 */
 		if (isp->sw_contex.file_input)
-			v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+			v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 					video, s_stream, 0);
 
 		mutex_lock(&isp->mutex);
@@ -1512,7 +1522,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 
 	spin_lock_irqsave(&isp->lock, flags);
 	if (atomisp_streaming_count(isp) == 1)
-		isp->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
+		asd->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
 	spin_unlock_irqrestore(&isp->lock, flags);
 
 	if (!first_streamoff) {
@@ -1522,7 +1532,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		goto stopsensor;
 	}
 
-	atomisp_clear_css_buffer_counters(isp);
+	atomisp_clear_css_buffer_counters(asd);
 
 	if (!isp->sw_contex.file_input)
 		atomisp_css_irq_enable(isp, CSS_IRQ_INFO_CSS_RECEIVER_SOF,
@@ -1572,7 +1582,7 @@ stopsensor:
 		return 0;
 
 	if (!isp->sw_contex.file_input)
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 				       video, s_stream, 0);
 
 	if (isp->flash) {
@@ -1660,7 +1670,7 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_SHARPNESS:
 	case V4L2_CID_3A_LOCK:
 		mutex_unlock(&isp->mutex);
-		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		return v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 				       core, g_ctrl, control);
 	case V4L2_CID_COLORFX:
 		ret = atomisp_color_effect(asd, 0, &control->value);
@@ -1731,7 +1741,7 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 	case V4L2_CID_SHARPNESS:
 	case V4L2_CID_3A_LOCK:
 		mutex_unlock(&isp->mutex);
-		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		return v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 				       core, s_ctrl, control);
 	case V4L2_CID_COLORFX:
 		ret = atomisp_color_effect(asd, 1, &control->value);
@@ -1819,20 +1829,20 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 			 * driver
 			 */
 			ret = v4l2_subdev_call(isp->inputs
-					       [isp->input_curr].camera,
+					       [asd->input_curr].camera,
 					       core, g_ctrl, &ctrl);
 			break;
 		case V4L2_CID_FOCUS_ABSOLUTE:
 		case V4L2_CID_FOCUS_RELATIVE:
 		case V4L2_CID_FOCUS_STATUS:
 		case V4L2_CID_FOCUS_AUTO:
-			if (isp->inputs[isp->input_curr].motor)
+			if (isp->inputs[asd->input_curr].motor)
 				ret = v4l2_subdev_call(
-					isp->inputs[isp->input_curr].motor,
+					isp->inputs[asd->input_curr].motor,
 					core, g_ctrl, &ctrl);
 			else
 				ret = v4l2_subdev_call(
-					isp->inputs[isp->input_curr].camera,
+					isp->inputs[asd->input_curr].camera,
 					core, g_ctrl, &ctrl);
 			break;
 		case V4L2_CID_FLASH_STATUS:
@@ -1853,7 +1863,7 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 			break;
 		case V4L2_CID_G_SKIP_FRAMES:
 			ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera,
+				isp->inputs[asd->input_curr].camera,
 				sensor, g_skip_frames, (u32 *)&ctrl.value);
 			break;
 		default:
@@ -1920,20 +1930,20 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_TEST_PATTERN:
 		case V4L2_CID_3A_LOCK:
 			ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera,
+				isp->inputs[asd->input_curr].camera,
 				core, s_ctrl, &ctrl);
 			break;
 		case V4L2_CID_FOCUS_ABSOLUTE:
 		case V4L2_CID_FOCUS_RELATIVE:
 		case V4L2_CID_FOCUS_STATUS:
 		case V4L2_CID_FOCUS_AUTO:
-			if (isp->inputs[isp->input_curr].motor)
+			if (isp->inputs[asd->input_curr].motor)
 				ret = v4l2_subdev_call(
-					isp->inputs[isp->input_curr].motor,
+					isp->inputs[asd->input_curr].motor,
 					core, s_ctrl, &ctrl);
 			else
 				ret = v4l2_subdev_call(
-					isp->inputs[isp->input_curr].camera,
+					isp->inputs[asd->input_curr].camera,
 					core, s_ctrl, &ctrl);
 			break;
 		case V4L2_CID_FLASH_STATUS:
@@ -2033,6 +2043,8 @@ static int atomisp_s_parm(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct atomisp_sub_device *asd =
+		atomisp_to_video_pipe(vdev)->asd;
 	int mode;
 	int rval;
 
@@ -2050,7 +2062,7 @@ static int atomisp_s_parm(struct file *file, void *fh,
 
 		fi.interval = parm->parm.capture.timeperframe;
 
-		rval = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		rval = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 					video, s_frame_interval, &fi);
 		if (!rval)
 			parm->parm.capture.timeperframe = fi.interval;
@@ -2249,25 +2261,25 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		break;
 
 	case ATOMISP_IOC_G_SENSOR_MODE_DATA:
-		err = atomisp_get_sensor_mode_data(isp, arg);
+		err = atomisp_get_sensor_mode_data(asd, arg);
 		break;
 
 	case ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA:
 		mutex_unlock(&isp->mutex);
-		if (isp->inputs[isp->input_curr].motor)
+		if (isp->inputs[asd->input_curr].motor)
 			return v4l2_subdev_call(
-					isp->inputs[isp->input_curr].motor,
+					isp->inputs[asd->input_curr].motor,
 					core, ioctl, cmd, arg);
 		else
 			return v4l2_subdev_call(
-					isp->inputs[isp->input_curr].camera,
+					isp->inputs[asd->input_curr].camera,
 					core, ioctl, cmd, arg);
 
 	case ATOMISP_IOC_S_EXPOSURE:
 	case ATOMISP_IOC_G_SENSOR_CALIBRATION_GROUP:
 	case ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA:
 		mutex_unlock(&isp->mutex);
-		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		return v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 					core, ioctl, cmd, arg);
 
 	case ATOMISP_IOC_ACC_LOAD:

@@ -133,23 +133,22 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *asd,
 				enum atomisp_css_pipe_id css_pipe_id)
 {
 	struct atomisp_s3a_buf *s3a_buf;
-	struct atomisp_device *isp = asd->isp;
 
-	if (list_empty(&isp->s3a_stats)) {
+	if (list_empty(&asd->s3a_stats)) {
 		WARN(1, "%s: No s3a buffers available!\n", __func__);
 		return -EINVAL;
 	}
 
-	while (isp->s3a_bufs_in_css[css_pipe_id] < ATOMISP_CSS_Q_DEPTH) {
-		s3a_buf = list_entry(isp->s3a_stats.next,
+	while (asd->s3a_bufs_in_css[css_pipe_id] < ATOMISP_CSS_Q_DEPTH) {
+		s3a_buf = list_entry(asd->s3a_stats.next,
 				struct atomisp_s3a_buf, list);
-		list_move_tail(&s3a_buf->list, &isp->s3a_stats);
+		list_move_tail(&s3a_buf->list, &asd->s3a_stats);
 
 		if (atomisp_q_s3a_buffer_to_css(asd, s3a_buf,
 						css_pipe_id))
 			return -EINVAL;
 
-		isp->s3a_bufs_in_css[css_pipe_id]++;
+		asd->s3a_bufs_in_css[css_pipe_id]++;
 	}
 
 	return 0;
@@ -158,24 +157,22 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *asd,
 int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *asd,
 				enum atomisp_css_pipe_id css_pipe_id)
 {
-	struct atomisp_device *isp = asd->isp;
-
-	if (list_empty(&isp->dis_stats)) {
+	if (list_empty(&asd->dis_stats)) {
 		WARN(1, "%s: No dis buffers available!\n", __func__);
 		return -EINVAL;
 	}
 
-	while (isp->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
+	while (asd->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
 		struct atomisp_dis_buf *dis_buf =
-			list_entry(isp->dis_stats.next,
+			list_entry(asd->dis_stats.next,
 				   struct atomisp_dis_buf, list);
-		list_move_tail(&dis_buf->list, &isp->dis_stats);
+		list_move_tail(&dis_buf->list, &asd->dis_stats);
 
 		if (atomisp_q_dis_buffer_to_css(asd, dis_buf,
 						css_pipe_id))
 			return -EINVAL;
 
-		isp->dis_bufs_in_css++;
+		asd->dis_bufs_in_css++;
 	}
 
 	return 0;
@@ -413,7 +410,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 
 	/* Add for channel */
 	if (isp->inputs[0].camera)
-		isp->input_curr = 0;
+		asd->input_curr = 0;
 
 	atomisp_css_init_struct(asd);
 
@@ -580,7 +577,7 @@ static int atomisp_release(struct file *file)
 	if (ret < 0 && ret != -ENODEV && ret != -ENOIOCTLCMD)
 		dev_warn(isp->dev, "Failed to power-off flash\n");
 
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 				       core, s_power, 0);
 	if (ret)
 		dev_warn(isp->dev, "Failed to power-off sensor\n");
@@ -758,7 +755,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 			ret = -EINVAL;
 			goto error;
 		}
-		raw_virt_addr = isp->raw_output_frame;
+		raw_virt_addr = asd->raw_output_frame;
 		if (raw_virt_addr == NULL) {
 			dev_err(isp->dev, "Failed to request RAW frame\n");
 			ret = -EINVAL;
