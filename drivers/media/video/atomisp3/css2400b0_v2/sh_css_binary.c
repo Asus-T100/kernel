@@ -46,7 +46,8 @@ sh_css_binary_grid_info(const struct sh_css_binary *binary,
 	struct ia_css_3a_grid_info *s3a_info;
 	struct ia_css_dvs_grid_info *dvs_info;
 
-	assert_exit(binary && info);
+	assert(binary != NULL);
+	assert(info != NULL);
 	s3a_info = &info->s3a_grid;
 	dvs_info = &info->dvs_grid;
 
@@ -94,7 +95,7 @@ sh_css_binary_grid_info(const struct sh_css_binary *binary,
 static void
 init_pc_histogram(struct sh_css_pc_histogram *histo)
 {
-	assert_exit(histo);
+assert(histo != NULL);
 
 	histo->length = 0;
 	histo->run = NULL;
@@ -105,7 +106,8 @@ static void
 init_metrics(struct sh_css_binary_metrics *metrics,
 	     const struct ia_css_binary_info *info)
 {
-	assert_exit(metrics && info);
+assert(metrics != NULL);
+assert(info != NULL);
 
 	metrics->mode = info->mode;
 	metrics->id   = info->id;
@@ -120,7 +122,7 @@ supports_output_format(const struct ia_css_binary_info *info,
 {
 	int i;
 
-	assert_exit_code(info, false);
+assert(info != NULL);
 
 	for (i = 0; i < info->num_output_formats; i++) {
 		if (info->output_formats[i] == format)
@@ -136,7 +138,8 @@ init_binary_info(struct ia_css_binary_info *info, unsigned int i,
 	const unsigned char *blob = sh_css_blob_info[i].blob;
 	unsigned size = sh_css_blob_info[i].header.blob.size;
 
-	assert_exit_code(info && binary_found, IA_CSS_ERR_INTERNAL_ERROR);
+assert(info != NULL);
+assert(binary_found != NULL);
 
 	*info = sh_css_blob_info[i].header.info.isp;
 	*binary_found = blob != NULL;
@@ -246,16 +249,15 @@ sh_css_fill_binary_info(const struct ia_css_binary_info *info,
 		     isp_output_width = 0,
 		     isp_output_height = 0,
 		     s3a_isp_width;
-	unsigned char enable_ds;
-	bool enable_yuv_ds;
+	unsigned char enable_ds = info->enable.ds;
+	bool enable_yuv_ds = enable_ds & 2;
 	bool enable_hus = false;
 	bool enable_vus = false;
 	bool is_out_format_rgba888 = false;
 	unsigned int tmp_width, tmp_height;
 
-	assert_exit_code(info && binary, IA_CSS_ERR_INTERNAL_ERROR);
-	enable_ds = info->enable.ds;
-	enable_yuv_ds = enable_ds & 2;
+assert(info != NULL);
+assert(binary != NULL);
 
 	if (in_info != NULL) {
 		bits_per_pixel = in_info->raw_bit_depth;
@@ -271,9 +273,9 @@ sh_css_fill_binary_info(const struct ia_css_binary_info *info,
 			out_info->format == IA_CSS_FRAME_FORMAT_RGBA888;
 	}
 	if (info->enable.dvs_envelope) {
-		assert_exit_code(dvs_env, IA_CSS_ERR_INTERNAL_ERROR);
-		dvs_env_width  = max(dvs_env->width, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
-		dvs_env_height = max(dvs_env->height, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
+		assert(dvs_env);
+		dvs_env_width  = max(dvs_env->width, SH_CSS_MIN_DVS_ENVELOPE);
+		dvs_env_height = max(dvs_env->height, SH_CSS_MIN_DVS_ENVELOPE);
 	}
 	binary->dvs_envelope.width  = dvs_env_width;
 	binary->dvs_envelope.height = dvs_env_height;
@@ -306,7 +308,7 @@ sh_css_fill_binary_info(const struct ia_css_binary_info *info,
 	/* We first calculate the resolutions used by the ISP. After that,
 	 * we use those resolutions to compute sizes for tables etc. */
 	isp_internal_width = __ISP_INTERNAL_WIDTH(tmp_width,
-		dvs_env_width,
+		(int)dvs_env_width, /* the typecast here is added to avoid a signed/unsigned warning in visual studio */
 		info->left_cropping, info->mode,
 		info->c_subsampling,
 		info->output_num_chunks, info->pipelining,
@@ -378,9 +380,6 @@ sh_css_fill_binary_info(const struct ia_css_binary_info *info,
 		 * active instead of vfout port
 		 */
 		if (info->enable.raw_binning && continuous) {
-			if (in_info == NULL)
-				return IA_CSS_ERR_INTERNAL_ERROR;
-
 			binary->out_frame_info.res.width =
 				(in_info->res.width >> vf_log_ds);
 			binary->out_frame_info.padded_width = vf_out_width;
@@ -587,9 +586,9 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 	dvs_env.width = 0;
 	dvs_env.height = 0;
 
-	assert_exit_code(descr, IA_CSS_ERR_INTERNAL_ERROR);
+assert(descr != NULL);
 /* MW: used after an error check, may accept NULL, but doubtfull */
-	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
+assert(binary != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() enter: "
@@ -773,13 +772,15 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 			continue;
 		}
 
-		if (descr->binning && (isp_pipe_version == 1)) { // This code needs to be fixed CR2298; for now exclude this code for isp pipe version 2
-			if (!candidate->enable.fixed_bayer_ds && (req_in_info->res.width > 3264)) {
+		if (descr->binning) { // This code needs to be fixed CR2298; for now exclude this code for isp pipe version 2
+			/* Only use decimation above a certain limit */
+			unsigned in_width_limit = 3264; /* Decimation for 8Mp and up */
+			if (!candidate->enable.fixed_bayer_ds && req_in_info->res.width >= in_width_limit) {
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() [%d] continue: !%d && (%d > %d)\n", __LINE__, candidate->enable.fixed_bayer_ds,req_in_info->res.width, 3264);
 				continue;
 			}
-			if (candidate->enable.fixed_bayer_ds  && (req_in_info->res.width <= 3264)) {
+			if (candidate->enable.fixed_bayer_ds && req_in_info->res.width < in_width_limit) {
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() [%d] continue: %d && (%d <= %d)\n", __LINE__, candidate->enable.fixed_bayer_ds,req_in_info->res.width, 3264);
 				continue;
@@ -834,7 +835,7 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		break;
 	}
 /* MW: In case we haven't found a binary and hence the binary_info is uninitialised */
-	assert_exit_code(candidate, IA_CSS_ERR_INTERNAL_ERROR);
+assert(candidate != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() selected = %p, mode = %d ID = %d\n",candidate, candidate->mode, candidate->id);

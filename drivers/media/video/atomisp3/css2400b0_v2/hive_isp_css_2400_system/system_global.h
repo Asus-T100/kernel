@@ -25,11 +25,8 @@
  *
  * N.B. the 3 input formatters are of 2 different classess
  */
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
+
 #include <stdint.h>
-#endif
 
 #define IS_ISP_2400_SYSTEM
 /*
@@ -147,6 +144,8 @@ typedef enum {
 	GDC1_ID,
 	N_GDC_ID
 } gdc_ID_t;
+
+#define N_GDC_ID_CPP 2 // this extra define is needed because we want to use it also in the preprocessor, and that doesn't work with enums.
 
 typedef enum {
 	VAMEM0_ID = 0,

@@ -48,7 +48,7 @@ extern unsigned int sh_css_trace_level;
 
 /*! \brief Function for tracing to the provided printf function in the environment.
  * \param[in]	level		Level of the message.
- * \param[in]	format		printf like format string
+ * \param[in]	fmt		printf like format string
  * \param[in]	args		arguments for the format string
  */
 STORAGE_CLASS_INLINE void

@@ -68,20 +68,24 @@
 struct ia_css_blob_info {
 	/**< Static blob data */
 	uint32_t offset;		/**< Blob offset in fw file */
-	uint32_t size;		/**< Size of blob */
 	uint32_t prog_name_offset;  /**< offset wrt hdr in bytes */
+	uint32_t size;			/**< Size of blob */
+	uint32_t padding_size;	/**< total cummulative of bytes added due to section alignment */
+	uint32_t icache_source;	/**< Position of icache in blob */
+	uint32_t icache_size;	/**< Size of icache section */
+	uint32_t icache_padding;/**< bytes added due to icache section alignment */
 	uint32_t text_source;	/**< Position of text in blob */
 	uint32_t text_size;		/**< Size of text section */
-	uint32_t icache_source;	/**< Position of icache in blob */
-	uint32_t icache_size;		/**< Size of icache section */
+	uint32_t text_padding;	/**< bytes added due to text section alignment */
 	uint32_t data_source;	/**< Position of data in blob */
 	uint32_t data_target;	/**< Start of data in SP dmem */
 	uint32_t data_size;		/**< Size of text section */
+	uint32_t data_padding;	/**< bytes added due to data section alignment */
 	uint32_t bss_target;	/**< Start position of bss in SP dmem */
 	uint32_t bss_size;		/**< Size of bss section */
 	/**< Dynamic data filled by loader */
-	const void  *text;		/**< Text section within fw */
-	const void  *data;		/**< Sp data section */
+	const void  *code;		/**< Code section absolute pointer within fw, code = icache + text */
+	const void  *data;		/**< Data section absolute pointer within fw, data = data + bss */
 };
 
 /** Type of acceleration.
@@ -101,19 +105,7 @@ enum ia_css_fw_type {
 	ia_css_acc_firmware	/**< Firmware for accelrations */
 };
 
-#if defined(IS_ISP_2300_SYSTEM)
-enum ia_css_isp_memories {
-	IA_CSS_ISP_PMEM0 = 0,
-	IA_CSS_ISP_DMEM0,
-	IA_CSS_ISP_VMEM0,
-	IA_CSS_ISP_VAMEM0,
-	IA_CSS_ISP_VAMEM1,
-	N_IA_CSS_ISP_MEMORIES
-};
-
-#define IA_CSS_NUM_ISP_MEMORIES 5
-
-#elif defined(IS_ISP_2400_SYSTEM)
+#if defined(IS_ISP_2400_SYSTEM)
 enum ia_css_isp_memories {
 	IA_CSS_ISP_PMEM0 = 0,
 	IA_CSS_ISP_DMEM0,
@@ -128,7 +120,7 @@ enum ia_css_isp_memories {
 #define IA_CSS_NUM_ISP_MEMORIES 7
 
 #else
-#error "ia_css_types.h:  SYSTEM must be one of {ISP_2300_SYSTEM, ISP_2400_SYSTEM}"
+#error "ia_css_types.h:  SYSTEM must be one of {ISP_2400_SYSTEM}"
 #endif
 
 /** CSS data descriptor */
@@ -420,12 +412,15 @@ struct ia_css_acc_fw {
  * This is exported for accelerators implementing their own SP code.
  */
 struct ia_css_sp_init_dmem_cfg {
-	uint32_t   done;	      /**< Init has been done */
-	ia_css_ptr ddr_data_addr;  /**< data segment address in ddr  */
-	ia_css_ptr dmem_data_addr; /**< data segment address in dmem */
-	ia_css_ptr dmem_bss_addr;  /**< bss segment address in dmem  */
-	uint32_t   data_size;      /**< data segment size            */
-	uint32_t   bss_size;       /**< bss segment size             */
+	uint32_t        done;           /**< Init has been done */
+	ia_css_ptr      ddr_code_addr;  /**< code segment address in ddr  */
+	ia_css_ptr      ddr_data_addr;  /**< data segment address in ddr  */
+	uint32_t        pmem_text_addr; /**< text segment address in pmem */
+	uint32_t        dmem_data_addr; /**< data segment address in dmem */
+	uint32_t        dmem_bss_addr;  /**< bss segment address in dmem  */
+	uint32_t        text_size;      /**< text segment size            */
+	uint32_t        data_size;      /**< data segment size            */
+	uint32_t        bss_size;       /**< bss segment size             */
 };
 
 enum ia_css_sp_sleep_mode {

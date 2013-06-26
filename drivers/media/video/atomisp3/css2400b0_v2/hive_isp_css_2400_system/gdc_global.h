@@ -3,6 +3,8 @@
 
 #define IS_GDC_VERSION_2
 
+#include <stdint.h>
+
 #include "gdc_v2_defs.h"
 
 /*
@@ -41,6 +43,13 @@ typedef enum {
 	gdc_12_bpp = 12,
 	gdc_14_bpp = 14
 } gdc_bits_per_pixel_t;
+
+typedef struct gdc_scale_param_mem_s {
+	uint16_t  params[N_GDC_PARAM];
+	uint16_t  ipx_start_array[N_GDC_PARAM];
+	uint16_t  ibuf_offset[N_GDC_PARAM];
+	uint16_t  obuf_offset[N_GDC_PARAM];
+} gdc_scale_param_mem_t;
 
 typedef struct {
 	unsigned int      origin_x;

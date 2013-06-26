@@ -3,9 +3,7 @@
 
 #include "sp.h"
 
-#ifndef __KERNEL__
-#include "stdbool.h"	/* bool				*/
-#endif
+#include <stdbool.h>	/* bool				*/
 
 /* MW: The queue should be application agnostic */
 #include "sh_css_internal.h"
@@ -383,22 +381,22 @@ static void store_sp_queue(
 	if (size)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_size / sizeof(offset->size),
-			*size);
+			(uint8_t)*size);
 
 	if (step)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_step / sizeof(offset->step),
-			*step);
+			(uint8_t)*step);
 
 	if (start)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_start / sizeof(offset->start),
-			*start);
+			(uint8_t)*start);
 
 	if (end)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_end / sizeof(offset->end),
-			*end);
+			(uint8_t)*end);
 }
 
 static void load_sp_queue(

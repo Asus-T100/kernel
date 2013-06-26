@@ -7,6 +7,7 @@
 
 #include "memory_access.h"
 
+#define __INLINE_SP__
 #include "sp.h"
 
 #include "assert_support.h"
