@@ -5248,9 +5248,9 @@ static int penwell_otg_suspend(struct device *dev)
 	spin_unlock_irqrestore(&pnw->lock, flags);
 	flush_workqueue(pnw->qwork);
 	if (delayed_work_pending(&pnw->ulpi_check_work)) {
-		spin_lock(&pnw->lock);
+		spin_lock_irqsave(&pnw->lock, flags);
 		pnw->queue_stop = 0;
-		spin_unlock(&pnw->lock);
+		spin_unlock_irqrestore(&pnw->lock, flags);
 		ret = -EBUSY;
 		goto done;
 	} else
