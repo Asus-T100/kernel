@@ -734,6 +734,15 @@ static unsigned int bst_tlv[] = {
 	8, 8, TLV_DB_SCALE_ITEM(5200, 0, 0),
 };
 
+/* {-6dB, -4.5dB, -3dB, -1.5dB, 0dB, 0.83dB, 1.58dB, 2.28dB} */
+static unsigned int speaker_boost_tlv[] = {
+	TLV_DB_RANGE_HEAD(4),
+	0, 4, TLV_DB_SCALE_ITEM(-6000, 1500, 0),
+	5, 5, TLV_DB_SCALE_ITEM(830, 0, 0),
+	6, 6, TLV_DB_SCALE_ITEM(1580, 0, 0),
+	7, 7, TLV_DB_SCALE_ITEM(2280, 0, 0),
+};
+
 static int rt5640_dmic_get(struct snd_kcontrol *kcontrol,
 			   struct snd_ctl_elem_value *ucontrol)
 {
@@ -967,6 +976,8 @@ static const struct snd_kcontrol_new rt5640_snd_controls[] = {
 	SOC_ENUM("IN2 Mode Control", rt5640_in2_mode_enum),
 	SOC_SINGLE_TLV("IN2 Boost", RT5640_IN3_IN4,
 		       RT5640_BST_SFT2, 8, 0, bst_tlv),
+	SOC_SINGLE_TLV("Speaker Boost", RT5640_SPO_CLSD_RATIO,
+		       0, 7, 0, speaker_boost_tlv),
 	/* INL/INR Volume Control */
 	SOC_DOUBLE_TLV("IN Capture Volume", RT5640_INL_INR_VOL,
 		       RT5640_INL_VOL_SFT, RT5640_INR_VOL_SFT,
