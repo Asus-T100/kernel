@@ -987,7 +987,7 @@ sh_css_print_sp_debug_state(const struct sh_css_sp_debug_state *state);
 
 void
 sh_css_frame_info_set_width(struct sh_css_frame_info *info,
-			    unsigned int width);
+			    unsigned int width, unsigned int min_padded_width);
 
 /* Return whether the sp copy process should be started */
 bool
@@ -1033,6 +1033,7 @@ void
 sh_css_frame_info_init(struct sh_css_frame_info *info,
 		       unsigned int width,
 		       unsigned int height,
+		       unsigned int min_padded_width,
 		       enum sh_css_frame_format format);
 
 bool

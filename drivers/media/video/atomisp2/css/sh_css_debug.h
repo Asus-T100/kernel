@@ -59,12 +59,12 @@ extern unsigned int sh_css_trace_level;
 #ifdef __KERNEL__
 #include <linux/kernel.h>
 
-#define sh_css_dtrace(level, format, args...)				\
-	do {								\
-		if (sh_css_trace_level >= level) {			\
-			pr_debug("sh_css: " format, ##args);		\
-			trace_printk(format, ## args);			\
-		}							\
+#define sh_css_dtrace(level, format, args...)          \
+	do {                                           \
+		if (sh_css_trace_level >= level)   {    \
+			pr_debug("sh_css: " format, ##args);	\
+			trace_printk(format, ## args); \
+		}	\
 	} while (0)
 #if 0
 #define sh_css_dtrace(level, format, args...)          \
