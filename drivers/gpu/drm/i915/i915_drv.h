@@ -942,6 +942,18 @@ typedef struct drm_i915_private {
 
 	} rps;
 
+	/* Runtime power management related */
+	struct {
+		/* To track (num of get calls - num of put calls)
+		 * made by procfs
+		 */
+		atomic_t procfs_count;
+		/* To make sure ring get/put are in pair */
+		bool ring_active;
+		struct proc_dir_entry *i915_proc_file;
+		struct proc_dir_entry *local_proc_file;
+	} rpm;
+
 	u8 cur_delay;
 	u8 min_delay;
 	u8 max_delay;
@@ -1928,9 +1940,18 @@ __i915_write_bits(64, q)
 #define POSTING_READ(reg)	(void)I915_READ_NOTRACE(reg)
 #define POSTING_READ16(reg)	(void)I915_READ16_NOTRACE(reg)
 
-/* runtime power management related */
+/* Runtime power management related */
+#define RPM_AUTOSUSPEND		0x1
+#define RPM_SYNC		0x2
+#define RPM_SYNC_STRICT		0X4
+#define RPM_NOIDLE		0X8
+#define RPM_NORESUME		0x10
+
 int i915_rpm_init(struct drm_device *dev);
 int i915_rpm_deinit(struct drm_device *dev);
+
+int i915_rpm_get(struct drm_device *drm_dev, u32 flags);
+int i915_rpm_put(struct drm_device *drm_dev, u32 flags);
 
 int i915_rpm_get_ring(struct intel_ring_buffer *ring);
 int i915_rpm_put_ring(struct intel_ring_buffer *ring);
@@ -1943,6 +1964,10 @@ int i915_rpm_put_ioctl(struct drm_device *dev);
 
 int i915_rpm_get_disp(struct drm_device *dev);
 int i915_rpm_put_disp(struct drm_device *dev);
+
+/* Runtime Power Management related */
+int i915_rpm_get_procfs(struct inode *inode, struct file *file);
+int i915_rpm_put_procfs(struct inode *inode, struct file *file);
 
 #ifdef CONFIG_DRM_VXD_BYT
 int i915_rpm_get_vxd(struct drm_device *dev);
