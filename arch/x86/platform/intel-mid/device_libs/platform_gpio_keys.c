@@ -111,7 +111,7 @@ enum {
 };
 
 static struct gpio_keys_button lesskey_button_non_repeat[] = {
-	{KEY_POWER,		-1, 1, "power_btn",	EV_KEY, .acpi_idx = 0},
+	{KEY_POWER,		-1, 1, "power_btn", EV_KEY, .acpi_idx = 0, 1},
 	{ },
 };
 
