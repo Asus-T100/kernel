@@ -26,6 +26,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/mmc/sdhci-pci-data.h>
 #include <linux/acpi_gpio.h>
+#include <linux/lnw_gpio.h>
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_flis.h>
@@ -581,9 +582,16 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 	return 0;
 }
 
+#define BYT_SD_WP	7
 static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
+	/*
+	 * change GPIOC_7 to alternate function 2
+	 * This should be done in IA FW
+	 * Do this in driver as a temporal solution
+	 */
+	lnw_gpio_set_alt(BYT_SD_WP, 2);
 	return 0;
 }
 
@@ -615,7 +623,6 @@ static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
-	.quirks		= SDHCI_QUIRK_INVERTED_WRITE_PROTECT,
 	.allow_runtime_pm = true,
 	.probe_slot	= byt_sd_probe_slot,
 };
