@@ -1,31 +1,21 @@
-/*-------------------------------------------------------------------------
- * INTEL CONFIDENTIAL
+/*
+ *  psh_ia_common.c  - Intel PSH IA side driver common lib
  *
  * Copyright 2012-2013 Intel Corporation All Rights Reserved.
  *
- * This source code and all documentation related to the source code
- * ("Material") contains trade secrets and proprietary and confidential
- * information of Intel and its suppliers and licensors. The Material is
- * deemed highly confidential, and is protected by worldwide copyright and
- * trade secret laws and treaty provisions. No part of the Material may be
- * used, copied, reproduced, modified, published, uploaded, posted,
- * transmitted, distributed, or disclosed in any way without Intel's prior
- * express written permission.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License v2 as published by the
+ * Free Software Foundation.
  *
- * No license under any patent, copyright, trade secret or other
- * intellectual property right is granted to or conferred upon you by
- * disclosure or delivery of the Materials, either expressly, by
- * implication, inducement, estoppel or otherwise. Any license under such
- * intellectual property rights must be express and approved by Intel in
- * writing.
- *-------------------------------------------------------------------------
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA	02110-1301, USA
  */
-
-/*
- * Author: Wang Dong, Alek Du, Even Xu
- * Group: PSI, MCG
- */
-
 
 #include <linux/ctype.h>
 #include "psh_ia_common.h"
