@@ -1128,14 +1128,6 @@ static void handle_extcon_events(struct ulpmc_chip_info *chip)
 		dev_warn(&chip->client->dev, "unknown extcon cable\n");
 	}
 
-	/* update charge type to ULPMC */
-	if (ulpmc_chg_type) {
-		ret = ulpmc_write_reg8(chip->client,
-			ULPMC_SET_CHRG_TYPE_REG, ulpmc_chg_type);
-		if (ret < 0)
-			dev_warn(&chip->client->dev, "set chrg type failed\n");
-	}
-
 extcon_evt_ret:
 	chip->chrg.type = chrg_type;
 }
