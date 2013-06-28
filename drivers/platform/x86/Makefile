@@ -62,3 +62,4 @@ obj-$(CONFIG_APPLE_GMUX)	+= apple-gmux.o
 obj-$(CONFIG_INTEL_MID_OSNIB_ILB)	+= intel_mid_osnib_ilb.o
 obj-$(CONFIG_INTEL_MODEM_NVRAM)		+= intel_modem_nvram.o
 obj-$(CONFIG_INTEL_CRYSTALCOVE_PWRSRC)	+= intel_crystalcove_pwrsrc.o
+obj-$(CONFIG_INTEL_BYT_EC)	+= intel_byt_ec.o
