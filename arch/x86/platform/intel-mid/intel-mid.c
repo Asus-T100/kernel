@@ -79,7 +79,6 @@ __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
 struct kobject *spid_kobj;
 struct soft_platform_id spid;
-EXPORT_SYMBOL(spid);
 #ifdef CONFIG_ACPI
 struct kobject *pidv_kobj;
 struct platform_id pidv;

@@ -56,7 +56,6 @@
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel-mid.h>
-#include <linux/panel_psb_drv.h>
 
 #include "mdfld_dsi_dbi.h"
 #ifdef CONFIG_MID_DSI_DPU
@@ -79,6 +78,7 @@
 /* SH DPST */
 #include "psb_dpst_func.h"
 
+#include "asm/intel-mid.h"
 
 #define KEEP_UNUSED_CODE 0
 #define KEEP_UNUSED_CODE_S3D 0
@@ -1190,16 +1190,26 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		pVBT->Size = 0;
 		return false;
 	}
-	dev_priv->panel_id = PanelID;
+
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, BB, ENG)) {
+		dev_priv->panel_id = CMI_CMD;
+		PanelID = CMI_CMD;
+	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, SB, PRO) ||
+			INTEL_MID_BOARD(2, PHONE, MRFL, SB, ENG)) {
+		if (spid.hardware_id <= MRFL_PHONE_SB_PR0) {
+			dev_priv->panel_id = JDI_VID;
+			PanelID = JDI_VID;
+		} else {
+			dev_priv->panel_id = JDI_CMD;
+			PanelID = JDI_CMD;
+		}
+	} else {
+		DRM_INFO("Panel id %d from cmd line\n", PanelID);
+		dev_priv->panel_id = PanelID;
+	}
 	return true;
 }
-
-void set_panel_id(int panel_id)
-{
-	PanelID = panel_id;
-}
-EXPORT_SYMBOL_GPL(set_panel_id);
-
 void hdmi_do_hotplug_wq(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv = container_of(work,
@@ -1492,10 +1502,6 @@ static int psb_driver_unload(struct drm_device *dev)
 			iounmap(dev_priv->wrapper_reg);
 			dev_priv->wrapper_reg = NULL;
 		}
-		if (dev_priv->ved_wrapper_reg) {
-			iounmap(dev_priv->ved_wrapper_reg);
-			dev_priv->ved_wrapper_reg = NULL;
-		}
 		if (dev_priv->vec_wrapper_reg) {
 			iounmap(dev_priv->vec_wrapper_reg);
 			dev_priv->vec_wrapper_reg = NULL;
@@ -1663,13 +1669,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 				GFX_WRAPPER_SIZE);
 
 		if (!dev_priv->wrapper_reg)
-			goto out_err;
-
-		dev_priv->ved_wrapper_reg =
-			ioremap(resource_start + VED_WRAPPER_OFFSET,
-				VED_WRAPPER_SIZE);
-
-		if (!dev_priv->ved_wrapper_reg)
 			goto out_err;
 
 		dev_priv->vec_wrapper_reg =

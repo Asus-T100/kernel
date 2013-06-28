@@ -48,16 +48,6 @@ static struct sfi_table_oemb byt_oemb_table_pr1 = {
 	},
 };
 
-/* Bailey Bay OEMB table */
-static struct sfi_table_oemb byt_oemb_table_blb = {
-	.spid = {
-		.customer_id = CUSTOMER_INTEL,
-		.vendor_id = VENDOR_INTEL,
-		.platform_family_id = INTEL_BYT_TABLET,
-		.product_line_id = INTEL_BYT_TABLET_BLB_ENG,
-		.hardware_id = BYT_TABLET_BLB_VV3,
-	},
-};
 
 /* Baytrail devs table */
 static struct sfi_device_table_entry byt_devs_table[] = {
@@ -84,10 +74,6 @@ static struct sfi_table_header *get_oem_b_table(void)
 	pr_err("%s: %s\n", __func__, saved_command_line);
 	if (strstr(saved_command_line, "androidboot.boardid=02"))
 		sfi_oemb_table = (struct sfi_table_header *) &byt_oemb_table_vv;
-	else
-		if (strstr(saved_command_line, "androidboot.boardid=129"))
-			sfi_oemb_table = (struct sfi_table_header *)
-					&byt_oemb_table_blb;
 	else
 		sfi_oemb_table = (struct sfi_table_header *)
 			&byt_oemb_table_pr1;

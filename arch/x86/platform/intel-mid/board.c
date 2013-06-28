@@ -99,9 +99,8 @@
 #include "device_libs/platform_edlp_fast.h"
 #include "device_libs/platform_logical_modem.h"
 
-/* SW devices */
+/* Modem devices */
 #include "device_libs/platform_modem_ctrl.h"
-#include "device_libs/platform_panel.h"
 
 /* WIFI devices */
 #include "device_libs/platform_wl12xx.h"
@@ -280,13 +279,6 @@ struct devs_id __initconst device_ids[] = {
 		&sfi_handle_mdm},
 	{"RMC_PEGASUS", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
 		&sfi_handle_mdm},
-	/* Panel */
-	{"PANEL_CMI_CMD", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
-		&panel_handler},
-	{"PANEL_JDI_VID", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
-		&panel_handler},
-	{"PANEL_JDI_CMD", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
-		&panel_handler},
 	{},
 };
 

@@ -60,7 +60,6 @@
  */
 #define BQ24192_INPUT_SRC_CNTL_REG		0x0
 #define INPUT_SRC_CNTL_EN_HIZ			(1 << 7)
-#define BATTERY_NEAR_FULL(a)			((a * 98)/100)
 /*
  * set input voltage lim to 4.68V. This will help in charger
  * instability issue when duty cycle reaches 100%.
@@ -1544,17 +1543,6 @@ static void bq24192_task_worker(struct work_struct *work)
 	if (ret < 0)
 		dev_err(&chip->client->dev, "%s failed\n", __func__);
 	mutex_unlock(&chip->event_lock);
-
-	/*
-	 * BQ driver depends upon the charger interrupt to send notification
-	 * to the framework about the HW charge termination and then framework
-	 * starts to poll the driver for declaring FULL. Presently the BQ
-	 * interrupts are not coming properly, so the driver would notify the
-	 * framework when battery is nearing FULL.
-	*/
-	if (vbatt >= BATTERY_NEAR_FULL(chip->max_cv))
-		power_supply_changed(NULL);
-
 sched_task_work:
 	schedule_delayed_work(&chip->chrg_task_wrkr, jiffy);
 }

@@ -120,7 +120,6 @@ static bool ved_power_up(struct drm_device *dev,
 {
 	bool ret = true;
 	int pm_ret = 0;
-	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	PSB_DEBUG_PM("powering up ved\n");
 	pm_ret = pmu_nc_set_power_state(PMU_DEC, OSPM_ISLAND_UP, VED_SS_PM0);
@@ -128,8 +127,6 @@ static bool ved_power_up(struct drm_device *dev,
 		PSB_DEBUG_PM("power up ved failed\n");
 		return false;
 	}
-
-	iowrite32(0xffffffff, dev_priv->ved_wrapper_reg + 0);
 
 	return ret;
 }
