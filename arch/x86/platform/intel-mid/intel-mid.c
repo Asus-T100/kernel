@@ -35,6 +35,7 @@
 #include <linux/blkdev.h>
 #include <linux/acpi.h>
 #include <linux/intel_mid_acpi.h>
+#include <linux/panel_psb_drv.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -77,8 +78,11 @@
 
 __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
+int PanelID = GCT_DETECT;
+EXPORT_SYMBOL(PanelID);
 struct kobject *spid_kobj;
 struct soft_platform_id spid;
+EXPORT_SYMBOL(spid);
 #ifdef CONFIG_ACPI
 struct kobject *pidv_kobj;
 struct platform_id pidv;
@@ -542,6 +546,7 @@ int get_gpio_by_name(const char *name)
 	}
 	return -1;
 }
+EXPORT_SYMBOL_GPL(get_gpio_by_name);
 
 #define MAX_IPCDEVS	24
 static struct platform_device *ipc_devs[MAX_IPCDEVS];

@@ -92,8 +92,21 @@ void *pn544_platform_data(void *info)
 	pn544_nfc_platform_data.irq_gpio = nfc_host_int_gpio;
 	pn544_nfc_platform_data.ven_gpio = nfc_enable_gpio;
 	pn544_nfc_platform_data.firm_gpio = nfc_fw_reset_gpio;
-
 	i2c_info->irq = nfc_host_int_gpio + INTEL_MID_IRQ_OFFSET;
+
+	/* On MFLD AND CLVT platforms, I2C xfers must be split
+	 * to avoid I2C FIFO underrun errors in I2C bus driver */
+	switch (intel_mid_identify_cpu()) {
+	case INTEL_MID_CPU_CHIP_PENWELL:
+		pn544_nfc_platform_data.max_i2c_xfer_size = 31;
+		break;
+	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
+		pn544_nfc_platform_data.max_i2c_xfer_size = 255;
+		break;
+	default:
+		break;
+	}
+
 	pn544_nfc_platform_data.request_resources =
 		pn544_nfc_request_resources;
 

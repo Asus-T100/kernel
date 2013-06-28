@@ -37,6 +37,7 @@
 #include "imx175.h"
 #include "imx135.h"
 #include "imx135vb.h"
+#include "imx132.h"
 
 #define I2C_MSG_LENGTH		0x2
 
@@ -116,22 +117,28 @@
 #define IMX_DRIVER	"imx1x5"
 #define IMX_NAME_135	"imx135"
 #define IMX_NAME_175	"imx175"
+#define IMX_NAME_132	"imx132"
 #define IMX175_ID	0x0175
 #define IMX135_ID	0x0135
+#define IMX132_ID	0x0132
 
 /* imx175 - use dw9714 vcm */
 #define IMX175_MERRFLD 0x175
 #define IMX175_VALLEYVIEW 0x176
 #define IMX135_SALTBAY 0x135
 #define IMX135_VICTORIABAY 0x136
+#define IMX132_SALTBAY 0x132
 
 #define IMX_ID_DEFAULT	0x0000
 #define IMX175_CHIP_ID	0x0000
 #define IMX135_CHIP_ID	0x0016
+#define IMX132_CHIP_ID  0x0000
 #define IMX175_RES_WIDTH_MAX	3280
 #define IMX175_RES_HEIGHT_MAX	2464
 #define IMX135_RES_WIDTH_MAX	4208
 #define IMX135_RES_HEIGHT_MAX	3120
+#define IMX132_RES_WIDTH_MAX	1936
+#define IMX132_RES_HEIGHT_MAX	1096
 
 /* Defines for lens/VCM */
 #define IMX_FOCAL_LENGTH_NUM	369	/*3.69mm*/
@@ -194,6 +201,10 @@ struct max_res imx_max_res[] = {
 		.res_max_width = IMX135_RES_WIDTH_MAX,
 		.res_max_height = IMX135_RES_HEIGHT_MAX,
 	},
+	[IMX132_ID] = {
+		.res_max_width = IMX132_RES_WIDTH_MAX,
+		.res_max_height = IMX132_RES_HEIGHT_MAX,
+	},
 };
 
 struct imx_settings {
@@ -242,6 +253,15 @@ struct imx_settings imx_sets[] = {
 		.n_res_preview = ARRAY_SIZE(imx135vb_res_preview),
 		.n_res_still = ARRAY_SIZE(imx135vb_res_still),
 		.n_res_video = ARRAY_SIZE(imx135vb_res_video),
+	},
+	[IMX132_SALTBAY] = {
+		.init_settings = imx132_init_settings,
+		.res_preview = imx132_res_preview,
+		.res_still = imx132_res_still,
+		.res_video = imx132_res_video,
+		.n_res_preview = ARRAY_SIZE(imx132_res_preview),
+		.n_res_still = ARRAY_SIZE(imx132_res_still),
+		.n_res_video = ARRAY_SIZE(imx132_res_video),
 	},
 };
 

@@ -370,6 +370,8 @@ acpi_hw_register_read(u32 register_id, u32 * return_value)
 {
 	u32 value = 0;
 	acpi_status status;
+	struct acpi_generic_address reg;
+
 
 	ACPI_FUNCTION_TRACE(hw_register_read);
 
@@ -420,7 +422,19 @@ acpi_hw_register_read(u32 register_id, u32 * return_value)
 		status =
 		    acpi_hw_read_port(acpi_gbl_FADT.smi_command, &value, 8);
 		break;
-
+	/* Get reg info from FADT, overwrite correct width and addr */
+	case ACPI_REGISTER_GPE0_STATUS:
+		reg = acpi_gbl_FADT.xgpe0_block;
+		reg.bit_width = 32;
+		reg.address = 0x420;
+		status = acpi_hw_read(&value, &reg);
+		break;
+	case ACPI_REGISTER_GPE0_ENABLE:
+		reg = acpi_gbl_FADT.xgpe0_block;
+		reg.bit_width = 32;
+		reg.address = 0x428;
+		status = acpi_hw_read(&value, &reg);
+		break;
 	default:
 		ACPI_ERROR((AE_INFO, "Unknown Register ID: 0x%X", register_id));
 		status = AE_BAD_PARAMETER;
@@ -464,6 +478,7 @@ acpi_status acpi_hw_register_write(u32 register_id, u32 value)
 {
 	acpi_status status;
 	u32 read_value;
+	struct acpi_generic_address reg;
 
 	ACPI_FUNCTION_TRACE(hw_register_write);
 
@@ -555,6 +570,20 @@ acpi_status acpi_hw_register_write(u32 register_id, u32 value)
 
 		status =
 		    acpi_hw_write_port(acpi_gbl_FADT.smi_command, value, 8);
+		break;
+
+	case ACPI_REGISTER_GPE0_STATUS:
+		reg = acpi_gbl_FADT.xgpe0_block;
+		reg.bit_width = 32;
+		reg.address = 0x420;
+		status = acpi_hw_write(value, &reg);
+		break;
+
+	case ACPI_REGISTER_GPE0_ENABLE:
+		reg = acpi_gbl_FADT.xgpe0_block;
+		reg.bit_width = 32;
+		reg.address = 0x428;
+		status = acpi_hw_write(value, &reg);
 		break;
 
 	default:

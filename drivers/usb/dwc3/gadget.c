@@ -49,6 +49,7 @@
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <linux/usb/ulpi.h>
 
 #include "core.h"
 #include "gadget.h"
@@ -1401,6 +1402,7 @@ static void __dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 {
 	u32			reg;
 	u32			timeout = 500;
+	struct usb_phy	*phy;
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 	if (!(reg & DWC3_DCTL_RUN_STOP) && is_on && can_pullup(dwc)) {
@@ -1409,6 +1411,14 @@ static void __dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 				| DWC3_DCTL_TRGTULST_RX_DET);
 	} else if ((reg & DWC3_DCTL_RUN_STOP) && !is_on) {
 		reg &= ~DWC3_DCTL_RUN_STOP;
+
+		/* WORKAROUND: reset PHY via FUNC_CTRL before disconnect
+		 * to avoid PHY hang
+		 */
+		phy = usb_get_transceiver();
+		if (phy)
+			usb_phy_io_write(phy, 0x6D, ULPI_FUNC_CTRL);
+		usb_put_transceiver(phy);
 	} else
 		return;
 
@@ -2709,7 +2719,7 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 		dev_vdbg(dwc->dev, "Start of Periodic Frame\n");
 		break;
 	case DWC3_DEVICE_EVENT_ERRATIC_ERROR:
-		dev_vdbg(dwc->dev, "Erratic Error\n");
+		dev_err(dwc->dev, "Erratic Error\n");
 		break;
 	case DWC3_DEVICE_EVENT_CMD_CMPL:
 		dev_vdbg(dwc->dev, "Command Complete\n");

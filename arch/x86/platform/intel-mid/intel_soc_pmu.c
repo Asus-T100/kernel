@@ -1888,6 +1888,9 @@ static int standby_enter(void)
 	writel(mid_pmu_cxt->ss_config->wake_state.wake_enable[1],
 		       &mid_pmu_cxt->pmu_reg->pm_wkc[1]);
 
+	mid_pmu_cxt->camera_off = 0;
+	mid_pmu_cxt->display_off = 0;
+
 	if (platform_is(INTEL_ATOM_MRFLD))
 		up(&mid_pmu_cxt->scu_ready_sem);
 
@@ -1897,6 +1900,7 @@ static int standby_enter(void)
 static int mid_suspend_begin(suspend_state_t state)
 {
 	mid_pmu_cxt->suspend_started = true;
+	pmu_s3_stats_update(1);
 	return 0;
 }
 
@@ -1945,6 +1949,7 @@ static int mid_suspend_enter(suspend_state_t state)
 
 static void mid_suspend_end(void)
 {
+	pmu_s3_stats_update(0);
 	mid_pmu_cxt->suspend_started = false;
 }
 

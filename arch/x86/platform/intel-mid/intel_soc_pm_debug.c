@@ -26,6 +26,12 @@
 #ifdef CONFIG_PM_DEBUG
 #define MAX_CSTATES_POSSIBLE	32
 
+u32 prev_s0ix_cnt[SYS_STATE_MAX];
+unsigned long long prev_s0ix_res[SYS_STATE_MAX];
+u32 S3_count;
+unsigned long long S3_res;
+
+
 static struct latency_stat *lat_stat;
 
 static void latency_measure_enable_disable(bool enable_measure)
@@ -1303,6 +1309,11 @@ void pmu_stats_init(void)
 #endif
 }
 
+void pmu_s3_stats_update(int enter)
+{
+
+}
+
 void pmu_stats_finish(void)
 {
 #ifdef CONFIG_PM_DEBUG
@@ -1340,7 +1351,18 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	unsigned long init_2_now_time;
 
 	/* Print S0ix residency counter */
-	t = readq(residency[type]);
+	if (type < SYS_STATE_S3) {
+		t = readq(residency[type]);
+		if (t < prev_s0ix_res[type-1])
+			t += (((unsigned long long)~0) - prev_s0ix_res[type-1]);
+		else
+			t -= prev_s0ix_res[type-1];
+
+		if (type == SYS_STATE_S0I3)
+			t -= prev_s0ix_res[SYS_STATE_S3-1];
+	} else
+		t = prev_s0ix_res[SYS_STATE_S3-1];
+
 	micro_sec_rem = do_div(t, MICRO_SEC);
 	time = (unsigned int)t;
 
@@ -1373,7 +1395,18 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	seq_printf(s, "%5lu.%03lu\t", (unsigned long) time, (unsigned long) t);
 
 	/* Print number of interations of S0ix */
-	scu_val = readl(s0ix_counter[type]);
+	if (type < SYS_STATE_S3) {
+		scu_val = readl(s0ix_counter[type]);
+		if (scu_val < prev_s0ix_cnt[type-1])
+			scu_val += (((u32)~0) - prev_s0ix_cnt[type-1]);
+		else
+			scu_val -= prev_s0ix_cnt[type-1];
+
+		if (type == SYS_STATE_S0I3)
+			scu_val -= prev_s0ix_cnt[SYS_STATE_S3-1];
+	} else
+			scu_val = prev_s0ix_cnt[SYS_STATE_S3-1];
+
 	seq_printf(s, "%lu\n", (unsigned long) scu_val);
 }
 
@@ -1419,6 +1452,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	pmu_stat_seq_printf(s, SYS_STATE_S0I1, "s0i1");
 	pmu_stat_seq_printf(s, SYS_STATE_S0I2, "S0i2");
 	pmu_stat_seq_printf(s, SYS_STATE_S0I3, "s0i3");
+	pmu_stat_seq_printf(s, SYS_STATE_S3, "s3");
 
 	seq_printf(s, "\nNORTH COMPLEX DEVICES :\n\n");
 
@@ -1464,9 +1498,50 @@ static int devices_state_open(struct inode *inode, struct file *file)
 	return single_open(file, pmu_devices_state_show, NULL);
 }
 
+static ssize_t devices_state_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int ret;
+	int buf_size = min(count, sizeof(buf)-1);
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+	buf[buf_size] = 0;
+
+	if (((strlen("clear")+1) == buf_size) &&
+		!strncmp(buf, "clear", strlen("clear"))) {
+		down(&mid_pmu_cxt->scu_ready_sem);
+
+		/* Dump S0ix residency counters */
+		ret = intel_scu_ipc_simple_command(DUMP_RES_COUNTER, 0);
+		if (ret)
+			printk(KERN_ERR "IPC command to DUMP S0ix residency failed\n");
+
+		/* Dump number of interations of S0ix */
+		ret = intel_scu_ipc_simple_command(DUMP_S0IX_COUNT, 0);
+		if (ret)
+			printk(KERN_ERR "IPC command to DUMP S0ix count failed\n");
+
+		mid_pmu_cxt->pmu_init_time = cpu_clock(0);
+		prev_s0ix_cnt[0] = readl(s0ix_counter[SYS_STATE_S0I1]);
+		prev_s0ix_cnt[1] = readl(s0ix_counter[SYS_STATE_S0I2]);
+		prev_s0ix_cnt[2] = readl(s0ix_counter[SYS_STATE_S0I3]);
+		prev_s0ix_cnt[3] = 0;
+		prev_s0ix_res[0] = readq(residency[SYS_STATE_S0I1]);
+		prev_s0ix_res[1] = readq(residency[SYS_STATE_S0I2]);
+		prev_s0ix_res[2] = readq(residency[SYS_STATE_S0I3]);
+		prev_s0ix_res[3] = 0 ;
+		up(&mid_pmu_cxt->scu_ready_sem);
+	}
+	return buf_size;
+}
+
+
 static const struct file_operations devices_state_operations = {
 	.open		= devices_state_open,
 	.read		= seq_read,
+	.write		= devices_state_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -2181,7 +2256,7 @@ unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 	unsigned int new_cstate = cstate;
 	u32 local_cstate = (u32)(cstate);
 	u32 local_cstate_allowed = ~mid_pmu_cxt->cstate_ignore;
-	u32 cstate_mask;
+	u32 cstate_mask, cstate_no_s0ix_mask = (u32)((1 << 6) - 1);
 
 	if (platform_is(INTEL_ATOM_MRFLD)) {
 		/* cstate is 7 for C8 and C9 so correct */
@@ -2194,6 +2269,8 @@ unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 		cstate_mask	= (u32)((1 << local_cstate)-1);
 		local_cstate_allowed	&= ((1<<MWAIT_MAX_NUM_CSTATES)-1);
 		local_cstate_allowed	&= cstate_mask;
+		if (!could_do_s0ix())
+			local_cstate_allowed &= cstate_no_s0ix_mask;
 		new_cstate	= fls(local_cstate_allowed);
 
 		if (likely(new_cstate))
@@ -2294,6 +2371,38 @@ void pmu_stats_finish(void)
 
 	return;
 }
+
+void pmu_s3_stats_update(int enter)
+{
+#ifdef CONFIG_PM_DEBUG
+	int ret;
+
+	down(&mid_pmu_cxt->scu_ready_sem);
+	/* Dump S0ix residency counters */
+	ret = intel_scu_ipc_simple_command(DUMP_RES_COUNTER, 0);
+	if (ret)
+		printk(KERN_ERR "IPC command to DUMP S0ix residency failed\n");
+
+	/* Dump number of interations of S0ix */
+	ret = intel_scu_ipc_simple_command(DUMP_S0IX_COUNT, 0);
+	if (ret)
+		printk(KERN_ERR "IPC command to DUMP S0ix count failed\n");
+
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	if (enter == 1) {
+		S3_count  = readl(s0ix_counter[SYS_STATE_S0I3]);
+		S3_res = readl(residency[SYS_STATE_S0I3]);
+	} else {
+		prev_s0ix_cnt[3] +=
+			(readl(s0ix_counter[SYS_STATE_S0I3])) - S3_count;
+		prev_s0ix_res[3] += (readl(residency[SYS_STATE_S0I3])) - S3_res;
+	}
+
+#endif
+	return;
+}
+
 
 void pmu_stats_init(void)
 {

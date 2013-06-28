@@ -106,6 +106,10 @@ struct dwc_device_par {
 	})
 #endif
 
+/* PHY registers */
+#define PHY_U1POWER_STATE			0x100004
+#define PHY_U1POWER_STATE_TX_EN			(1 << 2)
+
 #define GUSB2PHYCFG0				0xc200
 #define GUSB2PHYCFG_SUS_PHY                     0x40
 #define GUSB2PHYCFG_PHYSOFTRST (1 << 31)
@@ -138,6 +142,8 @@ struct dwc_device_par {
 #define GUCTL 0xC12C
 #define GUCTL_CMDEVADDR		(1 << 15)
 #define APBFC_EXIOTG3_MISC0_REG			0xF90FF85C
+#define APBFB_OTG3_MISC1 0xF90FF850
+#define OTG3_MISC1_DO_D3COLD_RESUME (1 << 0)
 
 #define GCTL 0xc110
 #define GCTL_PRT_CAP_DIR 0x3000
@@ -337,6 +343,7 @@ struct intel_dwc_otg_pdata {
 	int no_host_mode;
 	int no_device_mode;
 	int charging_compliance;
+	int d3hot_wa;
 };
 
 /** The main structure to keep track of OTG driver state. */
@@ -390,6 +397,9 @@ struct dwc_otg2 {
 	/** a_bus_drop event from userspace */
 #define USER_A_BUS_DROP 0x100
 
+	/** reset host event from host driver */
+#define USER_RESET_HOST 0x200
+
 	/* States */
 	enum dwc_otg_state prev;
 	enum dwc_otg_state state;
@@ -405,6 +415,13 @@ struct dwc_otg2 {
 	 * Because it have big impact to USB performance
 	 * */
 	struct pm_qos_request *qos;
+
+	/* This is one workaround for silicon BUGs.
+	 * If host resume from D3hot due to usb device plug in,
+	 * it will me enumerated failed. So need reset host stack
+	 * for this issue.
+	 */
+	void (*reset_host)(struct dwc_otg2 *otg);
 };
 
 /* Invalid SDP checking timeout */

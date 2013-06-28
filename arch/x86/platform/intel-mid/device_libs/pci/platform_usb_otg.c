@@ -43,6 +43,11 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 
 		dwc_otg_pdata.charging_compliance =
 			dwc_otg_get_usbspecoverride();
+
+		/* The dwc3 hibernation mode with D3hot can't be work.
+		 * So enable SW workaround for it until silicon fix.
+		 */
+		dwc_otg_pdata.d3hot_wa = 1;
 		return &dwc_otg_pdata;
 	case PCI_DEVICE_ID_INTEL_BYT_OTG:
 		dwc_otg_pdata.is_hvp = 1;

@@ -1035,6 +1035,12 @@ static long __ov9724_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 		goto out;
 
 	/* set coarse integration time */
+	if (coarse_itg > dev->lines_per_frame)
+		ov9724_write_reg(client, OV9724_16BIT,
+			OV9724_FRAME_LENGTH_LINES, coarse_itg);
+	else
+		ov9724_write_reg(client, OV9724_16BIT,
+			OV9724_FRAME_LENGTH_LINES, dev->lines_per_frame);
 	ret = ov9724_write_reg(client, OV9724_16BIT,
 			OV9724_COARSE_INTEGRATION_TIME, coarse_itg);
 	if (ret)

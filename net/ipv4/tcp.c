@@ -1497,7 +1497,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				break;
 
 			offset = *seq - TCP_SKB_CB(skb)->seq;
-			if (tcp_hdr(skb)->syn)
+			if (tcp_hdr(skb)->syn && offset > 0)
 				offset--;
 			if (offset < skb->len)
 				goto found_ok_skb;

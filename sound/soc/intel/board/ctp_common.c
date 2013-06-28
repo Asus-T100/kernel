@@ -398,6 +398,16 @@ void headset_remove_poll(struct work_struct *work)
 	ctx->headset_plug_flag = false;
 	set_mic_bias(jack, ctx->ops->mic_bias, false);
 
+	/* If the jack is removed while the button status is pressed */
+
+	pr_debug("button press flag:%d status:%x\n",
+					ctx->btn_press_flag, status);
+	if (ctx->btn_press_flag) {
+		snd_soc_jack_report(jack, SND_JACK_HEADSET,
+					SND_JACK_BTN_0 | SND_JACK_HEADSET);
+		ctx->btn_press_flag = false;
+	}
+
 	if (jack->status != status)
 		snd_soc_jack_report(jack, status, mask);
 	pr_debug("%s: status 0x%x\n", __func__, status);

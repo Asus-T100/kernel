@@ -4288,11 +4288,13 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 {
 	return 1;
 }
+EXPORT_SYMBOL(ospm_power_using_hw_begin);
 
 void ospm_power_using_hw_end(int hw_island)
 {
 
 }
+EXPORT_SYMBOL(ospm_power_using_hw_end);
 
 /* Set up chip specific power management-related functions */
 void intel_init_pm(struct drm_device *dev)

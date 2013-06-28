@@ -432,7 +432,7 @@ config X86_INTEL_MID
 	bool
 
 config X86_MDFLD
-       bool "Medfield MID platform"
+	bool "Medfield MID platform"
 	depends on PCI
 	depends on PCI_GOANY
 	depends on X86_IO_APIC

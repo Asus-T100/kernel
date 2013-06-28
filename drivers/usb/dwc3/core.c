@@ -52,6 +52,7 @@
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <linux/usb/ulpi.h>
 
 #include "core.h"
 #include "gadget.h"
@@ -323,6 +324,7 @@ int dwc3_core_init(struct dwc3 *dwc)
 	u32			reg;
 	int			ret;
 	void __iomem		*flis_reg;
+	struct usb_phy		*phy;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GSNPSID);
 	/* This should read as U3 followed by revision number */
@@ -334,6 +336,11 @@ int dwc3_core_init(struct dwc3 *dwc)
 	dwc->revision = reg;
 
 	dwc3_core_soft_reset(dwc);
+
+	/* Delay 1 ms Before DCTL soft reset to make it safer from hitting
+	 * Tx-CMD PHY hang issue.
+	 */
+	mdelay(1);
 
 	/* issue device SoftReset too */
 	timeout = jiffies + msecs_to_jiffies(500);
@@ -351,6 +358,13 @@ int dwc3_core_init(struct dwc3 *dwc)
 
 		cpu_relax();
 	} while (true);
+
+	/* DCTL core soft reset may cause PHY hang, delay 1 ms and check ulpi */
+	mdelay(1);
+	phy = usb_get_transceiver();
+	if (phy && usb_phy_io_read(phy, ULPI_VENDOR_ID_LOW) < 0)
+		dev_err(dwc->dev, "ULPI not working after DCTL soft reset\n");
+	usb_put_transceiver(phy);
 
 	/*
 	 * workaround for OTG3 IP bug of using EP #8 under host mode

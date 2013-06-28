@@ -179,7 +179,8 @@ static void sdhci_set_card_detection(struct sdhci_host *host, bool enable)
 	u32 present, irqs;
 
 	if ((host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) ||
-	    (host->mmc->caps & MMC_CAP_NONREMOVABLE))
+	    (host->mmc->caps & MMC_CAP_NONREMOVABLE) ||
+	    (host->quirks2 & SDHCI_QUIRK2_BAD_SD_CD))
 		return;
 
 	present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
@@ -221,7 +222,11 @@ static void sdhci_reset(struct sdhci_host *host, u8 mask)
 	u32 uninitialized_var(ier);
 
 	if (host->quirks & SDHCI_QUIRK_NO_CARD_NO_RESET) {
-		if (!(sdhci_readl(host, SDHCI_PRESENT_STATE) &
+		if ((host->quirks2 & SDHCI_QUIRK2_BAD_SD_CD) &&
+				host->ops->get_cd) {
+			if (!host->ops->get_cd(host))
+				return;
+		} else if (!(sdhci_readl(host, SDHCI_PRESENT_STATE) &
 			SDHCI_CARD_PRESENT))
 			return;
 	}
@@ -1547,6 +1552,9 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	/* If polling, assume that the card is always present. */
 	if (host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION)
 		present = true;
+	else if ((host->quirks2 & SDHCI_QUIRK2_BAD_SD_CD) &&
+			host->ops->get_cd)
+		present = host->ops->get_cd(host);
 	else
 		present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
 				SDHCI_CARD_PRESENT;
@@ -1812,6 +1820,12 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	if(host->quirks & SDHCI_QUIRK_RESET_CMD_DATA_ON_IOS)
 		sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
 
+	if (host->quirks2 & SDHCI_QUIRK2_BAD_SD_CD) {
+		ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
+		ctrl |= SDHCI_CTRL_CD_SD | SDHCI_CTRL_CD_TL;
+		sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+	}
+
 	mmiowb();
 	spin_unlock_irqrestore(&host->lock, flags);
 }
@@ -2073,11 +2087,8 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	 * tuning function has to be executed.
 	 */
 	if ((((ctrl & SDHCI_CTRL_UHS_MASK) == SDHCI_CTRL_UHS_SDR50) &&
-	    (host->flags & SDHCI_SDR50_NEEDS_TUNING) &&
-	    (mmc->ios.timing == MMC_TIMING_UHS_SDR50)) ||
-	     ((host->flags & SDHCI_HS200_NEEDS_TUNING) &&
-	      (mmc->ios.timing == MMC_TIMING_MMC_HS200 ||
-	       mmc->ios.timing == MMC_TIMING_UHS_SDR104)))
+	    (host->flags & SDHCI_SDR50_NEEDS_TUNING)) ||
+	     (host->flags & SDHCI_HS200_NEEDS_TUNING))
 		requires_tuning_nonuhs = true;
 
 	if (((ctrl & SDHCI_CTRL_UHS_MASK) == SDHCI_CTRL_UHS_SDR104) ||
@@ -2607,8 +2618,7 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		 */
 		/* Set the re-tuning expiration flag */
 		if ((host->version >= SDHCI_SPEC_300) && host->tuning_count &&
-		    (host->tuning_mode == SDHCI_TUNING_MODE_1) &&
-		    mmc_tuning_timing(host->mmc)) {
+		    (host->tuning_mode == SDHCI_TUNING_MODE_1)) {
 			host->mrq->cmd->retries++;
 			host->flags |= SDHCI_NEEDS_RETUNING;
 			pr_err("%s: encounter CRC error, needs tuning, retry %d\n",
@@ -3512,9 +3522,7 @@ int sdhci_suspend_host(struct sdhci_host *host)
 
 	/* Disable tuning since we are suspending */
 	has_tuning_timer = host->version >= SDHCI_SPEC_300 &&
-		host->tuning_count &&
-		host->tuning_mode == SDHCI_TUNING_MODE_1 &&
-		mmc_tuning_timing(host->mmc);
+		host->tuning_count && host->tuning_mode == SDHCI_TUNING_MODE_1;
 	if (has_tuning_timer) {
 		del_timer_sync(&host->tuning_timer);
 		host->flags &= ~SDHCI_NEEDS_RETUNING;
@@ -3608,8 +3616,7 @@ int sdhci_resume_host(struct sdhci_host *host)
 
 	/* Set the re-tuning expiration flag */
 	if ((host->version >= SDHCI_SPEC_300) && host->tuning_count &&
-	    (host->tuning_mode == SDHCI_TUNING_MODE_1) &&
-	    mmc_tuning_timing(host->mmc))
+	    (host->tuning_mode == SDHCI_TUNING_MODE_1))
 		host->flags |= SDHCI_NEEDS_RETUNING;
 
 	/* Card back in active state */
@@ -3654,8 +3661,7 @@ int sdhci_runtime_suspend_host(struct sdhci_host *host)
 	sdhci_do_acquire_ownership(host->mmc);
 	/* Disable tuning since we are suspending */
 	if (host->version >= SDHCI_SPEC_300 &&
-	    host->tuning_mode == SDHCI_TUNING_MODE_1 &&
-	    mmc_tuning_timing(host->mmc)) {
+	    host->tuning_mode == SDHCI_TUNING_MODE_1) {
 		del_timer_sync(&host->tuning_timer);
 		host->flags &= ~SDHCI_NEEDS_RETUNING;
 	}
@@ -3718,10 +3724,8 @@ int sdhci_runtime_resume_host(struct sdhci_host *host)
 
 	/* Set the re-tuning expiration flag */
 	if ((host->version >= SDHCI_SPEC_300) && host->tuning_count &&
-	    (host->tuning_mode == SDHCI_TUNING_MODE_1) &&
-	    mmc_tuning_timing(host->mmc)) {
+	    (host->tuning_mode == SDHCI_TUNING_MODE_1))
 		host->flags |= SDHCI_NEEDS_RETUNING;
-	}
 
 	spin_lock_irqsave(&host->lock, flags);
 

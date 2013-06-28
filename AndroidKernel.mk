@@ -22,7 +22,7 @@ make_kernel_tarball: get_kernel_from_source bootimage
 	@cp $(PRODUCT_OUT)/bzImage $(PRODUCT_OUT)/kerneltarball/
 	tar cvzf $(TARGET_KERNEL_TARBALL) -C $(PRODUCT_OUT)/kerneltarball bzImage root/lib/modules
 
-ALL_KERNEL_MODULES :=
+ALL_KERNEL_MODULES := $(PRODUCT_OUT)/linux/modules
 
 KERNEL_SOC_medfield := mfld
 KERNEL_SOC_clovertrail := ctp
@@ -57,6 +57,7 @@ KERNEL_OUT_DIR := $(PRODUCT_OUT)/linux/kernel
 KERNEL_MODULES_ROOT := $(PRODUCT_OUT)/root/lib/modules
 KERNEL_CONFIG := $(KERNEL_OUT_DIR)/.config
 KERNEL_BLD_FLAGS := \
+    A="../modules/intel_media" \
     ARCH=$(KERNEL_ARCH) \
     O=../../$(KERNEL_OUT_DIR) \
     $(KERNEL_EXTRA_FLAGS)

@@ -35,28 +35,32 @@
 #include "atomisp_internal.h"
 #include "atomisp_ioctl.h"
 
+/*
+ * FIXME
+ * File injection only implement on isp_subdev[0]
+ */
 static void file_work(struct work_struct *work)
 {
 	struct atomisp_file_device *file_dev =
 			container_of(work, struct atomisp_file_device, work);
 
 	struct atomisp_device *isp = file_dev->isp;
-	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
+	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev[0].video_in;
 	unsigned short *buf = videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+	if (isp->isp_subdev[0].streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 		return;
 
 	dev_dbg(isp->dev, ">%s: ready to start streaming\n", __func__);
-	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
-						V4L2_SUBDEV_FORMAT_ACTIVE,
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev[0].subdev,
+						NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
 						ATOMISP_SUBDEV_PAD_SINK);
 
 	while (!ia_css_isp_has_started())
 		usleep_range(1000, 1500);
 
-	ia_css_stream_send_input_frame(isp->css2_basis.stream,
+	ia_css_stream_send_input_frame(isp->isp_subdev[0].css2_basis.stream,
 				       buf, isp_sink_fmt.width, isp_sink_fmt.height);
 	dev_dbg(isp->dev, "<%s: streaming done\n", __func__);
 }
@@ -68,7 +72,8 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 
 	dev_dbg(isp->dev, "%s: enable %d\n", __func__, enable);
 	if (enable) {
-		if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+		if (isp->isp_subdev[0].streaming !=
+		    ATOMISP_DEVICE_STREAMING_ENABLED)
 			return 0;
 
 		queue_work(file_dev->work_queue, &file_dev->work);
@@ -120,7 +125,7 @@ static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 	struct atomisp_device *isp = file_dev->isp;
 	struct v4l2_mbus_framefmt *isp_sink_fmt;
 
-	isp_sink_fmt = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = atomisp_subdev_get_ffmt(&isp->isp_subdev[0].subdev, NULL,
 					       V4L2_SUBDEV_FORMAT_ACTIVE,
 					       ATOMISP_SUBDEV_PAD_SINK);
 

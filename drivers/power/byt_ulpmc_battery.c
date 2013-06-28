@@ -93,6 +93,15 @@
 #define BC_CHRG_CUR_OFFSET		500	/* 500 mA */
 #define BC_CHRG_CUR_LSB_TO_CUR		64	/* 64 mA */
 
+#define ULPMC_SET_CHRG_TYPE_REG		0x39
+#define SET_CHRG_TYPE_CDP		(1 << 0)
+#define SET_CHRG_TYPE_DCP		(1 << 1)
+#define SET_CHRG_TYPE_ACA		(1 << 2)
+#define SET_CHRG_TYPE_SDP		(1 << 3)
+
+#define ULPMC_CHRG_VBUS_REG		0x56
+#define VBUS_OVP_ADC_THRESHOLD		0x269	/* 6V */
+
 #define ULPMC_BC_FAULT_REG			0x4B
 #define FAULT_WDT_TMR_EXP			(1 << 7)
 #define FAULT_VBUS_OVP				(1 << 6)
@@ -155,6 +164,7 @@
 #define INTSTAT_BATT_WARN		0x14
 #define INTSTAT_BATT_LOW		0x15
 #define INTSTAT_BATT_CRIT		0x16
+#define INTSTAT_CHRG_OVP		0x17
 
 #define ULPMC_INTR_QSIZE		32
 
@@ -183,6 +193,7 @@ struct ulpmc_chip_info {
 	bool is_fwupdate_on;
 	int cur_throttle_state;
 	bool block_sdp;
+	bool chrg_ovp;
 };
 
 static struct ulpmc_chip_info *chip_ptr;
@@ -410,7 +421,8 @@ static int ulpmc_charger_health(struct ulpmc_chip_info *chip)
 		goto report_chrg_health;
 	}
 
-	if (fault & FAULT_VBUS_OVP) {
+	if ((fault & FAULT_VBUS_OVP) ||
+			chip->chrg_ovp) {
 		dev_info(&chip->client->dev, "charger over voltage fault\n");
 		health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 		goto report_chrg_health;
@@ -651,6 +663,12 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_TEMP);
 		if (ret < 0)
 			goto i2c_read_err;
+		/* check for sign bit for -ve range */
+		if (ret & 0x80) {
+			ret = (~ret) & 0x7F;
+			ret++;
+			ret *= -1;
+		}
 		val->intval = ret * 10;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
@@ -861,6 +879,7 @@ static void dump_registers(struct ulpmc_chip_info *chip)
 static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 {
 	bool conn_evt = false;
+	int ret;
 
 	switch (intstat) {
 	case INTSTAT_INSERT_AC:
@@ -908,7 +927,7 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 		dev_info(&chip->client->dev, "Skin0 thermal event\n");
 		break;
 	case INTSTAT_STOP_CHARGING:
-		dev_info(&chip->client->dev, "Stop Charging event\n");
+		dev_info(&chip->client->dev, "Stop Charging/spurious event\n");
 		break;
 	case INTSTAT_PERC_HIGH:
 		dev_info(&chip->client->dev, "Battery perc change high event\n");
@@ -930,6 +949,21 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 	case INTSTAT_BATT_CRIT:
 		dev_info(&chip->client->dev,
 			"Critical Battery level threshold reached\n");
+		break;
+	case INTSTAT_CHRG_OVP:
+		dev_info(&chip->client->dev, "charger over voltage evt\n");
+		ret = ulpmc_read_reg16(chip->client, ULPMC_CHRG_VBUS_REG);
+		if (ret < 0) {
+			dev_warn(&chip->client->dev, "i2c read error\n");
+			break;
+		}
+		/* update the charger OVP status */
+		mutex_lock(&chip->lock);
+		if (ret > VBUS_OVP_ADC_THRESHOLD)
+			chip->chrg_ovp = true;
+		else
+			chip->chrg_ovp = false;
+		mutex_unlock(&chip->lock);
 		break;
 	default:
 		dev_info(&chip->client->dev, "spurious event!!!\n");
@@ -1049,6 +1083,7 @@ static void handle_extcon_events(struct ulpmc_chip_info *chip)
 {
 	int chrg_type, idx, ret;
 	u32 event;
+	u8 ulpmc_chg_type = 0;
 
 	/* current extcon cable status */
 	event = chip->edev->state;
@@ -1078,16 +1113,27 @@ static void handle_extcon_events(struct ulpmc_chip_info *chip)
 		break;
 	case EXTCON_CDP:
 		chrg_type = POWER_SUPPLY_TYPE_USB_CDP;
+		ulpmc_chg_type = SET_CHRG_TYPE_CDP;
 		break;
 	case EXTCON_DCP:
 		chrg_type = POWER_SUPPLY_TYPE_USB_DCP;
+		ulpmc_chg_type = SET_CHRG_TYPE_DCP;
 		break;
 	case EXTCON_ACA:
 		chrg_type = POWER_SUPPLY_TYPE_USB_ACA;
+		ulpmc_chg_type = SET_CHRG_TYPE_ACA;
 		break;
 	default:
 		chrg_type = POWER_SUPPLY_TYPE_USB;
 		dev_warn(&chip->client->dev, "unknown extcon cable\n");
+	}
+
+	/* update charge type to ULPMC */
+	if (ulpmc_chg_type) {
+		ret = ulpmc_write_reg8(chip->client,
+			ULPMC_SET_CHRG_TYPE_REG, ulpmc_chg_type);
+		if (ret < 0)
+			dev_warn(&chip->client->dev, "set chrg type failed\n");
 	}
 
 extcon_evt_ret:

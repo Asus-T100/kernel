@@ -26,20 +26,26 @@
 
 #include "sh_css_legacy.h"
 
-int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
+int atomisp_q_video_buffers_to_css(struct atomisp_sub_device *isp_subdev,
 			     struct atomisp_video_pipe *pipe,
 			     enum ia_css_buffer_type css_buf_type,
-			     enum ia_css_pipe_id css_pipe_id);
+			     enum ia_css_pipe_id css_pipe_id, bool streamoff);
 
-int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
-			   enum ia_css_pipe_id css_pipe_id);
+int atomisp_q_s3a_buffers_to_css(struct atomisp_sub_device *isp_subdev,
+			   enum ia_css_pipe_id css_pipe_id, bool streamoff);
 
-int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
-			   enum ia_css_pipe_id css_pipe_id);
+int atomisp_q_dis_buffers_to_css(struct atomisp_sub_device *isp_subdev,
+			   enum ia_css_pipe_id css_pipe_id, bool streamoff);
 
-int atomisp_init_struct(struct atomisp_device *isp);
+int atomisp_dev_init_struct(struct atomisp_device *isp);
+int atomisp_subdev_init_struct(struct atomisp_sub_device *isp_subdev);
 
-unsigned int atomisp_users(struct atomisp_device *isp);
+int atomisp_subdev_streaming_count(struct atomisp_device *isp);
+
+void atomisp_control_irq_sof(struct atomisp_device *isp);
+
+unsigned int atomisp_subdev_users(struct atomisp_sub_device *isp_subdev);
+unsigned int atomisp_dev_users(struct atomisp_device *isp);
 
 /*
  * Memory help functions for image frame and private parameters
@@ -48,11 +54,12 @@ unsigned int atomisp_users(struct atomisp_device *isp);
 int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 				     struct vm_area_struct *vma);
 
-int atomisp_qbuf_to_css(struct atomisp_device *isp,
+int atomisp_qbuf_to_css(struct atomisp_sub_device *isp_subdev,
 			struct atomisp_video_pipe *pipe,
 			struct videobuf_buffer *vb);
 
-int atomisp_qbuffers_to_css(struct atomisp_device *isp);
+int atomisp_qbuffers_to_css(struct atomisp_sub_device *isp_subdev,
+			    bool streamoff);
 
 extern const struct v4l2_file_operations atomisp_fops;
 

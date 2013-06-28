@@ -72,6 +72,7 @@
 #include "device_libs/platform_ov5640.h"
 #include "device_libs/platform_imx175.h"
 #include "device_libs/platform_imx135.h"
+#include "device_libs/platform_imx132.h"
 #include "device_libs/platform_s5k8aay.h"
 #include "device_libs/platform_ov9724.h"
 #include "device_libs/platform_ov2722.h"
@@ -99,8 +100,9 @@
 #include "device_libs/platform_edlp_fast.h"
 #include "device_libs/platform_logical_modem.h"
 
-/* Modem devices */
+/* SW devices */
 #include "device_libs/platform_modem_ctrl.h"
+#include "device_libs/platform_panel.h"
 
 /* WIFI devices */
 #include "device_libs/platform_wl12xx.h"
@@ -202,6 +204,8 @@ struct devs_id __initconst device_ids[] = {
 					&intel_register_i2c_camera_device},
 	{"imx135", SFI_DEV_TYPE_I2C, 0, &imx135_platform_data,
 					&intel_register_i2c_camera_device},
+	{"imx132", SFI_DEV_TYPE_I2C, 0, &imx132_platform_data,
+					&intel_register_i2c_camera_device},
 	{"s5k8aay", SFI_DEV_TYPE_I2C, 0, &s5k8aay_platform_data,
 					&intel_register_i2c_camera_device},
 	{"ov9724", SFI_DEV_TYPE_I2C, 0, &ov9724_platform_data,
@@ -279,6 +283,13 @@ struct devs_id __initconst device_ids[] = {
 		&sfi_handle_mdm},
 	{"RMC_PEGASUS", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
 		&sfi_handle_mdm},
+	/* Panel */
+	{"PANEL_CMI_CMD", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
+		&panel_handler},
+	{"PANEL_JDI_VID", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
+		&panel_handler},
+	{"PANEL_JDI_CMD", SFI_DEV_TYPE_MDM, 0, &no_platform_data,
+		&panel_handler},
 	{},
 };
 

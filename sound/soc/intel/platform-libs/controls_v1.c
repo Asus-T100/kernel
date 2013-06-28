@@ -90,7 +90,7 @@ static int lpe_mixer_headset_get(struct snd_kcontrol *kcontrol,
 	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
 	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
 
-	ucontrol->value.integer.value[0] = sst->lpe_mixer_input_ihf;
+	ucontrol->value.integer.value[0] = sst->lpe_mixer_input_hs;
 	return 0;
 }
 

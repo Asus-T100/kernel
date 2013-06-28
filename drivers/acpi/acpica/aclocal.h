@@ -839,6 +839,8 @@ struct acpi_bit_register_info {
 #define ACPI_REGISTER_PM_TIMER                  0x05
 #define ACPI_REGISTER_PROCESSOR_BLOCK           0x06
 #define ACPI_REGISTER_SMI_COMMAND_BLOCK         0x07
+#define ACPI_REGISTER_GPE0_STATUS		0xf1
+#define ACPI_REGISTER_GPE0_ENABLE		0xf2
 
 /* Masks used to access the bit_registers */
 
