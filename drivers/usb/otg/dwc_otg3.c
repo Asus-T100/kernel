@@ -852,8 +852,15 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 	struct dwc_otg2 *otg = the_transceiver;
 	struct power_supply_cable_props cap;
 
-	if (otg->otg_data->charging_compliance)
+	if (otg->charging_cap.chrg_type ==
+			POWER_SUPPLY_CHARGER_TYPE_USB_CDP)
 		return 0;
+	else if (otg->charging_cap.chrg_type !=
+			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) {
+		otg_err(otg, "%s: currently, chrg type is not SDP!\n",
+				__func__);
+		return -EINVAL;
+	}
 
 	if (mA == OTG_DEVICE_SUSPEND) {
 		spin_lock_irqsave(&otg->lock, flags);
@@ -862,9 +869,20 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 		cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_SUSPEND;
 		spin_unlock_irqrestore(&otg->lock, flags);
 
-		if ((cap.chrg_type ==
-			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
-			(!otg->otg_data->charging_compliance))
+		/* mA is zero mean D+/D- opened cable.
+		 * If SMIP set, then notify 500mA.
+		 * Otherwise, notify 0mA.
+		*/
+		if (!cap.mA) {
+			if (otg->otg_data->charging_compliance)
+				cap.mA = 500;
+		/* For standard SDP, if SMIP set, then ignore suspend */
+		} else if (otg->otg_data->charging_compliance)
+			return 0;
+		/* Stander SDP(cap.mA != 0) and SMIP not set.
+		 * Should send 0mA with SUSPEND event
+		 */
+		else
 			cap.mA = 0;
 
 		atomic_notifier_call_chain(&otg->phy.notifier,
@@ -882,28 +900,30 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 		return 0;
 	}
 
-	/* force 896mA to 900mA
-	 * Beucause the power just can be set as an
-	 * integer multiple of 8 in usb configuration descriptor
-	 */
-	if (mA == 896)
-		mA = 900;
 
-	if ((mA != 100) &&
-		(mA != 150) &&
-		(mA != 500) &&
-		(mA != 900)) {
-		otg_err(otg, "Device driver set invalid SDP current value!\n");
-		return -EINVAL;
+	/* For SMIP set case, only need to report 500/900mA */
+	if (otg->otg_data->charging_compliance) {
+		if ((mA != OTG_USB2_500MA) &&
+				(mA != OTG_USB3_900MA))
+			return 0;
 	}
 
-	if (otg->charging_cap.chrg_type ==
-			POWER_SUPPLY_CHARGER_TYPE_USB_CDP)
-		return 0;
-	else if (otg->charging_cap.chrg_type !=
-			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) {
-		otg_err(otg, "%s: currently, chrg type is not SDP!\n",
-				__func__);
+	/* Covert macro to integer number*/
+	switch (mA) {
+	case OTG_USB2_100MA:
+		mA = 100;
+		break;
+	case OTG_USB3_150MA:
+		mA = 150;
+		break;
+	case OTG_USB2_500MA:
+		mA = 500;
+		break;
+	case OTG_USB3_900MA:
+		mA = 900;
+		break;
+	default:
+		otg_err(otg, "Device driver set invalid SDP current value!\n");
 		return -EINVAL;
 	}
 
@@ -1057,8 +1077,6 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 		mA = 1500;
 		break;
 	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
-		if (otg->otg_data->charging_compliance)
-			mA = 500;
 		break;
 	default:
 		otg_err(otg, "Charger type is not valid to notify battery\n");
@@ -1080,10 +1098,6 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 			otg_err(otg, "Notify battery type failed!\n");
 		break;
 	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
-		if (otg->otg_data->charging_compliance)
-			if (dwc_otg_notify_charger_type(otg, \
-				POWER_SUPPLY_CHARGER_EVENT_CONNECT) < 0)
-				otg_err(otg, "Notify battery type failed!\n");
 	default:
 		break;
 	}
@@ -2052,8 +2066,6 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
-	struct power_supply_cable_props cap;
-	unsigned long flags;
 	pci_power_t state = PCI_D3cold;
 
 	if (!otg) {
@@ -2064,23 +2076,6 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 	if (otg->state == DWC_STATE_B_PERIPHERAL ||
 			otg->state == DWC_STATE_A_HOST)
 		state = PCI_D3hot;
-
-	if (otg->state == DWC_STATE_B_PERIPHERAL) {
-		spin_lock_irqsave(&otg->lock, flags);
-		cap.chrg_type = otg->charging_cap.chrg_type;
-		cap.mA = otg->charging_cap.mA;
-		cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_SUSPEND;
-		spin_unlock_irqrestore(&otg->lock, flags);
-
-		if ((cap.chrg_type ==
-			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
-			(!otg->otg_data->charging_compliance))
-			cap.mA = 0;
-
-		atomic_notifier_call_chain(&otg->phy.notifier,
-				USB_EVENT_CHARGER, &cap);
-		return 0;
-	}
 
 	set_sus_phy(otg, 1);
 	if (pci_save_state(pci_dev)) {
@@ -2124,10 +2119,6 @@ static int dwc_otg_runtime_resume(struct device *dev)
 			u1power | PHY_U1POWER_STATE_TX_EN);
 	}
 
-	if (otg->state == DWC_STATE_B_PERIPHERAL)
-		dwc_otg_notify_charger_type(otg,
-				POWER_SUPPLY_CHARGER_EVENT_CONNECT);
-
 	return 0;
 }
 
@@ -2145,10 +2136,6 @@ static int dwc_otg_suspend(struct device *dev)
 	if (otg->state == DWC_STATE_B_PERIPHERAL ||
 			otg->state == DWC_STATE_A_HOST)
 		state = PCI_D3hot;
-
-	if (otg->state == DWC_STATE_B_PERIPHERAL)
-		dwc_otg_notify_charger_type(otg, \
-				POWER_SUPPLY_CHARGER_EVENT_SUSPEND);
 
 	set_sus_phy(otg, 1);
 	if (pci_save_state(pci_dev)) {
@@ -2191,10 +2178,6 @@ static int dwc_otg_resume(struct device *dev)
 		otg_write(otg, PHY_U1POWER_STATE,
 			u1power | PHY_U1POWER_STATE_TX_EN);
 	}
-
-	if (otg->state == DWC_STATE_B_PERIPHERAL)
-		dwc_otg_notify_charger_type(otg,
-				POWER_SUPPLY_CHARGER_EVENT_CONNECT);
 
 	return 0;
 }
