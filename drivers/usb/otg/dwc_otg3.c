@@ -50,17 +50,23 @@ static int d3hot_wa_enabled(struct dwc_otg2 *otg)
 	return otg->otg_data->d3hot_wa;
 }
 
-static int enable_d3hot_wa(void)
+static int enable_d3hot_wa(struct dwc_otg2 *otg, bool on_off)
 {
 	void __iomem *addr;
 	unsigned int val = 0;
+
+	if (!d3hot_wa_enabled(otg))
+		return 0;
 
 	addr = ioremap_nocache(APBFB_OTG3_MISC1, 4);
 	if (!addr)
 		return -EFAULT;
 
 	val = readl(addr);
-	val |= OTG3_MISC1_DO_D3COLD_RESUME;
+	if (on_off)
+		val |= OTG3_MISC1_DO_D3COLD_RESUME;
+	else
+		val &= ~OTG3_MISC1_DO_D3COLD_RESUME;
 	writel(val, addr);
 	iounmap(addr);
 
@@ -320,6 +326,13 @@ static int start_host(struct dwc_otg2 *otg)
 	}
 
 	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
+	/* Enable D0i3hot WA for host mode
+	 * If enable failed, then LS device will cause fabric error
+	 */
+	if (enable_d3hot_wa(otg, true)) {
+		printk(KERN_ERR "D3hot WA can't be enabled. Host start failed\n");
+		return -EFAULT;
+	}
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -1128,6 +1141,14 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	dwc_otg_charger_hwdet(false);
 
+	/* Disable D0i3hot WA by default
+	 * If disable failed, then maybe cause device mode D0i3 can't work
+	 * after resumed. But only can be when host enter sleep/hibernation
+	 * state which is not easy to met by user. So just print one warning.
+	 */
+	if (enable_d3hot_wa(otg, false))
+		printk(KERN_ERR "dwc-otg: D3hot WA disable failed\n");
+
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
 	if (!is_hybridvp(otg))
@@ -1847,14 +1868,8 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
-	if (d3hot_wa_enabled(otg)) {
+	if (d3hot_wa_enabled(otg))
 		otg->reset_host	= dwc_otg2_reset_host;
-		if (enable_d3hot_wa()) {
-			printk(KERN_ERR "dwc-otg3: Enable D3hot WA failed.\n");
-			retval = -EFAULT;
-			goto exit;
-		}
-	}
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
