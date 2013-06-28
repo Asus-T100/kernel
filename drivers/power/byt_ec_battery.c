@@ -1,0 +1,446 @@
+/*
+ * byt_ec_battery.c - Baytrail EC based battery driver
+ *
+ * Copyright (C) 2013 Intel Corporation
+ *
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; version 2 of the License.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
+ *
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * Author: Ramakrishna Pallala <ramakrishna.pallala@intel.com>
+ */
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/jiffies.h>
+#include <linux/io.h>
+#include <linux/slab.h>
+#include <linux/pm_runtime.h>
+#include <linux/interrupt.h>
+#include <linux/device.h>
+#include <linux/platform_device.h>
+#include <linux/delay.h>
+#include <linux/notifier.h>
+#include <linux/workqueue.h>
+#include <linux/power_supply.h>
+#include <linux/acpi.h>
+#include <asm/intel_byt_ec.h>
+
+/* 8 bit registers and offsets */
+#define EC_MAX_PLAT_TEMP_REG		1
+#define EC_SENSOR_TEMP_REG		2
+#define EC_REAL_AC_PWR_REG		3
+#define REAL_AC_PWR_ON			0x01
+
+#define EC_CRIT_TEMP_REG		47
+#define EC_VIRT_AC_PWR_REG		48
+#define EC_BAT0_STAT_REG		50
+#define BAT0_STAT_DISCHARGING		(1 << 0)
+#define BAT0_STAT_CHARGING		(1 << 1)
+#define BAT0_STAT_LOW_BATT		(1 << 2)
+#define EC_BAT0_CUR_RATE_REG		51
+#define EC_BAT0_CUR_CAP_REG		52
+#define EC_BAT0_VOLT_REG		53
+
+/* 16 bit registers and offsets */
+#define EC_BAT0_DESIGN_CAP_REG		87
+#define EC_BAT0_REM_CAP_REG		89
+#define EC_BAT0_FULL_CHRG_CAP_REG	91
+#define EC_BAT0_VBATT_REG		93
+#define EC_BAT0_DIBATT_CUR_REG		95
+#define EC_BAT0_CIBATT_CUR_REG		97
+#define EC_BAT0_BATTSBS_STATUS		202
+#define BAT0_BATTSBS_STATUS_OTP		(1 << 12)
+#define BAT0_BATTSBS_STATUS_FC		(1 << 5)
+#define EC_BAT0_TEMP_REG		206
+#define EC_BAT0_AVG_CUR_REG		208
+
+struct ec_battery_info {
+	struct platform_device *pdev;
+	struct power_supply	bat;
+	struct power_supply	chrg;
+	struct mutex		lock;
+	struct notifier_block	nb;
+};
+
+static enum power_supply_property ec_battery_props[] = {
+	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_CURRENT_AVG,
+	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_TECHNOLOGY,
+	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CHARGE_NOW,
+	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+};
+
+static enum power_supply_property ec_charger_properties[] = {
+	POWER_SUPPLY_PROP_ONLINE,
+};
+
+static short adjust_sign_value(int value)
+{
+	short result, temp = (short)value;
+
+	/* check if sign bit is set */
+	if (temp & 0x8000) {
+		result = ~temp;
+		result++;
+		result *= -1;
+	} else {
+		result = temp;
+	}
+
+	return result;
+}
+
+static int ec_get_battery_property(struct power_supply *psy,
+					enum power_supply_property psp,
+					union power_supply_propval *val)
+{
+	struct ec_battery_info *chip = container_of(psy,
+				struct ec_battery_info, bat);
+	int ret = 0, cur_sign = -1;
+	u8 val8, cap;
+	u16 val16;
+
+	mutex_lock(&chip->lock);
+	switch (psp) {
+	case POWER_SUPPLY_PROP_STATUS:
+		ret = byt_ec_read_byte(EC_BAT0_CUR_CAP_REG, &cap);
+		if (ret < 0)
+			goto ec_read_err;
+
+		ret = byt_ec_read_byte(EC_BAT0_STAT_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+
+		ret = byt_ec_read_word(EC_BAT0_BATTSBS_STATUS, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+
+		if (val8 & BAT0_STAT_DISCHARGING)
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		else if (val8 & BAT0_STAT_CHARGING)
+			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+		else if (val8 & BAT0_STAT_LOW_BATT)
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		else if ((cap == 100) || (val16 & BAT0_BATTSBS_STATUS_FC))
+			val->intval = POWER_SUPPLY_STATUS_FULL;
+		else if (cap != 0)
+			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		else
+			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
+		break;
+	case POWER_SUPPLY_PROP_HEALTH:
+		val->intval = POWER_SUPPLY_HEALTH_GOOD;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		ret = byt_ec_read_word(EC_BAT0_VBATT_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+		val->intval = val16 * 1000;
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		ret = byt_ec_read_byte(EC_BAT0_STAT_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+
+		if (val8 & BAT0_STAT_CHARGING) {
+			ret = byt_ec_read_word(EC_BAT0_CIBATT_CUR_REG, &val16);
+			cur_sign = 1;
+		} else {
+			ret = byt_ec_read_word(EC_BAT0_DIBATT_CUR_REG, &val16);
+			cur_sign = -1;
+		}
+		if (ret < 0)
+			goto ec_read_err;
+		val->intval = cur_sign * ((int)val16 * 1000);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_AVG:
+		ret = byt_ec_read_word(EC_BAT0_AVG_CUR_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+
+		val->intval = (int)adjust_sign_value(val16) * 1000;
+		break;
+	case POWER_SUPPLY_PROP_PRESENT:
+		ret = byt_ec_read_byte(EC_BAT0_CUR_CAP_REG, &cap);
+		if (ret < 0)
+			goto ec_read_err;
+
+		ret = byt_ec_read_byte(EC_BAT0_STAT_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+
+		if ((val8 & 0x7) || (cap != 0))
+			val->intval = 1;
+		else
+			val->intval = 0;
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY:
+		ret = byt_ec_read_byte(EC_BAT0_CUR_CAP_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+		val->intval = val8;
+		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		ret = byt_ec_read_word(EC_BAT0_TEMP_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+		/*
+		 * WA: report 25 Degrees untill
+		 * EC FW is available.
+		 */
+		val16 = (273 + 25) * 10;
+
+		/*
+		 * convert temperature from degree kelvin
+		 * to degree celsius: T(C) = T(K) - 273.15
+		 * also 1 LSB of Temp register = 0.1 Kelvin.
+		 */
+		val->intval = ((val16 / 10) - 273) * 10;
+		break;
+	case POWER_SUPPLY_PROP_TECHNOLOGY:
+		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_NOW:
+		ret = byt_ec_read_word(EC_BAT0_REM_CAP_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+		val->intval = ((int)val16) * 1000;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+		ret = byt_ec_read_word(EC_BAT0_FULL_CHRG_CAP_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+		val->intval = ((int)val16) * 1000;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+		ret = byt_ec_read_word(EC_BAT0_DESIGN_CAP_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+		val->intval = ((int)val16) * 1000;
+		break;
+	default:
+		mutex_unlock(&chip->lock);
+		return -EINVAL;
+	}
+
+	mutex_unlock(&chip->lock);
+	return 0;
+
+ec_read_err:
+	mutex_unlock(&chip->lock);
+	return ret;
+}
+
+static int ec_get_charger_property(struct power_supply *psy,
+					enum power_supply_property psp,
+					union power_supply_propval *val)
+{
+	struct ec_battery_info *chip = container_of(psy,
+				struct ec_battery_info, chrg);
+	int ret = 0;
+	u8 data;
+
+	mutex_lock(&chip->lock);
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		ret = byt_ec_read_byte(EC_REAL_AC_PWR_REG, &data);
+		if (ret < 0)
+			goto ec_read_err;
+
+		if (data & REAL_AC_PWR_ON)
+			val->intval = 1;
+		else
+			val->intval = 0;
+		break;
+	default:
+		mutex_unlock(&chip->lock);
+		return -EINVAL;
+	}
+	mutex_unlock(&chip->lock);
+	return 0;
+
+ec_read_err:
+	mutex_unlock(&chip->lock);
+	return ret;
+}
+
+static int byt_ec_evt_batt_callback(struct notifier_block *nb,
+					unsigned long event, void *data)
+{
+	struct ec_battery_info *chip = container_of(nb,
+					struct ec_battery_info, nb);
+	int ret = NOTIFY_DONE;
+	bool uevent = false;
+
+	switch (event) {
+	case BYT_EC_SCI_ACINSERTION:
+		dev_info(&chip->pdev->dev, "Charger plug event\n");
+		uevent = true;
+		break;
+	case BYT_EC_SCI_ACREMOVAL:
+		dev_info(&chip->pdev->dev, "Charger unplug event\n");
+		uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY:
+		dev_info(&chip->pdev->dev, "Battery related event\n");
+		uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY_PRSNT:
+		dev_info(&chip->pdev->dev, "Battery plug/unplug event\n");
+		uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY_OTP:
+		dev_info(&chip->pdev->dev, "Battery over temp event\n");
+		uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY_OTP_CLR:
+		dev_info(&chip->pdev->dev, "Battery over temp clear event\n");
+		uevent = true;
+		break;
+	default:
+		dev_dbg(&chip->pdev->dev, "not valid battery event\n");
+	}
+
+	if (uevent) {
+		power_supply_changed(&chip->bat);
+		power_supply_changed(&chip->chrg);
+		ret = NOTIFY_OK;
+	}
+
+	return ret;
+}
+
+static int ec_battery_probe(struct platform_device *pdev)
+{
+	struct ec_battery_info *chip;
+	int ret;
+
+	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
+	if (!chip) {
+		dev_err(&pdev->dev, "mem alloc failed\n");
+		return -ENOMEM;
+	}
+
+	chip->pdev = pdev;
+	platform_set_drvdata(pdev, chip);
+	mutex_init(&chip->lock);
+
+	chip->bat.name = "byt-battery";
+	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
+	chip->bat.properties = ec_battery_props;
+	chip->bat.num_properties = ARRAY_SIZE(ec_battery_props);
+	chip->bat.get_property = ec_get_battery_property;
+	ret = power_supply_register(&pdev->dev, &chip->bat);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register battery: %d\n", ret);
+		goto probe_failed_1;
+	}
+
+	chip->chrg.name = "byt-charger";
+	chip->chrg.type = POWER_SUPPLY_TYPE_MAINS;
+	chip->chrg.properties = ec_charger_properties;
+	chip->chrg.num_properties = ARRAY_SIZE(ec_charger_properties);
+	chip->chrg.get_property = ec_get_charger_property;
+	ret = power_supply_register(&pdev->dev, &chip->chrg);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register charger: %d\n", ret);
+		goto probe_failed_2;
+	}
+
+	/* register for EC SCI events */
+	chip->nb.notifier_call = &byt_ec_evt_batt_callback;
+	byt_ec_evt_register_notify(&chip->nb);
+
+	return 0;
+
+probe_failed_2:
+	power_supply_unregister(&chip->bat);
+probe_failed_1:
+	kfree(chip);
+	return ret;
+}
+
+static int ec_battery_remove(struct platform_device *pdev)
+{
+	struct ec_battery_info *chip = platform_get_drvdata(pdev);
+
+	byt_ec_evt_unregister_notify(&chip->nb);
+	power_supply_unregister(&chip->chrg);
+	power_supply_unregister(&chip->bat);
+	kfree(chip);
+	return 0;
+}
+
+static struct platform_driver ec_battery_driver = {
+	.probe = ec_battery_probe,
+	.remove = ec_battery_remove,
+	.driver = {
+		.name = "ec_battery",
+	},
+};
+
+static int __init ec_battery_init(void)
+{
+	struct platform_device *pdev = NULL;
+	void *pdata = NULL;
+	int ret = 0;
+
+	ret = platform_driver_register(&ec_battery_driver);
+	if (ret < 0) {
+		pr_err("platform driver reg failed %s\n",
+					"ec_battery");
+		return ret;
+	}
+
+	pdev = platform_device_alloc("ec_battery", -1);
+	if (!pdev) {
+		pr_err("out of memory for platform dev %s\n",
+					"ec_battery");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	pdev->dev.platform_data = pdata;
+	ret = platform_device_add(pdev);
+	if (ret) {
+		pr_err("failed to add battery platform device\n");
+		platform_device_put(pdev);
+		goto out;
+	}
+
+	return 0;
+out:
+	platform_driver_unregister(&ec_battery_driver);
+	return ret;
+}
+device_initcall(ec_battery_init);
+
+static void __exit ec_battery_exit(void)
+{
+	platform_driver_unregister(&ec_battery_driver);
+}
+module_exit(ec_battery_exit);
+
+MODULE_AUTHOR("Ramakrishna Pallala <ramakrishna.pallala@intel.com>");
+MODULE_DESCRIPTION("Baytrail EC Battery Driver");
+MODULE_LICENSE("GPL");
