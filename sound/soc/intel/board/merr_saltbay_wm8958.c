@@ -37,6 +37,7 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/jack.h>
+#include <linux/input.h>
 #include <linux/mfd/wm8994/registers.h>
 #include "../../codecs/wm8994.h"
 
@@ -327,6 +328,8 @@ static int mrfld_8958_init(struct snd_soc_pcm_runtime *runtime)
 		pr_err("jack creation failed\n");
 		return ret;
 	}
+
+	snd_jack_set_key(ctx->jack.jack, SND_JACK_BTN_0, KEY_MEDIA);
 
 	wm8958_mic_detect(codec, &ctx->jack, NULL, NULL, NULL, NULL);
 
