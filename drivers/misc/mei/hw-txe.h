@@ -47,6 +47,12 @@ struct mei_txe_hw {
 
 	u32 readiness_state;
 	unsigned long intr_cause;
+
+	/** mei mm support */
+	struct mei_mm_device *mdev;
+	void *pool_vaddr;
+	dma_addr_t pool_paddr;
+	size_t pool_size;
 };
 
 #define to_txe_hw(dev) (struct mei_txe_hw *)((dev)->hw)
