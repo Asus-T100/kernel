@@ -1807,7 +1807,6 @@ int i915_driver_unload(struct drm_device *dev)
 int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct drm_i915_file_private *file_priv;
-	drm_i915_private_t *dev_priv = dev->dev_private;
 
 	DRM_DEBUG_DRIVER("\n");
 	file_priv = kmalloc(sizeof(*file_priv), GFP_KERNEL);
@@ -1822,6 +1821,8 @@ int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 	idr_init(&file_priv->context_idr);
 
 #ifdef CONFIG_DRM_VXD_BYT
+	drm_i915_private_t *dev_priv = dev->dev_private;
+
 	if (dev_priv->vxd_driver_open)
 		return dev_priv->vxd_driver_open(dev, file);
 	else

@@ -3442,8 +3442,8 @@ static struct intel_pch_pll *intel_get_pch_pll(struct intel_crtc *intel_crtc, u3
 		i = intel_crtc->pipe;
 		pll = &dev_priv->pch_plls[i];
 
-		DRM_DEBUG_KMS("CRTC:%d using pre-allocated PCH PLL %x\n",
-			      intel_crtc->base.base.id, pll->pll_reg);
+		DRM_DEBUG_KMS("CRTC:%d using pre-allocated PCH PLL %x\n"
+			      , intel_crtc->base.base.id, pll->pll_reg);
 
 		goto found;
 	}
@@ -3774,7 +3774,6 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	struct intel_encoder *encoder;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
-	u32 temp;
 
 	if (intel_crtc->active)
 		return;

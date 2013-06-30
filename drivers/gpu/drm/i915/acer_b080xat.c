@@ -102,7 +102,6 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	 * - esd interval, ulps timeout
 	 *
 	 */
-	struct intel_dsi_dev_priv *dev_priv = dsi->dev_priv;
 
 	DRM_DEBUG_KMS("\n");
 

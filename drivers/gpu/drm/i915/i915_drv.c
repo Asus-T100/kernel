@@ -1060,13 +1060,15 @@ static int i915_release(struct inode *inode, struct file *filp)
 static long i915_ioctl(struct file *filp,
 	      unsigned int cmd, unsigned long arg)
 {
-	unsigned int nr = DRM_IOCTL_NR(cmd);
 	struct drm_file *file_priv = filp->private_data;
 	struct drm_device *dev;
 	dev = file_priv->minor->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 
 #ifdef CONFIG_DRM_VXD_BYT
+	unsigned int nr = DRM_IOCTL_NR(cmd);
+
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	if ((nr >= DRM_COMMAND_VXD_BASE) &&
 		(nr < DRM_COMMAND_VXD_BASE + 0x20)) {
 		BUG_ON(!dev_priv->vxd_ioctl);

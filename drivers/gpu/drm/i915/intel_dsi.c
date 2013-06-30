@@ -169,7 +169,7 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
 	int pipe = intel_crtc->pipe;
-	u32 temp, status;
+	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -475,7 +475,6 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	int pipe = intel_crtc->pipe;
-	int plane = intel_crtc->plane;
 	unsigned int bpp = intel_crtc->bpp;
 	u32 val;
 
@@ -616,7 +615,6 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 static int intel_dsi_get_modes(struct drm_connector *connector)
 {
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
-	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct drm_display_mode *mode = NULL;
 
 	/* Get the mode info from panel specific callback */
@@ -692,7 +690,6 @@ static void dsi_config(struct drm_encoder *encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	int pipe = intel_crtc->pipe;
-	unsigned int bpp = intel_crtc->bpp;
 	u32 tmp;
 
 	DRM_DEBUG_KMS("\n");
@@ -723,7 +720,6 @@ bool intel_dsi_init(struct drm_device *dev)
 	struct drm_encoder *encoder;
 	struct intel_connector *intel_connector;
 	struct drm_connector *connector;
-	struct drm_display_mode *fixed_mode = NULL;
 	const struct intel_dsi_device *dsi;
 	unsigned int i;
 

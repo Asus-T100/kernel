@@ -95,7 +95,6 @@ void auo_dpms(struct intel_dsi_device *dsi, bool enable)
 	DRM_DEBUG_KMS("\n");
 
 	if (enable) {
-		int i;
 
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
 
@@ -155,7 +154,6 @@ struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
 	u32 vsync_offset = 0x4;
 	u32 vsync_width  = 0x4;
 	struct drm_display_mode *mode = NULL;
-	struct drm_i915_private *dev_priv = dsi->dev_priv;
 
 	/* Allocate */
 	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
@@ -165,7 +163,7 @@ struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
 	}
 
 	/* Hardcode 1920x1200*/
-	strcpy(mode->name, "1920x1200");
+	strncpy(mode->name, "1920x1200", sizeof(mode->name) - 1);
 	mode->hdisplay = 0x780;
 	mode->vdisplay = 0x4B0;
 	mode->vrefresh = 60;

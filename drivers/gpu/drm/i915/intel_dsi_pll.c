@@ -215,9 +215,9 @@ int get_dsi_clk(struct intel_dsi *intel_dsi, struct drm_display_mode *mode, \
 int mnp_from_clk_table(u32 dsi_clk, struct dsi_mnp *dsi_mnp)
 {
 	unsigned int i;
-	u8 m;
-	u8 n;
-	u8 p;
+	u8 m = 0;
+	u8 n = 0;
+	u8 p = 0;
 	u32 m_seed;
 
 	if (dsi_clk < 300 || dsi_clk > 1000)
@@ -229,8 +229,12 @@ int mnp_from_clk_table(u32 dsi_clk, struct dsi_mnp *dsi_mnp)
 			break;
 	}
 
+	if (i == sizeof(dsi_clk_tbl)/sizeof(struct dsi_clock_table))
+		return -ECHRNG;
+
 	m = dsi_clk_tbl[i].m;
 	p = dsi_clk_tbl[i].p;
+
 	m_seed = lfsr_converts[m - 62];
 	n = 1;
 	dsi_mnp->dsi_pll_ctrl = (1 << (17 + p - 2)) | (1 << 8);
@@ -314,7 +318,6 @@ int intel_enable_dsi_pll(struct intel_dsi *intel_dsi)
 {
 	struct drm_i915_private *dev_priv =
 			intel_dsi->base.base.dev->dev_private;
-	u32 tmp;
 
 	udelay(1000);	/*wait 0.5us after ungating before enabling again */
 	intel_cck_write32_bits(dev_priv, 0x48, 1 << 31,  1 << 31);

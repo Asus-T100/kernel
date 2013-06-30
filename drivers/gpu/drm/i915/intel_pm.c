@@ -3704,8 +3704,6 @@ static void intel_init_emon(struct drm_device *dev)
 /* This routine is to clean up RC6, Turbo and other power features on VLV */
 void valleyview_disable_rps(struct drm_device *dev)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
 	/* Clear RC6 */
 	vlv_rs_setstate(dev, false);
 
