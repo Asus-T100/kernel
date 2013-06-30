@@ -41,6 +41,8 @@
 
 #include <linux/mei.h>
 
+#include "mei-mm.h"
+
 #include "mei_dev.h"
 #include "hw-txe.h"
 
@@ -211,6 +213,12 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, dev);
 
+	hw->mdev = mei_mm_init(&dev->pdev->dev,
+		hw->pool_vaddr, hw->pool_paddr, hw->pool_size);
+
+	if (IS_ERR_OR_NULL(hw->mdev))
+		goto deregister_mei;
+
 	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
 	pm_runtime_use_autosuspend(&pdev->dev);
 
@@ -223,6 +231,8 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	return 0;
 
+deregister_mei:
+	mei_deregister(dev);
 release_irq:
 	/* disable interrupts */
 	mei_disable_interrupts(dev);
@@ -274,6 +284,10 @@ static void mei_txe_remove(struct pci_dev *pdev)
 	mei_disable_interrupts(dev);
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);
+
+	mei_free_dma(dev);
+
+	mei_mm_deinit(hw->mdev);
 
 	mei_free_dma(dev);
 
