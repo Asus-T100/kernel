@@ -2120,7 +2120,7 @@ i915_mmio_read_api(struct file *filp,
 {
 	struct drm_device *dev = filp->private_data;
 	drm_i915_private_t *dev_priv = dev->dev_private;
-	char buf[200], offset[20], operation[10];
+	char buf[200], offset[20], operation[10], format[20];
 	int len = 0, ret, noOfTokens;
 	u32 mmio_to_read;
 
@@ -2130,9 +2130,11 @@ i915_mmio_read_api(struct file *filp,
 	if (i915_debugfs_vars.mmio.mmio_input == 0)
 		return len;
 
-	noOfTokens = sscanf(i915_debugfs_vars.mmio.mmio_vars,
-					"%s %s", operation, offset);
+	snprintf(format, sizeof(format), "%%%ds %%%ds",
+				sizeof(operation), sizeof(offset));
 
+	noOfTokens = sscanf(i915_debugfs_vars.mmio.mmio_vars,
+					format, operation, offset);
 	if (noOfTokens < 2)
 		return len;
 
@@ -2208,7 +2210,7 @@ i915_iosf_read_api(struct file *filp,
 {
 	struct drm_device *dev = filp->private_data;
 	drm_i915_private_t *dev_priv = dev->dev_private;
-	char buf[200], operation[10], port[10], offset[20];
+	char buf[200], operation[10], port[10], offset[20], format[20];
 	int len = 0, ret, noOfTokens;
 	u32 iosf_reg, iosf_val;
 
@@ -2218,8 +2220,11 @@ i915_iosf_read_api(struct file *filp,
 	if (i915_debugfs_vars.iosf.iosf_input == 0)
 		return len;
 
+	snprintf(format, sizeof(format), "%%%ds %%%ds %%%ds",
+			sizeof(operation), sizeof(port), sizeof(offset));
+
 	noOfTokens = sscanf(i915_debugfs_vars.iosf.iosf_vars,
-				"%s %s %s", operation, port, offset);
+				format, operation, port, offset);
 
 	if (noOfTokens < 3)
 		return len;
@@ -2479,7 +2484,7 @@ i915_read_rc6_api(struct file *filp,
 {
 	struct drm_device *dev = filp->private_data;
 	drm_i915_private_t *dev_priv = dev->dev_private;
-	char buf[200], control[10], operation[20];
+	char buf[200], control[10], operation[20], format[20];
 	int len = 0, ret, noOfTokens;
 
 	if (!(IS_VALLEYVIEW(dev)))
@@ -2488,8 +2493,11 @@ i915_read_rc6_api(struct file *filp,
 	if (i915_debugfs_vars.rc6.rc6_input == 0)
 		return len;
 
+	snprintf(format, sizeof(format), "%%%ds %%%ds",
+				sizeof(control), sizeof(operation));
+
 	noOfTokens = sscanf(i915_debugfs_vars.rc6.rc6_vars,
-					"%s %s", control, operation);
+					format, control, operation);
 
 	if (noOfTokens < 2)
 		return len;
@@ -2620,7 +2628,7 @@ i915_read_turbo_api(struct file *filp,
 {
 	struct drm_device *dev = filp->private_data;
 	drm_i915_private_t *dev_priv = dev->dev_private;
-	char buf[200], control[10], operation[20], val[20];
+	char buf[200], control[10], operation[20], val[20], format[20];
 	int len = 0, ret, noOfTokens;
 	u32 pval = 0;
 
@@ -2630,8 +2638,11 @@ i915_read_turbo_api(struct file *filp,
 	if (i915_debugfs_vars.turbo.turbo_input == 0)
 		return len;
 
+	snprintf(format, sizeof(format), "%%%ds %%%ds %%%ds",
+			sizeof(control), sizeof(operation), sizeof(val));
+
 	noOfTokens = sscanf(i915_debugfs_vars.turbo.turbo_vars,
-				"%s %s %s", control, operation, val);
+				format, control, operation, val);
 
 	if (noOfTokens < 3)
 		return len;
