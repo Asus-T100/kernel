@@ -1313,44 +1313,9 @@ static const int zoom_table[4][HRT_GDC_N] = {
 		  0<<4,   0<<4,   0<<4,   0<<4,   0<<4,   0<<4,   0<<4,   0<<4,
 		  0<<4,   0<<4,   0<<4,   0<<4,   0<<4,   0<<4,   0<<4,   0<<4}
 };
-#elif defined(HAS_GDC_VERSION_1)
-static const int zoom_table[4][HRT_GDC_N] = {
-	{0, 0, 0, 0, 0, 0, -1, -1,
-	 -1, -2, -2, -3, -3, -4, -4, -5,
-	 -6, -6, -7, -7, -8, -9, -9, -10,
-	 -11, -11, -12, -13, -13, -14, -14, -15,
-	 -16, -16, -16, -17, -17, -18, -18, -18,
-	 -18, -18, -18, -18, -18, -18, -18, -18,
-	 -18, -17, -17, -16, -15, -15, -14, -13,
-	 -12, -11, -9, -8, -7, -5, -3, -1},
-	{0, 2, 4, 7, 9, 12, 16, 19,
-	 23, 27, 31, 35, 39, 43, 48, 53,
-	 58, 62, 67, 73, 78, 83, 88, 94,
-	 99, 105, 110, 116, 121, 127, 132, 138,
-	 144, 149, 154, 160, 165, 170, 176, 181,
-	 186, 191, 195, 200, 205, 209, 213, 218,
-	 222, 225, 229, 232, 236, 239, 241, 244,
-	 246, 248, 250, 252, 253, 254, 255, 255},
-	{256, 255, 255, 254, 253, 252, 250, 248,
-	 246, 244, 241, 239, 236, 232, 229, 225,
-	 222, 218, 213, 209, 205, 200, 195, 191,
-	 186, 181, 176, 170, 165, 160, 154, 149,
-	 144, 138, 132, 127, 121, 116, 110, 105,
-	 99, 94, 88, 83, 78, 73, 67, 62,
-	 58, 53, 48, 43, 39, 35, 31, 27,
-	 23, 19, 16, 12, 9, 7, 4, 2},
-	{0, -1, -3, -5, -6, -8, -9, -10,
-	 -12, -13, -14, -15, -16, -15, -17, -17,
-	 -18, -18, -17, -19, -19, -18, -18, -19,
-	 -18, -19, -18, -17, -17, -17, -16, -16,
-	 -16, -15, -14, -14, -13, -12, -12, -12,
-	 -11, -11, -9, -9, -9, -8, -6, -6,
-	 -6, -5, -4, -3, -4, -3, -2, -2,
-	 -1, 0, -1, 0, 1, 0, 0, 0}
-};
 #else
 #error "sh_css_params.c: GDC version must be \
-	one of {GDC_VERSION_1, GDC_VERSION_2}"
+	one of {GDC_VERSION_2}"
 #endif
 
 static const struct ia_css_3a_config default_3a_config = {
@@ -1468,8 +1433,8 @@ static const struct ia_css_fc_config default_fc_config = {
 	(1 << (ISP_VEC_ELEMBITS - 2)),		/* 0.5 */
 	(1 << (ISP_VEC_ELEMBITS - 1)) - 1,	/* 1 */
 	(1 << (ISP_VEC_ELEMBITS - 1)) - 1,	/* 1 */
-	- (1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
-	- (1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
+	(uint16_t)-(1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
+	(uint16_t)-(1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
 };
 
 static const struct ia_css_cnr_config default_cnr_config = {
@@ -1507,19 +1472,14 @@ static const struct ia_css_aa_config default_aa_config = {
 
 /*static const struct ia_css_yuv2rgb_cc_config */
 static const struct ia_css_cc_config default_yuv2rgb_cc_config = {
-	SH_CSS_YUV2RGB_CCM_CALC_SHIFT,
-	/* Bits of fractional part = SH_CSS_YUV2RGB_CCM_COEF_SHIFT = 12 */
+	12,
 	{4096, -4096, 4096, 4096, 4096, 0, 4096, -4096, -4096}
 };
 
 static const struct ia_css_cc_config default_rgb2yuv_cc_config = {
-	SH_CSS_RGB2YUV_CSC_COEF_SHIFT,
-	/* Bits of fractional part = SH_CSS_RGB2YUV_CSC_COEF_SHIFT = 13 */
+	13,
 	{2449, 4809, 934, -1382, -2714, 4096, 4096, -3430, -666}
 };
-
-static void
-sh_css_dequeue_param_buffers(void);
 
 static enum ia_css_err
 ref_sh_css_ddr_address_map(
@@ -1559,7 +1519,7 @@ ia_css_get_dvs_statistics(struct ia_css_dvs_statistics           *host_stats,
 			  const struct ia_css_isp_dvs_statistics *isp_stats)
 {
 	unsigned int hor_num_isp, ver_num_isp,
-#ifndef __KERNEL__
+#ifdef __KERNEL__
 		     hor_bytes, ver_bytes;
 #else
 		     hor_num_dvs, ver_num_dvs, i;
@@ -1589,7 +1549,7 @@ ia_css_get_dvs_statistics(struct ia_css_dvs_statistics           *host_stats,
 		host_stats->hor_proj, host_stats->ver_proj,
 		isp_stats->hor_proj, isp_stats->ver_proj);
 
-#ifndef __KERNEL__
+#ifdef __KERNEL__
 	/* This is the optimized code that uses the aligned_width and
 	 * aligned_height for the projections. This should be enabled in the
 	 * same patch set that adds the correct handling of these strides to
@@ -1706,14 +1666,25 @@ static void get_3a_stats_from_hmem(
 	struct ia_css_3a_statistics	*host_stats,
 	hrt_vaddress				ddr_ptr)
 {
-	hmem_data_t	*hmem_buf = sh_css_malloc(sizeof_hmem(HMEM0_ID));
+	hmem_data_t	*hmem_buf;
 	struct ia_css_3a_rgby_output	*out_ptr;
 	int			i;
+
+	/* pixel counts(BQ) for 3A area */
+	int count_for_3a
+	  = host_stats->grid.width * host_stats->grid.height
+	    * host_stats->grid.bqs_per_grid_cell
+	    * host_stats->grid.bqs_per_grid_cell;
+	int sum_r, diff;
 
 assert(host_stats  != NULL);
 assert(host_stats->rgby_data != NULL);
 assert(ddr_ptr != mmgr_NULL);
+	hmem_buf = sh_css_malloc(sizeof_hmem(HMEM0_ID));
 assert(hmem_buf != NULL);
+	if (hmem_buf == NULL) {
+		return;
+	}
 
 	out_ptr = host_stats->rgby_data;
 /*
@@ -1728,6 +1699,49 @@ assert(hmem_buf != NULL);
 		out_ptr[i].y = hmem_buf[i+HMEM_UNIT_SIZE*3];
 	}
 	sh_css_free(hmem_buf);
+
+/* Calculate sum of histogram of R,
+   which should not be less than count_for_3a */
+	sum_r = 0;
+	for (i = 0; i < HMEM_UNIT_SIZE; i++) {
+		sum_r += out_ptr[i].r;
+	}
+	if (sum_r < count_for_3a) {
+		/* histogram is invalid */
+		return;
+	}
+
+/* Verify for sum of histogram of R/G/B/Y */
+#if 0
+{
+	int sum_g = 0;
+	int sum_b = 0;
+	int sum_y = 0;
+	for (i = 0; i < HMEM_UNIT_SIZE; i++) {
+		sum_g += out_ptr[i].g;
+		sum_b += out_ptr[i].b;
+		sum_y += out_ptr[i].y;
+	}
+	if (sum_g != sum_r || sum_b != sum_r || sum_y != sum_r) {
+		/* histogram is invalid */
+		return;
+	}
+}
+#endif
+
+/*
+ * Limit the histogram area only to 3A area.
+ * In DSP, the histogram of 0 is incremented for pixels
+ * which are outside of 3A area. That amount should be subtracted here.
+ *   hist[0] = hist[0] - ((sum of all hist[]) - (pixel count for 3A area))
+ */
+
+	diff = sum_r - count_for_3a;
+	out_ptr[0].r -= diff;
+	out_ptr[0].g -= diff;
+	out_ptr[0].b -= diff;
+	out_ptr[0].y -= diff;
+
 return;
 }
 #endif
@@ -2399,16 +2413,16 @@ sh_css_process_cc(struct ia_css_isp_parameters *params)
 
 	for (i=0;i<N_CSC_KERNEL_PARAM_SET;i++) {
 		if (params->cc_config_changed[i]) {
-			params->isp_parameters.csc_kernel_param[i].m_shift    = (int) params->cc_config[i].fraction_bits;
-			params->isp_parameters.csc_kernel_param[i].m00 = (int) params->cc_config[i].matrix[0];
-			params->isp_parameters.csc_kernel_param[i].m01 = (int) params->cc_config[i].matrix[1];
-			params->isp_parameters.csc_kernel_param[i].m02 = (int) params->cc_config[i].matrix[2];
-			params->isp_parameters.csc_kernel_param[i].m10 = (int) params->cc_config[i].matrix[3];
-			params->isp_parameters.csc_kernel_param[i].m11 = (int) params->cc_config[i].matrix[4];
-			params->isp_parameters.csc_kernel_param[i].m12 = (int) params->cc_config[i].matrix[5];
-			params->isp_parameters.csc_kernel_param[i].m20 = (int) params->cc_config[i].matrix[6];
-			params->isp_parameters.csc_kernel_param[i].m21 = (int) params->cc_config[i].matrix[7];
-			params->isp_parameters.csc_kernel_param[i].m22 = (int) params->cc_config[i].matrix[8];
+			params->isp_parameters.csc_kernel_param[i].m_shift    = (uint16_t) params->cc_config[i].fraction_bits;
+			params->isp_parameters.csc_kernel_param[i].m00 = (int16_t) params->cc_config[i].matrix[0];
+			params->isp_parameters.csc_kernel_param[i].m01 = (int16_t) params->cc_config[i].matrix[1];
+			params->isp_parameters.csc_kernel_param[i].m02 = (int16_t) params->cc_config[i].matrix[2];
+			params->isp_parameters.csc_kernel_param[i].m10 = (int16_t) params->cc_config[i].matrix[3];
+			params->isp_parameters.csc_kernel_param[i].m11 = (int16_t) params->cc_config[i].matrix[4];
+			params->isp_parameters.csc_kernel_param[i].m12 = (int16_t) params->cc_config[i].matrix[5];
+			params->isp_parameters.csc_kernel_param[i].m20 = (int16_t) params->cc_config[i].matrix[6];
+			params->isp_parameters.csc_kernel_param[i].m21 = (int16_t) params->cc_config[i].matrix[7];
+			params->isp_parameters.csc_kernel_param[i].m22 = (int16_t) params->cc_config[i].matrix[8];
 			params->isp_params_changed = true;
 			params->cc_config_changed[i] = false;
 		}
@@ -3168,7 +3182,7 @@ assert(binary != NULL);
 			x_ptr = &tab->coordinates_x[i][j * width];
 			y_ptr = &tab->coordinates_y[i][j * width];
 			for (k = 0; k < width;
-			     k++, x_ptr++, y_ptr++, val_x += step) {
+			     k++, x_ptr++, y_ptr++, val_x += (short)step) {
 				if (k == 0)
 					*x_ptr = 0;
 				else if (k == width - 1)
@@ -3180,7 +3194,7 @@ assert(binary != NULL);
 				else
 					*y_ptr = val_y;
 			}
-			val_y += step;
+			val_y += (short)step;
 		}
 	}
 	*table = tab;
@@ -3719,7 +3733,7 @@ sh_css_set_dvs_6axis_config(struct ia_css_isp_parameters *params,
 
 	assert(dvs_config != NULL);
 	assert(dvs_config->height_y == dvs_config->height_uv);
-	assert( (dvs_config->width_y - 1) == 2 * dvs_config->width_uv - 1);
+    assert( (dvs_config->width_y - 1) == 2 * (dvs_config->width_uv - 1));
 
 	copy_dvs_6axis_table(params->dvs_6axis_config,dvs_config);
 	
@@ -4750,6 +4764,9 @@ ia_css_isp_dvs2_statistics_free(struct ia_css_isp_dvs_statistics *me)
 	}
 }
 
+unsigned g_param_buffer_dequeue_count = 0;
+unsigned g_param_buffer_enqueue_count = 0;
+
 enum ia_css_err
 ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 {
@@ -4758,6 +4775,10 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	struct sh_css_ddr_address_map *ddr_ptrs;
 	struct sh_css_ddr_address_map_size *ddr_ptrs_size;
 	struct ia_css_isp_parameters *params;
+
+	/* TMP: tracking of paramsets */
+	g_param_buffer_dequeue_count = 0;
+	g_param_buffer_enqueue_count = 0;
        
 	stream->isp_params_configs = sh_css_malloc(sizeof(*stream->isp_params_configs));
 	if (!stream->isp_params_configs)
@@ -4905,6 +4926,10 @@ sh_css_params_init(void)
 	enum ia_css_vamem_type vamem_type;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_params_init() enter: void\n");
+	
+	/* TMP: tracking of paramsets */
+	g_param_buffer_dequeue_count = 0;
+	g_param_buffer_enqueue_count = 0;
 
 	for (p = 0; p < IA_CSS_PIPE_ID_NUM; p++) {
 		for (i = 0; i < SH_CSS_MAX_STAGES; i++) {
@@ -5019,16 +5044,6 @@ sh_css_param_clear_param_sets(void)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_clear_param_sets() leave:\n");
 }
 
-/*
- * MW: we can define mmgr_free() to return a NULL
- * then you can write ptr = mmgr_free(ptr);
- */
-#define safe_free(id, x)      \
-	do {                  \
-		sh_css_refcount_release(id, x);     \
-		(x) = mmgr_NULL;  \
-	} while (0)
-
 static void free_map(struct sh_css_ddr_address_map *map)
 {
 	unsigned int i;
@@ -5042,7 +5057,8 @@ static void free_map(struct sh_css_ddr_address_map *map)
 						sizeof(size_t)); i++) {
 		if (addrs[i] == mmgr_NULL)
 			continue;
-		safe_free(PARAM_BUFFER, addrs[i]);
+		sh_css_refcount_release(PARAM_BUFFER, addrs[i]);
+		addrs[i] = mmgr_NULL;
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "free_map() leave:\n");
@@ -5078,13 +5094,17 @@ sh_css_params_uninit(void)
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_params_uninit() enter:\n");
 
-	safe_free(-1, sp_ddr_ptrs);
-	safe_free(-1, xmem_sp_group_ptrs);
+	sh_css_refcount_release(-1, sp_ddr_ptrs);
+	sp_ddr_ptrs = mmgr_NULL;
+	sh_css_refcount_release(-1, xmem_sp_group_ptrs);
+	xmem_sp_group_ptrs = mmgr_NULL;
 
 	for (p = 0; p < IA_CSS_PIPE_ID_NUM; p++)
 		for (i = 0; i < SH_CSS_MAX_STAGES; i++) {
-			safe_free(-1, xmem_sp_stage_ptrs[p][i]);
-			safe_free(-1, xmem_isp_stage_ptrs[p][i]);
+			sh_css_refcount_release(-1, xmem_sp_stage_ptrs[p][i]);
+			xmem_sp_stage_ptrs[p][i] = mmgr_NULL;
+			sh_css_refcount_release(-1, xmem_isp_stage_ptrs[p][i]);
+			xmem_isp_stage_ptrs[p][i] = mmgr_NULL;
 		}
 
 	/* go through the pools to clear references */
@@ -5143,8 +5163,8 @@ static void store_dis_coefficients(
 		     hor_num_3a  = binary->dis_hor_coef_num_3a,
 		     ver_num_3a  = binary->dis_ver_coef_num_3a,
 		     hor_padding = hor_num_isp - hor_num_3a,
-		     ver_padding = ver_num_isp - ver_num_3a,
-		     i;
+		     ver_padding = ver_num_isp - ver_num_3a;
+	int i;
 	const short *hor_ptr_3a = params->dis_hor_coef_tbl,
 		*ver_ptr_3a = params->dis_ver_coef_tbl;
 	hrt_vaddress hor_ptr_isp = ddr_addr_hor,
@@ -5244,7 +5264,8 @@ static void sh_css_update_isp_params_to_ddr(
 {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_update_isp_params_to_ddr() enter:\n");
 
-	if (SH_CSS_PREVENT_UNINIT_READS) {
+#if SH_CSS_PREVENT_UNINIT_READS == 1
+	{
 		/* ispparm struct is read with DMA which reads
 		 * multiples of the DDR word with (32 bytes):
 		 * So we pad with zeroes to prevent warnings in csim.
@@ -5261,6 +5282,7 @@ static void sh_css_update_isp_params_to_ddr(
 				sizeof(struct sh_css_isp_params);
 		mmgr_clear(pad_ptr, padding_bytes);
 	}
+#endif
 	mmgr_store(ddr_ptr,
 	     &(params->isp_parameters),
 	     sizeof(struct sh_css_isp_params));
@@ -5268,16 +5290,19 @@ static void sh_css_update_isp_params_to_ddr(
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_update_isp_params_to_ddr() leave:\n");
 }
 
-static void sh_css_dequeue_param_buffers(void)
+void ia_css_dequeue_param_buffers(void)
 {
 	hrt_vaddress cpy;
 
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_dequeue_param_buffers() enter\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ia_css_dequeue_param_buffers() enter\n");
 
 	/* clean-up old copy */
 	while (sp2host_dequeue_buffer(0, 0,
 				sh_css_param_buffer_queue,
 				&cpy)) {
+		/* TMP: keep track of dequeued param set count
+		 */
+		g_param_buffer_dequeue_count++;
 		/*
 		 * Tell the SP which queues are not full,
 		 * by sending the software event.
@@ -5288,17 +5313,17 @@ static void sh_css_dequeue_param_buffers(void)
 				0);
 
 		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
-			"sh_css_dequeue_param_buffers: "
+			"ia_css_dequeue_param_buffers: "
 			"dequeued param set %x from %d\n",
 			cpy, 0);
 			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
-				"sh_css_dequeue_param_buffers: "
+				"ia_css_dequeue_param_buffers: "
 				"release ref on param set %x\n",
 				cpy);
 			free_sh_css_ddr_address_map(cpy);
 	}
 
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_dequeue_param_buffers() leave\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ia_css_dequeue_param_buffers() leave\n");
 }
 
 void
@@ -5454,19 +5479,11 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 				free_sh_css_ddr_address_map(cpy);
 			}
 			else {
-#if 0
-				uint32_t tmp[2];
-				uint32_t sw_event;
-
-				/* encode the thread ID and the queue ID into the event*/
-				tmp[0] = thread_id;
-				tmp[1] = sh_css_param_buffer_queue;
-				encode_sw_event(tmp, 2, &sw_event);
-
-				/* queue the software event (busy-waiting) */
-				while (!host2sp_enqueue_sp_event(sw_event))
-					hrt_sleep();
-#else
+				/* TMP: check discrepancy between nr of enqueued
+				 * parameter sets and dequeued sets
+				 */
+				g_param_buffer_enqueue_count++;
+				assert(g_param_buffer_enqueue_count < g_param_buffer_dequeue_count+50);                                                        
 				/*
 				 * Tell the SP which queues are not empty,
 				 * by sending the software event.
@@ -5475,12 +5492,10 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 						thread_id,
 						sh_css_param_buffer_queue,
 						0);
-#endif
-
 			}
 		}
 		/* clean-up old copy */
-		sh_css_dequeue_param_buffers();
+		ia_css_dequeue_param_buffers();
 	} /* end for each 'active' pipeline */
 	/* clear the changed flags after all params
 	   for all pipelines have been updated */
@@ -5539,7 +5554,9 @@ assert(ddr_map_size != NULL);
 		if (params->fpn_table_changed || buff_realloced) {
 			if (params->isp_parameters.fpn_enabled) {
 				store_fpntbl(params, ddr_map->fpn_tbl);
-			} else if (SH_CSS_PREVENT_UNINIT_READS) {
+			}
+#if SH_CSS_PREVENT_UNINIT_READS == 1
+			else {
 				hrt_vaddress ptr =
 					(hrt_vaddress)ddr_map->fpn_tbl;
 				/* prevent warnings when reading fpn table
@@ -5549,6 +5566,7 @@ assert(ddr_map_size != NULL);
 				/* MW: fpn_tbl_size*sizeof(whatever)? */
 				mmgr_clear(ptr, ddr_map_size->fpn_tbl);
 			}
+#endif
 		}
 	}
 	if (binary->info->enable.sc) {
@@ -5716,41 +5734,42 @@ assert(ddr_map_size != NULL);
 	if (binary->info->enable.ca_gdc) {
 		unsigned int i;
 		hrt_vaddress *virt_addr_tetra_x[
-			IA_CSS_MORPH_TABLE_NUM_PLANES] = {
-			&ddr_map->tetra_r_x,
-			&ddr_map->tetra_gr_x,
-			&ddr_map->tetra_gb_x,
-			&ddr_map->tetra_b_x,
-			&ddr_map->tetra_ratb_x,
-			&ddr_map->tetra_batr_x
-		};
+			IA_CSS_MORPH_TABLE_NUM_PLANES];
 		size_t *virt_size_tetra_x[
-			IA_CSS_MORPH_TABLE_NUM_PLANES] = {
-			&ddr_map_size->tetra_r_x,
-			&ddr_map_size->tetra_gr_x,
-			&ddr_map_size->tetra_gb_x,
-			&ddr_map_size->tetra_b_x,
-			&ddr_map_size->tetra_ratb_x,
-			&ddr_map_size->tetra_batr_x
-		};
+			IA_CSS_MORPH_TABLE_NUM_PLANES];
 		hrt_vaddress *virt_addr_tetra_y[
-			IA_CSS_MORPH_TABLE_NUM_PLANES] = {
-			&ddr_map->tetra_r_y,
-			&ddr_map->tetra_gr_y,
-			&ddr_map->tetra_gb_y,
-			&ddr_map->tetra_b_y,
-			&ddr_map->tetra_ratb_y,
-			&ddr_map->tetra_batr_y
-		};
+			IA_CSS_MORPH_TABLE_NUM_PLANES];
 		size_t *virt_size_tetra_y[
-			IA_CSS_MORPH_TABLE_NUM_PLANES] = {
-			&ddr_map_size->tetra_r_y,
-			&ddr_map_size->tetra_gr_y,
-			&ddr_map_size->tetra_gb_y,
-			&ddr_map_size->tetra_b_y,
-			&ddr_map_size->tetra_ratb_y,
-			&ddr_map_size->tetra_batr_y
-		};
+			IA_CSS_MORPH_TABLE_NUM_PLANES];
+
+			virt_addr_tetra_x[0] = &ddr_map->tetra_r_x;
+			virt_addr_tetra_x[1] = &ddr_map->tetra_gr_x;
+			virt_addr_tetra_x[2] = &ddr_map->tetra_gb_x;
+			virt_addr_tetra_x[3] = &ddr_map->tetra_b_x;
+			virt_addr_tetra_x[4] = &ddr_map->tetra_ratb_x;
+			virt_addr_tetra_x[5] = &ddr_map->tetra_batr_x;
+
+			virt_size_tetra_x[0] = &ddr_map_size->tetra_r_x;
+			virt_size_tetra_x[1] = &ddr_map_size->tetra_gr_x;
+			virt_size_tetra_x[2] = &ddr_map_size->tetra_gb_x;
+			virt_size_tetra_x[3] = &ddr_map_size->tetra_b_x;
+			virt_size_tetra_x[4] = &ddr_map_size->tetra_ratb_x;
+			virt_size_tetra_x[5] = &ddr_map_size->tetra_batr_x;
+
+			virt_addr_tetra_y[0] = &ddr_map->tetra_r_y;
+			virt_addr_tetra_y[1] = &ddr_map->tetra_gr_y;
+			virt_addr_tetra_y[2] = &ddr_map->tetra_gb_y;
+			virt_addr_tetra_y[3] = &ddr_map->tetra_b_y;
+			virt_addr_tetra_y[4] = &ddr_map->tetra_ratb_y;
+			virt_addr_tetra_y[5] = &ddr_map->tetra_batr_y;
+
+			virt_size_tetra_y[0] = &ddr_map_size->tetra_r_y;
+			virt_size_tetra_y[1] = &ddr_map_size->tetra_gr_y;
+			virt_size_tetra_y[2] = &ddr_map_size->tetra_gb_y;
+			virt_size_tetra_y[3] = &ddr_map_size->tetra_b_y;
+			virt_size_tetra_y[4] = &ddr_map_size->tetra_ratb_y;
+			virt_size_tetra_y[5] = &ddr_map_size->tetra_batr_y;
+
 		buff_realloced = false;
 		for (i = 0; i < IA_CSS_MORPH_TABLE_NUM_PLANES; i++) {
 			buff_realloced |=
@@ -5938,7 +5957,8 @@ void ia_css_get_isp_dis_coefficients(
 	short *vertical_coefficients)
 {
 	struct ia_css_isp_parameters *params = stream->isp_params_configs;
-	unsigned int hor_num_isp, ver_num_isp, i;
+	unsigned int hor_num_isp, ver_num_isp;
+	int i;
 	short *hor_ptr = horizontal_coefficients,
 	      *ver_ptr = vertical_coefficients;
 	hrt_vaddress hor_ptr_isp;
@@ -6213,8 +6233,8 @@ assert(sp_out_crop_pos != NULL);
 		uds->curr_dx = HRT_GDC_N;
 		uds->curr_dy = HRT_GDC_N;
 	} else {
-		uds->curr_dx   = zoom->dx;
-		uds->curr_dy   = zoom->dy;
+		uds->curr_dx   = (uint16_t)zoom->dx;
+		uds->curr_dy   = (uint16_t)zoom->dy;
 	}
 
 	if (info->enable.dvs_envelope) {
@@ -6313,17 +6333,17 @@ assert(sp_out_crop_pos != NULL);
 		uds_xc = EVEN_FLOOR(uds_xc);
 		uds_yc = EVEN_FLOOR(uds_yc);
 
-		uds->xc = uds_xc;
-		uds->yc = uds_yc;
-		sp_out_crop_pos->x = crop_x;
-		sp_out_crop_pos->y = crop_y;
+		uds->xc = (uint16_t)uds_xc;
+		uds->yc = (uint16_t)uds_yc;
+		sp_out_crop_pos->x = (uint16_t)crop_x;
+		sp_out_crop_pos->y = (uint16_t)crop_y;
 	}
 	else {
 		/* for down scaling, we always use the center of the image */
-		uds->xc = in_frame_info->res.width / 2;
-		uds->yc = in_frame_info->res.height / 2;
-		sp_out_crop_pos->x = info->left_cropping;
-		sp_out_crop_pos->y = info->top_cropping;
+		uds->xc = (uint16_t)in_frame_info->res.width / 2;
+		uds->yc = (uint16_t)in_frame_info->res.height / 2;
+		sp_out_crop_pos->x = (uint16_t)info->left_cropping;
+		sp_out_crop_pos->y = (uint16_t)info->top_cropping;
 	}
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_update_uds_and_crop_info() leave:\n");
 }

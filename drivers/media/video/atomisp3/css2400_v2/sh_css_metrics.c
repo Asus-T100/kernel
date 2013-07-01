@@ -160,10 +160,10 @@ sh_css_metrics_sample_pcs(void)
 			isp_histogram->run[pc]++;
 
 #if MULTIPLE_PCS
-		sh_css_dtrace(SH_DBG_TRACE, "msink = 0%X\n", msink);
+		printk(KERN_INFO "msink = 0%X\n", msink);
 		for (i = 0; i < NOF_PCS; i++)
-			sh_css_dtrace(SH_DBG_TRACE, "PC = %d  ", pc_tab[i]);
-		sh_css_dtrace(SH_DBG_TRACE, "\n");
+			printk(KERN_INFO "PC = %d  ", pc_tab[i]);
+		printk(KERN_INFO "\n");
 #endif
 	}
 

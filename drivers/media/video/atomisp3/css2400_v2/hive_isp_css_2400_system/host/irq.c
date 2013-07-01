@@ -202,12 +202,12 @@ OP___assert(irq_id < N_IRQ_SW_CHANNEL_ID);
 	addr = IRQ_REQUEST_ADDR[irq_id];
 /* The SW IRQ pins are remapped to offset zero */
 	gp_device_reg_store(GP_DEVICE0_ID,
-		addr, 1);
+		(unsigned int)addr, 1);
 #ifdef HRT_CSIM
 	hrt_sleep();
 #endif
 	gp_device_reg_store(GP_DEVICE0_ID,
-		addr, 0);
+		(unsigned int)addr, 0);
 return;
 }
 

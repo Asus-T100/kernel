@@ -274,8 +274,8 @@ assert(binary != NULL);
 	}
 	if (info->enable.dvs_envelope) {
 		assert(dvs_env);
-		dvs_env_width  = max(dvs_env->width, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
-		dvs_env_height = max(dvs_env->height, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
+		dvs_env_width  = max(dvs_env->width, SH_CSS_MIN_DVS_ENVELOPE);
+		dvs_env_height = max(dvs_env->height, SH_CSS_MIN_DVS_ENVELOPE);
 	}
 	binary->dvs_envelope.width  = dvs_env_width;
 	binary->dvs_envelope.height = dvs_env_height;
@@ -308,7 +308,7 @@ assert(binary != NULL);
 	/* We first calculate the resolutions used by the ISP. After that,
 	 * we use those resolutions to compute sizes for tables etc. */
 	isp_internal_width = __ISP_INTERNAL_WIDTH(tmp_width,
-		dvs_env_width,
+		(int)dvs_env_width, /* the typecast here is added to avoid a signed/unsigned warning in visual studio */
 		info->left_cropping, info->mode,
 		info->c_subsampling,
 		info->output_num_chunks, info->pipelining,
@@ -772,13 +772,15 @@ assert(binary != NULL);
 			continue;
 		}
 
-		if (descr->binning && (isp_pipe_version == 1)) { // This code needs to be fixed CR2298; for now exclude this code for isp pipe version 2
-			if (!candidate->enable.fixed_bayer_ds && (req_in_info->res.width > 3264)) {
+		if (descr->binning) { // This code needs to be fixed CR2298; for now exclude this code for isp pipe version 2
+			/* Only use decimation above a certain limit */
+			unsigned in_width_limit = 3264; /* Decimation for 8Mp and up */
+			if (!candidate->enable.fixed_bayer_ds && req_in_info->res.width >= in_width_limit) {
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() [%d] continue: !%d && (%d > %d)\n", __LINE__, candidate->enable.fixed_bayer_ds,req_in_info->res.width, 3264);
 				continue;
 			}
-			if (candidate->enable.fixed_bayer_ds  && (req_in_info->res.width <= 3264)) {
+			if (candidate->enable.fixed_bayer_ds && req_in_info->res.width < in_width_limit) {
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() [%d] continue: %d && (%d <= %d)\n", __LINE__, candidate->enable.fixed_bayer_ds,req_in_info->res.width, 3264);
 				continue;

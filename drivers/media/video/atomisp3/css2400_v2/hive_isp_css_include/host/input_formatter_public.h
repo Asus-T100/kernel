@@ -1,9 +1,7 @@
 #ifndef __INPUT_FORMATTER_PUBLIC_H_INCLUDED__
 #define __INPUT_FORMATTER_PUBLIC_H_INCLUDED__
 
-#ifndef __KERNEL__
 #include <stdbool.h>
-#endif
 
 #include "system_types.h"
 
@@ -86,7 +84,7 @@ extern void input_formatter_bin_get_state(
  */
 STORAGE_CLASS_INPUT_FORMATTER_H void input_formatter_reg_store(
 	const input_formatter_ID_t	ID,
-	const unsigned int			reg_addr,
+	const hrt_address		reg_addr,
 	const hrt_data				value);
 
 /*! Read from a control register of INPUT_FORMATTER[ID]

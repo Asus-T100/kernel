@@ -11,7 +11,12 @@
 #define HIVE_ISP_NUM_DMA_CHANNELS	32
  */
 #define HIVE_ISP_NUM_DMA_CHANNELS_LOG2	4
-#define HIVE_ISP_NUM_DMA_CHANNELS	16
+
+#if defined(HAS_SP_2400)
+    #define HIVE_ISP_NUM_DMA_CHANNELS	17
+#else
+    #define HIVE_ISP_NUM_DMA_CHANNELS	16
+#endif
 
 #define N_DMA_CHANNEL_ID	HIVE_ISP_NUM_DMA_CHANNELS
 
@@ -85,19 +90,34 @@ typedef enum {
    DMA_PACK_HEIGHT(height))
 
 #ifdef __HIVECC
-#define hive_dma_move_data(dma_id, read, channel, to_addr, from_addr, to_is_var, from_is_var) \
+#define hive_dma_move_data(dma_id, read, channel, addr_a, addr_b, to_is_var, from_is_var) \
 { \
   hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(read?_DMA_V2_MOVE_B2A_COMMAND:_DMA_V2_MOVE_A2B_COMMAND, channel)); \
-  hive_dma_snd(dma_id, read?(unsigned)(from_addr):(unsigned)(to_addr)); \
-  hive_dma_snd(dma_id, read?(unsigned)(to_addr):(unsigned)(from_addr)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_b):(unsigned)(addr_a)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_a):(unsigned)(addr_b)); \
+}
+#define hive_dma_move_data_no_ack(dma_id, read, channel, addr_a, addr_b, to_is_var, from_is_var) \
+{ \
+  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(read?_DMA_V2_NO_ACK_MOVE_B2A_NO_SYNC_CHK_COMMAND:_DMA_V2_NO_ACK_MOVE_A2B_NO_SYNC_CHK_COMMAND, channel)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_b):(unsigned)(addr_a)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_a):(unsigned)(addr_b)); \
 }
 #else
-#define hive_dma_move_data(dma_id, read, channel, to_addr, from_addr, to_is_var, from_is_var) \
+#define hive_dma_move_data(dma_id, read, channel, addr_a, addr_b, to_is_var, from_is_var) \
 { \
   hive_dma_snd(dma_id, DMA_PACK(_DMA_V2_SET_CRUN_COMMAND, CMD)); \
   hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(read?_DMA_V2_MOVE_B2A_COMMAND:_DMA_V2_MOVE_A2B_COMMAND, channel)); \
-  hive_dma_snd(dma_id, read?(unsigned)(from_addr):(unsigned)(to_addr)); \
-  hive_dma_snd(dma_id, read?(unsigned)(to_addr):(unsigned)(from_addr)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_b):(unsigned)(addr_a)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_a):(unsigned)(addr_b)); \
+  hive_dma_snd(dma_id, to_is_var); \
+  hive_dma_snd(dma_id, from_is_var); \
+}
+#define hive_dma_move_data_no_ack(dma_id, read, channel, addr_a, addr_b, to_is_var, from_is_var) \
+{ \
+  hive_dma_snd(dma_id, DMA_PACK(_DMA_V2_SET_CRUN_COMMAND, CMD)); \
+  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(read?_DMA_V2_NO_ACK_MOVE_B2A_NO_SYNC_CHK_COMMAND:_DMA_V2_NO_ACK_MOVE_A2B_NO_SYNC_CHK_COMMAND, channel)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_b):(unsigned)(addr_a)); \
+  hive_dma_snd(dma_id, read?(unsigned)(addr_a):(unsigned)(addr_b)); \
   hive_dma_snd(dma_id, to_is_var); \
   hive_dma_snd(dma_id, from_is_var); \
 }

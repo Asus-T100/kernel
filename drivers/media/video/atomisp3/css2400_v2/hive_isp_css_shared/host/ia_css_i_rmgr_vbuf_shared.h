@@ -3,11 +3,7 @@
 
 #include "ia_css_i_rmgr_vbuf_public.h"
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 #include "sh_css_internal.h"
 

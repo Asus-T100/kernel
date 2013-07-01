@@ -1,8 +1,8 @@
 
 #include "fifo_monitor.h"
-#ifndef __KERNEL__
+
 #include <stdbool.h>
-#endif
+
 #include "device_access.h"
 
 #include <hrt/bits.h>
@@ -13,14 +13,8 @@
 
 #ifndef __INLINE_FIFO_MONITOR__
 #define STORAGE_CLASS_FIFO_MONITOR_DATA static const
-
-STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH];
-
-#include "fifo_monitor_private.h"
 #else
 #define STORAGE_CLASS_FIFO_MONITOR_DATA const
-
-STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH];
 #endif /* __INLINE_FIFO_MONITOR__ */
 
 STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH] = {
@@ -28,6 +22,9 @@ STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH] = {
 	_REG_GP_SWITCH_GDC1_ADDR,
 	_REG_GP_SWITCH_GDC2_ADDR};
 
+#ifndef __INLINE_FIFO_MONITOR__
+#include "fifo_monitor_private.h"
+#endif /* __INLINE_FIFO_MONITOR__ */
 
 STORAGE_CLASS_INLINE bool fifo_monitor_status_valid (
 	const fifo_monitor_ID_t		ID,
