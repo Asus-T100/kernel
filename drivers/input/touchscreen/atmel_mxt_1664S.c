@@ -28,6 +28,7 @@
 #endif
 #include <asm/intel_vlv2.h>
 
+#define SUPPORT_STYLUS	0
 #define MXT_FORCE_BOOTLOADER	1
 #define BOOTLOADER_1664_1188	1
 #define MXT1664S_FAMILY_ID	0xa2
@@ -865,7 +866,9 @@ static int mxt_proc_message(struct mxt_data *data, u8 *message)
 		handled = true;
 	} else if (report_id >= data->T63_reportid_min
 		   && report_id <= data->T63_reportid_max) {
+#if SUPPORT_STYLUS
 		mxt_proc_t63_messages(data, message);
+#endif
 		handled = true;
 	} else if (report_id >= data->T42_reportid_min
 		   && report_id <= data->T42_reportid_max) {
@@ -2238,6 +2241,7 @@ static int __devinit mxt_initialize_t9_input_device(struct mxt_data *data)
 	input_set_abs_params(input_dev, ABS_MT_ORIENTATION,
 			     0, 255, 0, 0);
 
+#if SUPPORT_STYLUS
 	/* For T63 active stylus */
 	if (data->T63_reportid_min) {
 		input_set_capability(input_dev, EV_KEY, BTN_STYLUS);
@@ -2245,6 +2249,7 @@ static int __devinit mxt_initialize_t9_input_device(struct mxt_data *data)
 		input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE,
 			0, MT_TOOL_MAX, 0, 0);
 	}
+#endif
 
 	/* For T15 key array */
 	if (data->T15_reportid_min) {
