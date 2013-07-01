@@ -1406,9 +1406,7 @@ static void __dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 	if (!(reg & DWC3_DCTL_RUN_STOP) && is_on && can_pullup(dwc)) {
-		reg &= ~DWC3_DCTL_TRGTULST_MASK;
-		reg |= (DWC3_DCTL_RUN_STOP
-				| DWC3_DCTL_TRGTULST_RX_DET);
+		reg |= DWC3_DCTL_RUN_STOP;
 	} else if ((reg & DWC3_DCTL_RUN_STOP) && !is_on) {
 		reg &= ~DWC3_DCTL_RUN_STOP;
 
@@ -2414,9 +2412,6 @@ static void dwc3_gadget_power_on_or_soft_reset(struct dwc3 *dwc)
 
 	/* Set Run/Stop bit */
 	dwc3_gadget_run_stop(dwc, 1);
-
-	if (dwc->hibernation.enabled)
-		dwc3_gadget_keep_conn(dwc, 1);
 }
 
 static void link_state_change_work(struct work_struct *data)
@@ -2541,6 +2536,9 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 	u8			speed;
 
 	dev_vdbg(dwc->dev, "%s\n", __func__);
+
+	if (dwc->hibernation.enabled)
+		dwc3_gadget_keep_conn(dwc, 1);
 
 	memset(&params, 0x00, sizeof(params));
 
@@ -2818,6 +2816,12 @@ static irqreturn_t dwc3_interrupt(int irq, void *_dwc)
 	struct dwc3			*dwc = _dwc;
 	int				i;
 	irqreturn_t			ret = IRQ_NONE;
+
+	if (dwc->pm_state == PM_SUSPENDED) {
+		dev_info(dwc->dev, "the first resume interrupt from u3/u2pmu is received");
+		pm_runtime_get(dwc->dev);
+		return IRQ_HANDLED;
+	}
 
 	spin_lock(&dwc->lock);
 
@@ -3169,8 +3173,9 @@ int dwc3_runtime_suspend(struct device *device)
 	struct dwc3			*dwc;
 	struct platform_device		*pdev;
 	unsigned long			flags;
-	u32				epnum;
+	u32				epnum, n;
 	struct dwc3_ep			*dep;
+	struct dwc3_event_buffer    *evt;
 
 	pdev = to_platform_device(device);
 	dwc = platform_get_drvdata(pdev);
@@ -3207,6 +3212,22 @@ int dwc3_runtime_suspend(struct device *device)
 	dwc3_gadget_run_stop(dwc, 0);
 
 	dwc3_cache_hwregs(dwc);
+
+	dwc3_writel(dwc->regs, DWC3_DEVTEN, 0x00);
+
+	for (n = 0; n < DWC3_EVENT_BUFFERS_NUM; n++) {
+		evt = dwc->ev_buffs[n];
+
+		evt->lpos = 0;
+
+		memset(evt->buf, 0, evt->length);
+
+		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n),
+			dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(n)));
+	}
 
 	dwc3_gadget_controller_save_state(dwc);
 
@@ -3336,7 +3357,7 @@ int dwc3_runtime_resume(struct device *device)
 				req = next_request(&dep->req_queued);
 				if (!req)
 					break;
-				dwc->ep0_trb->ctrl |= DWC3_TRB_CTRL_HWO;
+				req->trb->ctrl |= DWC3_TRB_CTRL_HWO;
 				memset(&params, 0, sizeof(params));
 				params.param0 = upper_32_bits(req->trb_dma);
 				params.param1 = lower_32_bits(req->trb_dma);
