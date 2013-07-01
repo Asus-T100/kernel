@@ -2,7 +2,7 @@
 
 #ifdef HAS_INPUT_SYSTEM_VERSION_2
 #include "input_system_init.h"
-#include <string.h>
+#include <linux/string.h>
 
 input_system_error_t ia_css_input_system_init(void)
 {

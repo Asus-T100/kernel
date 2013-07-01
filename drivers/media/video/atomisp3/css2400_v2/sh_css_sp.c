@@ -1281,8 +1281,8 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 				or_mask, and_mask);
 
 	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
-	assert(or_mask <= UINT16_MAX);
-	assert(and_mask <= UINT16_MAX);
+	/*assert(or_mask <= UINT16_MAX);*/
+	/*assert(and_mask <= UINT16_MAX);*/
 
 	event_irq_mask.or_mask  = (uint16_t)or_mask;
 	event_irq_mask.and_mask = (uint16_t)and_mask;

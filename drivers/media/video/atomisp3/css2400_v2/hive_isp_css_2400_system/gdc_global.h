@@ -3,8 +3,6 @@
 
 #define IS_GDC_VERSION_2
 
-#include <stdint.h>
-
 #include "gdc_v2_defs.h"
 
 /*
