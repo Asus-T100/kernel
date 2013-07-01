@@ -427,6 +427,12 @@ struct dwc_otg2 {
 	 * for this issue.
 	 */
 	void (*reset_host)(struct dwc_otg2 *otg);
+
+	/* Due to D0i3hot WA. For S3 suspend/resume flow, USB3 driver
+	 * need also do some WA. If follow standard S3 flow, the D0i3hot
+	 * issue still can reproduce and cause system can't enter S3 anymore.
+	 */
+	int (*whether_to_use_s3_wa)(struct dwc_otg2 *otg);
 };
 
 /* Invalid SDP checking timeout */

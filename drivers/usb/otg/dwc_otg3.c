@@ -12,6 +12,7 @@
 #include <linux/version.h>
 #include <linux/pm_qos.h>
 #include <linux/intel_mid_pm.h>
+#include <linux/suspend.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -31,6 +32,7 @@ static const char driver_name[] = "dwc_otg3";
 static void dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
 static struct dwc_otg2 *the_transceiver;
+static int use_s3_wa;
 
 static struct {
 
@@ -858,6 +860,29 @@ cleanup:
 	return type;
 }
 
+static int dwc_sleep_pm_callback(struct notifier_block *nfb,
+			unsigned long action, void *ignored)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+
+	switch (action) {
+	case PM_POST_SUSPEND:
+		use_s3_wa = 0;
+		return NOTIFY_OK;
+	case PM_SUSPEND_PREPARE:
+		if (otg->dev->power.runtime_status == RPM_SUSPENDED)
+			if (otg->state == DWC_STATE_A_HOST)
+				use_s3_wa = 1;
+		return NOTIFY_OK;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block dwc_sleep_pm_notifier = {
+	.notifier_call = dwc_sleep_pm_callback,
+	.priority = 0
+};
+
 static int is_self_powered_b_device(struct dwc_otg2 *otg)
 {
 	return get_id(otg) == RID_GND;
@@ -1602,6 +1627,14 @@ static int dwc_otg2_set_suspend(struct usb_phy *x, int suspend)
 	return 0;
 }
 
+static int dwc_otg2_whether_to_use_s3_wa(struct dwc_otg2 *otg)
+{
+	if (!d3hot_wa_enabled(otg))
+		return 0;
+
+	return use_s3_wa;
+}
+
 static void dwc_otg2_reset_host(struct dwc_otg2 *otg)
 {
 	unsigned long flags;
@@ -1870,6 +1903,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
 	if (d3hot_wa_enabled(otg))
 		otg->reset_host	= dwc_otg2_reset_host;
+	otg->whether_to_use_s3_wa = dwc_otg2_whether_to_use_s3_wa;
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
@@ -1997,6 +2031,11 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 			otg_err(otg, "Fail to de-assert USBRST#\n");
 	}
 
+	if (register_pm_notifier(&dwc_sleep_pm_notifier)) {
+		printk(KERN_ERR "dwc-otg: Fail to register PM notifier\n");
+		goto exit;
+	}
+
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -2056,6 +2095,8 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 		pm_qos_remove_request(otg->qos);
 		kfree(otg->qos);
 	}
+
+	unregister_pm_notifier(&dwc_sleep_pm_notifier);
 
 	kfree(otg);
 }
@@ -2123,6 +2164,11 @@ static int dwc_otg_runtime_resume(struct device *dev)
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
+	if (dwc_otg2_whether_to_use_s3_wa(otg)) {
+		otg_dbg(otg, "%s: for S3 WA, return directly\n", __func__);
+		return 0;
+	}
+
 	pci_set_power_state(pci_dev, PCI_D0);
 
 	/* From synopsys spec 12.2.11.
@@ -2157,6 +2203,11 @@ static int dwc_otg_suspend(struct device *dev)
 
 	if (!otg) {
 		printk(KERN_ERR "%s: dwc_otg2 haven't init.\n", __func__);
+		return 0;
+	}
+
+	if (dwc_otg2_whether_to_use_s3_wa(otg)) {
+		otg_dbg(otg, "%s: for S3 WA, return directly\n", __func__);
 		return 0;
 	}
 
