@@ -1072,6 +1072,10 @@ void atomisp_wdt_work(struct work_struct *work)
 		atomisp_reset(isp);
 		isp->isp_timeout = false;
 
+		if (isp->inputs[asd->input_curr].type != TEST_PATTERN &&
+			isp->inputs[asd->input_curr].type != FILE_INPUT)
+			atomisp_css_input_set_mode(asd, CSS_INPUT_MODE_SENSOR);
+
 		atomisp_clear_css_buffer_counters(asd);
 		if (atomisp_acc_load_extensions(isp) < 0)
 			dev_err(isp->dev, "acc extension failed to reload\n");
