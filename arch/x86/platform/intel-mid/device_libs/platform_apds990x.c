@@ -54,6 +54,15 @@ void *apds990x_platform_data(void *info)
 		platform_data.cf.ga     = 11239;
 		platform_data.cf.incan  = 676;
 		platform_data.cf.min_ir = 4;
+		if (SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR20)) {
+			platform_data.cf.cf1    = 42573;
+			platform_data.cf.irf1   = 111851;
+			platform_data.cf.cf2    = 9393;
+			platform_data.cf.irf2   = 16956;
+			platform_data.cf.ga     = 6204;
+			platform_data.cf.incan  = 1432;
+			platform_data.cf.min_ir = 1;
+		}
 	}
 
 	platform_data.gpio_number = get_gpio_by_name("AL-intr");
