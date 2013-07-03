@@ -10,8 +10,6 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
-#include <linux/pm_qos.h>
-#include <linux/intel_mid_pm.h>
 #include <linux/suspend.h>
 
 #include <linux/usb.h>
@@ -327,7 +325,6 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
-	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	/* Enable D0i3hot WA for host mode
 	 * If enable failed, then LS device will cause fabric error
 	 */
@@ -354,7 +351,6 @@ static int stop_host(struct dwc_otg2 *otg)
 		ret = hcd->driver->stop_host(hcd);
 	}
 
-	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 	return ret;
 }
 
@@ -368,7 +364,6 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
-	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	gadget->ops->start_device(gadget);
 }
 
@@ -380,7 +375,6 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 		return;
 
 	gadget->ops->stop_device(gadget);
-	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 }
 
 static int get_id(struct dwc_otg2 *otg)
@@ -2031,12 +2025,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
-	otg->qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
-	if (!otg->qos)
-		goto exit;
-	pm_qos_add_request(otg->qos, PM_QOS_CPU_DMA_LATENCY,\
-			PM_QOS_DEFAULT_VALUE);
-
 	if (!is_hybridvp(otg)) {
 		otg_info(otg, "De-assert USBRST# to enable PHY\n");
 		retval = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL,
@@ -2069,10 +2057,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	return 0;
 exit:
-	if (otg->qos) {
-		pm_qos_remove_request(otg->qos);
-		kfree(otg->qos);
-	}
 	if (the_transceiver)
 		dwc_otg_remove(pdev);
 	free_irq(otg->irqnum, NULL);
@@ -2105,13 +2089,7 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	usb_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
 
-	if (otg->qos) {
-		pm_qos_remove_request(otg->qos);
-		kfree(otg->qos);
-	}
-
 	unregister_pm_notifier(&dwc_sleep_pm_notifier);
-
 	kfree(otg);
 }
 

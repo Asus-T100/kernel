@@ -416,11 +416,6 @@ struct dwc_otg2 {
 	struct notifier_block nb;
 	struct intel_dwc_otg_pdata *otg_data;
 
-	/* pm request to prevent enter Cx state
-	 * Because it have big impact to USB performance
-	 * */
-	struct pm_qos_request *qos;
-
 	/* This is one workaround for silicon BUGs.
 	 * If host resume from D3hot due to usb device plug in,
 	 * it will me enumerated failed. So need reset host stack
