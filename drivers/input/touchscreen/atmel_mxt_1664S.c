@@ -2385,15 +2385,18 @@ static int __devexit mxt_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM_SLEEP
+atomic_t mxt_early_suspend_flag = ATOMIC_INIT(0);
 static int mxt_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mxt_data *data = i2c_get_clientdata(client);
 	struct input_dev *input_dev = data->input_dev;
-
+	int temp;
 	mutex_lock(&input_dev->mutex);
 
-	if (input_dev->users && data->state != SUSPEND)
+	temp = atomic_read(&mxt_early_suspend_flag);
+	atomic_inc(&mxt_early_suspend_flag);
+	if ((input_dev->users) && (!temp))
 		mxt_stop(data);
 
 	mutex_unlock(&input_dev->mutex);
@@ -2406,10 +2409,12 @@ static int mxt_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mxt_data *data = i2c_get_clientdata(client);
 	struct input_dev *input_dev = data->input_dev;
-
+	int temp;
 	mutex_lock(&input_dev->mutex);
 
-	if (input_dev->users && data->state == SUSPEND)
+	atomic_dec(&mxt_early_suspend_flag);
+	temp = atomic_read(&mxt_early_suspend_flag);
+	if ((input_dev->users) && (!temp))
 		mxt_start(data);
 
 	mutex_unlock(&input_dev->mutex);
