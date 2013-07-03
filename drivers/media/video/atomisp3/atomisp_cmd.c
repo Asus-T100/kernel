@@ -3007,10 +3007,10 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_sub_device
 			isp_subdev->params.config.yuv2rgb_cc_config =
 				&isp_subdev->params.yuv2rgb_cc_config;
 		memset(isp_subdev->params.config.yuv2rgb_cc_config, 0 ,
-				sizeof(struct ia_css_yuv2rgb_cc_config));
+				sizeof(struct ia_css_cc_config));
 		if (copy_from_user(isp_subdev->params.config.yuv2rgb_cc_config,
 				   arg->yuv2rgb_cc_config,
-				   sizeof(struct ia_css_yuv2rgb_cc_config))) {
+				   sizeof(struct ia_css_cc_config))) {
 			isp_subdev->params.config.yuv2rgb_cc_config = NULL;
 			return -EFAULT;
 		}
@@ -3020,10 +3020,10 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_sub_device
 			isp_subdev->params.config.rgb2yuv_cc_config =
 				&isp_subdev->params.rgb2yuv_cc_config;
 		memset(isp_subdev->params.config.rgb2yuv_cc_config, 0 ,
-				sizeof(struct ia_css_rgb2yuv_cc_config));
+				sizeof(struct ia_css_cc_config));
 		if (copy_from_user(isp_subdev->params.config.rgb2yuv_cc_config,
 				   arg->rgb2yuv_cc_config,
-				   sizeof(struct ia_css_rgb2yuv_cc_config))) {
+				   sizeof(struct ia_css_cc_config))) {
 			isp_subdev->params.config.rgb2yuv_cc_config = NULL;
 			return -EFAULT;
 		}
@@ -3057,6 +3057,25 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_sub_device
 
 	}
 
+	/* FIXME: since isp 2.2 for MERR has regression, make isp 2.2
+	 * specific for BYT. Please remove following restriction when
+	 * isp 2.2 is ready for MERR*/
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		if (arg->ctc_config) {
+			if (!isp_subdev->params.config.ctc_config)
+				isp_subdev->params.config.ctc_config =
+				    &isp_subdev->params.ctc_config;
+			memset(isp_subdev->params.config.ctc_config, 0 ,
+			       sizeof(struct ia_css_ctc_config));
+			if (copy_from_user(isp_subdev->params.config.ctc_config,
+					   arg->ctc_config,
+					   sizeof(struct ia_css_ctc_config))) {
+				isp_subdev->params.config.ctc_config = NULL;
+				return -EFAULT;
+			}
+
+		}
+	}
 	if (arg->xnr_table) {
 		if (!isp_subdev->params.config.xnr_table)
 			isp_subdev->params.config.xnr_table =
@@ -4228,7 +4247,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
 
-		isp_subdev->video_out_vf.sh_fmt = IA_CSS_FRAME_FORMAT_YUV420;
+		isp_subdev->video_out_vf.sh_fmt = IA_CSS_FRAME_FORMAT_NV12;
 
 		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || !isp_subdev->enable_vfpp->val)
@@ -4316,7 +4335,18 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		return -EINVAL;
 	}
 	if (isp_subdev->continuous_mode->val) {
-		configure_pp_input(isp_subdev, 0, 0);
+		/* FIXME: since isp 2.2 for MERR has regression, make isp 2.2
+		 * specific for BYT. Please remove following restriction when
+		 * isp 2.2 is ready for MERR*/
+		ret = configure_pp_input(isp_subdev,
+				isp_sink_crop->width,
+				isp_sink_crop->height);
+		if (ret) {
+			dev_err(isp->dev, "configure_pp_input %ux%u\n",
+				isp_sink_crop->width,
+				isp_sink_crop->height);
+			return -EINVAL;
+		}
 	} else {
 		ret = configure_pp_input(isp_subdev, isp_sink_crop->width,
 					 isp_sink_crop->height);
