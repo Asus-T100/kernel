@@ -66,6 +66,7 @@
 #include <asm/mwait.h>
 #include <asm/msr.h>
 #include <asm/intel-mid.h>
+#include <asm/io_apic.h>
 
 #define INTEL_IDLE_VERSION "0.4"
 #define PREFIX "intel_idle: "
@@ -428,6 +429,17 @@ static long get_driver_data(int cstate)
 	return driver_data;
 }
 
+static inline bool is_irq_pending(void)
+{
+	int i, base = APIC_IRR;
+
+	for (i = 0; i < 8; i++)
+		if (apic_read(base + i*0x10) != 0)
+			return true;
+
+	return false;
+}
+
 #if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) || \
 	defined(CONFIG_INTEL_ATOM_CLV_POWER)
 static int enter_s0ix_state(u32 eax, int gov_req_state, int s0ix_state,
@@ -476,6 +488,9 @@ static int enter_s0ix_state(u32 eax, int gov_req_state, int s0ix_state,
 	smp_mb();
 	if (!need_resched())
 		__mwait(eax, 1);
+
+	if (!need_resched() && is_irq_pending() == 0)
+		__get_cpu_var(update_buckets) = 0;
 
 	if (sleep_state)
 		/* time stamp for start of s0ix exit */
@@ -608,11 +623,17 @@ static int intel_idle(struct cpuidle_device *dev,
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 
 	stop_critical_timings();
+
 	if (!need_resched()) {
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
 		if (!need_resched())
 			__mwait(eax, ecx);
+#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) || \
+	defined(CONFIG_INTEL_ATOM_CLV_POWER)
+		if (!need_resched() && is_irq_pending() == 0)
+			__get_cpu_var(update_buckets) = 0;
+#endif
 	}
 
 	start_critical_timings();
@@ -940,6 +961,8 @@ int intel_idle_cpu_init(int cpu)
 
 	if (auto_demotion_disable_flags)
 		smp_call_function_single(cpu, auto_demotion_disable, NULL, 1);
+
+	__get_cpu_var(update_buckets) = 1;
 
 	return 0;
 }

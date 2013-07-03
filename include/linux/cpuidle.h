@@ -145,6 +145,7 @@ struct cpuidle_driver {
 };
 
 #ifdef CONFIG_CPU_IDLE
+DECLARE_PER_CPU(int, update_buckets);
 extern void disable_cpuidle(void);
 extern int cpuidle_idle_call(void);
 extern int cpuidle_register_driver(struct cpuidle_driver *drv);
@@ -164,6 +165,7 @@ extern int cpuidle_wrap_enter(struct cpuidle_device *dev,
 extern int cpuidle_play_dead(void);
 
 #else
+DECLARE_PER_CPU(int, update_buckets);
 static inline void disable_cpuidle(void) { }
 static inline int cpuidle_idle_call(void) { return -ENODEV; }
 static inline int cpuidle_register_driver(struct cpuidle_driver *drv)
