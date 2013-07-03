@@ -44,11 +44,25 @@
 #define BYT_EC_SCI_AON_ESC		0xD3	/* SCI from AON Escape button */
 #define BYT_EC_SCI_AON_GESC		0xD4	/* SCI from AON Global Escape button */
 
+/* EC commands */
+enum byt_ec_commands {
+	BYT_EC_ACPI_ENABLE = 0xAA,
+	BYT_EC_ACPI_DISABLE = 0xAB,
+	BYT_EC_COMMAND_READ = 0x80,
+	BYT_EC_COMMAND_WRITE = 0x81,
+	BYT_EC_BURST_ENABLE = 0x82,
+	BYT_EC_BURST_DISABLE = 0x83,
+	BYT_EC_COMMAND_QUERY = 0x84,
+	BYT_EC_SET_FAN_SPEED = 0x1A,
+	BYT_EC_SET_THERM_THRESHOLD = 0x4A,
+};
+
 #ifdef CONFIG_INTEL_BYT_EC
 extern int byt_ec_read_byte(u8 addr, u8 *val);
 extern int byt_ec_write_byte(u8 addr, u8 val);
 extern int byt_ec_read_word(u8 addr, u16 *val);
 extern int byt_ec_write_word(u8 addr, u16 val);
+extern int byt_ec_send_cmd(u8 command);
 extern void byt_ec_evt_register_notify(struct notifier_block *nb);
 extern void byt_ec_evt_unregister_notify(struct notifier_block *nb);
 #else
@@ -65,6 +79,10 @@ static int byt_ec_read_word(u8 addr, u16 *val)
 	return 0;
 }
 static int byt_ec_write_word(u8 addr, u16 val)
+{
+	return 0;
+}
+static int byt_ec_send_cmd(u8 command)
 {
 	return 0;
 }

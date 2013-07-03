@@ -54,17 +54,6 @@
 #define BYT_EC_FLAG_SMI		0x40	/* EC-SMI occurred */
 #define BYT_EC_FLAG_IGN1	0x80	/* Ignore the status */
 
-/* EC commands */
-enum ec_command {
-	BYT_EC_ACPI_ENABLE = 0xAA,
-	BYT_EC_ACPI_DISABLE = 0xAB,
-	BYT_EC_COMMAND_READ = 0x80,
-	BYT_EC_COMMAND_WRITE = 0x81,
-	BYT_EC_BURST_ENABLE = 0x82,
-	BYT_EC_BURST_DISABLE = 0x83,
-	BYT_EC_COMMAND_QUERY = 0x84,
-};
-
 #define BYT_EC_DELAY		500	/* Wait 500ms max. during EC ops */
 #define BYT_EC_UDELAY_GLK	1000	/* Wait 1ms max. to get global lock */
 #define BYT_EC_MSI_UDELAY	550	/* Wait 550us for MSI EC */
@@ -211,6 +200,25 @@ static int byt_ec_write8(struct ec_chip_info *chip, u8 addr, u8 val)
 
 	return 0;
 }
+
+int byt_ec_send_cmd(u8 command)
+{
+	int ret;
+
+	if (!chip_ptr)
+		return -EINVAL;
+
+	mutex_lock(&chip_ptr->io_lock);
+
+	ec_write_cmd(chip_ptr, command);
+	ret = ec_wait_ibf0(chip_ptr);
+	if (ret < 0)
+		dev_err(&chip_ptr->pdev->dev, "EC tx/rx error%d\n", ret);
+
+	mutex_unlock(&chip_ptr->io_lock);
+	return ret;
+}
+EXPORT_SYMBOL(byt_ec_send_cmd);
 
 int byt_ec_read_byte(u8 addr, u8 *val)
 {
