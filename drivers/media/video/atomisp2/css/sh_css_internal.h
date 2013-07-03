@@ -342,6 +342,9 @@ struct sh_css_isp_params {
 #else
 	int aa_scale;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
+
+	/* XNR threshold */
+	int xnr_threshold;
 };
 
 /* xmem address map allocation */

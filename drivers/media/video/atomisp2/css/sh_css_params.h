@@ -296,6 +296,12 @@ sh_css_set_xnr_table(const struct sh_css_xnr_table *table);
 void
 sh_css_get_xnr_table(const struct sh_css_xnr_table **table);
 
+void
+sh_css_set_xnr_config(const struct sh_css_xnr_config *xnr_config);
+
+void
+sh_css_get_xnr_config(const struct sh_css_xnr_config **xnr_config);
+
 /* Multi-Access Color Correction */
 void
 sh_css_set_macc_table(const struct sh_css_macc_table *table);

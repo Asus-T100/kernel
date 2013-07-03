@@ -159,6 +159,7 @@ static const struct sh_css_cnr_config    *cnr_config;
 static const struct sh_css_macc_config   *macc_config;
 static const struct sh_css_ctc_config    *ctc_config;
 static const struct sh_css_aa_config     *aa_config;
+static const struct sh_css_xnr_config    *xnr_config;
 static const struct sh_css_rgb_gamma_table     *r_gamma_table;
 static const struct sh_css_rgb_gamma_table     *g_gamma_table;
 static const struct sh_css_rgb_gamma_table     *b_gamma_table;
@@ -198,7 +199,8 @@ static bool isp_params_changed,
 	    g_gamma_table_changed,
 	    b_gamma_table_changed,
 	    yuv2rgb_cc_config_changed,
-	    rgb2yuv_cc_config_changed;
+	    rgb2yuv_cc_config_changed,
+		xnr_config_changed;
 
 
 static unsigned int sensor_binning;
@@ -1780,6 +1782,10 @@ static const struct sh_css_aa_config default_aa_config = {
 #error "sh_css_params.c: PARAMS_VERSION must be one of {1,2}"
 #endif
 
+static const struct sh_css_xnr_config default_xnr_config = {
+	25
+};
+
 static const struct sh_css_yuv2rgb_cc_config
 default_yuv2rgb_cc_config = {
 	/* Bits of fractional part = SH_CSS_YUV2RGB_CCM_COEF_SHIFT = 12 */
@@ -2796,6 +2802,8 @@ static void sh_css_process_zoom_and_motion(
 			&isp_parameters.sp_out_crop_pos[stage->stage_num]);
 	}
 	isp_params_changed = true;
+	zoom_config_changed = false;
+	motion_config_changed = false;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"sh_css_process_zoom_and_motion() leave:\n");
@@ -2808,6 +2816,8 @@ sh_css_process_ecd(void)
 	isp_parameters.ecd_zip_strength = ecd_config->ecd_zip_strength;
 	isp_parameters.ecd_fc_strength  = ecd_config->ecd_fc_strength;
 	isp_parameters.ecd_fc_debias    = ecd_config->ecd_fc_debias;
+	isp_params_changed = true;
+	ecd_config_changed = false;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 }
 
@@ -2821,6 +2831,8 @@ sh_css_process_ynr(void)
 	isp_parameters.yee_edge_sense_gain_1   = ynr_config->edge_sense_gain_1;
 	isp_parameters.yee_corner_sense_gain_0 = ynr_config->corner_sense_gain_0;
 	isp_parameters.yee_corner_sense_gain_1 = ynr_config->corner_sense_gain_1;
+	isp_params_changed = true;
+	ynr_config_changed = false;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_ynr() leave:\n");
@@ -2843,6 +2855,8 @@ sh_css_process_fc(void)
 	isp_parameters.fc_crop_pos_1 = fc_config->crop_pos_1;
 	isp_parameters.fc_crop_neg_0 = fc_config->crop_neg_0;
 	isp_parameters.fc_crop_neg_1 = fc_config->crop_neg_1;
+	isp_params_changed = true;
+	fc_config_changed = false;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_fc() leave:\n");
@@ -2862,6 +2876,8 @@ sh_css_process_cnr(void)
 	isp_parameters.cnr_sense_gain_hy = cnr_config->sense_gain_hy;
 	isp_parameters.cnr_sense_gain_hu = cnr_config->sense_gain_hu;
 	isp_parameters.cnr_sense_gain_hv = cnr_config->sense_gain_hv;
+	isp_params_changed = true;
+	cnr_config_changed = false;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_cnr() leave:\n");
@@ -2873,6 +2889,8 @@ sh_css_process_macc(void)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_macc() enter:\n");
 
 	isp_parameters.exp = macc_config->exp;
+	isp_params_changed = true;
+	macc_config_changed = false;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_macc() leave:\n");
 }
@@ -2968,10 +2986,24 @@ sh_css_process_ctc(void)
 		     &isp_parameters.ctc_dydx4_shift,
 		     ctc_config->y5, ctc_config->y4,
 		     SH_CSS_BAYER_MAXVAL, ctc_config->x4);
+	isp_params_changed = true;
+	ctc_config_changed = false;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_ctc() leave:\n");
 }
+
+static void
+sh_css_process_xnr(void)
+{
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_xnr() enter:\n");
+	isp_parameters.xnr_threshold = xnr_config->threshold;
+	isp_params_changed = true;
+	xnr_config_changed = false;
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_xnr() leave:\n");
+}
+
 
 static void
 sh_css_process_aa(void)
@@ -2979,6 +3011,8 @@ sh_css_process_aa(void)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_aa() enter:\n");
 /* ISP 1.0 has a decimation filter for large input images */
 	isp_parameters.aa_scale = aa_config->scale;
+	isp_params_changed = true;
+	aa_config_changed = false;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_aa() leave:\n");
 }
@@ -4273,6 +4307,46 @@ void sh_css_get_ctc_config(
 return;
 }
 
+void
+sh_css_set_xnr_config(const struct sh_css_xnr_config *config)
+{
+	if (xnr_config != NULL) {
+		sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_xnr_config() enter: "
+		"config.threshold=%d\n",
+		config->threshold);
+		xnr_config = config;
+	} else {
+		sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_xnr_config() enter: "
+		"default_config.threshold=%d\n",
+		default_xnr_config.threshold);
+		xnr_config = &default_xnr_config;
+	}
+
+	xnr_config_changed = true;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_set_xnr_config() leave: "
+		"return_void\n");
+}
+
+void
+sh_css_get_xnr_config(const struct sh_css_xnr_config **config)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_config() enter: "
+		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
+
+	*config = xnr_config;
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_config() leave: "
+		"config.threshold=%d\n",
+		(*config)->threshold);
+}
+
+
 void sh_css_set_aa_config(
 	const struct sh_css_aa_config *config)
 {
@@ -4547,7 +4621,7 @@ void sh_css_set_isp_config(
 	sh_css_set_rgb2yuv_cc_config(&config->rgb2yuv_cc_config);
 	sh_css_set_anr_config(&config->anr_config);
 	sh_css_set_3a_config(&config->s3a_config);
-	/* sh_css_set_xnr_config(&config->xnr_config); */
+	sh_css_set_xnr_config(&config->xnr_config);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_isp_config() leave: return_void\n");
 return;
@@ -4579,7 +4653,7 @@ void sh_css_get_isp_config(
 	const struct sh_css_aa_config  *aa_config;
 	const struct sh_css_yuv2rgb_cc_config  *yuv2rgb_cc_config;
 	const struct sh_css_rgb2yuv_cc_config  *rgb2yuv_cc_config;
-	/*const struct sh_css_xnr_config xnr_config;*/
+	const struct sh_css_xnr_config *xnr_config;
 	NOT_USED(pipe);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_isp_config() enter: "
@@ -4635,10 +4709,10 @@ void sh_css_get_isp_config(
 	sh_css_get_rgb2yuv_cc_config(&rgb2yuv_cc_config);
 	((struct sh_css_isp_config *)*config)->rgb2yuv_cc_config
 		= *rgb2yuv_cc_config;
-/*
-	sh_css_get_anr_config(&xnr_config);
+
+	sh_css_get_xnr_config(&xnr_config);
 	((struct sh_css_isp_config *)*config)->xnr_config = *xnr_config;
-*/
+
 /* The struct pointers have no information, the functions themselves will print their parameters */
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_isp_config() leave: "
@@ -5058,6 +5132,7 @@ enum sh_css_err sh_css_params_init(void)
 	sh_css_set_macc_config(&default_macc_config);
 	sh_css_set_ctc_config(&default_ctc_config);
 	sh_css_set_aa_config(&default_aa_config);
+	sh_css_set_xnr_config(&default_xnr_config);
 	sh_css_set_r_gamma_table(&default_r_gamma_table);
 	sh_css_set_g_gamma_table(&default_g_gamma_table);
 	sh_css_set_b_gamma_table(&default_b_gamma_table);
@@ -5080,7 +5155,6 @@ enum sh_css_err sh_css_params_init(void)
 	zoom_config_changed = true;
 	motion_config = default_motion_config;
 	motion_config_changed = true;
-
 
 	/* now commit to ddr */
 	sh_css_param_update_isp_params(false);
@@ -5426,6 +5500,8 @@ sh_css_param_update_isp_params(bool commit)
 		sh_css_process_macc();
 	if (ctc_config && ctc_config_changed)
 		sh_css_process_ctc();
+	if (xnr_config && xnr_config_changed)
+		sh_css_process_xnr();
 	if (aa_config && aa_config_changed)
 		sh_css_process_aa();
 	if (yuv2rgb_cc_config && yuv2rgb_cc_config_changed)
@@ -5468,16 +5544,6 @@ sh_css_param_update_isp_params(bool commit)
 			sh_css_process_zoom_and_motion(pipeline->pipe_id,
 							pipeline->stages);
 		}
-
-		/* update isp_params to pipe specific copies */
-		if (isp_params_changed) {
-			reallocate_buffer(&cur_map->isp_param,
-				  &cur_map_size->isp_param,
-				  cur_map_size->isp_param,
-				  true,
-				  &err);
-			sh_css_update_isp_params_to_ddr(cur_map->isp_param);
-		}
 		/* update the other buffers to the pipe specific copies */
 		for (stage = pipeline->stages; stage;
 			stage = stage->next) {
@@ -5491,6 +5557,17 @@ sh_css_param_update_isp_params(bool commit)
 					break;
 			}
 		}
+
+		/* update isp_params to pipe specific copies */
+		if (isp_params_changed) {
+			reallocate_buffer(&cur_map->isp_param,
+				  &cur_map_size->isp_param,
+				  cur_map_size->isp_param,
+				  true,
+				  &err);
+			sh_css_update_isp_params_to_ddr(cur_map->isp_param);
+		}
+
 		/* last make referenced copy */
 		err = ref_sh_css_ddr_address_map(
 					cur_map,
@@ -5546,10 +5623,9 @@ sh_css_param_update_isp_params(bool commit)
 	} /* end for each 'active' pipeline */
 	/* clear the changed flags after all params
 	   for all pipelines have been updated */
+	/* only clear the table flag here, other flag is cleared in _process_XXX() function */
 	isp_params_changed = false;
 	fpn_table_changed = false;
-	zoom_config_changed = false;
-	motion_config_changed = false;
 
 	sh_css_param_shading_table_changed_set(false);
 
@@ -5559,14 +5635,6 @@ sh_css_param_update_isp_params(bool commit)
 	macc_table_changed = false;
 	dis_coef_table_changed = false;
 	morph_table_changed = false;
-	dis_coef_table_changed = false;
-	ecd_config_changed = false;
-	ynr_config_changed = false;
-	fc_config_changed = false;
-	cnr_config_changed = false;
-	macc_config_changed = false;
-	ctc_config_changed = false;
-	aa_config_changed = false;
 	r_gamma_table_changed = false;
 	g_gamma_table_changed = false;
 	b_gamma_table_changed = false;
@@ -5640,6 +5708,7 @@ static enum sh_css_err sh_css_params_write_to_ddr_internal(
 				binary);
 			isp_parameters.sc_gain_shift =
 				sh_css_param_shading_table_fraction_bits_get();
+			isp_params_changed = true;
 		}
 	}
 
@@ -6221,6 +6290,22 @@ void sh_css_invalidate_params(void)
 	zoom_config_changed = true;
 	motion_config_changed = true;
 	dvs_6axis_config_changed = true;
+	fpn_table_changed = true;
+	dis_coef_table_changed = true;
+	morph_table_changed = true;
+	ecd_config_changed = true;
+	ynr_config_changed = true;
+	fc_config_changed = true;
+	cnr_config_changed = true;
+	macc_config_changed = true;
+	ctc_config_changed = true;
+	xnr_config_changed = true;
+	aa_config_changed = true;
+	r_gamma_table_changed = true;
+	g_gamma_table_changed = true;
+	b_gamma_table_changed = true;
+	yuv2rgb_cc_config_changed = true;
+	rgb2yuv_cc_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"sh_css_invalidate_params() leave:\n");
