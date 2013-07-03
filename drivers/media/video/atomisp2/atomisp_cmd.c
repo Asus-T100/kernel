@@ -3122,6 +3122,8 @@ static int css_input_resolution_changed(struct atomisp_device *isp,
 	if (isp->asd.continuous_mode->val &&
 		isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 
+		/* Note for all checks: ffmt includes pad_w+pad_h */
+
 		/*
 		 * Enable only if resolution is >= 3M for ISP2400
 		 */
@@ -3134,10 +3136,10 @@ static int css_input_resolution_changed(struct atomisp_device *isp,
 
 		if (!IS_ISP2400(isp)) {
 			/* enable raw binning for >= 5M */
-			if (ffmt->width >= 2576 || ffmt->height >= 1936)
+			if (ffmt->width >= 2560 || ffmt->height >= 1920)
 				atomisp_css_enable_raw_binning(asd, true);
-			/* enable 2ppc for CTP if > 8M */
-			if (ffmt->width > 3264 || ffmt->height > 2448)
+			/* enable 2ppc for CTP if >= 9M */
+			if (ffmt->width >= 3648 || ffmt->height >= 2736)
 				atomisp_css_input_set_two_pixels_per_clock(
 					asd, true);
 		}
