@@ -32,6 +32,7 @@
 #include "atomisp_cmd.h"
 
 #include "sh_css_accelerate.h"
+#include <asm/intel-mid.h>
 
 void atomisp_store_uint32(hrt_address addr, uint32_t data)
 {
@@ -794,7 +795,6 @@ void atomisp_css_disable_vf_pp(struct atomisp_sub_device *asd,
 	sh_css_disable_vf_pp(disable);
 }
 
-#ifndef CONFIG_ISP2400
 /*
  * HACK: align width to GFX/SGX constraints
  */
@@ -805,32 +805,27 @@ static unsigned int align_to_gfx(int width)
 	 * minimum width of 512.
 	 */
 	unsigned int align;
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		return width;
+
 	if (width <= 512)
 		align = 512;
 	else
 		align = ALIGN(width, 64);
 	return align;
 }
-#endif
 
 int atomisp_css_preview_configure_output(struct atomisp_sub_device *asd,
 				unsigned int width, unsigned int height,
 				enum atomisp_css_frame_format format)
 {
-	/* TODO: temporary until CSS1.5-CSS2400 API is updated to
-	 *       match CSS1.5-CSS2300 */
-#ifndef CONFIG_ISP2400
 	/* HACK: align width to GFX/SGX constraints */
 	unsigned int align = align_to_gfx(width);
 
 	if (sh_css_preview_configure_output(width, height, align, format)
 	    != sh_css_success)
 		return -EINVAL;
-#else
-	if (sh_css_preview_configure_output(width, height, format)
-	    != sh_css_success)
-		return -EINVAL;
-#endif
 
 	return 0;
 }
@@ -839,20 +834,13 @@ int atomisp_css_capture_configure_output(struct atomisp_sub_device *asd,
 				unsigned int width, unsigned int height,
 				enum atomisp_css_frame_format format)
 {
-	/* TODO: temporary until CSS1.5-CSS2400 API is updated to
-	 *       match CSS1.5-CSS2300 */
-#ifndef CONFIG_ISP2400
 	/* HACK: align width to GFX/SGX constraints */
 	unsigned int align = align_to_gfx(width);
 
 	if (sh_css_capture_configure_output(width, height, align, format)
 	    != sh_css_success)
 		return -EINVAL;
-#else
-	if (sh_css_capture_configure_output(width, height, format)
-	    != sh_css_success)
-		return -EINVAL;
-#endif
+
 	return 0;
 }
 
@@ -860,20 +848,12 @@ int atomisp_css_video_configure_output(struct atomisp_sub_device *asd,
 				unsigned int width, unsigned int height,
 				enum atomisp_css_frame_format format)
 {
-	/* TODO: temporary until CSS1.5-CSS2400 API is updated to
-	 *       match CSS1.5-CSS2300 */
-#ifndef CONFIG_ISP2400
 	/* HACK: align width to GFX/SGX constraints */
 	unsigned int align = align_to_gfx(width);
 
 	if (sh_css_video_configure_output(width, height, align, format)
 	    != sh_css_success)
 		return -EINVAL;
-#else
-	if (sh_css_video_configure_output(width, height, format)
-	    != sh_css_success)
-		return -EINVAL;
-#endif
 
 	return 0;
 }
@@ -883,20 +863,13 @@ int atomisp_css_video_configure_viewfinder(
 				unsigned int width, unsigned int height,
 				enum atomisp_css_frame_format format)
 {
-	/* TODO: temporary until CSS1.5-CSS2400 API is updated to
-	 *       match CSS1.5-CSS2300 */
-#ifndef CONFIG_ISP2400
 	/* HACK: align width to GFX/SGX constraints */
 	unsigned int align = align_to_gfx(width);
 
 	if (sh_css_video_configure_viewfinder(width, height, align, format)
 	    != sh_css_success)
 		return -EINVAL;
-#else
-	if (sh_css_video_configure_viewfinder(width, height, format)
-	    != sh_css_success)
-		return -EINVAL;
-#endif
+
 	return 0;
 }
 
@@ -905,20 +878,12 @@ int atomisp_css_capture_configure_viewfinder(
 				unsigned int width, unsigned int height,
 				enum atomisp_css_frame_format format)
 {
-	/* TODO: temporary until CSS1.5-CSS2400 API is updated to
-	 *       match CSS1.5-CSS2300 */
-#ifndef CONFIG_ISP2400
 	/* HACK: align width to GFX/SGX constraints */
 	unsigned int align = align_to_gfx(width);
 
 	if (sh_css_capture_configure_viewfinder(width, height, align, format)
 	    != sh_css_success)
 		return -EINVAL;
-#else
-	if (sh_css_capture_configure_viewfinder(width, height, format)
-	    != sh_css_success)
-		return -EINVAL;
-#endif
 
 	return 0;
 }

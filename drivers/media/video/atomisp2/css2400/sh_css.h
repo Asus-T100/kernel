@@ -1771,6 +1771,7 @@ sh_css_disable_capture_pp(bool disable);
 enum sh_css_err
 sh_css_preview_configure_output(unsigned int width,
 				unsigned int height,
+				unsigned int min_padded_width,
 				enum sh_css_frame_format format);
 
 /** @brief Get the preview output information
@@ -1925,6 +1926,7 @@ sh_css_capture_enable_xnr(bool enable);
 enum sh_css_err
 sh_css_capture_configure_output(unsigned int width,
 				unsigned int height,
+				unsigned int min_padded_width,
 				enum sh_css_frame_format format);
 
 /** @brief Specify the capture viewfinder resolution.
@@ -1942,6 +1944,7 @@ sh_css_capture_configure_output(unsigned int width,
 enum sh_css_err
 sh_css_capture_configure_viewfinder(unsigned int width,
 				    unsigned int height,
+				    unsigned int min_padded_width,
 				    enum sh_css_frame_format format);
 
 /** @brief Specify the capture post processing input resolution.
@@ -2071,6 +2074,7 @@ sh_css_video_stop(void);
 enum sh_css_err
 sh_css_video_configure_output(unsigned int width,
 			      unsigned int height,
+			      unsigned int min_padded_width,
 			      enum sh_css_frame_format format);
 
 /** @brief Specify the video viewfinder resolution.
@@ -2088,6 +2092,7 @@ sh_css_video_configure_output(unsigned int width,
 enum sh_css_err
 sh_css_video_configure_viewfinder(unsigned int width,
 				  unsigned int height,
+				  unsigned int min_padded_width,
 				  enum sh_css_frame_format format);
 
 /** @brief Set the envelope for DVS.
