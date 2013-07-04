@@ -1077,6 +1077,21 @@ static int intel_sst_runtime_resume(struct device *dev)
 	return ret;
 }
 
+static int intel_sst_suspend(struct device *dev)
+{
+	int retval = 0, usage_count;
+	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
+
+	usage_count = atomic_read(&ctx->pm_usage_count);
+	if (usage_count) {
+		pr_err("Ret error for suspend:%d\n", usage_count);
+		return -EBUSY;
+	}
+	retval = intel_sst_runtime_suspend(dev);
+
+	return retval;
+}
+
 static int intel_sst_runtime_idle(struct device *dev)
 {
 	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
@@ -1154,7 +1169,7 @@ static void sst_acpi_shutdown(struct platform_device *pdev)
 }
 
 static const struct dev_pm_ops intel_sst_pm = {
-	.suspend = intel_sst_runtime_suspend,
+	.suspend = intel_sst_suspend,
 	.resume = intel_sst_runtime_resume,
 	.runtime_suspend = intel_sst_runtime_suspend,
 	.runtime_resume = intel_sst_runtime_resume,

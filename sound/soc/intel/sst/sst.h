@@ -29,6 +29,7 @@
 #define __SST_H__
 
 #include <linux/dmaengine.h>
+#include <linux/pm_runtime.h>
 #include <linux/intel_mid_dma.h>
 #include <linux/lnw_gpio.h>
 #include <asm/platform_sst.h>
@@ -518,6 +519,7 @@ struct intel_sst_drv {
 	unsigned int		dram_end;
 	unsigned int		ddr_end;
 	unsigned int		ddr_base;
+	atomic_t		pm_usage_count;
 	struct sst_shim_regs64	*shim_regs64;
 	struct list_head        block_list;
 	struct list_head	ipc_dispatch_list;
@@ -699,6 +701,17 @@ int sst_acpi_remove(struct platform_device *pdev);
 void sst_save_shim64(struct intel_sst_drv *ctx, void __iomem *shim,
 		     struct sst_shim_regs64 *shim_regs);
 
+static inline int sst_pm_runtime_put(struct intel_sst_drv *sst_drv)
+{
+	int ret;
+
+	ret = pm_runtime_put(sst_drv->dev);
+	if (ret < 0)
+		return ret;
+	atomic_dec(&sst_drv->pm_usage_count);
+
+	return 0;
+}
 /*
  * sst_fill_header - inline to fill sst header
  *
