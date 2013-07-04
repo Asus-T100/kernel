@@ -114,8 +114,13 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 		xhci->quirks |= XHCI_RESET_ON_RESUME;
 
 	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
-			pdev->device == PCI_DEVICE_ID_INTEL_BYT_USH)
+			pdev->device == PCI_DEVICE_ID_INTEL_BYT_USH) {
 		xhci->quirks |= XHCI_SPURIOUS_SUCCESS;
+		/* FIXME BYT USH Controller need to disable HSIC hub port,
+		 * so add this quirks here.
+		 */
+		xhci->quirks |= XHCI_PORT_DISABLE_QUIRK;
+	}
 }
 
 /* called during probe() after chip reset completes */
