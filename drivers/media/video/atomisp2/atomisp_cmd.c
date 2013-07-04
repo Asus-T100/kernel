@@ -3235,9 +3235,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		atomisp_subdev_set_ffmt(&asd->subdev, NULL,
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
-
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		isp->asd.video_out_vf.sh_fmt = CSS_FRAME_FORMAT_NV12;
+#else
 		isp->asd.video_out_vf.sh_fmt = CSS_FRAME_FORMAT_YUV420;
-
+#endif
 		if (isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || isp->asd.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
 			atomisp_css_video_configure_viewfinder(asd,
@@ -3315,11 +3317,24 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	}
 	if (isp->asd.continuous_mode->val &&
 		configure_pp_input == atomisp_css_preview_configure_pp_input) {
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		/* for isp 2.2, configure pp input is available for continuous
+		 * mode */
+		ret = configure_pp_input(asd, isp_sink_crop->width,
+					 isp_sink_crop->height);
+		if (ret) {
+			dev_err(isp->dev, "configure_pp_input %ux%u\n",
+				isp_sink_crop->width,
+				isp_sink_crop->height);
+			return -EINVAL;
+		}
+#else
 		/* See PSI BZ 115124. preview_configure_pp_input()
 		 * API does not work correctly in continuous mode and
 		 * and must be disabled by setting it to (0, 0).
 		 */
 		configure_pp_input(asd, 0, 0);
+#endif
 	} else {
 		ret = configure_pp_input(asd, isp_sink_crop->width,
 					 isp_sink_crop->height);
