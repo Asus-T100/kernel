@@ -863,7 +863,10 @@ int atomisp_css_video_configure_output(struct atomisp_sub_device *asd,
 	/* TODO: temporary until CSS1.5-CSS2400 API is updated to
 	 *       match CSS1.5-CSS2300 */
 #ifndef CONFIG_ISP2400
-	if (sh_css_video_configure_output(width, height, width, format)
+	/* HACK: align width to GFX/SGX constraints */
+	unsigned int align = align_to_gfx(width);
+
+	if (sh_css_video_configure_output(width, height, align, format)
 	    != sh_css_success)
 		return -EINVAL;
 #else
