@@ -2913,6 +2913,9 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
 	int ret;
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
+#endif
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_err(isp->dev, "Wrong v4l2 buf type\n");
@@ -2946,6 +2949,26 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	snr_mbus_fmt.width = f->fmt.pix.width;
 	snr_mbus_fmt.height = f->fmt.pix.height;
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (isp->asd.continuous_mode->val &&
+	    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
+		if (f->fmt.pix.width != 0 && f->fmt.pix.height != 0
+		    && f->fmt.pix.width * f->fmt.pix.height <
+		    3264 * 2448) {
+			snr_mbus_fmt.width = 3264;
+			snr_mbus_fmt.height =
+			    DIV_ROUND_UP(3264 * f->fmt.pix.height,
+					 f->fmt.pix.width);
+			if (snr_mbus_fmt.height > 2448) {
+				snr_mbus_fmt.height = 2448;
+				snr_mbus_fmt.width =
+				    DIV_ROUND_UP(2448 *
+						 f->fmt.pix.width,
+						 f->fmt.pix.height);
+			}
+		}
+	}
+#endif
 	dev_dbg(isp->dev, "try_mbus_fmt: asking for %ux%u\n",
 		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
@@ -3393,7 +3416,8 @@ static void atomisp_get_dis_envelop(struct atomisp_sub_device *asd,
 static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 			  struct v4l2_format *f, unsigned int pixelformat,
 			  unsigned int padding_w, unsigned int padding_h,
-			  unsigned int dvs_env_w, unsigned int dvs_env_h)
+			  unsigned int dvs_env_w, unsigned int dvs_env_h,
+			  uint16_t source_pad)
 {
 	const struct atomisp_format_bridge *format;
 	struct v4l2_mbus_framefmt ffmt;
@@ -3405,6 +3429,25 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 		return -EINVAL;
 
 	v4l2_fill_mbus_format(&ffmt, &f->fmt.pix, format->mbus_code);
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (asd->continuous_mode->val &&
+	    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
+		if (f->fmt.pix.width * f->fmt.pix.height <
+		    2448 * 3264) {
+			ffmt.width = 3264;
+			ffmt.height =
+			    DIV_ROUND_UP(3264 * f->fmt.pix.height,
+					 f->fmt.pix.width);
+			if (ffmt.height > 2448) {
+				ffmt.height = 2448;
+				ffmt.width =
+				    DIV_ROUND_UP(2448 *
+						 f->fmt.pix.width,
+						 f->fmt.pix.height);
+			}
+		}
+	}
+#endif
 	ffmt.height += padding_h + dvs_env_h;
 	ffmt.width += padding_w + dvs_env_w;
 
@@ -3603,7 +3646,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 				    dvs_env_h))) {
 		ret = atomisp_set_fmt_to_snr(asd, f, f->fmt.pix.pixelformat,
 					     padding_w, padding_h,
-					     dvs_env_w, dvs_env_h);
+					     dvs_env_w, dvs_env_h,
+					     source_pad);
 		if (ret)
 			return -EINVAL;
 	}
