@@ -74,27 +74,35 @@ static struct intel_mid_thermal_sensor byt_sensors[] = {
 	},
 };
 
+/* 'r' stands for 'remote' and 'l' for 'local' */
 static struct intel_mid_thermal_sensor byt_ec_sensors[] = {
 	{
-		.name = "CPUVR",
+		.name = "CPU_r",
 		.index = 0,
-		.slope = 1000,
-		.intercept = 0,
-		.temp_correlation = linear_correlation,
 	},
 	{
-		.name = "Ambient",
+		.name = "CPU_l",
 		.index = 1,
-		.slope = 1000,
-		.intercept = 0,
-		.temp_correlation = linear_correlation,
 	},
 	{
-		.name = "DDR3",
+		.name = "Ambient_r",
 		.index = 2,
-		.slope = 1000,
-		.intercept = 0,
-		.temp_correlation = linear_correlation,
+	},
+	{
+		.name = "Ambient_l",
+		.index = 3,
+	},
+	{
+		.name = "Ambient_r2",
+		.index = 4,
+	},
+	{
+		.name = "DDR3_r",
+		.index = 5,
+	},
+	{
+		.name = "DDR3_l",
+		.index = 6,
 	},
 };
 
@@ -104,7 +112,7 @@ static struct intel_mid_thermal_platform_data pdata[] = {
 		.sensors = byt_sensors,
 	},
 	[byt_ec_thermal] = {
-		.num_sensors = 3,
+		.num_sensors = 7,
 		.sensors = byt_ec_sensors,
 	},
 };
@@ -127,7 +135,7 @@ static int set_byt_ec_platform_thermal_data(void)
 					BYT_EC_THERM_DEV_NAME,
 					-1, NULL, 0);
 	if (!pdev) {
-		pr_err("pdev_alloc failed for byt_ec_thermal\n");
+		pr_err("pdev_register failed for byt_ec_thermal\n");
 		return PTR_ERR(pdev);
 	}
 

@@ -57,6 +57,16 @@ config INTEL_BYT_THERMAL
           To load this driver as a module, select M here. The module
           will be called "byt_thermal"
 
+config INTEL_BYT_EC_THERMAL
+        tristate "Thermal driver for Intel Baytrail platform"
+        depends on THERMAL && INTEL_BYT_EC
+        help
+          Say Y here to enable thermal driver on Intel Baytrail-M
+          platform.
+
+          To load this driver as a module, select M here. The module
+          will be called "byt_ec_thermal"
+
 config SOC_THERMAL
 	tristate "SoC Thermal driver"
 	depends on THERMAL
