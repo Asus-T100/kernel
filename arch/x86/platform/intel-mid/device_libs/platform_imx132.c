@@ -83,7 +83,7 @@ static int imx132_csi_configure(struct v4l2_subdev *sd, int flag)
 {
 	static const int LANES = 1;
 	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, LANES,
-		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_bggr, flag);
+		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_rggb, flag);
 }
 
 static struct camera_sensor_platform_data imx132_sensor_platform_data = {
