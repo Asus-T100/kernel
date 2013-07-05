@@ -442,6 +442,8 @@ int mdfld_clv_nc_set_power_state(int islands, int state_type,
 		wait_for_nc_pmcmd_complete(pwr_mask, state_type, reg_type);
 		if (!ret)
 			*change = 1;
+		if (nc_report_power_state)
+			nc_report_power_state(pwr_mask, reg_type);
 	}
 
 unlock:

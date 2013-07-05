@@ -1210,7 +1210,6 @@ static void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int pipe = to_intel_crtc(intel_dp->base.base.crtc)->pipe;
 	u32 pp;
 	u32 pp_ctrl_reg;
 
@@ -1433,8 +1432,7 @@ void intel_edp_enable_psr(struct intel_dp *intel_dp, enum PSR_MODE mode,
 
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(intel_dp->base.base.crtc);
-	int i = 0, ack = 0;
+	int ack = 0;
 	uint32_t val = 0;
 
 	if (!is_edp_psr(intel_dp) || intel_edp_is_psr_active(intel_dp))
@@ -1481,11 +1479,9 @@ void intel_edp_disable_psr(struct intel_dp *intel_dp, enum PSR_MODE mode)
 {
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(intel_dp->base.base.crtc);
 	struct drm_crtc *crtc = intel_dp->base.base.crtc;
 	struct intel_encoder *intel_encoder;
 	uint32_t val = 0;
-	uint8_t data;
 	int count = 0;
 
 	if (intel_dp->psr_setup == 0)
@@ -1548,7 +1544,6 @@ void intel_edp_exit_psr(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(intel_dp->base.base.crtc);
 	struct drm_crtc *crtc = intel_dp->base.base.crtc;
 	struct intel_encoder *intel_encoder;
 	uint32_t val = 0;
@@ -3133,13 +3128,7 @@ void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 		if (intel_dp == NULL) {
 			DRM_ERROR("Intel Dp  = NULL");
 			} else {
-				/* For SW Timer mode, exit and disable have
-				   the exact implementation, hence reusing */
-				if (EDP_PSR_MODE == EDP_PSR_HW_TIMER)
-					intel_edp_exit_psr(intel_dp);
-				else
-					intel_edp_disable_psr(intel_dp,
-						EDP_PSR_MODE);
+				intel_edp_exit_psr(intel_dp);
 			}
 		}
 	}

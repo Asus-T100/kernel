@@ -2519,7 +2519,6 @@ intel_finish_fb(struct drm_framebuffer *old_fb)
 	int ret;
 
 	wait_event(dev_priv->pending_flip_queue,
-		   atomic_read(&dev_priv->mm.wedged) ||
 		   atomic_read(&obj->pending_flip) == 0);
 
 	/* Big Hammer, we also need to ensure that any pending
@@ -5234,7 +5233,7 @@ int intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
 	struct intel_crtc *intel_crtc;
 	u32 pipeconf;
 	int pipe;
-	u32 csc_reg;
+	u32 csc_reg = 0;
 	int i = 0, j = 0;
 
 	obj = drm_mode_object_find(dev, wgCSCCoeff->crtc_id,
@@ -7171,7 +7170,7 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 		goto err_unpin;
 	}
 
-	ret = intel_ring_begin(ring, 8);
+	ret = intel_ring_begin(ring, 16);
 	if (ret)
 		goto err_unpin;
 
@@ -7182,12 +7181,36 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 	intel_ring_emit(ring, (MI_NOOP));
 	intel_ring_emit(ring, (MI_NOOP));
 
+	/* Set a flag to indicate that a page flip interrupt is expected.
+	* The flag is used by the TDR logic to detect whether the blitter hung
+	* on a page flip command, in which case it will need to manually
+	* complete the page flip.
+	* The 'flag' is actually the pipe value associated with this page
+	* flip + 1 so that the TDR code knows which pipe failed to flip.
+	* A value of 0 indicates that a flip is not currently in progress on
+	* the HW.*/
+	intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+	intel_ring_emit(ring, I915_GEM_PGFLIP_INDEX <<
+				MI_STORE_DWORD_INDEX_SHIFT);
+	intel_ring_emit(ring, intel_crtc->pipe + 1);
+	intel_ring_emit(ring, MI_NOOP);
+
 	intel_ring_emit(ring, MI_DISPLAY_FLIP_I915 | plane_bit);
 	intel_ring_emit(ring, (fb->pitches[0] | obj->tiling_mode));
 	intel_ring_emit(ring, obj->gtt_offset + intel_crtc->dspaddr_offset);
 	intel_ring_emit(ring, (MI_NOOP));
-	intel_ring_advance(ring);
 
+	/* Clear the flag as soon as we pass over the page flip command.
+	* If we passed over the command without hanging then an interrupt should
+	* be received to complete the page flip.*/
+	intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+	intel_ring_emit(ring, I915_GEM_PGFLIP_INDEX <<
+				MI_STORE_DWORD_INDEX_SHIFT);
+	intel_ring_emit(ring, 0);
+	intel_ring_emit(ring, MI_NOOP);
+
+
+	intel_ring_advance(ring);
 
 	return 0;
 
@@ -7215,6 +7238,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	struct drm_i915_gem_object *obj;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	struct intel_unpin_work *work;
+	struct drm_framebuffer *active_fb;
 	unsigned long flags;
 	int ret;
 
@@ -7269,6 +7293,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	drm_gem_object_reference(&work->old_fb_obj->base);
 	drm_gem_object_reference(&obj->base);
 
+	active_fb = crtc->fb;
 	crtc->fb = fb;
 
 	work->pending_flip_obj = obj;
@@ -7293,6 +7318,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	return 0;
 
 cleanup_pending:
+	crtc->fb = active_fb;
 	atomic_sub(1 << intel_crtc->plane, &work->old_fb_obj->pending_flip);
 	drm_gem_object_unreference(&work->old_fb_obj->base);
 	drm_gem_object_unreference(&obj->base);
@@ -7419,7 +7445,6 @@ static int display_disable_wq(struct drm_device *drm_dev)
 	/* Uncomment this once HDMI audio code is integrated */
 	/* cancel_work_sync(&dev_priv->hdmi_audio_wq); */
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
-		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
 			struct intel_dp *intel_dp = container_of(intel_encoder,
 					struct intel_dp, base);

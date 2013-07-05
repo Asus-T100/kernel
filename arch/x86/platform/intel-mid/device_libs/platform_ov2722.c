@@ -101,7 +101,12 @@ static int ov2722_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			}
 		}
 		gp_camera1_power_down = pin;
-		ret = gpio_direction_output(pin, 1);
+
+		if (spid.hardware_id == BYT_TABLET_BLB_VV3)
+			ret = gpio_direction_output(pin, 0);
+		else
+			ret = gpio_direction_output(pin, 1);
+
 		if (ret) {
 			pr_err("%s: failed to set gpio(pin %d) direction\n",
 				__func__, pin);
@@ -110,13 +115,20 @@ static int ov2722_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		}
 	}
 	if (flag) {
-		gpio_set_value(gp_camera1_power_down, 1);
+		if (spid.hardware_id == BYT_TABLET_BLB_VV3)
+			gpio_set_value(gp_camera1_power_down, 0);
+		else
+			gpio_set_value(gp_camera1_power_down, 1);
+
 		gpio_set_value(gp_camera1_reset, 0);
 		msleep(20);
 		gpio_set_value(gp_camera1_reset, 1);
 	} else {
 		gpio_set_value(gp_camera1_reset, 0);
-		gpio_set_value(gp_camera1_power_down, 0);
+		if (spid.hardware_id == BYT_TABLET_BLB_VV3)
+			gpio_set_value(gp_camera1_power_down, 1);
+		else
+			gpio_set_value(gp_camera1_power_down, 0);
 	}
 
 	return 0;
@@ -154,10 +166,16 @@ static int ov2722_power_ctrl(struct v4l2_subdev *sd, int flag)
 			    INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 				ret = intel_scu_ipc_msic_vprog1(1);
 #ifdef CONFIG_CRYSTAL_COVE
-	ret = intel_mid_pmic_writeb(VPROG_2P8V, VPROG_ENABLE);
-	if (ret)
-		return ret;
-	ret = intel_mid_pmic_writeb(VPROG_1P8V, VPROG_ENABLE);
+			/*
+			 * This should call VRF APIs.
+			 *
+			 * VRF not implemented for BTY, so call this
+			 * as WAs
+			 */
+			ret = camera_set_pmic_power(CAMERA_2P8V, true);
+			if (ret)
+				return ret;
+			ret = camera_set_pmic_power(CAMERA_1P8V, true);
 #endif
 			if (!ret)
 				camera_vprog1_on = 1;
@@ -169,10 +187,10 @@ static int ov2722_power_ctrl(struct v4l2_subdev *sd, int flag)
 			    INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 				ret = intel_scu_ipc_msic_vprog1(0);
 #ifdef CONFIG_CRYSTAL_COVE
-	ret = intel_mid_pmic_writeb(VPROG_1P8V, VPROG_DISABLE);
-	if (ret)
-		return ret;
-	ret = intel_mid_pmic_writeb(VPROG_2P8V, VPROG_DISABLE);
+			ret = camera_set_pmic_power(CAMERA_2P8V, false);
+			if (ret)
+				return ret;
+			ret = camera_set_pmic_power(CAMERA_1P8V, false);
 #endif
 			if (!ret)
 				camera_vprog1_on = 0;

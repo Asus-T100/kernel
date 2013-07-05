@@ -21,6 +21,7 @@
 #define __INTEL_SOC_PMC_H
 
 #define		MAX_PLATFORM_STATES 5
+#define		S0I3	3
 
 #define		S0IX_REGISTERS_OFFSET	0x80
 
@@ -78,6 +79,7 @@ struct mid_pmc_dev {
 	u32 __iomem *s0ix_wake_en;
 	struct pci_dev const *pdev;
 	struct semaphore nc_ready_lock;
+	u32 s3_residency;
 };
 
 #endif

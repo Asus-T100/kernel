@@ -1050,11 +1050,12 @@ void i915_restore_rc6_regs(struct drm_device *drm_dev)
  * ii)  Set Global Force Wake to avoid waking up wells every time during saving
  *      registers
  * iii) save regsiters
- * iv)  Clear Global Force Wake and transition render and media wells to RC6
- * v)   Clear Allow Wake Bit so that none of the force/demand wake requests
+ * iv)  Change the Gfx Freq to lowest possible on platform
+ * v)  Clear Global Force Wake and transition render and media wells to RC6
+ * vI)   Clear Allow Wake Bit so that none of the force/demand wake requests
  *		will be completed
- * vi)  Power Gate Render, Media and Display Power Wells
- * vii) Release graphics clocks
+ * vii)  Power Gate Render, Media and Display Power Wells
+ * viii) Release graphics clocks
  */
 static int valleyview_freeze(struct drm_device *dev)
 {
@@ -1104,12 +1105,21 @@ static int valleyview_freeze(struct drm_device *dev)
 	intel_fbdev_set_suspend(dev, 1);
 	console_unlock();
 
-	/* iv) Clear Global Force Wake and transition render and
+	/* iv) Change the freq to lowest possible on platform */
+	if (dev_priv->rps.lowest_delay) {
+		valleyview_punit_write(dev_priv,
+					PUNIT_REG_GPU_FREQ_REQ,
+					dev_priv->rps.lowest_delay);
+		dev_priv->rps.requested_delay = dev_priv->rps.lowest_delay;
+	}
+
+
+	/* v) Clear Global Force Wake and transition render and
 	 * media wells to RC6
 	 */
 	vlv_rs_setstate(dev, true);
 
-	/* v) Clear Allow Wake Bit so that none of the
+	/* vi) Clear Allow Wake Bit so that none of the
 	 * force/demand wake requests
 	 */
 	reg = I915_READ(VLV_GTLC_WAKE_CTRL);
@@ -1122,11 +1132,11 @@ static int valleyview_freeze(struct drm_device *dev)
 	}
 
 
-	/* vi)  Power Gate Power Wells */
+	/* vii)  Power Gate Power Wells */
 	pmu_nc_set_power_state(VLV_DISPLAY_ISLAND,
 			OSPM_ISLAND_DOWN, VLV_IOSFSB_PWRGT_CNT_CTRL);
 
-	/* vii) Release graphics clocks */
+	/* viii) Release graphics clocks */
 	reg = I915_READ(VLV_GTLC_SURVIVABILITY_REG);
 	reg &= ~VLV_GFX_CLK_FORCE_ON_BIT;
 	I915_WRITE(VLV_GTLC_SURVIVABILITY_REG, reg);

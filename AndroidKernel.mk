@@ -28,6 +28,7 @@ KERNEL_SOC_medfield := mfld
 KERNEL_SOC_clovertrail := ctp
 KERNEL_SOC_merrifield := mrfl
 KERNEL_SOC_baytrail := byt
+KERNEL_SOC_bigcore := bigc
 KERNEL_SOC_moorefield := moor
 KERNEL_SOC_carboncanyon := crc
 
@@ -53,17 +54,22 @@ KERNEL_CROSS_COMP := "ccache $(KERNEL_CROSS_COMP)"
 KERNEL_PATH := $(KERNEL_PATH):$(ANDROID_BUILD_TOP)/$(dir $(KERNEL_CCACHE))
 endif
 
+#remove time_macros from ccache options, it breaks signing process
+KERNEL_CCSLOP := $(filter-out time_macros,$(subst $(comma), ,$(CCACHE_SLOPPINESS)))
+KERNEL_CCSLOP := $(subst $(space),$(comma),$(KERNEL_CCSLOP))
+
 KERNEL_OUT_DIR := $(PRODUCT_OUT)/linux/kernel
 KERNEL_MODULES_ROOT := $(PRODUCT_OUT)/root/lib/modules
 KERNEL_CONFIG := $(KERNEL_OUT_DIR)/.config
 KERNEL_BLD_FLAGS := \
-    A="../modules/intel_media" \
+    A="../modules/drivers ../modules/intel_media" \
     ARCH=$(KERNEL_ARCH) \
     O=../../$(KERNEL_OUT_DIR) \
     $(KERNEL_EXTRA_FLAGS)
 
 KERNEL_BLD_ENV := CROSS_COMPILE=$(KERNEL_CROSS_COMP) \
-    PATH=$(KERNEL_PATH):$(PATH)
+    PATH=$(KERNEL_PATH):$(PATH) \
+    CCACHE_SLOPPINESS=$(KERNEL_CCSLOP)
 KERNEL_FAKE_DEPMOD := $(KERNEL_OUT_DIR)/fakedepmod/lib/modules
 
 KERNEL_DEFCONFIG := $(KERNEL_SRC_DIR)/arch/x86/configs/$(KERNEL_ARCH)_$(KERNEL_SOC)_defconfig

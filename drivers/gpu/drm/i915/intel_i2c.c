@@ -550,7 +550,7 @@ int sb_read32(struct drm_i915_private *dev_priv, u8 port_id,
 
 void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv)
 {
-	u32 cck_fuse, cd_clk_index, cd_clk;
+	u32 cck_fuse, cd_clk_index, cd_clk = 0;
 	int gmbus_clock;
 	u16  m_cd_clk_vco_800_tbl[] = {0, 800, 533, 400, 320, 267, 0, 200, 178,
 				160, 0, 133, 0, 0, 107, 100, 0, 89, 0,

@@ -40,8 +40,13 @@ struct dwc_device_par {
 #define DRIVER_VERSION "0.1"
 #define PERI_MODE_PERIPHERAL	1
 #define PERI_MODE_HOST		0
-#define OTG_DEVICE_SUSPEND	0xfffe
-#define OTG_DEVICE_RESUME	0xffff
+
+#define OTG_USB2_100MA				0xfff1
+#define OTG_USB3_150MA				0xfff2
+#define OTG_USB2_500MA				0xfff3
+#define OTG_USB3_900MA				0xfff4
+#define OTG_DEVICE_SUSPEND			0xfffe
+#define OTG_DEVICE_RESUME			0xffff
 
 #define ADP_RAMP_TIME_CHANGE_THRESHOLD	5
 #define ADP_PROBE_TIMEOUT		5000
@@ -422,6 +427,12 @@ struct dwc_otg2 {
 	 * for this issue.
 	 */
 	void (*reset_host)(struct dwc_otg2 *otg);
+
+	/* Due to D0i3hot WA. For S3 suspend/resume flow, USB3 driver
+	 * need also do some WA. If follow standard S3 flow, the D0i3hot
+	 * issue still can reproduce and cause system can't enter S3 anymore.
+	 */
+	int (*whether_to_use_s3_wa)(struct dwc_otg2 *otg);
 };
 
 /* Invalid SDP checking timeout */

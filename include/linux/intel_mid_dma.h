@@ -73,4 +73,6 @@ struct intel_mid_dma_slave {
 	struct dma_slave_config		dma_slave;
 };
 
+dma_addr_t intel_dma_get_src_addr(struct dma_chan *chan);
+dma_addr_t intel_dma_get_dst_addr(struct dma_chan *chan);
 #endif /*__INTEL_MID_DMA_H__*/

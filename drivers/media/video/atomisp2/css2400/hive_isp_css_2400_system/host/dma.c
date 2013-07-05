@@ -18,6 +18,8 @@ void dma_get_state(
 
 assert(ID < N_DMA_ID);
 assert(state != NULL);
+	if (state == NULL)
+		return ;
 
 	tmp = dma_reg_load(ID, DMA_COMMAND_FSM_REG_IDX);
 	state->fsm_command_idle = tmp & 0x1;

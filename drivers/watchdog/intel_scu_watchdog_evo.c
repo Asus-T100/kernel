@@ -54,8 +54,11 @@
 #include <linux/atomic.h>
 #include <linux/wakelock.h>
 #include <linux/rpmsg.h>
+#include <linux/pm_qos.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/nmi.h>
+#include <linux/pm.h>
+#include <linux/platform_device.h>
 #include <asm/irq.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_ipcutil.h>
@@ -112,6 +115,9 @@
 /* Statics */
 static struct intel_scu_watchdog_dev watchdog_device;
 static unsigned char osnib_reset = OSNIB_WRITE_VALUE;
+
+/* PM Qos struct */
+static struct pm_qos_request *qos;
 
 /* Module params */
 static bool kicking_active = true;
@@ -241,6 +247,9 @@ static int watchdog_set_timeouts(int warning_pretimeout,
 	int ret = 0;
 	int error = 0;
 
+	/* Prevent C-states beyond C4 */
+	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_C6 - 1);
+
 	/******** TIMER 0 *******/
 
 	/* disable timer */
@@ -317,6 +326,9 @@ static int watchdog_set_timeouts(int warning_pretimeout,
 		error = -EIO;
 	}
 
+	/* Re-enable Deeper C-states beyond C4 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+
 	return error;
 }
 
@@ -359,6 +371,9 @@ static int intel_scu_stop(void)
 
 	pr_crit(PFX "%s\n", __func__);
 
+	/* Prevent C-states beyond C4 */
+	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_C6 - 1);
+
 	/* disable timers */
 	ipc_wbuf = XTMR_DISABLE | XTMR_USERDEF_COUNTDOWN;
 
@@ -386,6 +401,9 @@ static int intel_scu_stop(void)
 		pr_crit(PFX "Error disabling watchdog timers: %d\n", ret);
 		goto err;
 	}
+
+	/* Re-enable Deeper C-states beyond C4 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
 
 	watchdog_device.started = false;
 
@@ -506,9 +524,6 @@ static ssize_t intel_scu_write(struct file *file, char const *data, size_t len,
 	if (watchdog_device.started) {
 		/* Watchdog already started, keep it alive */
 		watchdog_keepalive();
-	} else {
-		/* Start watchdog with timer value set by init */
-		watchdog_config_and_start(timeout, pre_timeout);
 	}
 
 	return len;
@@ -1316,6 +1331,71 @@ static int handle_mrfl_dev_ioapic(int irq)
 	return ret;
 }
 
+/* Platfrom device functionality */
+static int watchdog_probe(struct platform_device *pdev)
+{
+	dev_info(&pdev->dev, "Probed watchdog pm device\n");
+	return 0;
+}
+
+static int watchdog_remove(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static int watchdog_resume(struct device *dev)
+{
+	pr_info(PFX "%s\n", __func__);
+
+	return 0;
+}
+
+static int watchdog_suspend(struct device *dev)
+{
+	int ret = 0;
+	pr_info(PFX "%s\n", __func__);
+
+	if (watchdog_device.started) {
+		/* kick timers before suspending */
+		ret = watchdog_keepalive();
+
+		if (ret)
+			pr_err(PFX "Error executing keepalive: %x\n", ret);
+	}
+
+	return ret;
+}
+
+static const struct dev_pm_ops watchdog_pm_ops = {
+	.suspend = watchdog_suspend,
+	.resume = watchdog_resume,
+};
+
+static struct platform_driver watchdog_driver = {
+	.driver = {
+		.name = "watchdog_pm",
+		.owner = THIS_MODULE,
+		.pm = &watchdog_pm_ops,
+	},
+	.probe = watchdog_probe,
+	.remove = watchdog_remove,
+};
+
+static struct platform_device *watchdog_pm_pdev;
+
+static int watchdog_module_init(void)
+{
+	pr_info(PFX "%s\n", __func__);
+	return platform_driver_register(&watchdog_driver);
+}
+
+static void watchdog_module_exit(void)
+{
+	platform_driver_unregister(&watchdog_driver);
+	platform_device_del(watchdog_pm_pdev);
+	platform_device_put(watchdog_pm_pdev);
+}
+
 /* Init code */
 static int intel_scu_watchdog_init(void)
 {
@@ -1403,7 +1483,39 @@ static int intel_scu_watchdog_init(void)
 		goto error_sysfs_entry;
 	}
 
+	qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
+	if (!qos) {
+		pr_err(PFX "%s: Error allocating qos\n", __func__);
+		ret = -ENOMEM;
+		goto error_sysfs_entry;
+	}
+
+	pm_qos_add_request(qos, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
+
+	ret = watchdog_module_init();
+	if (ret) {
+		pr_err(PFX "%s: Error initializing pm\n", __func__);
+		goto error_device_entry;
+	}
+
+	watchdog_pm_pdev = platform_device_alloc("watchdog_pm", -1);
+	if (!watchdog_pm_pdev) {
+		pr_err(PFX "%s: watchdog_pm allocation failed\n", __func__);
+		ret = -ENODEV;
+		goto error_device_entry;
+	}
+	ret = platform_device_add(watchdog_pm_pdev);
+	if (ret) {
+		pr_err(PFX "%s: watchdog_pm add failed\n", __func__);
+		platform_device_put(watchdog_pm_pdev);
+	}
+	pr_info("platform watchdog_pm allocated\n");
+
 	return ret;
+
+error_device_entry:
+	pm_qos_remove_request(qos);
+	kfree(qos);
 
 error_sysfs_entry:
 	/* Nothing special to do */
@@ -1441,8 +1553,13 @@ static void intel_scu_watchdog_exit(void)
 	if (ret != 0)
 		pr_err(PFX "cant disable timer\n");
 
+	pm_qos_remove_request(qos);
+	kfree(qos);
+
 	misc_deregister(&watchdog_device.miscdev);
 	unregister_reboot_notifier(&watchdog_device.reboot_notifier);
+
+	watchdog_module_exit();
 }
 
 static int watchdog_rpmsg_probe(struct rpmsg_channel *rpdev)

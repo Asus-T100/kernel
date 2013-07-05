@@ -1319,7 +1319,8 @@ int sst_load_fw(void)
 
 	pr_debug("sst_load_fw\n");
 
-	if (sst_drv_ctx->sst_state != SST_START_INIT)
+	if (sst_drv_ctx->sst_state != SST_START_INIT ||
+			sst_drv_ctx->sst_state == SST_SHUTDOWN)
 		return -EAGAIN;
 
 	if (!sst_drv_ctx->fw_in_mem) {

@@ -57,10 +57,6 @@
 #include "io.h"
 
 #define DWC3_EP0_DELAYED_STATUS 999
-#define USB3_I_MAX	0x70
-#define USB3_I_UNIT	0x12
-#define USB2_I_MAX	0xFA
-#define USB2_I_UNIT	0x32
 
 enum dwc3_ep0_config {
 	DWC3_CONFIG_NORMAL = 0,

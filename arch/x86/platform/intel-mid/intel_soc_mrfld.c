@@ -304,6 +304,8 @@ static int mrfld_nc_set_power_state(int islands, int state_type,
 					status_mask, state_type, reg);
 		if (!ret)
 			*change = 1;
+		if (nc_report_power_state)
+			nc_report_power_state(pwr_mask, reg);
 	}
 
 	return ret;
@@ -317,6 +319,29 @@ void s0ix_complete(void)
 		mid_pmu_cxt->s0ix_entered	= 0;
 	}
 }
+
+bool could_do_s0ix(void)
+{
+	bool ret = false;
+	if (unlikely(!pmu_initialized))
+		goto ret;
+
+	/* dont do s0ix if suspend in progress */
+	if (unlikely(mid_pmu_cxt->suspend_started))
+		goto ret;
+
+	/* dont do s0ix if shutdown in progress */
+	if (unlikely(mid_pmu_cxt->shutdown_started))
+		goto ret;
+
+	if (nc_device_state())
+		goto ret;
+
+	ret = true;
+ret:
+	return ret;
+}
+EXPORT_SYMBOL(could_do_s0ix);
 
 struct platform_pmu_ops mrfld_pmu_ops = {
 	.init	 = mrfld_pmu_init,

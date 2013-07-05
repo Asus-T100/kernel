@@ -2,7 +2,6 @@
 # Makefile for misc devices that really don't fit anywhere else.
 #
 
-intel_fabric_logging-objs  := intel_fw_logging.o intel_fabricerr_status.o
 obj-$(CONFIG_IBM_ASM)		+= ibmasm/
 obj-$(CONFIG_AD525X_DPOT)	+= ad525x_dpot.o
 obj-$(CONFIG_AD525X_DPOT_I2C)	+= ad525x_dpot-i2c.o
@@ -55,9 +54,6 @@ obj-$(CONFIG_MAX8997_MUIC)	+= max8997-muic.o
 obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
 obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
 obj-$(CONFIG_MID_I2S_DEV)       += mid_i2s_dev/
-obj-$(CONFIG_A1026)		+= a1026.o
 obj-$(CONFIG_EMMC_IPANIC)	+= emmc_ipanic.o
-obj-$(CONFIG_SCU_LOGGING)	+= intel_fabric_logging.o
-obj-$(CONFIG_UUID)	+= uuid.o
 obj-$(CONFIG_VLV2_PLAT_CLK)	+= vlv2_plat_clock.o
 obj-$(CONFIG_INTEL_MEI)		+= mei/

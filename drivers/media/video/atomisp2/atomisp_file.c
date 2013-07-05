@@ -45,22 +45,22 @@ static void file_work(struct work_struct *work)
 			container_of(work, struct atomisp_file_device, work);
 
 	struct atomisp_device *isp = file_dev->isp;
-	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
+	struct atomisp_video_pipe *out_pipe = &isp->asd.video_in;
 	unsigned short *buf = videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+	if (isp->asd.streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 		return;
 
 	dev_dbg(isp->dev, ">%s: ready to start streaming\n", __func__);
-	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->asd.subdev, NULL,
 						V4L2_SUBDEV_FORMAT_ACTIVE,
 						ATOMISP_SUBDEV_PAD_SINK);
 
 	while (!atomisp_css_isp_has_started())
 		usleep_range(1000, 1500);
 
-	atomisp_css_send_input_frame(isp, buf, isp_sink_fmt.width,
+	atomisp_css_send_input_frame(&isp->asd, buf, isp_sink_fmt.width,
 					isp_sink_fmt.height);
 	dev_dbg(isp->dev, "<%s: streaming done\n", __func__);
 }
@@ -72,7 +72,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 
 	dev_dbg(isp->dev, "%s: enable %d\n", __func__, enable);
 	if (enable) {
-		if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+		if (isp->asd.streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 			return 0;
 
 		queue_work(file_dev->work_queue, &file_dev->work);
@@ -124,7 +124,7 @@ static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 	struct atomisp_device *isp = file_dev->isp;
 	struct v4l2_mbus_framefmt *isp_sink_fmt;
 
-	isp_sink_fmt = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = atomisp_subdev_get_ffmt(&isp->asd.subdev, NULL,
 					       V4L2_SUBDEV_FORMAT_ACTIVE,
 					       ATOMISP_SUBDEV_PAD_SINK);
 

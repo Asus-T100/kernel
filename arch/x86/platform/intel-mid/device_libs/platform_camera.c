@@ -18,7 +18,9 @@
 #include <media/v4l2-subdev.h>
 #include <asm/intel-mid.h>
 #include "platform_camera.h"
-
+#ifdef CONFIG_CRYSTAL_COVE
+#include <linux/mfd/intel_mid_pmic.h>
+#endif
 /*
  * TODO: Check whether we can move this info to OEM table or
  *       set this info in the platform data of each sensor
@@ -28,6 +30,7 @@ const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"imx175", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"imx135", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"imx134", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"imx132", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"ov9724", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"ov2722", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
@@ -230,9 +233,83 @@ void intel_register_i2c_camera_device(struct sfi_device_table_entry *pentry,
 	return;
 }
 
+#ifdef CONFIG_ACPI
+#if 0
+static int match_name(struct device *dev, void *data)
+{
+	const char *name = data;
+	struct i2c_client *client = to_i2c_client(dev);
+	return !strncmp(client->name, name, strlen(client->name));
+}
+
+struct i2c_client *i2c_find_client_by_name(char *name)
+{
+	struct device *dev = bus_find_device(&i2c_bus_type, NULL,
+						name, match_name);
+	return dev ? to_i2c_client(dev) : NULL;
+}
+#endif
+/*
+ * In BTY, ACPI enumination will register all the camera i2c devices
+ * which will cause v4l2_i2c_new_subdev_board() failed called in atomisp
+ * driver.
+ * Here we unregister the devices registered by ACPI
+ */
+static void atomisp_unregister_acpi_devices(struct atomisp_platform_data *pdata)
+{
+	const char *subdev_name[] = {
+		"3-0053",	/* FFRD8 lm3554 */
+		"4-0036",	/* ov2722 */
+		"4-0010",	/* imx1xx Sensor*/
+		"4-0053",	/* FFRD10 lm3554 */
+		"4-0054",	/* imx1xx EEPROM*/
+		"4-000c",	/* imx1xx driver*/
+#if 0
+		"INTCF0B:00",	/* From ACPI ov2722 */
+		"INTCF1A:00",	/* From ACPI imx175 */
+		"INTCF1C:00",	/* From ACPI lm3554 */
+#endif
+	};
+	struct device *dev;
+	struct i2c_client *client;
+	struct i2c_board_info board_info;
+	int i;
+	/* search by device name */
+	for (i = 0; i < ARRAY_SIZE(subdev_name); i++) {
+		dev = bus_find_device_by_name(&i2c_bus_type, NULL,
+					      subdev_name[i]);
+		if (dev) {
+			client = to_i2c_client(dev);
+			board_info.flags = client->flags;
+			board_info.addr = client->addr;
+			board_info.irq = client->irq;
+			strlcpy(board_info.type, client->name,
+				sizeof(client->name));
+			i2c_unregister_device(client);
+		}
+	}
+#if 0
+	/* search by client name */
+	for (i = 0; i < ARRAY_SIZE(subdev_name); i++) {
+		client = i2c_find_client_by_name(subdev_name[i]);
+		if (client) {
+			board_info.flags = client->flags;
+			board_info.addr = client->addr;
+			board_info.irq = client->irq;
+			strlcpy(board_info.type, client->name,
+				sizeof(client->name));
+			i2c_unregister_device(client);
+		}
+	}
+#endif
+}
+#endif
 const struct atomisp_platform_data *atomisp_get_platform_data(void)
 {
 	if (atomisp_platform_data) {
+#ifdef CONFIG_ACPI
+		atomisp_unregister_acpi_devices(atomisp_platform_data);
+#endif
 		atomisp_platform_data->spid = &spid;
 		return atomisp_platform_data;
 	} else {
@@ -279,3 +356,41 @@ const struct camera_af_platform_data *camera_get_af_platform_data(void)
 	return &platform_data;
 }
 EXPORT_SYMBOL_GPL(camera_get_af_platform_data);
+
+#ifdef CONFIG_CRYSTAL_COVE
+/*
+ * WA for BTY as simple VRF management
+ */
+int camera_set_pmic_power(enum camera_pmic_pin pin, bool flag)
+{
+	u8 reg_addr[CAMERA_POWER_NUM] = {VPROG_1P8V, VPROG_2P8V};
+	u8 reg_value[2] = {VPROG_DISABLE, VPROG_ENABLE};
+	static struct vprog_status status[CAMERA_POWER_NUM];
+	static DEFINE_MUTEX(mutex_power);
+	int ret = 0;
+
+	mutex_lock(&mutex_power);
+	/*
+	 * only set power at:
+	 * first to power on
+	 * last to power off
+	 */
+	if ((flag && status[pin].user == 0)
+	    || (!flag && status[pin].user == 1))
+		ret = intel_mid_pmic_writeb(reg_addr[pin], reg_value[flag]);
+
+	/* no update counter if config failed */
+	if (ret)
+		goto done;
+
+	if (flag)
+		status[pin].user++;
+	else
+		if (status[pin].user)
+			status[pin].user--;
+done:
+	mutex_unlock(&mutex_power);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(camera_set_pmic_power);
+#endif

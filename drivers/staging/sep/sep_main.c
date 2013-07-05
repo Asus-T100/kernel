@@ -2676,6 +2676,21 @@ static int sep_construct_dma_tables_from_lli(
 			(sep_in_lli_entries - current_in_entry),
 			&last_table_flag);
 
+		if (!last_table_flag) {
+			/*
+			 * The input DMA MLLI table is not the last table.
+			 * Change the total data size of the input table to the
+			 * largest multiple of the operation block size that
+			 * doesn't exceed the maximum input table total data
+			 * size (removes any operation block size remainder)
+			 * because only the last input MLLI table total data
+			 * size is allowed to be a non-multiple of the operation
+			 * block size.
+			 */
+			in_table_data_size = (in_table_data_size /
+				block_size) * block_size;
+		}
+
 		/* Calculate the maximum size of data for output table */
 		out_table_data_size =
 			sep_calculate_lli_table_max_size(sep,
@@ -2684,12 +2699,27 @@ static int sep_construct_dma_tables_from_lli(
 			&last_table_flag);
 
 		if (!last_table_flag) {
-			in_table_data_size = (in_table_data_size /
-				block_size) * block_size;
+			/*
+			 * The output DMA MLLI table is not the last table.
+			 * Change the total data size of the output table to the
+			 * largest multiple of the operation block size that
+			 * doesn't exceed the maximum output table total data
+			 * size (removes any operation block size remainder)
+			 * because only the last output MLLI table total data
+			 * size is allowed to be a non-multiple of the operation
+			 * block size.
+			 */
 			out_table_data_size = (out_table_data_size /
 				block_size) * block_size;
 		}
 
+
+		/*
+		 * Set the DMA MLLI table total data size for constructing the
+		 * input and output tables to the smallest of the input and
+		 * output table total data sizes because the total data size of
+		 * both tables must be the same.
+		 */
 		table_data_size = in_table_data_size;
 		if (table_data_size > out_table_data_size)
 			table_data_size = out_table_data_size;

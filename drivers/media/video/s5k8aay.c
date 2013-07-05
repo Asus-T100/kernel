@@ -61,6 +61,7 @@ struct s5k8aay_resolution {
 #define S5K8AAY_REG_TNP_SVNVERSION		0x700027C0
 #define S5K8AAY_REG_TC_GP_ENABLEPREVIEW		0x7000019e
 #define S5K8AAY_REG_TC_GP_ENABLEPREVIEWCHANGED	0x700001a0
+#define S5K8AAY_REG_MON_AAIO_PREVACQCTX_T_LEI_EXP   0x700020dc
 
 #define S5K8AAY_R16_AHB_MSB_ADDR_PTR		0xfcfc
 
@@ -797,6 +798,39 @@ static const struct v4l2_subdev_ops s5k8aay_ops = {
 	.sensor = &s5k8aay_sensor_ops,
 };
 
+static int s5k8aay_g_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct s5k8aay_device *dev = container_of(
+		ctrl->handler, struct s5k8aay_device, ctrl_handler);
+	struct i2c_client *client = v4l2_get_subdevdata(&dev->sd);
+	int ret;
+
+	switch (ctrl->id) {
+	case V4L2_CID_EXPOSURE_ABSOLUTE:
+		{
+		u16 val;
+		ret = s5k8aay_read(client,
+			S5K8AAY_REG_MON_AAIO_PREVACQCTX_T_LEI_EXP, &val);
+		if (ret)
+			return ret;
+
+		/* Exposure time of the previous frame (400 = 1ms)
+		 * x * (1 / 400)ms */
+		/* Returned value is in units of 100us */
+		ctrl->val = val / 40;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops s5k8aay_ctrl_ops = {
+	.g_volatile_ctrl = &s5k8aay_g_ctrl,
+};
+
 static const struct v4l2_ctrl_config ctrls[] = {
 	{
 		.id = V4L2_CID_FOCAL_ABSOLUTE,
@@ -825,6 +859,16 @@ static const struct v4l2_ctrl_config ctrls[] = {
 		.max = S5K8AAY_F_NUMBER_RANGE,
 		.def = S5K8AAY_F_NUMBER_RANGE,
 		.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.id = V4L2_CID_EXPOSURE_ABSOLUTE,
+		.name = "Absolute exposure",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.step = 1,
+		.max = 0xffffff,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+		.ops = &s5k8aay_ctrl_ops,
 	},
 };
 

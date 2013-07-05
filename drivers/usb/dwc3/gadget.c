@@ -1406,9 +1406,7 @@ static void __dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 	if (!(reg & DWC3_DCTL_RUN_STOP) && is_on && can_pullup(dwc)) {
-		reg &= ~DWC3_DCTL_TRGTULST_MASK;
-		reg |= (DWC3_DCTL_RUN_STOP
-				| DWC3_DCTL_TRGTULST_RX_DET);
+		reg |= DWC3_DCTL_RUN_STOP;
 	} else if ((reg & DWC3_DCTL_RUN_STOP) && !is_on) {
 		reg &= ~DWC3_DCTL_RUN_STOP;
 
@@ -1869,11 +1867,30 @@ static int __dwc3_vbus_draw(struct dwc3 *dwc, unsigned mA)
 
 static int dwc3_vbus_draw(struct usb_gadget *g, unsigned mA)
 {
+	unsigned	mA_otg = 0;
 	struct dwc3	*dwc = gadget_to_dwc(g);
 
 	dev_dbg(dwc->dev, "otg_set_power: %d mA\n", mA);
 
-	return __dwc3_vbus_draw(dwc, mA);
+	switch (mA) {
+	case USB3_I_MAX_OTG:
+		mA_otg = OTG_USB3_900MA;
+		break;
+	case USB3_I_UNIT_OTG:
+		mA_otg = OTG_USB3_150MA;
+		break;
+	case USB2_I_MAX_OTG:
+		mA_otg = OTG_USB2_500MA;
+		break;
+	case USB2_I_UNIT_OTG:
+		mA_otg = OTG_USB2_100MA;
+		break;
+	default:
+		dev_err(dwc->dev,
+			"wrong charging current reported: %dmA\n", mA);
+	}
+
+	return __dwc3_vbus_draw(dwc, mA_otg);
 }
 #endif
 static const struct usb_gadget_ops dwc3_gadget_ops = {
@@ -2395,9 +2412,6 @@ static void dwc3_gadget_power_on_or_soft_reset(struct dwc3 *dwc)
 
 	/* Set Run/Stop bit */
 	dwc3_gadget_run_stop(dwc, 1);
-
-	if (dwc->hibernation.enabled)
-		dwc3_gadget_keep_conn(dwc, 1);
 }
 
 static void link_state_change_work(struct work_struct *data)
@@ -2523,7 +2537,8 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 
 	dev_vdbg(dwc->dev, "%s\n", __func__);
 
-	__dwc3_vbus_draw(dwc, 100);
+	if (dwc->hibernation.enabled)
+		dwc3_gadget_keep_conn(dwc, 1);
 
 	memset(&params, 0x00, sizeof(params));
 
@@ -2554,22 +2569,26 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 		dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
 		dwc->gadget.ep0->maxpacket = 512;
 		dwc->gadget.speed = USB_SPEED_SUPER;
+		__dwc3_vbus_draw(dwc, OTG_USB3_150MA);
 		break;
 	case DWC3_DCFG_HIGHSPEED:
 		dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(64);
 		dwc->gadget.ep0->maxpacket = 64;
 		dwc->gadget.speed = USB_SPEED_HIGH;
+		__dwc3_vbus_draw(dwc, OTG_USB2_100MA);
 		break;
 	case DWC3_DCFG_FULLSPEED2:
 	case DWC3_DCFG_FULLSPEED1:
 		dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(64);
 		dwc->gadget.ep0->maxpacket = 64;
 		dwc->gadget.speed = USB_SPEED_FULL;
+		__dwc3_vbus_draw(dwc, OTG_USB2_100MA);
 		break;
 	case DWC3_DCFG_LOWSPEED:
 		dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(8);
 		dwc->gadget.ep0->maxpacket = 8;
 		dwc->gadget.speed = USB_SPEED_LOW;
+		__dwc3_vbus_draw(dwc, OTG_USB2_100MA);
 		break;
 	}
 
@@ -2797,6 +2816,12 @@ static irqreturn_t dwc3_interrupt(int irq, void *_dwc)
 	struct dwc3			*dwc = _dwc;
 	int				i;
 	irqreturn_t			ret = IRQ_NONE;
+
+	if (dwc->pm_state == PM_SUSPENDED) {
+		dev_info(dwc->dev, "the first resume interrupt from u3/u2pmu is received");
+		pm_runtime_get(dwc->dev);
+		return IRQ_HANDLED;
+	}
 
 	spin_lock(&dwc->lock);
 
@@ -3148,8 +3173,9 @@ int dwc3_runtime_suspend(struct device *device)
 	struct dwc3			*dwc;
 	struct platform_device		*pdev;
 	unsigned long			flags;
-	u32				epnum;
+	u32				epnum, n;
 	struct dwc3_ep			*dep;
+	struct dwc3_event_buffer    *evt;
 
 	pdev = to_platform_device(device);
 	dwc = platform_get_drvdata(pdev);
@@ -3186,6 +3212,22 @@ int dwc3_runtime_suspend(struct device *device)
 	dwc3_gadget_run_stop(dwc, 0);
 
 	dwc3_cache_hwregs(dwc);
+
+	dwc3_writel(dwc->regs, DWC3_DEVTEN, 0x00);
+
+	for (n = 0; n < DWC3_EVENT_BUFFERS_NUM; n++) {
+		evt = dwc->ev_buffs[n];
+
+		evt->lpos = 0;
+
+		memset(evt->buf, 0, evt->length);
+
+		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n),
+			dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(n)));
+	}
 
 	dwc3_gadget_controller_save_state(dwc);
 
@@ -3315,7 +3357,7 @@ int dwc3_runtime_resume(struct device *device)
 				req = next_request(&dep->req_queued);
 				if (!req)
 					break;
-				dwc->ep0_trb->ctrl |= DWC3_TRB_CTRL_HWO;
+				req->trb->ctrl |= DWC3_TRB_CTRL_HWO;
 				memset(&params, 0, sizeof(params));
 				params.param0 = upper_32_bits(req->trb_dma);
 				params.param1 = lower_32_bits(req->trb_dma);

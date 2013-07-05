@@ -111,10 +111,10 @@ bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
 {
 	struct v4l2_mbus_framefmt *sink, *src;
 
-	sink = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	sink = atomisp_subdev_get_ffmt(&isp->asd.subdev, NULL,
 				       V4L2_SUBDEV_FORMAT_ACTIVE,
 				       ATOMISP_SUBDEV_PAD_SINK);
-	src = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+	src = atomisp_subdev_get_ffmt(&isp->asd.subdev, NULL,
 				      V4L2_SUBDEV_FORMAT_ACTIVE, source_pad);
 
 	return atomisp_is_mbuscode_raw(sink->code)
@@ -159,8 +159,7 @@ static int isp_subdev_set_power(struct v4l2_subdev *sd, int on)
 }
 
 static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
-	struct v4l2_fh *fh,
-	struct v4l2_event_subscription *sub)
+	struct v4l2_fh *fh, struct v4l2_event_subscription *sub)
 {
 	if (sub->type != V4L2_EVENT_FRAME_SYNC &&
 	    sub->type != V4L2_EVENT_ATOMISP_3A_STATS_READY)
@@ -170,8 +169,7 @@ static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
 }
 
 static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,
-	struct v4l2_fh *fh,
-	struct v4l2_event_subscription *sub)
+	struct v4l2_fh *fh, struct v4l2_event_subscription *sub)
 {
 	return v4l2_event_unsubscribe(fh, sub);
 }
@@ -184,8 +182,7 @@ static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,
  * return -EINVAL or zero on success
  */
 static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh,
-	struct v4l2_subdev_mbus_code_enum *code)
+	struct v4l2_subdev_fh *fh, struct v4l2_subdev_mbus_code_enum *code)
 {
 	if (code->index >= ARRAY_SIZE(atomisp_in_fmt_conv) - 1)
 		return -EINVAL;
@@ -356,11 +353,11 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			crop[pad]->width -= pad_w, crop[pad]->height -= pad_h;
 
 		/* if subdev type is SOC camera,we do not need to set DVS */
-		if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
-			isp->params.video_dis_en = 0;
+		if (isp->inputs[isp_sd->input_curr].type == SOC_CAMERA)
+			isp_sd->params.video_dis_en = 0;
 
-		if (isp->params.video_dis_en &&
-		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+		if (isp_sd->params.video_dis_en &&
+		    isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			/* This resolution contains 20 % of DVS slack
 			 * (of the desired captured image before
 			 * scaling, or 1 / 6 of what we get from the
@@ -389,8 +386,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		if (which == V4L2_SUBDEV_FORMAT_TRY)
 			break;
 
-		if (isp->params.video_dis_en &&
-		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+		if (isp_sd->params.video_dis_en &&
+		    isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			dvs_w = rounddown(crop[pad]->width / 5,
 					  ATOM_ISP_STEP_WIDTH);
 			dvs_h = rounddown(crop[pad]->height / 5,
@@ -399,8 +396,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			dvs_w = dvs_h = 0;
 		}
 
-		atomisp_css_video_set_dis_envelope(isp, dvs_w, dvs_h);
-		atomisp_css_input_set_effective_resolution(isp,
+		atomisp_css_video_set_dis_envelope(isp_sd, dvs_w, dvs_h);
+		atomisp_css_input_set_effective_resolution(isp_sd,
 					crop[pad]->width, crop[pad]->height);
 
 		break;
@@ -408,7 +405,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE: {
 		/* Only compose target is supported on source pads. */
 
-		if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT) {
+		if (isp->asd.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT) {
 			/* Scaling is disabled in this mode */
 			r->width = crop[ATOMISP_SUBDEV_PAD_SINK]->width;
 			r->height = crop[ATOMISP_SUBDEV_PAD_SINK]->height;
@@ -416,9 +413,9 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 		if (crop[ATOMISP_SUBDEV_PAD_SINK]->width == r->width
 		    && crop[ATOMISP_SUBDEV_PAD_SINK]->height == r->height)
-			isp->params.yuv_ds_en = false;
+			isp_sd->params.yuv_ds_en = false;
 		else
-			isp->params.yuv_ds_en = true;
+			isp_sd->params.yuv_ds_en = true;
 
 		comp[pad]->width = r->width;
 		comp[pad]->height = r->height;
@@ -460,22 +457,23 @@ static int isp_subdev_set_selection(struct v4l2_subdev *sd,
 					    sel->target, sel->flags, &sel->r);
 }
 
-static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
+static int atomisp_get_sensor_bin_factor(struct atomisp_sub_device *asd)
 {
 	struct v4l2_control ctrl = {0};
+	struct atomisp_device *isp = asd->isp;
 	int hbin, vbin;
 	int ret;
 
-	if (isp->inputs[isp->input_curr].type == FILE_INPUT ||
-		isp->inputs[isp->input_curr].type == TEST_PATTERN)
+	if (isp->inputs[asd->input_curr].type == FILE_INPUT ||
+		isp->inputs[asd->input_curr].type == TEST_PATTERN)
 		return 0;
 
 	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
+	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera, core,
 			       g_ctrl, &ctrl);
 	hbin = ctrl.value;
 	ctrl.id = V4L2_CID_BIN_FACTOR_VERT;
-	ret |= v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
+	ret |= v4l2_subdev_call(isp->inputs[asd->input_curr].camera, core,
 				g_ctrl, &ctrl);
 	vbin = ctrl.value;
 
@@ -491,9 +489,9 @@ static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 	return hbin;
 }
 
-int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			    uint32_t which, uint32_t pad,
-			    struct v4l2_mbus_framefmt *ffmt)
+void atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			     uint32_t which, uint32_t pad,
+			     struct v4l2_mbus_framefmt *ffmt)
 {
 	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = isp_sd->isp;
@@ -523,11 +521,12 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 				     V4L2_SEL_TGT_CROP, 0);
 
 		if (which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-			atomisp_css_input_set_resolution(isp, ffmt);
-			atomisp_css_input_set_binning_factor(isp,
-				atomisp_get_sensor_bin_factor(isp));
-			atomisp_css_input_set_bayer_order(isp, fc->bayer_order);
-			atomisp_css_input_set_format(isp, fc->in_sh_fmt);
+			atomisp_css_input_set_resolution(isp_sd, ffmt);
+			atomisp_css_input_set_binning_factor(isp_sd,
+				atomisp_get_sensor_bin_factor(isp_sd));
+			atomisp_css_input_set_bayer_order(isp_sd,
+							  fc->bayer_order);
+			atomisp_css_input_set_format(isp_sd, fc->in_sh_fmt);
 		}
 
 		break;
@@ -538,8 +537,6 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		__ffmt->code = ffmt->code;
 		break;
 	}
-
-	return 0;
 }
 
 /*
@@ -573,14 +570,14 @@ static int isp_subdev_get_format(struct v4l2_subdev *sd,
 static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
-	return atomisp_subdev_set_ffmt(sd, fh, fmt->which, fmt->pad,
-				       &fmt->format);
+	atomisp_subdev_set_ffmt(sd, fh, fmt->which, fmt->pad, &fmt->format);
+
+	return 0;
 }
 
 /* V4L2 subdev core operations */
 static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
-	 .ioctl = isp_subdev_ioctl,
-	 .s_power = isp_subdev_set_power,
+	 .ioctl = isp_subdev_ioctl, .s_power = isp_subdev_set_power,
 	 .subscribe_event = isp_subdev_subscribe_event,
 	 .unsubscribe_event = isp_subdev_unsubscribe_event,
 };
@@ -588,8 +585,7 @@ static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
 /* V4L2 subdev pad operations */
 static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 	 .enum_mbus_code = isp_subdev_enum_mbus_code,
-	 .get_fmt = isp_subdev_get_format,
-	 .set_fmt = isp_subdev_set_format,
+	 .get_fmt = isp_subdev_get_format, .set_fmt = isp_subdev_set_format,
 	 .get_selection = isp_subdev_get_selection,
 	 .set_selection = isp_subdev_set_selection,
 	 .link_validate = v4l2_subdev_link_validate_default,
@@ -597,13 +593,14 @@ static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 
 /* V4L2 subdev operations */
 static const struct v4l2_subdev_ops isp_subdev_v4l2_ops = {
-	 .core = &isp_subdev_v4l2_core_ops,
-	 .pad = &isp_subdev_v4l2_pad_ops,
+	 .core = &isp_subdev_v4l2_core_ops, .pad = &isp_subdev_v4l2_pad_ops,
 };
 
-static void isp_subdev_init_params(struct atomisp_sub_device *isp_subdev)
+static void isp_subdev_init_params(struct atomisp_sub_device *asd)
 {
 	/* parameters initialization */
+	INIT_LIST_HEAD(&asd->s3a_stats);
+	INIT_LIST_HEAD(&asd->dis_stats);
 }
 
 /*
@@ -685,9 +682,10 @@ static const struct media_entity_operations isp_subdev_media_ops = {
 /*	 .set_power = v4l2_subdev_set_power,	*/
 };
 
-static int __atomisp_update_run_mode(struct atomisp_device *isp)
+static int __atomisp_update_run_mode(struct atomisp_sub_device *asd)
 {
-	struct v4l2_ctrl *ctrl = isp->isp_subdev.run_mode;
+	struct atomisp_device *isp = asd->isp;
+	struct v4l2_ctrl *ctrl = isp->asd.run_mode;
 	struct v4l2_ctrl *c;
 	struct v4l2_streamparm p = {0};
 	int modes[] = { CI_MODE_NONE,
@@ -698,13 +696,13 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 	s32 mode;
 
 	if (ctrl->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->isp_subdev.continuous_mode->val)
+	    isp->asd.continuous_mode->val)
 		mode = ATOMISP_RUN_MODE_PREVIEW;
 	else
 		mode = ctrl->val;
 
 	c = v4l2_ctrl_find(
-		isp->inputs[isp->input_curr].camera->ctrl_handler,
+		isp->inputs[asd->input_curr].camera->ctrl_handler,
 		V4L2_CID_RUN_MODE);
 
 	if (c)
@@ -714,28 +712,28 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 	p.parm.capture.capturemode = modes[mode];
 
 	return v4l2_subdev_call(
-		isp->inputs[isp->input_curr].camera, video, s_parm, &p);
+		isp->inputs[asd->input_curr].camera, video, s_parm, &p);
 }
 
-int atomisp_update_run_mode(struct atomisp_device *isp)
+int atomisp_update_run_mode(struct atomisp_sub_device *asd)
 {
 	int rval;
 
-	mutex_lock(isp->isp_subdev.ctrl_handler.lock);
-	rval = __atomisp_update_run_mode(isp);
-	mutex_unlock(isp->isp_subdev.ctrl_handler.lock);
+	mutex_lock(asd->ctrl_handler.lock);
+	rval = __atomisp_update_run_mode(asd);
+	mutex_unlock(asd->ctrl_handler.lock);
 
 	return rval;
 }
 
 static int s_ctrl(struct v4l2_ctrl *ctrl)
 {
-	struct atomisp_device *isp = container_of(
-		ctrl->handler, struct atomisp_sub_device, ctrl_handler)->isp;
+	struct atomisp_sub_device *asd = container_of(
+		ctrl->handler, struct atomisp_sub_device, ctrl_handler);
 
 	switch (ctrl->id) {
 	case V4L2_CID_RUN_MODE:
-		return __atomisp_update_run_mode(isp);
+		return __atomisp_update_run_mode(asd);
 	}
 
 	return 0;
@@ -852,11 +850,12 @@ static const struct v4l2_ctrl_config ctrl_continuous_viewfinder = {
 	.def = 0,
 };
 
-static void atomisp_init_subdev_pipe(struct atomisp_device *isp,
+static void atomisp_init_subdev_pipe(struct atomisp_sub_device *asd,
 		struct atomisp_video_pipe *pipe, enum v4l2_buf_type buf_type)
 {
 	pipe->type = buf_type;
-	pipe->isp = isp;
+	pipe->asd = asd;
+	pipe->isp = asd->isp;
 	spin_lock_init(&pipe->irq_lock);
 	INIT_LIST_HEAD(&pipe->activeq);
 	INIT_LIST_HEAD(&pipe->activeq_out);
@@ -864,22 +863,22 @@ static void atomisp_init_subdev_pipe(struct atomisp_device *isp,
 
 /*
  * isp_subdev_init_entities - Initialize V4L2 subdev and media entity
- * @isp_subdev: ISP CCDC module
+ * @asd: ISP CCDC module
  *
  * Return 0 on success and a negative error code on failure.
  */
-static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
+static int isp_subdev_init_entities(struct atomisp_sub_device *asd)
 {
-	struct v4l2_subdev *sd = &isp_subdev->subdev;
-	struct media_pad *pads = isp_subdev->pads;
+	struct v4l2_subdev *sd = &asd->subdev;
+	struct media_pad *pads = asd->pads;
 	struct media_entity *me = &sd->entity;
 	int ret;
 
-	isp_subdev->input = ATOMISP_SUBDEV_INPUT_NONE;
+	asd->input = ATOMISP_SUBDEV_INPUT_NONE;
 
 	v4l2_subdev_init(sd, &isp_subdev_v4l2_ops);
 	strlcpy(sd->name, "ATOM ISP SUBDEV", sizeof(sd->name));
-	v4l2_set_subdevdata(sd, isp_subdev);
+	v4l2_set_subdevdata(sd, asd);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 
 	pads[ATOMISP_SUBDEV_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
@@ -887,13 +886,13 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	pads[ATOMISP_SUBDEV_PAD_SOURCE_VF].flags = MEDIA_PAD_FL_SOURCE;
 	pads[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].flags = MEDIA_PAD_FL_SOURCE;
 
-	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SINK].fmt.code =
+	asd->fmt[ATOMISP_SUBDEV_PAD_SINK].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW].fmt.code =
+	asd->fmt[ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SOURCE_VF].fmt.code =
+	asd->fmt[ATOMISP_SUBDEV_PAD_SOURCE_VF].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].fmt.code =
+	asd->fmt[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	me->ops = &isp_subdev_media_ops;
@@ -902,133 +901,127 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	if (ret < 0)
 		return ret;
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
-			&isp_subdev->video_in,
+	atomisp_init_subdev_pipe(asd, &asd->video_in,
 			V4L2_BUF_TYPE_VIDEO_OUTPUT);
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
-			&isp_subdev->video_out_preview,
+	atomisp_init_subdev_pipe(asd, &asd->video_out_preview,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
-			&isp_subdev->video_out_vf,
+	atomisp_init_subdev_pipe(asd, &asd->video_out_vf,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	atomisp_init_subdev_pipe(isp_subdev->isp,
-			&isp_subdev->video_out_capture,
+	atomisp_init_subdev_pipe(asd, &asd->video_out_capture,
 			V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-	ret = atomisp_video_init(&isp_subdev->video_in, "MEMORY");
+	ret = atomisp_video_init(&asd->video_in, "MEMORY");
 	if (ret < 0)
 		return ret;
 
-	ret = atomisp_video_init(&isp_subdev->video_out_capture, "CAPTURE");
+	ret = atomisp_video_init(&asd->video_out_capture, "CAPTURE");
 	if (ret < 0)
 		return ret;
 
-	ret = atomisp_video_init(&isp_subdev->video_out_vf, "VIEWFINDER");
+	ret = atomisp_video_init(&asd->video_out_vf, "VIEWFINDER");
 	if (ret < 0)
 		return ret;
 
-	ret = atomisp_video_init(&isp_subdev->video_out_preview, "PREVIEW");
+	ret = atomisp_video_init(&asd->video_out_preview, "PREVIEW");
 	if (ret < 0)
 		return ret;
 
 	/* Connect the isp subdev to the video node. */
-	ret = media_entity_create_link(&isp_subdev->video_in.vdev.entity,
-		0, &isp_subdev->subdev.entity, ATOMISP_SUBDEV_PAD_SINK, 0);
+	ret = media_entity_create_link(&asd->video_in.vdev.entity,
+		0, &asd->subdev.entity, ATOMISP_SUBDEV_PAD_SINK, 0);
 	if (ret < 0)
 		return ret;
 
-	ret = media_entity_create_link(&isp_subdev->subdev.entity,
+	ret = media_entity_create_link(&asd->subdev.entity,
 		ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW,
-		&isp_subdev->video_out_preview.vdev.entity, 0, 0);
+		&asd->video_out_preview.vdev.entity, 0, 0);
 	if (ret < 0)
 		return ret;
 
-	ret = media_entity_create_link(&isp_subdev->subdev.entity,
+	ret = media_entity_create_link(&asd->subdev.entity,
 		ATOMISP_SUBDEV_PAD_SOURCE_VF,
-		&isp_subdev->video_out_vf.vdev.entity, 0, 0);
+		&asd->video_out_vf.vdev.entity, 0, 0);
 	if (ret < 0)
 		return ret;
 
-	ret = media_entity_create_link(&isp_subdev->subdev.entity,
+	ret = media_entity_create_link(&asd->subdev.entity,
 		ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
-		&isp_subdev->video_out_capture.vdev.entity, 0, 0);
+		&asd->video_out_capture.vdev.entity, 0, 0);
 	if (ret < 0)
 		return ret;
 
-	ret = v4l2_ctrl_handler_init(&isp_subdev->ctrl_handler, 1);
+	ret = v4l2_ctrl_handler_init(&asd->ctrl_handler, 1);
 	if (ret)
 		return ret;
 
-	isp_subdev->fmt_auto = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+	asd->fmt_auto = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 						    &ctrl_fmt_auto, NULL);
-	isp_subdev->run_mode = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+	asd->run_mode = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 						    &ctrl_run_mode, NULL);
-	isp_subdev->vfpp = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+	asd->vfpp = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 						&ctrl_vfpp, NULL);
-	isp_subdev->continuous_mode =
-			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+	asd->continuous_mode = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_continuous_mode, NULL);
-	isp_subdev->continuous_viewfinder =
-			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+	asd->continuous_viewfinder = v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_continuous_viewfinder,
 					     NULL);
-	isp_subdev->continuous_raw_buffer_size =
-			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+	asd->continuous_raw_buffer_size =
+			v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_continuous_raw_buffer_size,
 					     NULL);
 
 	/* Make controls visible on subdev as well. */
-	isp_subdev->subdev.ctrl_handler = &isp_subdev->ctrl_handler;
+	asd->subdev.ctrl_handler = &asd->ctrl_handler;
 
-	return isp_subdev->ctrl_handler.error;
+	return asd->ctrl_handler.error;
 }
 
-void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev)
+void atomisp_subdev_unregister_entities(struct atomisp_sub_device *asd)
 {
-	v4l2_ctrl_handler_free(&isp_subdev->ctrl_handler);
+	v4l2_ctrl_handler_free(&asd->ctrl_handler);
 
-	media_entity_cleanup(&isp_subdev->subdev.entity);
+	media_entity_cleanup(&asd->subdev.entity);
 
-	v4l2_device_unregister_subdev(&isp_subdev->subdev);
-	atomisp_video_unregister(&isp_subdev->video_in);
-	atomisp_video_unregister(&isp_subdev->video_out_preview);
-	atomisp_video_unregister(&isp_subdev->video_out_vf);
-	atomisp_video_unregister(&isp_subdev->video_out_capture);
+	v4l2_device_unregister_subdev(&asd->subdev);
+	atomisp_video_unregister(&asd->video_in);
+	atomisp_video_unregister(&asd->video_out_preview);
+	atomisp_video_unregister(&asd->video_out_vf);
+	atomisp_video_unregister(&asd->video_out_capture);
 }
 
-int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,
+int atomisp_subdev_register_entities(struct atomisp_sub_device *asd,
 	struct v4l2_device *vdev)
 {
 	int ret;
 
 	/* Register the subdev and video node. */
-	ret = v4l2_device_register_subdev(vdev, &isp_subdev->subdev);
+	ret = v4l2_device_register_subdev(vdev, &asd->subdev);
 	if (ret < 0)
 		goto error;
 
-	ret = atomisp_video_register(&isp_subdev->video_out_capture, vdev);
+	ret = atomisp_video_register(&asd->video_out_capture, vdev);
 	if (ret < 0)
 		goto error;
 
-	ret = atomisp_video_register(&isp_subdev->video_out_vf, vdev);
+	ret = atomisp_video_register(&asd->video_out_vf, vdev);
 	if (ret < 0)
 		goto error;
 
-	ret = atomisp_video_register(&isp_subdev->video_out_preview, vdev);
+	ret = atomisp_video_register(&asd->video_out_preview, vdev);
 	if (ret < 0)
 		goto error;
 
-	ret = atomisp_video_register(&isp_subdev->video_in, vdev);
+	ret = atomisp_video_register(&asd->video_in, vdev);
 	if (ret < 0)
 		goto error;
 
 	return 0;
 
 error:
-	atomisp_subdev_unregister_entities(isp_subdev);
+	atomisp_subdev_unregister_entities(asd);
 	return ret;
 }
 
@@ -1043,13 +1036,13 @@ error:
  */
 int atomisp_subdev_init(struct atomisp_device *isp)
 {
-	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;
+	struct atomisp_sub_device *asd = &isp->asd;
 	int ret;
 
-	spin_lock_init(&isp_subdev->lock);
-	isp_subdev->isp = isp;
-	isp_subdev_init_params(isp_subdev);
-	ret = isp_subdev_init_entities(isp_subdev);
+	spin_lock_init(&asd->lock);
+	asd->isp = isp;
+	isp_subdev_init_params(asd);
+	ret = isp_subdev_init_entities(asd);
 	if (ret < 0)
 		atomisp_subdev_cleanup(isp);
 

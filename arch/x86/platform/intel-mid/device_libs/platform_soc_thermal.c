@@ -20,12 +20,51 @@
 #include "platform_soc_thermal.h"
 
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_thermal.h>
 
 #define BYT_SOC_THRM_IRQ	86
 #define BYT_SOC_THRM		"soc_thrm"
 
 static struct resource res = {
 		.flags = IORESOURCE_IRQ,
+};
+
+static struct soc_throttle_data tng_soc_data[] = {
+	{
+		.power_limit = 0x9C,
+		.floor_freq = 0x00,
+	},
+	{
+		.power_limit = 0x8C,
+		.floor_freq = 0x00,
+	},
+	{
+		.power_limit = 0x7C,
+		.floor_freq = 0x00,
+	},
+	{
+		.power_limit = 0x6C,
+		.floor_freq = 0x00,
+	},
+};
+
+static struct soc_throttle_data vlv2_soc_data[] = {
+	{
+		.power_limit = 0xDA, /* 7W */
+		.floor_freq = 0x00,
+	},
+	{
+		.power_limit = 0xBB, /* 6W */
+		.floor_freq = 0x01,
+	},
+	{
+		.power_limit = 0x9C, /* 5W */
+		.floor_freq = 0x02,
+	},
+	{
+		.power_limit = 0x7D, /* 4W */
+		.floor_freq = 0x03,
+	},
 };
 
 void soc_thrm_device_handler(struct sfi_device_table_entry *pentry,
@@ -45,6 +84,8 @@ void soc_thrm_device_handler(struct sfi_device_table_entry *pentry,
 		ret = PTR_ERR(pdev);
 		pr_err("platform_soc_thermal:pdev_register failed: %d\n", ret);
 	}
+
+	pdev->dev.platform_data = &tng_soc_data;
 }
 
 static inline int byt_program_ioapic(int irq, int trigger, int polarity)
@@ -83,6 +124,8 @@ static int __init byt_soc_thermal_init(void)
 		platform_device_unregister(pdev);
 	}
 
+	pdev->dev.platform_data = &vlv2_soc_data;
+
 	return ret;
 }
 
@@ -90,5 +133,7 @@ static int __init platform_soc_thermal_init(void)
 {
 	if (INTEL_MID_BOARD(1, TABLET, BYT))
 		return byt_soc_thermal_init();
+
+	return 0;
 }
 device_initcall(platform_soc_thermal_init);

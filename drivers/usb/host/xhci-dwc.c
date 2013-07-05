@@ -844,7 +844,7 @@ static int dwc_hcd_resume_common(struct device *dev)
 	if (!if_usb_devices_connected(xhci)) {
 		struct dwc_otg2 *otg;
 		otg = container_of(usb_get_transceiver(), struct dwc_otg2, phy);
-		if (otg->reset_host) {
+		if (otg && otg->reset_host) {
 			xhci_dbg(xhci, "Notify dwc-otg2 driver to re-initialize host driver\n");
 			otg->reset_host(otg);
 			return 0;
@@ -887,7 +887,12 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 {
 	struct platform_device		*pdev = to_platform_device(dev);
 	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+	struct dwc_otg2 *otg;
 	int retval;
+
+	otg = container_of(usb_get_transceiver(), struct dwc_otg2, phy);
+	if (otg && otg->whether_to_use_s3_wa(otg))
+		return 0;
 
 	retval = dwc_hcd_resume_common(dev);
 	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
@@ -910,7 +915,12 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 
 static int dwc_hcd_suspend(struct device *dev)
 {
+	struct dwc_otg2 *otg;
 	int retval;
+
+	otg = container_of(usb_get_transceiver(), struct dwc_otg2, phy);
+	if (otg && otg->whether_to_use_s3_wa(otg))
+		return 0;
 
 	retval = dwc_hcd_suspend_common(dev);
 
@@ -920,7 +930,26 @@ static int dwc_hcd_suspend(struct device *dev)
 
 static int dwc_hcd_resume(struct device *dev)
 {
+	struct platform_device		*pdev = to_platform_device(dev);
+	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+	struct xhci_hcd		*xhci = hcd_to_xhci(hcd);
+	struct dwc_otg2 *otg;
 	int retval;
+
+	/* From synopsys spec 12.2.11.
+	 * Software cannot access memory-mapped I/O space
+	 * for 10ms.
+	 */
+	mdelay(10);
+
+	otg = container_of(usb_get_transceiver(), struct dwc_otg2, phy);
+	if (otg && otg->whether_to_use_s3_wa(otg)) {
+		if (!if_usb_devices_connected(xhci)) {
+			xhci_stop_host(hcd);
+			xhci_start_host(hcd);
+			return 0;
+		}
+	}
 
 	retval = dwc_hcd_resume_common(dev);
 	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);

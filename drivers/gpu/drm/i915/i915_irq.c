@@ -36,9 +36,8 @@
 #include "i915_drv.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
-#ifdef CONFIG_DRM_VXD_BYT
-#include "psb_msvdx.h"
-#endif
+#include "intel_ringbuffer.h"
+
 /* Added for HDMI Audio */
 #include "hdmi_audio_if.h"
 
@@ -370,20 +369,137 @@ static void ironlake_handle_rps_change(struct drm_device *dev)
 static void notify_ring(struct drm_device *dev,
 			struct intel_ring_buffer *ring)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
 	if (ring->obj == NULL)
 		return;
 
 	trace_i915_gem_request_complete(ring, ring->get_seqno(ring, false));
 
 	wake_up_all(&ring->irq_queue);
-	if (i915_enable_hangcheck) {
-		dev_priv->hangcheck_count = 0;
-		mod_timer(&dev_priv->hangcheck_timer,
-			  jiffies +
-			  msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD));
+}
+
+/**
+ * vlv_calc_delay_from_C0_counters - Increase/Decrease freq based on GPU
+ * busy-ness calculated from C0 counters of render & media power wells
+ * @dev_priv: DRM device private
+ *
+ * UP-Threshold will be calculated on every interrupt where as Down threshold
+ * will be calculated once in 5 interrupts. If either render or media power
+ * well is in C0 for 90% or above of EI period, then increace freq by one step
+ * If both render and media are in C0 for less than 70% of 5 continuous EI
+ * periods, then decrease the freq by one step
+ */
+static u32 vlv_calc_delay_from_C0_counters(struct drm_i915_private *dev_priv)
+{
+	u32 cz_ts = 0;
+	u32 render_count = 0, media_count = 0;
+	u32 elapsed_render = 0, elapsed_media = 0;
+	u32 elapsed_time = 0;
+	u32 residency_C0_up = 0, residency_C0_down = 0;
+	u8 new_delay;
+
+	dev_priv->rps.ei_interrupt_count++;
+
+	/* read the CZ clock time stamp from P-unint &
+	 * render/media C0 counters from MMIO reg
+	 */
+	valleyview_punit_read(dev_priv, PUNIT_REG_CZ_TIMESTAMP, &cz_ts);
+
+	render_count = I915_READ(VLV_RENDER_C0_COUNT_REG);
+	media_count = I915_READ(VLV_MEDIA_C0_COUNT_REG);
+
+	/* If this is the very first call, save the counters and
+	 * apply the current delay itself
+	 */
+	if (0 == dev_priv->rps.cz_ts_up_EI) {
+
+		dev_priv->rps.cz_ts_up_EI = dev_priv->rps.cz_ts_down_EI = cz_ts;
+		dev_priv->rps.render_up_EI_C0 = dev_priv->rps.render_down_EI_C0
+						= render_count;
+		dev_priv->rps.media_up_EI_C0 = dev_priv->rps.media_down_EI_C0
+						= media_count;
+
+		return dev_priv->rps.cur_delay;
 	}
+
+	/* Calculate Elapsed time and render/media counters. Since all
+	* variables used are of type unsigned, standard C compiler will
+	* will take care of roll-off scenario with subtractions
+	*/
+	elapsed_time = cz_ts - dev_priv->rps.cz_ts_up_EI;
+	dev_priv->rps.cz_ts_up_EI = cz_ts;
+
+	elapsed_render = render_count - dev_priv->rps.render_up_EI_C0;
+	dev_priv->rps.render_up_EI_C0 = render_count;
+
+	elapsed_media = media_count - dev_priv->rps.media_up_EI_C0;
+	dev_priv->rps.media_up_EI_C0 = media_count;
+
+	/* Convert all the counters into common unit of milli sec */
+	elapsed_time /= VLV_CZ_CLOCK_TO_MILLI_SEC;
+	elapsed_render /= (dev_priv->rps.cz_freq / 1000);
+	elapsed_media /= (dev_priv->rps.cz_freq / 1000);
+
+	/* Calculate overall C0 residency percentage only
+	 * if elapsed time is non zero
+	 */
+	if (elapsed_time) {
+		residency_C0_up = ((max(elapsed_render, elapsed_media)
+						* 100) / elapsed_time);
+	}
+
+	/* To down throttle, C0 residency should be less down threshold
+	 * for continous EI intervals. So calculate down EI counters
+	 * once in VLV_INT_COUNT_FOR_DOWN_EI
+	 */
+	if (VLV_INT_COUNT_FOR_DOWN_EI == dev_priv->rps.ei_interrupt_count) {
+
+		dev_priv->rps.ei_interrupt_count = 0;
+
+		elapsed_time = cz_ts - dev_priv->rps.cz_ts_down_EI;
+		dev_priv->rps.cz_ts_down_EI = cz_ts;
+
+		elapsed_render = render_count - dev_priv->rps.render_down_EI_C0;
+		dev_priv->rps.render_down_EI_C0 = render_count;
+
+		elapsed_media = media_count - dev_priv->rps.media_down_EI_C0;
+		dev_priv->rps.media_down_EI_C0 = media_count;
+
+		/* Convert all the counters into common unit of milli sec */
+		elapsed_time /= 100000;
+		elapsed_render /= (dev_priv->rps.cz_freq / 1000);
+		elapsed_media /= (dev_priv->rps.cz_freq / 1000);
+
+		/* Calculate overall C0 residency percentage only
+		 * if elapsed time is non zero
+		 */
+		if (elapsed_time) {
+			residency_C0_down =
+				((max(elapsed_render, elapsed_media) * 100)
+							/ elapsed_time);
+		}
+
+	}
+
+	new_delay = dev_priv->rps.cur_delay;
+
+	/* C0 residency is greater than UP threshold. Increase Frequency */
+	if (residency_C0_up >= VLV_RP_UP_EI_THRESHOLD) {
+
+		if (dev_priv->rps.cur_delay < dev_priv->rps.max_delay)
+			new_delay = dev_priv->rps.cur_delay + 1;
+
+		atomic_inc(&dev_priv->turbodebug.up_threshold);
+
+	} else if (residency_C0_down &&
+			(residency_C0_down < VLV_RP_DOWN_EI_THRESHOLD)) {
+
+		if (dev_priv->rps.cur_delay > dev_priv->rps.min_delay)
+			new_delay = dev_priv->rps.cur_delay - 1;
+
+		atomic_inc(&dev_priv->turbodebug.down_threshold);
+	}
+
+	return new_delay;
 }
 
 static void gen6_pm_rps_work(struct work_struct *work)
@@ -400,13 +516,20 @@ static void gen6_pm_rps_work(struct work_struct *work)
 	I915_WRITE(GEN6_PMIMR, 0);
 	spin_unlock_irq(&dev_priv->rps.lock);
 
-	if ((pm_iir & GEN6_PM_DEFERRED_EVENTS) == 0)
+	if ((pm_iir & (GEN6_PM_DEFERRED_EVENTS | VLV_PM_DEFERRED_EVENTS)) == 0)
 		return;
 
 	mutex_lock(&dev_priv->dev->struct_mutex);
 
+	/* Make sure we have current freq updated properly. Doing this
+	 * here becuase, on VLV, P-Unit doesnt garauntee that last requested
+	 * freq by driver is actually the current running frequency
+	 */
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		valleyview_update_cur_delay(dev_priv->dev);
+
 	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD) {
-		if (dev_priv->rps.cur_delay > dev_priv->rps.max_delay) {
+		if (dev_priv->rps.cur_delay >= dev_priv->rps.max_delay) {
 			I915_WRITE(GEN6_PMINTRMSK,
 					I915_READ(GEN6_PMINTRMSK) | 1 << 5);
 			dev_priv->rps.rp_up_masked = 1;
@@ -415,11 +538,14 @@ static void gen6_pm_rps_work(struct work_struct *work)
 			new_delay = dev_priv->rps.cur_delay + 1;
 		}
 		if (dev_priv->rps.rp_down_masked) {
-			I915_WRITE(GEN6_PMINTRMSK, 0);
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) & ~(1 << 4));
 			dev_priv->rps.rp_down_masked = 0;
 		}
 		atomic_inc(&dev_priv->turbodebug.up_threshold);
-	} else {
+	} else if (pm_iir & GEN6_PM_RP_UP_EI_EXPIRED)
+		new_delay = vlv_calc_delay_from_C0_counters(dev_priv);
+	else {
 		if (dev_priv->rps.cur_delay <= dev_priv->rps.min_delay) {
 			I915_WRITE(GEN6_PMINTRMSK,
 					I915_READ(GEN6_PMINTRMSK) | 1 << 4);
@@ -429,7 +555,8 @@ static void gen6_pm_rps_work(struct work_struct *work)
 			new_delay = dev_priv->rps.cur_delay - 1;
 		}
 		if (dev_priv->rps.rp_up_masked) {
-			I915_WRITE(GEN6_PMINTRMSK, 0);
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) & ~(1 << 5));
 			dev_priv->rps.rp_up_masked = 0;
 		}
 		atomic_inc(&dev_priv->turbodebug.down_threshold);
@@ -536,12 +663,7 @@ static void snb_gt_irq_handler(struct drm_device *dev,
 	if (gt_iir & GEN6_BLITTER_USER_INTERRUPT)
 		notify_ring(dev, &dev_priv->ring[BCS]);
 
-	if (gt_iir & (GT_GEN6_BLT_CS_ERROR_INTERRUPT |
-		      GT_GEN6_BSD_CS_ERROR_INTERRUPT |
-		      GT_RENDER_CS_ERROR_INTERRUPT)) {
-		DRM_ERROR("GT error interrupt 0x%08x\n", gt_iir);
-		i915_handle_error(dev, false);
-	}
+	/* Command streamer error interrupts will be dealt with by TDR*/
 
 	if (gt_iir & GT_GEN7_L3_PARITY_ERROR_INTERRUPT)
 		ivybridge_handle_parity_error(dev);
@@ -656,13 +778,14 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 		}
 #ifdef CONFIG_DRM_VXD_BYT
 		if (iir & VED_BLOCK_INTERRUPT) {
-			psb_msvdx_interrupt(dev);
+			if (dev_priv->psb_msvdx_interrupt)
+				dev_priv->psb_msvdx_interrupt(dev);
 		}
 #endif
 		if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
 			blc_event = true;
 
-		if (pm_iir & GEN6_PM_DEFERRED_EVENTS)
+		if (pm_iir & (GEN6_PM_DEFERRED_EVENTS | VLV_PM_DEFERRED_EVENTS))
 			gen6_queue_rps_work(dev_priv, pm_iir);
 
 		I915_WRITE(GTIIR, gt_iir);
@@ -915,19 +1038,128 @@ static void i915_error_work_func(struct work_struct *work)
 						    error_work);
 	struct drm_device *dev = dev_priv->dev;
 	char *error_event[] = { "ERROR=1", NULL };
-	char *reset_event[] = { "RESET=1", NULL };
+	char *gpu_reset[] = { "GPU RESET=1", NULL };
 	char *reset_done_event[] = { "ERROR=0", NULL };
+	uint32_t i;
+
+	int pipe;
+	struct drm_crtc *crtc;
+	struct intel_crtc *intel_crtc;
+	struct intel_unpin_work *unpin_work;
+
+	char *reset_event[2];
+	reset_event[1] = NULL;
+
+	DRM_DEBUG_TDR("Start recovery work\n");
+
+	/* Set this flag as it should force any waiting processes to release
+	* struct->mutex if they are holding it */
+	atomic_set(&dev_priv->mm.wedged, 1);
+
+	mutex_lock(&dev->struct_mutex);
 
 	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, error_event);
 
-	if (atomic_read(&dev_priv->mm.wedged)) {
-		DRM_DEBUG_DRIVER("resetting chip\n");
-		kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, reset_event);
-		if (!i915_reset(dev)) {
-			atomic_set(&dev_priv->mm.wedged, 0);
-			kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, reset_done_event);
+	/* Skip individual ring reset requests if full_reset requested*/
+	if (!atomic_read(&dev_priv->full_reset)) {
+		/* Check each ring for a pending reset condition */
+		for (i = 0; i < I915_NUM_RINGS; i++) {
+			if (atomic_read(&dev_priv->hangcheck[i].reset)) {
+				DRM_DEBUG_TDR("resetting ring %d\n", i);
+
+				if (i915_handle_hung_ring(dev, i) != 0) {
+					DRM_ERROR("ring %d reset failed", i);
+					atomic_set(&dev_priv->full_reset, 1);
+					break;
+				}
+			}
 		}
-		complete_all(&dev_priv->error_completion);
+	}
+
+	/* Release struct->mutex for the full GPU reset. It will take
+	* it itself when it needs it */
+	mutex_unlock(&dev->struct_mutex);
+
+	/* Full gpu reset can be requested from caller or may be triggered due
+	 * to an indiviudal ring failing to reset */
+	if (atomic_read(&dev_priv->full_reset)) {
+		/* Full GPU reset requested */
+		DRM_DEBUG_TDR("resetting chip\n");
+		kobject_uevent_env(&dev->primary->kdev.kobj,
+					KOBJ_CHANGE, gpu_reset);
+
+		if (!i915_reset(dev)) {
+			kobject_uevent_env(&dev->primary->kdev.kobj,
+				 KOBJ_CHANGE, reset_done_event);
+			atomic_set(&dev_priv->full_reset, 0);
+
+			for (i = 0; i < I915_NUM_RINGS; i++) {
+				/* Clear individual ring reset flags*/
+				atomic_set(&dev_priv->hangcheck[i].reset, 0);
+			}
+
+			/* Release any pending page flip
+			* This is particularly important if ring_stop was set.
+			*/
+			for_each_pipe(pipe) {
+				crtc =
+					dev_priv->pipe_to_crtc_mapping[pipe];
+				intel_crtc = to_intel_crtc(crtc);
+				unpin_work = intel_crtc->unpin_work;
+
+				if (unpin_work
+				&& unpin_work->pending_flip_obj) {
+					intel_prepare_page_flip(dev, pipe);
+					intel_finish_page_flip(dev, pipe);
+					DRM_DEBUG_TDR("Clr pg flip\n");
+				}
+			}
+		}
+	}
+
+	/* Clear wedged condition and wake up waiters*/
+	atomic_set(&dev_priv->mm.wedged, 0);
+
+	kobject_uevent_env(&dev->primary->kdev.kobj,
+				KOBJ_CHANGE, reset_done_event);
+
+	/* Wake anyone waiting on error handling completion*/
+	wake_up_all(&dev_priv->error_queue);
+
+	DRM_DEBUG_TDR("End recovery work\n\n");
+}
+
+static void i915_get_instdone(struct drm_device *dev,
+			    uint32_t *instdone,
+			    struct intel_ring_buffer *ring)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	memset(instdone, 0,
+		I915_MAX_INSTDONE_REG * sizeof(u32));
+
+	switch (INTEL_INFO(dev)->gen) {
+	case 2:
+	case 3:
+		instdone[0] = I915_READ(INSTDONE);
+		break;
+	case 4:
+	case 5:
+	case 6:
+		instdone[0] = I915_READ(INSTDONE_I965);
+		instdone[1] = I915_READ(INSTDONE1);
+		break;
+	default:
+		WARN_ONCE(1, "Unsupported platform, defaulting to gen 7\n");
+	case 7:
+		instdone[0] =
+			I915_READ(RING_INSTDONE(ring->mmio_base));
+
+		if (ring->id == RCS) {
+			instdone[1] = I915_READ(GEN7_SC_INSTDONE);
+			instdone[2] = I915_READ(GEN7_SAMPLER_INSTDONE);
+			instdone[3] = I915_READ(GEN7_ROW_INSTDONE);
+		}
+		break;
 	}
 }
 
@@ -1167,18 +1399,17 @@ static void i915_record_ring_state(struct drm_device *dev,
 		error->faddr[ring->id] = I915_READ(RING_DMA_FADD(ring->mmio_base));
 		error->ipeir[ring->id] = I915_READ(RING_IPEIR(ring->mmio_base));
 		error->ipehr[ring->id] = I915_READ(RING_IPEHR(ring->mmio_base));
-		error->instdone[ring->id] = I915_READ(RING_INSTDONE(ring->mmio_base));
 		error->instps[ring->id] = I915_READ(RING_INSTPS(ring->mmio_base));
 		if (ring->id == RCS) {
-			error->instdone1 = I915_READ(INSTDONE1);
 			error->bbaddr = I915_READ64(BB_ADDR);
 		}
 	} else {
 		error->faddr[ring->id] = I915_READ(DMA_FADD_I8XX);
 		error->ipeir[ring->id] = I915_READ(IPEIR);
 		error->ipehr[ring->id] = I915_READ(IPEHR);
-		error->instdone[ring->id] = I915_READ(INSTDONE);
 	}
+	i915_get_instdone(dev, error->instdone[ring->id],
+		&dev_priv->ring[ring->id]);
 
 	error->waiting[ring->id] = waitqueue_active(&ring->irq_queue);
 	error->instpm[ring->id] = I915_READ(RING_INSTPM(ring->mmio_base));
@@ -1288,6 +1519,11 @@ static void i915_capture_error_state(struct drm_device *dev)
 		error->done_reg = I915_READ(DONE_REG);
 	}
 
+	for (i = 0; i < I915_NUM_RINGS; i++) {
+		i915_get_instdone(dev, error->instdone[i],
+			&dev_priv->ring[i]);
+	}
+
 	i915_gem_record_fences(dev, error);
 	i915_gem_record_rings(dev, error);
 
@@ -1363,13 +1599,16 @@ void i915_destroy_error_state(struct drm_device *dev)
 static void i915_report_and_clear_eir(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	uint32_t instdone[I915_MAX_INSTDONE_REG];
 	u32 eir = I915_READ(EIR);
-	int pipe;
+	int pipe, i;
 
 	if (!eir)
 		return;
 
 	pr_err("render error detected, EIR: 0x%08x\n", eir);
+
+	i915_get_instdone(dev, instdone, &dev_priv->ring[RCS]);
 
 	if (IS_G4X(dev)) {
 		if (eir & (GM45_ERROR_MEM_PRIV | GM45_ERROR_CP_PRIV)) {
@@ -1377,8 +1616,9 @@ static void i915_report_and_clear_eir(struct drm_device *dev)
 
 			pr_err("  IPEIR: 0x%08x\n", I915_READ(IPEIR_I965));
 			pr_err("  IPEHR: 0x%08x\n", I915_READ(IPEHR_I965));
-			pr_err("  INSTDONE: 0x%08x\n",
-			       I915_READ(INSTDONE_I965));
+			for (i = 0; i < ARRAY_SIZE(instdone); i++)
+				pr_err("  INSTDONE_%d: 0x%08x\n",
+					i, instdone[i]);
 			pr_err("  INSTPS: 0x%08x\n", I915_READ(INSTPS));
 			pr_err("  INSTDONE1: 0x%08x\n", I915_READ(INSTDONE1));
 			pr_err("  ACTHD: 0x%08x\n", I915_READ(ACTHD_I965));
@@ -1462,25 +1702,71 @@ static void i915_report_and_clear_eir(struct drm_device *dev)
  * so userspace knows something bad happened (should trigger collection
  * of a ring dump etc.).
  */
-void i915_handle_error(struct drm_device *dev, bool wedged)
+void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc)
 {
+	u32 i;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_ring_buffer *ring;
-	int i;
+	int full_reset = 0;
+	unsigned long cur_time;
+	unsigned long last_reset;
 
+	/* This can be called due to an error interrupt or because
+	* one of the rings has hung.*/
 	i915_capture_error_state(dev);
 	i915_report_and_clear_eir(dev);
 
-	if (wedged) {
-		INIT_COMPLETION(dev_priv->error_completion);
-		atomic_set(&dev_priv->mm.wedged, 1);
+	/* Currently we only support individual ring reset for GEN7 onwards,
+	 * older chips will revert to a full reset.
+	 * Error interrupts trigger a full reset (hc == NULL)*/
+	if ((INTEL_INFO(dev)->gen >= 7) && hc) {
+		cur_time = get_seconds();
+		last_reset = hc->last_reset;
+		hc->last_reset = cur_time;
 
-		/*
-		 * Wakeup waiting processes so they don't hang
-		 */
-		for_each_ring(ring, dev_priv, i)
-			wake_up_all(&ring->irq_queue);
+		if ((cur_time - last_reset) <
+			i915_ring_reset_min_alive_period) {
+			/* This ring is hanging too frequently.
+			* Opt for full-reset instead */
+			DRM_DEBUG_TDR("Ring %d hanging too quickly...\r\n",
+				hc->ringid);
+			full_reset = 1;
+		} else {
+			if (atomic_read(&hc->reset)) {
+				/* Reset already in progress for this ring */
+				return;
+			}
+
+			atomic_set(&hc->reset, 1);
+		}
+	} else
+		full_reset = 1;
+
+	if (!hc || full_reset) {
+		/* Full GPU reset */
+		if (atomic_read(&dev_priv->full_reset))
+			return;
+
+		atomic_set(&dev_priv->full_reset, 1);
 	}
+
+	/* We must wake up the irq_queue. A thread may be in
+	* the __wait_seqno function and may currently hold
+	* dev->struct_mutex. The current driver design forces
+	* it to wakeup so that it will see the reset flags and
+	* abandon the wait, which in turn will release the
+	* mutex. New wait requests will not be allowed to start
+	* whilst the reset/full_reset flags are set.*/
+	for (i = 0; i < I915_NUM_RINGS; i++)
+		wake_up_all(&dev_priv->ring[i].irq_queue);
+
+	/* If error_work is already in the work queue then it will not be added
+	* again. It hasn't yet executed so it will see the reset flags when
+	* it is scheduled. If it isn't in the queue or it is currently
+	* executing then this call will add it to the queue again so that
+	* even if it misses the reset flags during the current call it is
+	* guaranteed to see them on the next call.
+	*/
+	DRM_DEBUG_TDR("Queue error work...\r\n");
 
 	queue_work(dev_priv->wq, &dev_priv->error_work);
 }
@@ -1714,19 +2000,34 @@ ring_last_seqno(struct intel_ring_buffer *ring)
 
 static bool i915_hangcheck_ring_idle(struct intel_ring_buffer *ring, bool *err)
 {
+	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	uint32_t head;
+	uint32_t tail;
+	int pending_work = 1;
+
 	if (list_empty(&ring->request_list) ||
 	    i915_seqno_passed(ring->get_seqno(ring, false),
 			      ring_last_seqno(ring))) {
 		/* Issue a wake-up to catch stuck h/w. */
 		if (waitqueue_active(&ring->irq_queue)) {
-			DRM_ERROR("Hangcheck timer elapsed... %s idle\n",
-				  ring->name);
-			wake_up_all(&ring->irq_queue);
 			*err = true;
 		}
-		return true;
+		pending_work = 0;
 	}
-	return false;
+
+	/* Make sure that the ring has caught up with any
+	* commands that are inserted directly in the ring
+	* Note: Head & tail will become equal *before* the
+	* ring has finished executing the current command
+	* so it is possible that we will consider the ring as idle
+	* prematurely. This is ok as the hang will be detected
+	* when new work is next added to the ring.*/
+	head = I915_READ_HEAD(ring) & HEAD_ADDR;
+	tail = I915_READ_TAIL(ring) & TAIL_ADDR;
+
+	/* The ring is idle if the head pointer == tail and no more work*/
+	return (((head == tail) && (pending_work == 0)) ? true : false);
 }
 
 static bool kick_ring(struct intel_ring_buffer *ring)
@@ -1743,28 +2044,47 @@ static bool kick_ring(struct intel_ring_buffer *ring)
 	return false;
 }
 
-static bool i915_hangcheck_hung(struct drm_device *dev)
+static bool i915_hangcheck_hung(struct intel_hangcheck *hc)
 {
+	struct drm_device *dev = hc->dev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
+	uint32_t mbox_wait;
+	uint32_t threshold;
+	struct intel_ring_buffer *ring;
 
-	if (dev_priv->hangcheck_count++ > 1) {
+	DRM_DEBUG_TDR("Ring [%d] hc->count = %d\r\n", hc->ringid, hc->count);
+
+	ring = &dev_priv->ring[hc->ringid];
+
+	/* Is this ring waiting on a semaphore mbox?
+	* If so, give it a bit longer as it may be waiting on another
+	* ring which has actually hung. Give the other ring chance to
+	* reset and clear the hang.
+	*/
+	mbox_wait = ((I915_READ(RING_CTL(ring->mmio_base)) >> 10) & 0x1);
+	threshold = mbox_wait ? MBOX_HANGCHECK_THRESHOLD : HANGCHECK_THRESHOLD;
+
+	if (hc->count++ > threshold) {
 		bool hung = true;
 
-		DRM_ERROR("Hangcheck timer elapsed... GPU hung\n");
-		i915_handle_error(dev, true);
+		DRM_DEBUG_TDR("Hangcheck timer elapsed... ring %d hung\n",
+			hc->ringid);
+
+		/* Reset the counter*/
+		hc->count = 0;
 
 		if (!IS_GEN2(dev)) {
-			struct intel_ring_buffer *ring;
-			int i;
-
-			/* Is the chip hanging on a WAIT_FOR_EVENT?
-			 * If so we can simply poke the RB_WAIT bit
+			/* If the ring is hanging on a WAIT_FOR_EVENT
+			 * then simply poke the RB_WAIT bit
 			 * and break the hang. This should work on
 			 * all but the second generation chipsets.
 			 */
-			for_each_ring(ring, dev_priv, i)
-				hung &= !kick_ring(ring);
+			ring = &dev_priv->ring[hc->ringid];
+			hung &= !kick_ring(ring);
 		}
+
+		if (hung)
+			i915_handle_error(dev, hc);
 
 		return hung;
 	}
@@ -1780,61 +2100,53 @@ static bool i915_hangcheck_hung(struct drm_device *dev)
  */
 void i915_hangcheck_elapsed(unsigned long data)
 {
-	struct drm_device *dev = (struct drm_device *)data;
-	drm_i915_private_t *dev_priv = dev->dev_private;
-	uint32_t acthd[I915_NUM_RINGS], instdone, instdone1;
+	struct intel_hangcheck *hc = (struct intel_hangcheck *)data;
+	struct drm_device *dev;
+	drm_i915_private_t *dev_priv;
+	uint32_t acthd, instdone[I915_MAX_INSTDONE_REG];
 	struct intel_ring_buffer *ring;
 	bool err = false, idle;
-	int i;
 
-	if (!i915_enable_hangcheck)
+	if (!i915_enable_hangcheck || !hc)
 		return;
 
-	memset(acthd, 0, sizeof(acthd));
-	idle = true;
-	for_each_ring(ring, dev_priv, i) {
-	    idle &= i915_hangcheck_ring_idle(ring, &err);
-	    acthd[i] = intel_ring_get_active_head(ring);
-	}
+	dev = hc->dev;
+	dev_priv = dev->dev_private;
 
-	/* If all work is done then ACTHD clearly hasn't advanced. */
+	/* Check if the specified ring is idle and record active head */
+	ring = &dev_priv->ring[hc->ringid];
+	idle = i915_hangcheck_ring_idle(ring, &err);
+	acthd = intel_ring_get_active_head(ring);
+
+	DRM_DEBUG_TDR("[%d] ahd: 0x%08x lst: 0x0%08x tl: 0x%08x idle: %d\r\n",
+		hc->ringid, acthd, hc->last_acthd,
+		I915_READ(RING_TAIL(ring->mmio_base)), idle);
+
+	/* If all work is done then ACTHD clearly hasn't advanced */
 	if (idle) {
 		if (err) {
-			if (i915_hangcheck_hung(dev))
-				return;
-
+			i915_hangcheck_hung(hc);
 			goto repeat;
 		}
 
-		dev_priv->hangcheck_count = 0;
+		hc->count = 0;
 		return;
 	}
 
-	if (INTEL_INFO(dev)->gen < 4) {
-		instdone = I915_READ(INSTDONE);
-		instdone1 = 0;
+	i915_get_instdone(dev, instdone, ring);
+	if ((hc->last_acthd == acthd) &&
+	(memcmp(hc->prev_instdone, instdone, sizeof(instdone)) == 0)) {
+		i915_hangcheck_hung(hc);
 	} else {
-		instdone = I915_READ(INSTDONE_I965);
-		instdone1 = I915_READ(INSTDONE1);
-	}
+		hc->count = 0;
 
-	if (memcmp(dev_priv->last_acthd, acthd, sizeof(acthd)) == 0 &&
-	    dev_priv->last_instdone == instdone &&
-	    dev_priv->last_instdone1 == instdone1) {
-		if (i915_hangcheck_hung(dev))
-			return;
-	} else {
-		dev_priv->hangcheck_count = 0;
-
-		memcpy(dev_priv->last_acthd, acthd, sizeof(acthd));
-		dev_priv->last_instdone = instdone;
-		dev_priv->last_instdone1 = instdone1;
+		hc->last_acthd = acthd;
+		memcpy(hc->prev_instdone, instdone, sizeof(instdone));
 	}
 
 repeat:
-	/* Reset timer case chip hangs without another request being added */
-	mod_timer(&dev_priv->hangcheck_timer,
-		  jiffies + msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD));
+	/* Reset timer in case chip hangs without another request being added*/
+	mod_timer(&hc->timer, jiffies + DRM_I915_HANGCHECK_JIFFIES);
 }
 
 /* drm_dma.h hooks
@@ -2243,7 +2555,7 @@ static irqreturn_t i8xx_irq_handler(DRM_IRQ_ARGS)
 		 */
 		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 		if (iir & I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT)
-			i915_handle_error(dev, false);
+			i915_handle_error(dev, NULL);
 
 		for_each_pipe(pipe) {
 			int reg = PIPESTAT(pipe);
@@ -2423,7 +2735,7 @@ static irqreturn_t i915_irq_handler(DRM_IRQ_ARGS)
 		 */
 		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 		if (iir & I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT)
-			i915_handle_error(dev, false);
+			i915_handle_error(dev, NULL);
 
 		for_each_pipe(pipe) {
 			int reg = PIPESTAT(pipe);
@@ -2658,7 +2970,7 @@ static irqreturn_t i965_irq_handler(DRM_IRQ_ARGS)
 		 */
 		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 		if (iir & I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT)
-			i915_handle_error(dev, false);
+			i915_handle_error(dev, NULL);
 
 		for_each_pipe(pipe) {
 			int reg = PIPESTAT(pipe);
@@ -2777,6 +3089,7 @@ void intel_irq_init(struct drm_device *dev)
 
 	INIT_WORK(&dev_priv->hotplug_work, i915_hotplug_work_func);
 	INIT_WORK(&dev_priv->error_work, i915_error_work_func);
+	init_waitqueue_head(&dev_priv->error_queue);
 	INIT_WORK(&dev_priv->rps.work, gen6_pm_rps_work);
 	INIT_WORK(&dev_priv->parity_error_work, ivybridge_parity_work);
 

@@ -891,4 +891,9 @@ config INTEL_CRYSTALCOVE_PWRSRC
 
 	  If unsure, say N.
 
+config INTEL_BYT_EC
+	tristate "Intel Baytrail EC driver"
+	help
+	  This driver provides the interface to access Intel Baytrail EC.
+
 endif # X86_PLATFORM_DEVICES

@@ -31,9 +31,16 @@
 #include <linux/pm_runtime.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_hsu.h>
+
 #ifdef CONFIG_ACPI
 #include <linux/acpi.h>
 #include <linux/acpi_gpio.h>
+
+enum {
+	gpio_wake_acpi_idx,
+	gpio_enable_bt_acpi_idx,
+	host_wake_acpi_idx
+};
 #endif
 
 static struct rfkill *bt_rfkill;
@@ -64,37 +71,89 @@ struct bcm_bt_lpm {
 	char wake_lock_name[100];
 
 	int port;
-	void (*uart_enable)(struct device *tty);
-	void (*uart_disable)(struct device *tty);
 } bt_lpm;
+
+#ifdef LPM_ON
+static void uart_enable(struct device *tty)
+{
+	pr_debug("%s: runtime get\n", __func__);
+	/* Tell PM runtime to power on the tty device and block s0i3 */
+	pm_runtime_get(tty);
+}
+
+static void uart_disable(struct device *tty)
+{
+	pr_debug("%s: runtime put\n", __func__);
+	/* Tell PM runtime to release tty device and allow s0i3 */
+	pm_runtime_put(tty);
+}
+#endif
 
 #ifdef CONFIG_ACPI
 static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
 {
 	struct acpi_gpio_info info;
+	acpi_handle handle;
+	acpi_integer port;
 
 	/*
 	 * Handle ACPI specific initializations.
 	 */
 	dev_dbg(&pdev->dev, "BCM2E1A ACPI specific probe\n");
 
-#ifdef LPM_ON
-	bt_lpm.gpio_wake = acpi_get_gpio_by_index(&pdev->dev, 0, &info);
-	if (!gpio_is_valid(bt_lpm.gpio_wake)) {
-		pr_err("%s: gpio not valid\n", __func__);
+	bt_lpm.gpio_enable_bt = acpi_get_gpio_by_index(&pdev->dev,
+						gpio_enable_bt_acpi_idx, &info);
+	if (!gpio_is_valid(bt_lpm.gpio_enable_bt)) {
+		pr_err("%s: gpio %d for gpio_enable_bt not valid\n", __func__,
+							bt_lpm.gpio_enable_bt);
 		return -EINVAL;
 	}
+
+#ifdef LPM_ON
+	bt_lpm.gpio_wake = acpi_get_gpio_by_index(&pdev->dev,
+						gpio_wake_acpi_idx, &info);
+	if (!gpio_is_valid(bt_lpm.gpio_wake)) {
+		pr_err("%s: gpio %d for gpio_wake not valid\n", __func__,
+							bt_lpm.gpio_wake);
+		return -EINVAL;
+	}
+
+	bt_lpm.gpio_host_wake = acpi_get_gpio_by_index(&pdev->dev,
+						host_wake_acpi_idx, &info);
+	if (!gpio_is_valid(bt_lpm.gpio_host_wake)) {
+		pr_err("%s: gpio %d for gpio_host_wake not valid\n", __func__,
+							bt_lpm.gpio_host_wake);
+		return -EINVAL;
+	}
+
+	bt_lpm.int_host_wake = gpio_to_irq(bt_lpm.gpio_host_wake);
+
+	pr_debug("%s: gpio_wake %d, gpio_host_wake %d, int_host_wake %d\n",
+							__func__,
+							bt_lpm.gpio_wake,
+							bt_lpm.gpio_host_wake,
+							bt_lpm.int_host_wake);
 #endif
 
-	bt_lpm.gpio_enable_bt = acpi_get_gpio_by_index(&pdev->dev, 1, &info);
-	if (!gpio_is_valid(bt_lpm.gpio_enable_bt)) {
-		pr_err("%s: gpio not valid\n", __func__);
-		return -EINVAL;
+	handle = DEVICE_ACPI_HANDLE(&pdev->dev);
+
+	if (ACPI_FAILURE(acpi_evaluate_integer(handle, "UART", NULL, &port))) {
+		dev_err(&pdev->dev, "Error evaluating UART port number\n");
+
+		/* FIXME - Force port 0 if the information is missing from the
+		 * ACPI table.
+		 * That will be removed once the ACPI tables will all have been
+		 * updated.
+		 */
+		 port = 0;
 	}
+
+	bt_lpm.port = port;
+	pr_debug("%s: UART port %d\n", __func__, bt_lpm.port);
 
 	return 0;
 }
-#endif
+#endif /* CONFIG_ACPI */
 
 static int bcm43xx_bt_rfkill_set_power(void *data, bool blocked)
 {
@@ -134,14 +193,14 @@ static void set_wake_locked(int wake)
 
 	if (!wake_uart_enabled && wake) {
 		WARN_ON(!bt_lpm.tty_dev);
-		bt_lpm.uart_enable(bt_lpm.tty_dev);
+		uart_enable(bt_lpm.tty_dev);
 	}
 
 	gpio_set_value(bt_lpm.gpio_wake, wake);
 
 	if (wake_uart_enabled && !wake) {
 		WARN_ON(!bt_lpm.tty_dev);
-		bt_lpm.uart_disable(bt_lpm.tty_dev);
+		uart_disable(bt_lpm.tty_dev);
 	}
 	wake_uart_enabled = wake;
 }
@@ -167,12 +226,12 @@ static void update_host_wake_locked(int host_wake)
 		wake_lock(&bt_lpm.wake_lock);
 		if (!host_wake_uart_enabled) {
 			WARN_ON(!bt_lpm.tty_dev);
-			bt_lpm.uart_enable(bt_lpm.tty_dev);
+			uart_enable(bt_lpm.tty_dev);
 		}
 	} else  {
 		if (host_wake_uart_enabled) {
 			WARN_ON(!bt_lpm.tty_dev);
-			bt_lpm.uart_disable(bt_lpm.tty_dev);
+			uart_disable(bt_lpm.tty_dev);
 		}
 		/*
 		 * Take a timed wakelock, so that upper layers can take it.
@@ -292,58 +351,46 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 }
 #endif
 
-static int bcm_bt_lpm_device_gpio_probe(struct platform_device *pdev)
+#ifndef CONFIG_ACPI
+static int bcm43xx_bluetooth_pdata_probe(struct platform_device *pdev)
 {
 	struct bcm_bt_lpm_platform_data *pdata = pdev->dev.platform_data;
-	int ret = 0;
-
-	int_handler_enabled = false;
 
 	if (pdata == NULL) {
 		pr_err("Cannot register bcm_bt_lpm drivers, pdata is NULL\n");
 		return -EINVAL;
 	}
 
-#ifndef CONFIG_ACPI
 	if (!gpio_is_valid(pdata->gpio_enable)) {
 		pr_err("%s: gpio not valid\n", __func__);
 		return -EINVAL;
 	}
 
 #ifdef LPM_ON
-	if (!gpio_is_valid(pdata->gpio_wake)) {
+	if (!gpio_is_valid(pdata->gpio_wake) ||
+		!gpio_is_valid(pdata->gpio_host_wake)) {
 		pr_err("%s: gpio not valid\n", __func__);
 		return -EINVAL;
 	}
 #endif
+
 	bt_lpm.gpio_wake = pdata->gpio_wake;
-	bt_lpm.gpio_enable_bt = pdata->gpio_enable;
-#endif
-
-#ifdef LPM_ON
-	if (!gpio_is_valid(pdata->gpio_host_wake)) {
-		pr_err("%s: gpio not valid\n", __func__);
-		return -EINVAL;
-	}
-#endif
-
 	bt_lpm.gpio_host_wake = pdata->gpio_host_wake;
 	bt_lpm.int_host_wake = pdata->int_host_wake;
+	bt_lpm.gpio_enable_bt = pdata->gpio_enable;
 
-	return ret;
+	bt_lpm.port = pdata->port;
+
+	return 0;
 }
+#endif /* !CONFIG_ACPI */
 
 static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 {
-	struct bcm_bt_lpm_platform_data *pdata = pdev->dev.platform_data;
 	bool default_state = true;	/* off */
 	int ret = 0;
-#ifdef CONFIG_ACPI
-	/* FIXME: keep tracking of the probes as the driver will be binded twice
-	 * once with pdev bcm_bt_lpm and once through ACPI with BCM2E1A
-	 */
-	static bool pdev_register, acpi_register;
-#endif
+
+	int_handler_enabled = false;
 
 #ifdef CONFIG_ACPI
 	if (ACPI_HANDLE(&pdev->dev)) {
@@ -353,24 +400,17 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 		pr_debug("%s for ACPI device %s\n", __func__,
 							dev_name(&pdev->dev));
 		if (bcm_bt_lpm_acpi_probe(pdev) < 0)
-			return -EINVAL;
-		else
-			acpi_register = true;
-	} else {
-		pr_debug("%s for non ACPI device %s\n", __func__,
-							dev_name(&pdev->dev));
-		if (bcm_bt_lpm_device_gpio_probe(pdev) < 0)
-			return -EINVAL;
-		else
-			pdev_register = true;
-	}
-
-	if (acpi_register == false || pdev_register == false)
-		return -EAGAIN;
+			ret = -EINVAL;
+	} else
+		ret = -ENODEV;
 #else
-	if (bcm_bt_lpm_device_gpio_probe(pdev) < 0)
-		return -EINVAL;
+	ret = bcm43xx_bluetooth_pdata_probe(pdev);
 #endif
+
+	if (ret < 0) {
+		pr_err("%s: Cannot register platform data\n", __func__);
+		goto err_data_probe;
+	}
 
 	ret = gpio_request(bt_lpm.gpio_enable_bt, pdev->name);
 	if (ret < 0) {
@@ -414,16 +454,13 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 							bt_lpm.gpio_wake);
 		goto err_gpio_wake_dir;
 	}
+
+	pr_debug("%s: gpio_enable=%d, gpio_wake=%d, gpio_host_wake=%d\n",
+							__func__,
+							bt_lpm.gpio_enable_bt,
+							bt_lpm.gpio_wake,
+							bt_lpm.gpio_host_wake);
 #endif
-
-	pr_debug("%s: gpio_wake=%d, gpio_enable=%d\n", __func__,
-				bt_lpm.gpio_wake, bt_lpm.gpio_enable_bt);
-
-	bt_lpm.port = pdata->port;
-	bt_lpm.uart_disable = pdata->uart_disable;
-	WARN_ON(!bt_lpm.uart_disable);
-	bt_lpm.uart_enable = pdata->uart_enable;
-	WARN_ON(!bt_lpm.uart_enable);
 
 	bt_rfkill = rfkill_alloc("bcm43xx Bluetooth", &pdev->dev,
 				RFKILL_TYPE_BLUETOOTH, &bcm43xx_bt_rfkill_ops,
@@ -464,6 +501,7 @@ err_gpio_host_wake_req:
 err_gpio_enable_dir:
 	gpio_free(bt_lpm.gpio_enable_bt);
 err_gpio_enable_req:
+err_data_probe:
 	return ret;
 }
 

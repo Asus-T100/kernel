@@ -351,8 +351,7 @@ static int atomisp_mrfld_power_down(struct atomisp_device *isp)
 			return 0;
 
 		if (time_after(jiffies, timeout)) {
-			dev_err(isp->dev,
-				"power-off iunit timeout.\n");
+			dev_err(isp->dev, "power-off iunit timeout.\n");
 			return -EBUSY;
 		}
 		/* FIXME: experienced value for delay */
@@ -384,8 +383,7 @@ static int atomisp_mrfld_power_up(struct atomisp_device *isp)
 			return 0;
 
 		if (time_after(jiffies, timeout)) {
-			dev_err(isp->dev,
-				"power-on iunit timeout.\n");
+			dev_err(isp->dev, "power-on iunit timeout.\n");
 			return -EBUSY;
 		}
 		/* FIXME: experienced value for delay */
@@ -433,8 +431,7 @@ static int atomisp_runtime_resume(struct device *dev)
 		/*Turn on ISP d-phy */
 		ret = atomisp_ospm_dphy_up(isp);
 		if (ret) {
-			v4l2_err(&atomisp_dev,
-				    "Failed to power up ISP!.\n");
+			v4l2_err(&atomisp_dev, "Failed to power up ISP!.\n");
 			return -EINVAL;
 		}
 	}
@@ -453,6 +450,8 @@ static int atomisp_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
+	/* FIXME: only has one isp_subdev at present */
+	struct atomisp_sub_device *asd = &isp->asd;
 	unsigned long flags;
 	int ret;
 
@@ -464,7 +463,7 @@ static int atomisp_suspend(struct device *dev)
 		return -EBUSY;
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
+	if (asd->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		v4l2_err(&atomisp_dev,
 			    "atomisp cannot suspend at this time.\n");
@@ -509,8 +508,7 @@ static int atomisp_resume(struct device *dev)
 	/*Turn on ISP d-phy */
 	ret = atomisp_ospm_dphy_up(isp);
 	if (ret) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to power up ISP!.\n");
+		v4l2_err(&atomisp_dev, "Failed to power up ISP!.\n");
 		return -EINVAL;
 	}
 
@@ -710,7 +708,7 @@ static void atomisp_unregister_entities(struct atomisp_device *isp)
 {
 	unsigned int i;
 
-	atomisp_subdev_unregister_entities(&isp->isp_subdev);
+	atomisp_subdev_unregister_entities(&isp->asd);
 	atomisp_tpg_unregister_entities(&isp->tpg);
 	atomisp_file_input_unregister_entities(&isp->file_dev);
 	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++)
@@ -782,8 +780,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		goto tpg_register_failed;
 	}
 
-	ret =
-	atomisp_subdev_register_entities(&isp->isp_subdev, &isp->v4l2_dev);
+	ret = atomisp_subdev_register_entities(&isp->asd, &isp->v4l2_dev);
 	if (ret < 0) {
 		v4l2_err(&atomisp_dev,
 			"atomisp_subdev_register_entities fail\n");
@@ -839,7 +836,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	return ret;
 
 link_failed:
-	atomisp_subdev_unregister_entities(&isp->isp_subdev);
+	atomisp_subdev_unregister_entities(&isp->asd);
 subdev_register_failed:
 	atomisp_tpg_unregister_entities(&isp->tpg);
 tpg_register_failed:
@@ -889,7 +886,7 @@ static int atomisp_initialize_modules(struct atomisp_device *isp)
 		ret = media_entity_create_link(
 				&isp->csi2_port[i].subdev.entity,
 				CSI2_PAD_SOURCE,
-				&isp->isp_subdev.subdev.entity,
+				&isp->asd.subdev.entity,
 				ATOMISP_SUBDEV_PAD_SINK,
 				0);
 		if (ret < 0)
@@ -1047,9 +1044,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		err = -ENOENT;
 		goto load_fw_fail;
 	}
-
-	INIT_LIST_HEAD(&isp->s3a_stats);
-	INIT_LIST_HEAD(&isp->dis_stats);
 
 	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
 	if (isp->wdt_work_queue == NULL) {

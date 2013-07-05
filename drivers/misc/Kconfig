@@ -541,34 +541,12 @@ config MID_I2S_DEV
 	  It uses the Intel MID I2S driver ; it creates a device
 	  (/dev/mid_i2s_ssp) that receives ioctls.
 
-config A1026
-	tristate "Audience a1026/eS305 Voice Processor"
-	depends on I2C && INTEL_SCU_IPC
-	help
-	  Provides an interface to the Audience voice processing
-	  unit via an I2C bus interface.
-
-	  To compile this driver as a module, choose M here: the module will
-	  be called a1026.
-
 config EMMC_IPANIC
 	bool "Intel kernel panic diagnostics driver FOR EMMC"
 	default n
 	---help---
 	 Driver which handles kernel panics and attempts to write
 	 critical debugging data to EMMC.
-
-config SCU_LOGGING
-	tristate "Intel SCU fabric debug driver"
-	default n
-	---help---
-	 Driver that enable for debugging Intel SCU firmware fabric related error.
-
-config UUID
-	tristate "get uuid"
-	default n
-	---help---
-	 Driver for get UUID.
 
 config VLV2_PLAT_CLK
 	tristate "Vlv2 platform clock control driver"

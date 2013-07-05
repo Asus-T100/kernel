@@ -64,7 +64,32 @@ static void ehci_hsic_port_power(struct ehci_hcd *ehci, int is_on)
 				port--, NULL, 0);
 	/* Flush those writes */
 	ehci_readl(ehci, &ehci->regs->command);
-	usleep_range(1000, 1200);
+}
+
+static void ehci_hsic_phy_power(struct ehci_hcd *ehci, int is_low_power)
+{
+	unsigned port;
+
+	port = HCS_N_PORTS(ehci->hcs_params);
+	while (port--) {
+		u32 __iomem	*hostpc_reg;
+		u32		t3;
+
+		hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+				+ HOSTPC0 + 4 * port);
+		t3 = ehci_readl(ehci, hostpc_reg);
+		ehci_dbg(ehci, "Port %d phy low-power mode org %08x\n",
+				port, t3);
+
+		if (is_low_power)
+			ehci_writel(ehci, t3 | HOSTPC_PHCD, hostpc_reg);
+		else
+			ehci_writel(ehci, t3 & ~HOSTPC_PHCD, hostpc_reg);
+
+		t3 = ehci_readl(ehci, hostpc_reg);
+		ehci_dbg(ehci, "Port %d phy low-power mode chg %08x\n",
+				port, t3);
+	}
 }
 
 /* Init HSIC AUX GPIO */
@@ -669,9 +694,62 @@ static ssize_t hsic_remoteWakeup_store(struct device *dev,
 static DEVICE_ATTR(remoteWakeup, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
 		hsic_remoteWakeup_show, hsic_remoteWakeup_store);
 
+static ssize_t
+show_registers(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct usb_hcd	*hcd = dev_get_drvdata(dev);
+	char			*next;
+	unsigned		size;
+	unsigned		t;
+
+	next = buf;
+	size = PAGE_SIZE;
+
+	pm_runtime_get_sync(dev);
+
+	t = scnprintf(next, size,
+		"\n"
+		"USBCMD = 0x%08x\n"
+		"USBSTS = 0x%08x\n"
+		"USBINTR = 0x%08x\n"
+		"ASYNCLISTADDR = 0x%08x\n"
+		"PORTSC1 = 0x%08x\n"
+		"PORTSC2 = 0x%08x\n"
+		"HOSTPC1 = 0x%08x\n"
+		"HOSTPC2 = 0x%08x\n"
+		"OTGSC = 0x%08x\n"
+		"USBMODE = 0x%08x\n",
+		readl(hcd->regs + 0x30),
+		readl(hcd->regs + 0x34),
+		readl(hcd->regs + 0x38),
+		readl(hcd->regs + 0x48),
+		readl(hcd->regs + 0x74),
+		readl(hcd->regs + 0x78),
+		readl(hcd->regs + 0xb4),
+		readl(hcd->regs + 0xb8),
+		readl(hcd->regs + 0xf4),
+		readl(hcd->regs + 0xf8)
+		);
+
+	pm_runtime_put_sync(dev);
+
+	size -= t;
+	next += t;
+
+	return PAGE_SIZE - size;
+}
+
+static DEVICE_ATTR(registers, S_IRUGO, show_registers, NULL);
+
 static int create_device_files()
 {
 	int retval;
+
+	retval = device_create_file(&pci_dev->dev, &dev_attr_registers);
+	if (retval < 0) {
+		dev_dbg(&pci_dev->dev, "error create dev registers\n");
+		goto dump_registers;
+	}
 
 	retval = device_create_file(&pci_dev->dev, &dev_attr_hsic_enable);
 	if (retval < 0) {
@@ -726,6 +804,8 @@ autosuspend:
 host_resume:
 	device_remove_file(&pci_dev->dev, &dev_attr_hsic_enable);
 hsic_enable:
+	device_remove_file(&pci_dev->dev, &dev_attr_registers);
+dump_registers:
 	return retval;
 }
 
@@ -737,6 +817,7 @@ static void remove_device_files()
 	device_remove_file(&pci_dev->dev, &dev_attr_remoteWakeup);
 	device_remove_file(&pci_dev->dev, &dev_attr_host_resume);
 	device_remove_file(&pci_dev->dev, &dev_attr_hsic_enable);
+	device_remove_file(&pci_dev->dev, &dev_attr_registers);
 }
 
 static int ehci_hsic_probe(struct pci_dev *pdev,
@@ -847,6 +928,8 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 	if (retval != 0)
 		goto unmap_registers;
 	dev_set_drvdata(&pdev->dev, hcd);
+	/* Clear phy low power mode, enable phy clock */
+	ehci_hsic_phy_power(ehci, 0);
 
 	if (pci_dev_run_wake(pdev))
 		pm_runtime_put_noidle(&pdev->dev);
@@ -912,6 +995,8 @@ static void ehci_hsic_remove(struct pci_dev *pdev)
 
 	usb_remove_hcd(hcd);
 	ehci_hsic_port_power(ehci, 0);
+	/* Set phy low power mode, disable phy clock */
+	ehci_hsic_phy_power(ehci, 1);
 
 	if (hcd->driver->flags & HCD_MEMORY) {
 		iounmap(hcd->regs);

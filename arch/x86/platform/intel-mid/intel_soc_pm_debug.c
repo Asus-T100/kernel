@@ -350,6 +350,9 @@ inline unsigned int pmu_get_new_cstate
 
 static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
 
+/* This can be used to report NC power transitions */
+void (*nc_report_power_state) (u32, int);
+
 #if defined(CONFIG_INTEL_ATOM_MDFLD_POWER)			\
 			|| defined(CONFIG_INTEL_ATOM_CLV_POWER)
 
@@ -2256,7 +2259,7 @@ unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 	unsigned int new_cstate = cstate;
 	u32 local_cstate = (u32)(cstate);
 	u32 local_cstate_allowed = ~mid_pmu_cxt->cstate_ignore;
-	u32 cstate_mask;
+	u32 cstate_mask, cstate_no_s0ix_mask = (u32)((1 << 6) - 1);
 
 	if (platform_is(INTEL_ATOM_MRFLD)) {
 		/* cstate is 7 for C8 and C9 so correct */
@@ -2269,6 +2272,8 @@ unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 		cstate_mask	= (u32)((1 << local_cstate)-1);
 		local_cstate_allowed	&= ((1<<MWAIT_MAX_NUM_CSTATES)-1);
 		local_cstate_allowed	&= cstate_mask;
+		if (!could_do_s0ix())
+			local_cstate_allowed &= cstate_no_s0ix_mask;
 		new_cstate	= fls(local_cstate_allowed);
 
 		if (likely(new_cstate))

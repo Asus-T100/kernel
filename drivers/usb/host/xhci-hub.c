@@ -552,13 +552,9 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	u32 i, command, num_ports, selector;
 
 
-	selector = wIndex >> 8;
 	max_ports = xhci_get_ports(hcd, &port_array);
 	bus_state = &xhci->bus_state[hcd_index(hcd)];
 
-	if (wIndex && wIndex <= max_ports)
-		status_reg	= &xhci->op_regs->port_power_base +
-			NUM_PORT_REGS*((wIndex & 0xff) - 1);
 
 	spin_lock_irqsave(&xhci->lock, flags);
 	switch (typeReq) {
@@ -705,10 +701,13 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			link_state = (wIndex & 0xff00) >> 3;
 		if (wValue == USB_PORT_FEAT_REMOTE_WAKE_MASK)
 			wake_mask = wIndex & 0xff00;
+		selector = wIndex >> 8;
 		wIndex &= 0xff;
 		if (!wIndex || wIndex > max_ports)
 			goto error;
 		wIndex--;
+		status_reg = &xhci->op_regs->port_power_base +
+			NUM_PORT_REGS*wIndex;
 		temp = xhci_readl(xhci, port_array[wIndex]);
 		if (temp == 0xffffffff) {
 			retval = -ENODEV;
@@ -926,7 +925,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			temp = xhci_readl(xhci, status_reg);
 			temp |= selector << 28;
 			xhci_writel(xhci, temp, status_reg);
-
+			break;
 		default:
 			goto error;
 		}

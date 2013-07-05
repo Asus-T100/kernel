@@ -37,13 +37,15 @@ static int camera_vprog1_on;
 
 static int is_victoriabay(void)
 {
-	return (INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO) ||
-		INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG) ||
-		INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
-		INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)) &&
-		(SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1A) ||
-		 SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1B) ||
-		 SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR20));
+	return INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)
+	       || INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)
+	       || INTEL_MID_BOARD(3, PHONE, CLVTP, RHB, PRO, VVLITE)
+	       || INTEL_MID_BOARD(3, PHONE, CLVTP, RHB, ENG, VVLITE)
+	       || ((INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO)
+		    || INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG))
+		   && (SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1A)   
+		       || SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1B)
+		       || SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR20)));
 }
 
 /*
@@ -85,6 +87,8 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 
 #ifdef CONFIG_BOARD_CTP
 	int reg_err;
+#else
+	int ret = 0;
 #endif
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP 
@@ -122,8 +126,13 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 		usleep_range(250, 300);
 #else
 		if(!camera_vprog1_on) {
-			camera_vprog1_on = 1;
-			intel_scu_ipc_msic_vprog1(0);
+			ret = intel_scu_ipc_msic_vprog1(1);
+			if (!ret) {
+				/* imx1x5 VDIG rise to XCLR release */
+				usleep_range(1000, 1200);
+				camera_vprog1_on = 1;
+			}
+			return ret;
 		}
 #endif
 	} else {
@@ -149,7 +158,10 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 #else
 		if (camera_vprog1_on) {
 			camera_vprog1_on = 0;
-			intel_scu_ipc_msic_vprog1(1);
+			ret = intel_scu_ipc_msic_vprog1(0);
+			if (!ret)
+				camera_vprog1_on = 0;
+			return ret;
 		}
 #endif
 	}

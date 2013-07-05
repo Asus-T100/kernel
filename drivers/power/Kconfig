@@ -398,4 +398,9 @@ config BYT_ULPMC_FWUPDATE
 	help
 	  Say Y here to enable support for Baytrail ULPMC firmware update driver
 
+config BYT_EC_BATTERY
+	bool "Baytrail EC battery driver"
+	help
+	  Say Y here to enable support for Baytrail EC battery driver.
+
 endif # POWER_SUPPLY

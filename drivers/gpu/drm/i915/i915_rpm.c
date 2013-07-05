@@ -222,12 +222,14 @@ int i915_rpm_get_vxd(struct drm_device *drm_dev)
 	i915_rpm_get(drm_dev, RPM_SYNC);
 	return 0;
 }
+EXPORT_SYMBOL(i915_rpm_get_vxd);
 
 int i915_rpm_put_vxd(struct drm_device *drm_dev)
 {
 	i915_rpm_put(drm_dev, RPM_AUTOSUSPEND);
 	return 0;
 }
+EXPORT_SYMBOL(i915_rpm_put_vxd);
 #endif
 
 

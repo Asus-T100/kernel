@@ -48,6 +48,9 @@ void fifo_channel_get_state(
 assert(state != NULL);
 assert(channel_id < N_FIFO_CHANNEL);
 
+	if (state == NULL)
+		return ;
+
 	switch (channel_id) {
 	case FIFO_CHANNEL_ISP0_TO_SP0:
 		state->src_valid   = fifo_monitor_status_valid(ID,
@@ -505,6 +508,8 @@ assert(switch_id < N_FIFO_SWITCH);
 assert(ID == FIFO_MONITOR0_ID);
 
 (void)ID;
+	if (state == NULL)
+		return ;
 
 	data = gp_device_reg_load(GP_DEVICE0_ID, FIFO_SWITCH_ADDR[switch_id]);
 

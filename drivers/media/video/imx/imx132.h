@@ -167,10 +167,11 @@ struct imx_resolution imx132_res_preview[] = {
 		.height = 1096,
 		.fps = 30,
 		.pixels_per_line = 0x0966, /* consistent with regs arrays */
-		.lines_per_frame = 0x0566, /* consistent with regs arrays */
+		.lines_per_frame = 0x0460, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
+		.skip_frames = 2,
 	},
 };
 
@@ -182,10 +183,11 @@ struct imx_resolution imx132_res_still[] = {
 		.height = 1096,
 		.fps = 30,
 		.pixels_per_line = 0x0966, /* consistent with regs arrays */
-		.lines_per_frame = 0x0566, /* consistent with regs arrays */
+		.lines_per_frame = 0x0460, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
+		.skip_frames = 2,
 	},
 };
 
@@ -197,10 +199,11 @@ struct imx_resolution imx132_res_video[] = {
 		.height = 1096,
 		.fps = 30,
 		.pixels_per_line = 0x0966, /* consistent with regs arrays */
-		.lines_per_frame = 0x0566, /* consistent with regs arrays */
+		.lines_per_frame = 0x0460, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
+		.skip_frames = 2,
 	},
 };
 #endif

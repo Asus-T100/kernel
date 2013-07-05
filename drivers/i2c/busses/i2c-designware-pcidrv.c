@@ -610,37 +610,10 @@ static const struct dev_pm_ops i2c_dw_pm_ops = {
 
 static u32 i2c_dw_get_clk_rate_khz(struct dw_i2c_dev *dev)
 {
-	if (dev->use_dyn_clk)
-		return dev->clk_khz;
-	else
-		return dev->controller->clk_khz;
+	return dev->controller->clk_khz;
 }
 
-static ssize_t store_set_clk(struct device *dev, struct device_attribute *attr,
-				const char *buf, size_t size)
-{
-	struct dw_i2c_dev *i2c = dev_get_drvdata(dev);
-
-	if (sscanf(buf, "%u", &i2c->clk_khz) != 1) {
-		dev_err(dev, "input one argument for I2C clock (kHz)\n");
-		return -EINVAL;
-	}
-
-	return size;
-}
-
-static ssize_t show_get_clk(struct device *dev, struct device_attribute *attr,
-							char *buf)
-{
-	struct dw_i2c_dev *i2c = dev_get_drvdata(dev);
-
-	if (i2c->use_dyn_clk)
-		return snprintf(buf, PAGE_SIZE, "%d\n", i2c->clk_khz);
-	else
-		return snprintf(buf, PAGE_SIZE, "%d\n",
-				i2c->controller->clk_khz);
-}
-
+#ifdef CONFIG_I2C_DW_SPEED_MODE_DEBUG
 static ssize_t show_bus_num(struct device *dev, struct device_attribute *attr,
 							char *buf)
 {
@@ -651,99 +624,82 @@ static ssize_t show_bus_num(struct device *dev, struct device_attribute *attr,
 
 #define MODE_NAME_SIZE	10
 
-static ssize_t store_set_mode(struct device *dev, struct device_attribute *attr,
-				const char *buf, size_t size)
+static ssize_t store_mode(struct device *dev,
+			  struct device_attribute *attr,
+			  const char *buf, size_t size)
 {
 	struct dw_i2c_dev *i2c = dev_get_drvdata(dev);
+	int ret = 0;
 	char mode[MODE_NAME_SIZE];
 
-	memset(mode, 0, sizeof(mode));
-
 	if (sscanf(buf, "%9s", mode) != 1) {
-		dev_err(dev, "input one argument for I2C speed mode\n");
+		dev_err(dev, "input I2C speed mode: std/fast\n");
 		return -EINVAL;
 	}
 
-	if (!strncmp("standard", mode, MODE_NAME_SIZE)
-		|| !strncmp("std", mode, MODE_NAME_SIZE))
-			i2c->speed_cfg = DW_IC_CON_SPEED_STD;
-	else if (!strncmp("fast", mode, MODE_NAME_SIZE))
-		i2c->speed_cfg = DW_IC_CON_SPEED_FAST;
-	else
-		return -EINVAL;
+	down(&i2c->lock);
+	pm_runtime_get_sync(i2c->dev);
 
-	return size;
+	if (!strncmp("std", mode, MODE_NAME_SIZE)) {
+		i2c->master_cfg &= ~DW_IC_SPEED_MASK;
+		i2c->master_cfg |= DW_IC_CON_SPEED_STD;
+	} else if (!strncmp("fast", mode, MODE_NAME_SIZE)) {
+		i2c->master_cfg &= ~DW_IC_SPEED_MASK;
+		i2c->master_cfg |= DW_IC_CON_SPEED_FAST;
+	} else {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* init to configure the i2c master */
+	i2c_dw_init(i2c);
+
+	dev_info(dev, "I2C speed mode changed to %s\n", mode);
+
+out:
+	pm_runtime_mark_last_busy(i2c->dev);
+	pm_runtime_put_autosuspend(i2c->dev);
+	up(&i2c->lock);
+
+	return (ret < 0) ? ret : size;
 }
 
-static ssize_t show_get_mode(struct device *dev, struct device_attribute *attr,
-							char *buf)
+static ssize_t show_mode(struct device *dev,
+			 struct device_attribute *attr,
+			 char *buf)
 {
-	int ret;
-	u32 speed;
 	struct dw_i2c_dev *i2c = dev_get_drvdata(dev);
+	int ret;
 
-	if (!i2c->use_dyn_clk)
-		speed = i2c->master_cfg & DW_IC_SPEED_MASK;
-	else
-		speed = i2c->speed_cfg;
-
-	switch (speed) {
+	switch (i2c->master_cfg & DW_IC_SPEED_MASK) {
 	case DW_IC_CON_SPEED_STD:
-		ret = snprintf(buf, PAGE_SIZE, "%s\n", "standard");
+		ret = snprintf(buf, PAGE_SIZE, "%s\n", "std");
 		break;
 	case DW_IC_CON_SPEED_FAST:
 		ret = snprintf(buf, PAGE_SIZE, "%s\n", "fast");
 		break;
 	default:
-		ret = snprintf(buf, PAGE_SIZE, "%s\n", "not supported\n");
+		ret = snprintf(buf, PAGE_SIZE, "%s\n", "Not Supported\n");
 		break;
 	}
 
 	return ret;
 }
 
-static ssize_t store_use_dynamic_clk(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t size)
-{
-	struct dw_i2c_dev *i2c = dev_get_drvdata(dev);
-
-	if (sscanf(buf, "%d", &i2c->use_dyn_clk) != 1) {
-		dev_err(dev,
-		"input one argument to decide whether to use dynamic clock\n");
-		return -EINVAL;
-	}
-
-	return size;
-}
-
-static ssize_t show_use_dynamic_clk(struct device *dev,
-				    struct device_attribute *attr,
-				    char *buf)
-{
-	struct dw_i2c_dev *i2c = dev_get_drvdata(dev);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", i2c->use_dyn_clk);
-}
-
 static DEVICE_ATTR(bus_num, S_IRUGO, show_bus_num, NULL);
-static DEVICE_ATTR(clk_khz, S_IRUGO | S_IWUSR, show_get_clk, store_set_clk);
-static DEVICE_ATTR(mode, S_IRUGO | S_IWUSR, show_get_mode, store_set_mode);
-static DEVICE_ATTR(use_dynamic_clk, S_IRUGO | S_IWUSR, show_use_dynamic_clk,
-						store_use_dynamic_clk);
+static DEVICE_ATTR(mode, S_IRUGO | S_IWUSR, show_mode, store_mode);
 
-static struct attribute *designware_i2c_attrs[] = {
+static struct attribute *i2c_dw_attrs[] = {
 	&dev_attr_bus_num.attr,
-	&dev_attr_clk_khz.attr,
 	&dev_attr_mode.attr,
-	&dev_attr_use_dynamic_clk.attr,
 	NULL,
 };
 
-static struct attribute_group designware_i2c_attr_group = {
-	.name = "i2c_sysfs",
-	.attrs = designware_i2c_attrs,
+static struct attribute_group i2c_dw_attr_group = {
+	.name = "i2c_dw_sysnode",
+	.attrs = i2c_dw_attrs,
 };
+#endif
 
 static int __devinit i2c_dw_pci_probe(struct pci_dev *pdev,
 const struct pci_device_id *id)
@@ -861,12 +817,15 @@ const struct pci_device_id *id)
 		goto err_free_irq;
 	}
 
-	r = sysfs_create_group(&pdev->dev.kobj, &designware_i2c_attr_group);
+#ifdef CONFIG_I2C_DW_SPEED_MODE_DEBUG
+	r = sysfs_create_group(&pdev->dev.kobj, &i2c_dw_attr_group);
 	if (r) {
 		dev_err(&pdev->dev,
 			"Unable to export sysfs interface, error: %d\n", r);
 		goto err_del_adap;
 	}
+#endif
+
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
 	pm_runtime_use_autosuspend(&pdev->dev);
@@ -900,7 +859,9 @@ static void __devexit i2c_dw_pci_remove(struct pci_dev *pdev)
 	pm_runtime_forbid(&pdev->dev);
 	pm_runtime_get_noresume(&pdev->dev);
 
-	sysfs_remove_group(&pdev->dev.kobj, &designware_i2c_attr_group);
+#ifdef CONFIG_I2C_DW_SPEED_MODE_DEBUG
+	sysfs_remove_group(&pdev->dev.kobj, &i2c_dw_attr_group);
+#endif
 
 	pci_set_drvdata(pdev, NULL);
 	i2c_del_adapter(&dev->adapter);

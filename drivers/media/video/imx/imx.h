@@ -37,6 +37,7 @@
 #include "imx175.h"
 #include "imx135.h"
 #include "imx135vb.h"
+#include "imx134.h"
 #include "imx132.h"
 
 #define I2C_MSG_LENGTH		0x2
@@ -115,11 +116,13 @@
 
 #define IMX_SUBDEV_PREFIX "imx"
 #define IMX_DRIVER	"imx1x5"
+#define IMX_NAME_134	"imx134"
 #define IMX_NAME_135	"imx135"
 #define IMX_NAME_175	"imx175"
 #define IMX_NAME_132	"imx132"
 #define IMX175_ID	0x0175
 #define IMX135_ID	0x0135
+#define IMX134_ID	0x0134
 #define IMX132_ID	0x0132
 
 /* imx175 - use dw9714 vcm */
@@ -128,17 +131,20 @@
 #define IMX135_SALTBAY 0x135
 #define IMX135_VICTORIABAY 0x136
 #define IMX132_SALTBAY 0x132
+#define IMX134_VALLEYVIEW 0x134
 
 #define IMX_ID_DEFAULT	0x0000
-#define IMX175_CHIP_ID	0x0000
-#define IMX135_CHIP_ID	0x0016
-#define IMX132_CHIP_ID  0x0000
+#define IMX132_175_CHIP_ID	0x0000
+#define IMX134_135_CHIP_ID	0x0016
+
 #define IMX175_RES_WIDTH_MAX	3280
 #define IMX175_RES_HEIGHT_MAX	2464
 #define IMX135_RES_WIDTH_MAX	4208
 #define IMX135_RES_HEIGHT_MAX	3120
 #define IMX132_RES_WIDTH_MAX	1936
 #define IMX132_RES_HEIGHT_MAX	1096
+#define IMX134_RES_WIDTH_MAX	3280
+#define IMX134_RES_HEIGHT_MAX	2464
 
 /* Defines for lens/VCM */
 #define IMX_FOCAL_LENGTH_NUM	369	/*3.69mm*/
@@ -205,6 +211,10 @@ struct max_res imx_max_res[] = {
 		.res_max_width = IMX132_RES_WIDTH_MAX,
 		.res_max_height = IMX132_RES_HEIGHT_MAX,
 	},
+	[IMX134_ID] = {
+		.res_max_width = IMX134_RES_WIDTH_MAX,
+		.res_max_height = IMX134_RES_HEIGHT_MAX,
+	},
 };
 
 struct imx_settings {
@@ -262,6 +272,15 @@ struct imx_settings imx_sets[] = {
 		.n_res_preview = ARRAY_SIZE(imx132_res_preview),
 		.n_res_still = ARRAY_SIZE(imx132_res_still),
 		.n_res_video = ARRAY_SIZE(imx132_res_video),
+	},
+	[IMX134_VALLEYVIEW] = {
+		.init_settings = imx134_init_settings,
+		.res_preview = imx134_res_preview,
+		.res_still = imx134_res_still,
+		.res_video = imx134_res_video,
+		.n_res_preview = ARRAY_SIZE(imx134_res_preview),
+		.n_res_still = ARRAY_SIZE(imx134_res_still),
+		.n_res_video = ARRAY_SIZE(imx134_res_video),
 	},
 };
 
@@ -559,6 +578,18 @@ struct imx_vcm imx_vcms[] = {
 		.q_focus_abs = dw9719_q_focus_abs,
 		.t_vcm_slew = dw9719_t_vcm_slew,
 		.t_vcm_timing = dw9719_t_vcm_timing,
+	},
+	[IMX134_VALLEYVIEW] = {
+		.power_up = dw9714_vcm_power_up,
+		.power_down = dw9714_vcm_power_down,
+		.init = dw9714_vcm_init,
+		.t_focus_vcm = dw9714_t_focus_vcm,
+		.t_focus_abs = dw9714_t_focus_abs,
+		.t_focus_rel = dw9714_t_focus_rel,
+		.q_focus_status = dw9714_q_focus_status,
+		.q_focus_abs = dw9714_q_focus_abs,
+		.t_vcm_slew = dw9714_t_vcm_slew,
+		.t_vcm_timing = dw9714_t_vcm_timing,
 	},
 	[IMX_ID_DEFAULT] = {
 		.power_up = vcm_power_up,

@@ -150,7 +150,6 @@ int i915_set_plane_zorder(struct drm_device *dev, void *data,
 	u32 order = zorder->order;
 	int s1_zorder, s1_bottom, s2_zorder, s2_bottom;
 	int pipe = (order >> 31) & 0x1;
-	int plane = pipe;
 	int z_order = order & 0x000F;
 
 	s1_zorder = (order >> 3) & 0x1;

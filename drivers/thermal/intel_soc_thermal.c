@@ -40,6 +40,7 @@
 #include <linux/interrupt.h>
 
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_thermal.h>
 
 #define DRIVER_NAME	"soc_thrm"
 
@@ -54,6 +55,7 @@
 /* There are 4 Aux trips. Only Aux0, Aux1 are writeable */
 #define DTS_TRIP_RW		0x03
 #define SOC_THERMAL_TRIPS	4
+#define SOC_MAX_STATES		4
 
 #define TJMAX_TEMP		90
 #define TJMAX_CODE		0x7F
@@ -61,6 +63,10 @@
 /* Default hysteresis values in C */
 #define DEFAULT_C2H_HYST	3
 #define DEFAULT_H2C_HYST	3
+
+/* Power Limit registers */
+#define PKG_TURBO_POWER_LIMIT	0x610
+#define CPU_PWR_BUDGET_CTL	0x02
 
 /* IRQ details */
 #define SOC_DTS_CONTROL		0x80
@@ -79,7 +85,15 @@ static DEFINE_MUTEX(thrm_update_lock);
 
 struct platform_soc_data {
 	struct thermal_zone_device *tzd[SOC_THERMAL_SENSORS];
+	struct thermal_cooling_device *soc_cdev; /* PL1 control */
 	int irq;
+};
+
+struct cooling_device_info {
+	struct soc_throttle_data *soc_data;
+	/* Lock protecting the soc_cur_state variable */
+	struct mutex lock_state;
+	unsigned long soc_cur_state;
 };
 
 struct thermal_device_info {
@@ -198,6 +212,19 @@ static void remove_soc_dts_debugfs(void)
 static inline void create_soc_dts_debugfs(void) { }
 static inline void remove_soc_dts_debugfs(void) { }
 #endif
+
+static
+struct cooling_device_info *initialize_cdev(struct platform_device *pdev)
+{
+	struct cooling_device_info *cdev_info =
+		kzalloc(sizeof(struct cooling_device_info), GFP_KERNEL);
+	if (!cdev_info)
+		return NULL;
+
+	cdev_info->soc_data = pdev->dev.platform_data;
+	mutex_init(&cdev_info->lock_state);
+	return cdev_info;
+}
 
 static struct thermal_device_info *initialize_sensor(int index)
 {
@@ -358,6 +385,66 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	return 0;
 }
 
+/* SoC cooling device callbacks */
+static int soc_get_max_state(struct thermal_cooling_device *cdev,
+				unsigned long *state)
+{
+	/* SoC has 4 levels of throttling from 0 to 3 */
+	*state = SOC_MAX_STATES - 1;
+	return 0;
+}
+
+static int soc_get_cur_state(struct thermal_cooling_device *cdev,
+				unsigned long *state)
+{
+	struct cooling_device_info *cdev_info =
+			(struct cooling_device_info *)cdev->devdata;
+
+	mutex_lock(&cdev_info->lock_state);
+	*state = cdev_info->soc_cur_state;
+	mutex_unlock(&cdev_info->lock_state);
+
+	return 0;
+}
+
+static int soc_set_cur_state(struct thermal_cooling_device *cdev,
+				unsigned long state)
+{
+	u32 eax, edx;
+	int ret;
+	struct soc_throttle_data *data;
+	struct cooling_device_info *cdev_info =
+			(struct cooling_device_info *)cdev->devdata;
+
+	if (state >= SOC_MAX_STATES) {
+		pr_err("Invalid SoC throttle state:%ld\n", state);
+		return -EINVAL;
+	}
+
+	mutex_lock(&cdev_info->lock_state);
+
+	data = &cdev_info->soc_data[state];
+
+	rdmsr_on_cpu(0, PKG_TURBO_POWER_LIMIT, &eax, &edx);
+
+	/* Set bits[0:14] of eax to 'data->power_limit' */
+	eax = (eax & ~0x7FFF) | data->power_limit;
+
+	wrmsr_on_cpu(0, PKG_TURBO_POWER_LIMIT, eax, edx);
+
+	eax = read_soc_reg(CPU_PWR_BUDGET_CTL);
+
+	/* Set bits[8:14] of eax to 'data->floor_freq' */
+	eax = (eax & ~(0x7F << 8)) | (data->floor_freq << 8);
+
+	write_soc_reg(CPU_PWR_BUDGET_CTL, eax);
+
+	cdev_info->soc_cur_state = state;
+
+	mutex_unlock(&cdev_info->lock_state);
+	return ret;
+}
+
 static void notify_thermal_event(struct thermal_zone_device *tzd,
 				long temp, int event, int level)
 {
@@ -475,6 +562,12 @@ static struct thermal_zone_device_ops tzd_ops = {
 	.get_trip_hyst = show_trip_hyst,
 };
 
+static struct thermal_cooling_device_ops soc_cooling_ops = {
+	.get_max_state = soc_get_max_state,
+	.get_cur_state = soc_get_cur_state,
+	.set_cur_state = soc_set_cur_state,
+};
+
 /*********************************************************************
  *		Driver initialization and finalization
  *********************************************************************/
@@ -501,12 +594,22 @@ static int soc_thermal_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* Register a cooling device for PL1 (power limit) control */
+	pdata->soc_cdev = thermal_cooling_device_register("SoC",
+						initialize_cdev(pdev),
+						&soc_cooling_ops);
+	if (IS_ERR(pdata->soc_cdev)) {
+		ret = PTR_ERR(pdata->soc_cdev);
+		pdata->soc_cdev = NULL;
+		goto exit_reg;
+	}
+
 	platform_set_drvdata(pdev, pdata);
 
 	ret = platform_get_irq(pdev, 0);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "platform_get_irq failed:%d\n", ret);
-		goto exit_reg;
+		goto exit_cdev;
 	}
 
 	pdata->irq = ret;
@@ -517,7 +620,7 @@ static int soc_thermal_probe(struct platform_device *pdev)
 						DRIVER_NAME, pdata);
 	if (ret) {
 		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n", ret);
-		goto exit_reg;
+		goto exit_cdev;
 	}
 
 	/* Enable DTS0 and DTS1 */
@@ -527,6 +630,8 @@ static int soc_thermal_probe(struct platform_device *pdev)
 
 	return 0;
 
+exit_cdev:
+	thermal_cooling_device_unregister(pdata->soc_cdev);
 exit_reg:
 	while (--i >= 0) {
 		struct thermal_device_info *td_info = pdata->tzd[i]->devdata;
@@ -549,6 +654,7 @@ static int soc_thermal_remove(struct platform_device *pdev)
 		kfree(td_info);
 		thermal_zone_device_unregister(pdata->tzd[i]);
 	}
+	thermal_cooling_device_unregister(pdata->soc_cdev);
 	platform_set_drvdata(pdev, NULL);
 	free_irq(pdata->irq, pdata);
 	kfree(pdata);

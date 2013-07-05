@@ -223,7 +223,7 @@ int mnp_from_clk_table(u32 dsi_clk, struct dsi_mnp *dsi_mnp)
 	if (dsi_clk < 300 || dsi_clk > 1000)
 		return -ECHRNG;
 
-	for (i = 0; i <= sizeof(dsi_clk_tbl)/sizeof(struct dsi_clock_table);
+	for (i = 0; i < sizeof(dsi_clk_tbl)/sizeof(struct dsi_clock_table);
 			i++) {
 		if (dsi_clk_tbl[i].freq > dsi_clk)
 			break;

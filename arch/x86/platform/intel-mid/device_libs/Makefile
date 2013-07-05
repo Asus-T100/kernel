@@ -1,4 +1,5 @@
-CFLAGS_platform_regulator.o			:= -Werror
+CFLAGS_platform_clv_regulator.o			:= -Werror
+CFLAGS_platform_mrfl_regulator.o		:= -Werror
 
 # IPC Devices
 obj-$(subst m,y,$(CONFIG_SND_BYT_MACHINE))				+= platform_byt_audio.o
@@ -12,9 +13,10 @@ obj-y									+= platform_msic_ocd.o
 obj-y									+= platform_tc35876x.o
 obj-y									+= platform_ctp_audio.o
 obj-y									+= platform_sst_audio.o
-obj-y									+= platform_regulator.o
 obj-y									+= platform_soc_thermal.o
 obj-y									+= pci/
+obj-$(subst m,y,$(CONFIG_X86_MDFLD))					+= platform_clv_regulator.o
+obj-$(subst m,y,$(CONFIG_X86_MRFLD))					+= platform_mrfl_regulator.o
 obj-$(subst m,y,$(CONFIG_MSIC_GPADC))					+= platform_msic_adc.o
 obj-$(subst m,y,$(CONFIG_BATTERY_INTEL_MDF))				+= platform_msic_battery.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_POWER_BUTTON))			+= platform_msic_power_btn.o
@@ -77,6 +79,7 @@ obj-$(subst m,y,$(CONFIG_VIDEO_OV8830))					+= platform_ov8830.o
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx175.o
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx135.o
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx132.o
+obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx134.o
 obj-$(subst m,y,$(CONFIG_VIDEO_S5K8AAY))				+= platform_s5k8aay.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV9724))					+= platform_ov9724.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV2722))					+= platform_ov2722.o
@@ -106,7 +109,9 @@ obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
 obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
+ifndef CONFIG_ACPI
 obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
+endif
 # GPS
 obj-$(subst m,y,$(CONFIG_INTEL_MID_GPS))				+= platform_gps.o
 # Pin Control

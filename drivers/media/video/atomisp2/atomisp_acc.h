@@ -102,6 +102,12 @@ int atomisp_acc_wait(struct atomisp_device *isp,
 		     unsigned int *handle);
 
 /*
+ * Used by ISR to notify ACC pipeline finished.
+ * This is internally used and does not export as IOCTL.
+ */
+void atomisp_acc_done(struct atomisp_device *isp);
+
+/*
  * Appends the loaded acceleration binary extensions to the
  * current ISP mode. Must be called just before atomisp_css_start().
  */

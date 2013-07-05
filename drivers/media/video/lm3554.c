@@ -172,8 +172,33 @@ static int lm3554_set_config1(struct lm3554 *flash)
 }
 
 /* -----------------------------------------------------------------------------
- * Hardware trigger
+ * Hardware reset and trigger
  */
+
+static int lm3554_hw_reset(struct i2c_client *client)
+{
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3554 *flash = to_lm3554(sd);
+	struct lm3554_platform_data *pdata = flash->pdata;
+	int ret;
+
+	ret = gpio_request(pdata->gpio_reset, "flash reset");
+	if (ret < 0)
+		return ret;
+
+	ret = gpio_direction_output(pdata->gpio_reset, 1);
+	if (ret < 0)
+		return ret;
+
+	gpio_set_value(pdata->gpio_reset, 0);
+	msleep(50);
+
+	gpio_set_value(pdata->gpio_reset, 1);
+	msleep(50);
+
+	gpio_free(pdata->gpio_reset);
+	return ret;
+}
 
 static void lm3554_flash_off_delay(long unsigned int arg)
 {
@@ -576,28 +601,6 @@ static int lm3554_setup(struct lm3554 *flash)
 
 static int __lm3554_s_power(struct lm3554 *flash, int power)
 {
-	struct lm3554_platform_data *pdata = flash->pdata;
-	int ret;
-
-	ret = gpio_request(pdata->gpio_reset, "flash reset");
-	if (ret < 0)
-		return ret;
-
-	gpio_set_value(pdata->gpio_reset, power);
-	gpio_free(pdata->gpio_reset);
-	usleep_range(100, 100);
-
-	if (power) {
-		/* Setup default values. This makes sure that the chip
-		 * is in a known state.
-		 */
-		ret = lm3554_setup(flash);
-		if (ret < 0) {
-			__lm3554_s_power(flash, 0);
-			return ret;
-		}
-	}
-
 	return 0;
 }
 
@@ -645,18 +648,26 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 		return -ENODEV;
 	}
 
-	/* Make sure the power is initially off to ensure chip is resetted */
-	__lm3554_s_power(flash, 0);
-
-	/* Power up the flash driver, resetting and initializing it. */
+	/* Power up the flash driver and reset it */
 	ret = lm3554_s_power(&flash->sd, 1);
-	if (ret < 0) {
-		dev_err(&client->dev, "Failed to power on lm3554 LED flash\n");
-	} else {
-		dev_dbg(&client->dev, "Successfully detected lm3554 LED flash\n");
-		lm3554_s_power(&flash->sd, 0);
-	}
+	if (ret < 0)
+		return ret;
 
+	lm3554_hw_reset(client);
+
+	/* Setup default values. This makes sure that the chip is in a known
+	 * state.
+	 */
+	ret = lm3554_setup(flash);
+	if (ret < 0)
+		goto fail;
+
+	dev_dbg(&client->dev, "Successfully detected lm3554 LED flash\n");
+	lm3554_s_power(&flash->sd, 0);
+	return 0;
+
+fail:
+	lm3554_s_power(&flash->sd, 0);
 	return ret;
 }
 
