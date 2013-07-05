@@ -877,6 +877,29 @@ static int imx_v_flip(struct v4l2_subdev *sd, s32 value)
 	return imx_write_reg_array(client, imx_param_update);
 }
 
+static int imx_h_flip(struct v4l2_subdev *sd, s32 value)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret;
+	u16 val;
+
+	ret = imx_write_reg_array(client, imx_param_hold);
+	if (ret)
+		return ret;
+	ret = imx_read_reg(client, IMX_8BIT, IMX_IMG_ORIENTATION, &val);
+	if (ret)
+		return ret;
+	if (value)
+		val |= IMX_HFLIP_BIT;
+	else
+		val &= ~IMX_HFLIP_BIT;
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_IMG_ORIENTATION, val);
+	if (ret)
+		return ret;
+	return imx_write_reg_array(client, imx_param_update);
+}
+
 static int imx_g_focal(struct v4l2_subdev *sd, s32 *val)
 {
 	*val = (IMX_FOCAL_LENGTH_NUM << 16) | IMX_FOCAL_LENGTH_DEM;
@@ -1032,6 +1055,18 @@ struct imx_control imx_controls[] = {
 			.default_value = 0,
 		},
 		.tweak = imx_v_flip,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_HFLIP,
+			.type = V4L2_CTRL_TYPE_BOOLEAN,
+			.name = "Mirror",
+			.minimum = 0,
+			.maximum = 1,
+			.step = 1,
+			.default_value = 0,
+		},
+		.tweak = imx_h_flip,
 	},
 	{
 		.qc = {
