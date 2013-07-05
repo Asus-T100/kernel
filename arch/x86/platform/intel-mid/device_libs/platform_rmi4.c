@@ -92,14 +92,14 @@ void *rmi4_platform_data(void *info)
 		/* RMI4_S3400_CGS*/
 		{
 			.swap_axes = true,
-			.customer_id = 1358954496,
+			.customer_id = 1342177280,
 			.fw_name = "s3400_cgs.img",
 			.key_dev_name = "rmi4_key",
 		},
 		/* RMI4_S3400_IGZO*/
 		{
 			.swap_axes = true,
-			.customer_id = 1358954496,
+			.customer_id = 1342177280,
 			.fw_name = "s3400_igzo.img",
 			.key_dev_name = "rmi4_key",
 		},

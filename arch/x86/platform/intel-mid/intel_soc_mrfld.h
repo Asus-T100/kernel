@@ -152,6 +152,5 @@
 extern int intel_scu_ipc_simple_command(int, int);
 extern void log_wakeup_irq(void);
 extern void s0ix_complete(void);
-extern bool could_do_s0ix(void);
 
 #endif
