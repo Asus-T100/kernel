@@ -41,6 +41,12 @@
 #include "imx.h"
 #include <asm/intel-mid.h>
 
+static enum atomisp_bayer_order imx_bayer_order_mapping[] = {
+	atomisp_bayer_order_rggb,
+	atomisp_bayer_order_grbg,
+	atomisp_bayer_order_gbrg,
+	atomisp_bayer_order_bggr
+};
 
 static int
 imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
@@ -854,8 +860,26 @@ static int imx_test_pattern(struct v4l2_subdev *sd, s32 value)
 	return imx_write_reg(client, IMX_16BIT, IMX_TEST_PATTERN_MODE, value);
 }
 
+static enum v4l2_mbus_pixelcode
+imx_translate_bayer_order(enum atomisp_bayer_order code)
+{
+	switch (code) {
+	case atomisp_bayer_order_rggb:
+		return V4L2_MBUS_FMT_SRGGB10_1X10;
+	case atomisp_bayer_order_grbg:
+		return V4L2_MBUS_FMT_SGRBG10_1X10;
+	case atomisp_bayer_order_bggr:
+		return V4L2_MBUS_FMT_SBGGR10_1X10;
+	case atomisp_bayer_order_gbrg:
+		return V4L2_MBUS_FMT_SGBRG10_1X10;
+	}
+	return 0;
+}
+
 static int imx_v_flip(struct v4l2_subdev *sd, s32 value)
 {
+	struct imx_device *dev = to_imx_sensor(sd);
+	struct camera_mipi_info *imx_info = NULL;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 	u16 val;
@@ -874,11 +898,22 @@ static int imx_v_flip(struct v4l2_subdev *sd, s32 value)
 			IMX_IMG_ORIENTATION, val);
 	if (ret)
 		return ret;
+
+	imx_info = v4l2_get_subdev_hostdata(sd);
+	if (imx_info) {
+		val &= (IMX_VFLIP_BIT|IMX_HFLIP_BIT);
+		imx_info->raw_bayer_order = imx_bayer_order_mapping[val];
+		dev->format.code = imx_translate_bayer_order(
+			imx_info->raw_bayer_order);
+	}
+
 	return imx_write_reg_array(client, imx_param_update);
 }
 
 static int imx_h_flip(struct v4l2_subdev *sd, s32 value)
 {
+	struct imx_device *dev = to_imx_sensor(sd);
+	struct camera_mipi_info *imx_info = NULL;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 	u16 val;
@@ -897,6 +932,15 @@ static int imx_h_flip(struct v4l2_subdev *sd, s32 value)
 			IMX_IMG_ORIENTATION, val);
 	if (ret)
 		return ret;
+
+	imx_info = v4l2_get_subdev_hostdata(sd);
+	if (imx_info) {
+		val &= (IMX_VFLIP_BIT|IMX_HFLIP_BIT);
+		imx_info->raw_bayer_order = imx_bayer_order_mapping[val];
+		dev->format.code = imx_translate_bayer_order(
+		imx_info->raw_bayer_order);
+	}
+
 	return imx_write_reg_array(client, imx_param_update);
 }
 
@@ -1363,7 +1407,7 @@ static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 		fmt->height = dev->curr_res_table[idx].height;
 	}
 
-	fmt->code = V4L2_MBUS_FMT_SGBRG10_1X10;
+	fmt->code = dev->format.code;
 
 	mutex_unlock(&dev->input_lock);
 	return 0;
@@ -1377,6 +1421,7 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 	struct camera_mipi_info *imx_info = NULL;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
+	u16 val;
 
 	imx_info = v4l2_get_subdev_hostdata(sd);
 	if (imx_info == NULL)
@@ -1418,7 +1463,16 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		goto out;
 
 	ret = imx_get_intg_factor(client, imx_info, imx_def_reg);
+	if (ret)
+		goto out;
 
+	ret = imx_read_reg(client, IMX_8BIT, IMX_IMG_ORIENTATION, &val);
+	if (ret)
+		goto out;
+	val &= (IMX_VFLIP_BIT|IMX_HFLIP_BIT);
+	imx_info->raw_bayer_order = imx_bayer_order_mapping[val];
+	dev->format.code = imx_translate_bayer_order(
+		imx_info->raw_bayer_order);
 out:
 	mutex_unlock(&dev->input_lock);
 	return ret;
@@ -1435,7 +1489,7 @@ static int imx_g_mbus_fmt(struct v4l2_subdev *sd,
 
 	fmt->width = dev->curr_res_table[dev->fmt_idx].width;
 	fmt->height = dev->curr_res_table[dev->fmt_idx].height;
-	fmt->code = V4L2_MBUS_FMT_SGBRG10_1X10;
+	fmt->code = dev->format.code;
 
 	return 0;
 }
@@ -1554,10 +1608,10 @@ static int imx_enum_frameintervals(struct v4l2_subdev *sd,
 static int imx_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned int index,
 				 enum v4l2_mbus_pixelcode *code)
 {
+	struct imx_device *dev = to_imx_sensor(sd);
 	if (index >= MAX_FMTS)
 		return -EINVAL;
-
-	*code = V4L2_MBUS_FMT_SGBRG10_1X10;
+	*code = dev->format.code;
 	return 0;
 }
 
@@ -1633,10 +1687,10 @@ static int
 imx_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		       struct v4l2_subdev_mbus_code_enum *code)
 {
+	struct imx_device *dev = to_imx_sensor(sd);
 	if (code->index >= MAX_FMTS)
 		return -EINVAL;
-	code->code = V4L2_MBUS_FMT_SGBRG10_1X10;
-
+	code->code = dev->format.code;
 	return 0;
 }
 
@@ -1881,6 +1935,7 @@ static int imx_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct imx_device *dev;
+	struct camera_mipi_info *imx_info = NULL;
 	int ret;
 
 	/* allocate sensor device & init sub device */
@@ -1904,6 +1959,7 @@ static int imx_probe(struct i2c_client *client,
 		if (ret)
 			goto out_free;
 	}
+	imx_info = v4l2_get_subdev_hostdata(&dev->sd);
 
 	/*
 	 * sd->name is updated with sensor driver name by the v4l2.
@@ -1920,7 +1976,8 @@ static int imx_probe(struct i2c_client *client,
 
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
-	dev->format.code = V4L2_MBUS_FMT_SGBRG10_1X10;
+	dev->format.code = imx_translate_bayer_order(
+		imx_info->raw_bayer_order);
 	dev->sd.entity.ops = &imx_entity_ops;
 	dev->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
 
