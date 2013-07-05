@@ -1899,8 +1899,10 @@ static int __init dlp_module_init(void)
 		goto out;
 	}
 
-	/* Create a high priority workqueue for rx background tasks */
-	dlp_drv.rx_wq = alloc_workqueue(DRVNAME "-rx_wq", WQ_HIGHPRI, 1);
+	/* Create a high priority and single thread workqueue for serialize
+	 * rx background tasks */
+	dlp_drv.rx_wq = alloc_workqueue(DRVNAME "-rx_wq", WQ_HIGHPRI |
+							WQ_NON_REENTRANT, 1);
 	if (!dlp_drv.rx_wq) {
 		pr_err(DRVNAME ": Unable to create RX workqueue\n");
 		err = -EFAULT;

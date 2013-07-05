@@ -3466,8 +3466,10 @@ static int __init ffl_driver_init(void)
 		goto no_tx_wq;
 	}
 
-	/* Create a high priority workqueue for rx background tasks */
-	ffl_rx_wq = alloc_workqueue(DRVNAME "-rq", WQ_HIGHPRI, 1);
+	/* Create a high priority and single thread workqueue for serialising
+	 * rx background tasks */
+	ffl_rx_wq = alloc_workqueue(DRVNAME "-rq", WQ_HIGHPRI |
+							WQ_NON_REENTRANT, 1);
 	if (unlikely(!ffl_rx_wq)) {
 		pr_err(DRVNAME ": unable to create FFL RX-side workqueue");
 		err = -EFAULT;
