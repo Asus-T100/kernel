@@ -1405,9 +1405,11 @@ stay_host:
 
 	if (user_events & USER_RESET_HOST) {
 		otg_dbg(otg, "USER_RESET_HOST\n");
+		pm_runtime_get(otg->dev);
 		stop_host(otg);
 		reset_hw(otg);
 		start_host(otg);
+		pm_runtime_put_autosuspend(otg->dev);
 		goto stay_host;
 	}
 
