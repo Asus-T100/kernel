@@ -145,6 +145,7 @@
 #define STAT_C_CHARGER_ERROR			BIT(6)
 #define STAT_D					0x3E
 #define STAT_E					0x3F
+#define SMB349_SUSPENDED			(1<<7)
 
 #define STATUS_UPDATE_INTERVAL			(HZ * 60)	/*60 sec */
 
@@ -194,6 +195,7 @@ struct smb347_charger {
 	spinlock_t		otg_queue_lock;
 	bool			otg_enabled;
 	bool			otg_battery_uv;
+	bool			is_disabled;
 	const struct smb347_charger_platform_data	*pdata;
 	struct delayed_work	smb347_statmon_worker;
 	struct extcon_dev	*edev;
@@ -228,6 +230,18 @@ static int smb347_write(struct smb347_charger *smb, u8 reg, u8 val)
 		dev_warn(&smb->client->dev, "failed to write reg 0x%x: %d\n",
 			 reg, ret);
 	return ret;
+}
+
+static bool smb347_is_suspended(struct smb347_charger *smb)
+{
+	int ret;
+
+	ret = smb347_read(smb, STAT_E);
+	if (ret < 0) {
+		dev_warn(&smb->client->dev, "i2c failed %d", ret);
+		return false;
+	}
+	return (ret & SMB349_SUSPENDED) == SMB349_SUSPENDED;
 }
 
 /*
@@ -273,7 +287,9 @@ static int smb34x_get_health(struct smb347_charger *smb)
 		goto end;
 	}
 
-	usb = !(stat_e & SMB349_IRQSTAT_E_DCIN_UV_STAT);
+	usb = !(stat_e & SMB349_IRQSTAT_E_DCIN_UV_STAT) &&
+			!smb->is_disabled;
+
 	if (usb) {
 		if (stat_e & SMB349_IRQSTAT_E_DCIN_UV_STAT)
 			chrg_health = POWER_SUPPLY_HEALTH_DEAD;
@@ -309,8 +325,10 @@ static int smb347_update_status(struct smb347_charger *smb)
 	if (smb->is_smb349) {
 		if (smb->pdata->use_mains)
 			dc = !(ret & SMB349_IRQSTAT_E_DCIN_UV_STAT);
-		else if (smb->pdata->use_usb)
-			usb = !(ret & SMB349_IRQSTAT_E_DCIN_UV_STAT);
+		else if (smb->pdata->use_usb) {
+			usb = !(ret & SMB349_IRQSTAT_E_DCIN_UV_STAT) &&
+				!smb->is_disabled;
+		}
 
 		mutex_lock(&smb->lock);
 		ret = smb->mains_online != dc || smb->usb_online != usb;
@@ -445,6 +463,106 @@ static inline int smb347_charging_disable(struct smb347_charger *smb)
 {
 	return smb347_charging_set(smb, false);
 }
+
+static int smb347_enable_suspend(struct smb347_charger *smb)
+{
+	int ret;
+
+	if (!smb)
+		return -EINVAL;
+
+	mutex_lock(&smb->lock);
+	ret = smb347_read(smb, CMD_A);
+	if (ret < 0)
+		goto en_sus_err;
+
+	ret = (ret & ~CMD_A_CHG_ENABLED) | CMD_A_SUSPEND_ENABLED;
+
+	ret = smb347_write(smb, CMD_A, ret);
+	if (ret < 0)
+		goto en_sus_err;
+
+	mutex_unlock(&smb->lock);
+
+	return 0;
+
+en_sus_err:
+	dev_info(&smb->client->dev, "i2c error %d", ret);
+	mutex_unlock(&smb->lock);
+	return ret;
+}
+
+static int smb347_disable_suspend(struct smb347_charger *smb)
+{
+	int ret;
+
+	if (!smb)
+		return -EINVAL;
+
+	mutex_lock(&smb->lock);
+	ret = smb347_read(smb, CMD_A);
+	if (ret < 0)
+		goto dis_sus_err;
+
+	ret = (ret & ~CMD_A_SUSPEND_ENABLED) | CMD_A_CHG_ENABLED;
+
+	ret = smb347_write(smb, CMD_A, ret);
+	if (ret < 0)
+		goto dis_sus_err;
+
+	mutex_unlock(&smb->lock);
+
+	return 0;
+
+dis_sus_err:
+	dev_info(&smb->client->dev, "i2c error %d", ret);
+	mutex_unlock(&smb->lock);
+	return ret;
+}
+
+/*
+ * smb347_enable_charger:
+ *	Exposed to EXTCON for enabling charging
+ *	Update the status variable, for device active state
+ */
+int smb347_enable_charger()
+{
+	struct smb347_charger *smb = smb347_dev;
+	int ret;
+
+	ret = smb347_disable_suspend(smb);
+	if (ret < 0)
+		return ret;
+
+	mutex_lock(&smb->lock);
+	smb->is_disabled = false;
+	mutex_unlock(&smb->lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(smb347_enable_charger);
+
+/*
+ * smb347_disable_charger:
+ *	Exposed to EXTCON for disabling charging via SDP
+ *	Update the status variable, for device active state
+ */
+int smb347_disable_charger()
+{
+	struct smb347_charger *smb = smb347_dev;
+	int ret;
+
+	ret = smb347_enable_suspend(smb);
+	if (ret < 0)
+		return ret;
+
+	mutex_lock(&smb->lock);
+	smb->is_disabled = true;
+	mutex_unlock(&smb->lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(smb347_disable_charger);
 
 static int smb347_update_online(struct smb347_charger *smb)
 {
@@ -850,6 +968,9 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 
 	if (irqstat_f & IRQSTAT_F_PWR_OK_IRQ) {
 		dev_info(&smb->client->dev, "PowerOK INTR recieved\n");
+
+		if (smb347_update_status(smb) > 0)
+			smb347_update_online(smb);
 
 		if (smb->pdata->use_mains)
 			power_supply_changed(&smb->mains);
