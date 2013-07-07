@@ -128,6 +128,8 @@ enum {
 	INTEL_CLVT_TABLET_TBD_ENG = 0x8000,
 	INTEL_CLVT_TABLET_SLP_PRO = 0x0001,
 	INTEL_CLVT_TABLET_SLP_ENG = 0x8001,
+	INTEL_CLVT_TABLET_HLS_PRO = 0x0002,
+	INTEL_CLVT_TABLET_HLS_ENG = 0x8002,
 	INTEL_CLVT_TABLET_UNKNOWN = 0xFFFF
 };
 
@@ -364,6 +366,13 @@ enum {
 	CLVT_TABLET_SLP_UNKNOWN = 0xFFFF
 };
 
+/* Hardware_ID table for Product_Line_ID == INTEL_CLVT_TABLET_HLS */
+enum {
+	CLVT_TABLET_HLS_FLG, /*Flag Hill EVT */
+	CLVT_TABLET_HLS_GRAND, /* Grand Hill EVT */
+	CLVT_TABLET_HLS_UNKNOWN = 0xFFFF
+};
+
 /* Hardware_ID table for Product_Line_ID == INTEL_MRFL_PHONE_SB */
 enum {
 	MRFL_PHONE_SR_VVA,  /* SilverRidge VV FAB A */
@@ -390,7 +399,8 @@ enum {
 
 /* Hardware_ID table for Product_Line_ID == INTEL_MRFL_PHONE_BB */
 enum {
-	MRFL_PHONE_BB_PRH,  /* Bodega Bay PRh FAB A */
+	MRFL_PHONE_BB_PRHA, /* Bodega Bay PRh FAB A */
+	MRFL_PHONE_BB_PRHB, /* Bodega Bay PRh FAB B */
 	MRFL_PHONE_BB_RSVD,
 	MRFL_PHONE_BB_UNKNOWN = 0xFFFF
 };
@@ -409,15 +419,23 @@ enum {
 	BYT_PHONE_TBD_UNKNOWN = 0xFFFF
 };
 
-/* Hardware_ID table for Product_Line_ID == INTEL_BYT_TABLET_TBD */
+/* Hardware_ID table for Product_Line_ID == INTEL_BYT_TABLET_BLK */
 enum {
-	BYT_TABLET_BLK_VV1, /* Bay Lake CRB/RVP FAB 1 */
-	BYT_TABLET_BLK_VV2, /* Bay Lake CRB/RVP FAB 2 */
-	BYT_TABLET_BLK_VV3, /* Bay Lake CRB/RVP FAB 3 */
-	BYT_TABLET_BLK_PR1_1, /* Bay Lake FFRD-10 PR1.1 */
-	BYT_TABLET_BLB_VV3, /* Bayley Bay CRB FAB 3 Rev3 */
+	BYT_TABLET_BLK_RVP1, /* Bay Lake CRB/RVP FAB 1 */
+	BYT_TABLET_BLK_RVP2, /* Bay Lake CRB/RVP FAB 2 */
+	BYT_TABLET_BLK_RVP3, /* Bay Lake CRB/RVP FAB 3 */
+	BYT_TABLET_BLK_10PR11, /* Bay Lake FFRD-10 PR1.1 */
+	BYT_TABLET_BLK_8PR0, /* Bay Lake FFRD-8 PR0*/
+	BYT_TABLET_BLK_8PR1, /* Bay Lake FFRD-8 PR1 */
 	BYT_TABLET_BLK_RSVD,
 	BYT_TABLET_BLK_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_BYT_TABLET_BLB */
+enum {
+	BYT_TABLET_BLB_CRBV3, /* Bayley Bay CRB Fab3 Rev3 */
+	BYT_TABLET_BLB_RSVD,
+	BYT_TABLET_BLB_UNKNOWN = 0xFFFF
 };
 
 /* Hardware_ID table for Product_Line_ID == INTEL_MOOR_PHONE_FRCB */

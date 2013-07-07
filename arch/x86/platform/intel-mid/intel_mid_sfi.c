@@ -33,7 +33,7 @@ static struct sfi_table_oemb byt_oemb_table_vv = {
 		.vendor_id = VENDOR_INTEL,
 		.platform_family_id = INTEL_BYT_TABLET,
 		.product_line_id = INTEL_BYT_TABLET_BLK_ENG,
-		.hardware_id = BYT_TABLET_BLK_VV3,
+		.hardware_id = BYT_TABLET_BLK_RVP3,
 	},
 };
 
@@ -44,7 +44,7 @@ static struct sfi_table_oemb byt_oemb_table_pr1 = {
 		.vendor_id = VENDOR_INTEL,
 		.platform_family_id = INTEL_BYT_TABLET,
 		.product_line_id = INTEL_BYT_TABLET_BLK_ENG,
-		.hardware_id = BYT_TABLET_BLK_PR1_1,
+		.hardware_id = BYT_TABLET_BLK_10PR11,
 	},
 };
 
@@ -55,7 +55,7 @@ static struct sfi_table_oemb byt_oemb_table_blb = {
 		.vendor_id = VENDOR_INTEL,
 		.platform_family_id = INTEL_BYT_TABLET,
 		.product_line_id = INTEL_BYT_TABLET_BLB_ENG,
-		.hardware_id = BYT_TABLET_BLB_VV3,
+		.hardware_id = BYT_TABLET_BLK_8PR0,
 	},
 };
 
@@ -120,7 +120,7 @@ static struct sfi_table_header *get_devs_table(void)
 	int tot_len = 0;
 
 	if (INTEL_MID_BOARD(1, TABLET, BYT)) {
-		if (spid.hardware_id == BYT_TABLET_BLB_VV3) {
+		if (spid.hardware_id == BYT_TABLET_BLK_8PR0) {
 			tot_len = sizeof(byt_ffrd8_devs_table) +
 					sizeof(struct sfi_table_header);
 			devs_table = kzalloc(tot_len, GFP_KERNEL);
