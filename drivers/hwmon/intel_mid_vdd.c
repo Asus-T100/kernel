@@ -586,13 +586,13 @@ static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 	uint8_t irq_data, event = 0, clear_irq, ret;
 	struct vdd_info *vinfo = (struct vdd_info *)dev_data;
 
-	spin_lock_irq(&vdd_interrupt_lock);
 #ifndef CONFIG_BOARD_CTP
 	ret = intel_scu_ipc_ioread8(BCUIRQ, &global_irq_data);
 	if (ret)
 		dev_warn(&vinfo->pdev->dev, "ipc read/write failed\n");
-	clear_irq = global_irq_data;
 #endif
+	spin_lock_irq(&vdd_interrupt_lock);
+	clear_irq = global_irq_data;
 	irq_data = global_irq_data;
 	global_irq_data = 0;
 	spin_unlock_irq(&vdd_interrupt_lock);
