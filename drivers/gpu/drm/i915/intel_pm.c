@@ -2508,7 +2508,7 @@ bool valleyview_update_cur_delay(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 val = 0;
 
-	valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
+	intel_punit_read32(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
 	dev_priv->rps.cur_delay = val >> 8;
 
 	return true;
@@ -2527,7 +2527,7 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 	if (val < dev_priv->rps.min_delay)
 		val = dev_priv->rps.min_delay;
 
-	valleyview_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
+	intel_punit_write32(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
 	dev_priv->rps.requested_delay = val;
 }
 
@@ -2804,8 +2804,8 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 
 	/* Write 0 to 7th bit to P-Unit offset 0x6 to enable Turbo */
 	u32 bios_punit_val;
-	valleyview_punit_read(dev_priv, 0x6, &bios_punit_val);
-	valleyview_punit_write(dev_priv, 0x6, bios_punit_val & ~(1<<7));
+	intel_punit_read32(dev_priv, 0x6, &bios_punit_val);
+	intel_punit_write32(dev_priv, 0x6, bios_punit_val & ~(1<<7));
 
 	I915_WRITE(0xA000, 0x71388);
 	I915_WRITE(0xA080, 0x4);
@@ -2877,7 +2877,7 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 	I915_WRITE(0xaa84, 0x00000000);
 	I915_WRITE(0x1300a4, 0x00000000);
 	I915_WRITE(0xa248, 0x00000058);
-	valleyview_punit_write(dev_priv, 0xd2, 0x1EF53);
+	intel_punit_write32(dev_priv, 0xd2, 0x1EF53);
 }
 
 /* vlv_rps_timer_work: Set the frequency to Rpe if Gfx clocks are down
@@ -2973,25 +2973,25 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 		   GEN6_RP_UP_BUSY_AVG |
 		   GEN7_RP_DOWN_IDLE_AVG);
 
-	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE6, &val);
+	intel_fuse_read32(dev_priv, VLV_PUNIT_RPS_FUSE6, &val);
 	/* Bits [10:3] */
 	dev_priv->rps.max_delay = (val >> 3) & 0xFF;
 	DRM_DEBUG_DRIVER("max GPU freq: %d\n", dev_priv->rps.max_delay);
 
 	/* Rpe is min freq */
-	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE11, &val);
+	intel_fuse_read32(dev_priv, VLV_PUNIT_RPS_FUSE11, &val);
 	dev_priv->rps.min_delay = (val >> 27);
-	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE12, &val);
+	intel_fuse_read32(dev_priv, VLV_PUNIT_RPS_FUSE12, &val);
 	dev_priv->rps.min_delay = dev_priv->rps.min_delay | ((val & 0x7) << 5);
 	DRM_DEBUG_DRIVER("min GPU freq: %d\n", dev_priv->rps.min_delay);
 
 	/* This min_delay is rpe. Cache it seperately for tracking*/
 	dev_priv->rps.rpe_delay = dev_priv->rps.min_delay;
 
-	valleyview_punit_read(dev_priv, PUNIT_FUSE_BUS2, &val);
+	intel_punit_read32(dev_priv, PUNIT_FUSE_BUS2, &val);
 	DRM_DEBUG_DRIVER("max GPLL freq: %d\n", val);
 
-	valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
+	intel_punit_read32(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
 	DRM_DEBUG_DRIVER("DDR speed: ");
 	switch (((val >> 6) & 3)) {
 	case 0:
@@ -3025,7 +3025,7 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	val = VLV_OVERRIDE_MSR_REG
 		| VLV_ENABLE_TDP_SHARE_WITH_SOC
 		| VLV_CPU_GPU_BIAS_VAL_87_12; /* 6 => CPU:12.5% GPU:87.5% */
-	valleyview_punit_write(dev_priv, VLV_IOSFB_RPS_OVERRIDE, val);
+	intel_punit_write32(dev_priv, VLV_IOSFB_RPS_OVERRIDE, val);
 
 	dev_priv->rps.rp_up_masked = 0;
 	dev_priv->rps.rp_down_masked = 0;
@@ -5196,137 +5196,3 @@ void vlv_rs_setstate(struct drm_device *dev,
 	}
 }
 
-/* Ideally we would have liked to use a mutex to lock the critical
- * sections below. However, the sideband interface is being used by
- * DPIO display section as well and a spinlock is being used to
- * safeguard against that because it is being called from an interrupt
- * context. We therefore need to use the same  mechanism as well in
- * order to avoid conflicts there. Hence, until a cleaned up sideband
- * routine enters, we will use the following routines and this spinlock
- * to gate access. */
-
-int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
-				u8 addr, u32 *val)
-{
-	u32 cmd, devfn, opcode, port, be, bar;
-	unsigned long flags;
-
-	bar = 0;
-	be = 0xf;
-	port = IOSF_PORT_FUSE;
-	opcode = PUNIT_OPCODE_REG_READ;
-	devfn = 0;
-
-	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
-		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
-		(bar << IOSF_BAR_SHIFT);
-
-	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
-
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			   addr);
-		return -ETIMEDOUT;
-	}
-
-	I915_WRITE(VLV_IOSF_ADDR, addr);
-	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
-
-	/* Make sure that the SB is not busy since we need to be synchronous */
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	*val = I915_READ(VLV_IOSF_DATA);
-	I915_WRITE(VLV_IOSF_DATA, 0);
-
-	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-
-	return 0;
-}
-
-int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val)
-{
-	u32 cmd, devfn, opcode, port, be, bar;
-	unsigned long flags;
-
-	bar = 0;
-	be = 0xf;
-	port = IOSF_PORT_PUNIT;
-	opcode = PUNIT_OPCODE_REG_READ;
-	devfn = 16;
-
-	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
-		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
-		(bar << IOSF_BAR_SHIFT);
-
-	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
-
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	I915_WRITE(VLV_IOSF_ADDR, addr);
-	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
-
-	/* Make sure that the SB is not busy since we need to be synchronous */
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	*val = I915_READ(VLV_IOSF_DATA);
-	I915_WRITE(VLV_IOSF_DATA, 0);
-
-	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-
-	return 0;
-}
-
-int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val)
-{
-	u32 cmd, devfn, opcode, port, be, bar;
-	unsigned long flags;
-
-	bar = 0;
-	be = 0xf;
-	port = IOSF_PORT_PUNIT;
-	opcode = PUNIT_OPCODE_REG_WRITE;
-	devfn = 16;
-
-	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
-		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
-		(bar << IOSF_BAR_SHIFT);
-
-	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
-
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	I915_WRITE(VLV_IOSF_ADDR, addr);
-	I915_WRITE(VLV_IOSF_DATA, val);
-	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
-	I915_WRITE(VLV_IOSF_DATA, 0);
-
-	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-
-	return 0;
-}

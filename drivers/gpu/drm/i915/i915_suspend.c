@@ -1211,7 +1211,7 @@ static int valleyview_freeze(struct drm_device *dev)
 
 	/* iv) Change the freq to lowest possible on platform */
 	if (dev_priv->rps.lowest_delay) {
-		valleyview_punit_write(dev_priv,
+		intel_punit_write32(dev_priv,
 					PUNIT_REG_GPU_FREQ_REQ,
 					dev_priv->rps.lowest_delay);
 		dev_priv->rps.requested_delay = dev_priv->rps.lowest_delay;

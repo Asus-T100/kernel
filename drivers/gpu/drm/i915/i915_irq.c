@@ -404,7 +404,7 @@ static u32 vlv_calc_delay_from_C0_counters(struct drm_i915_private *dev_priv)
 	/* read the CZ clock time stamp from P-unint &
 	 * render/media C0 counters from MMIO reg
 	 */
-	valleyview_punit_read(dev_priv, PUNIT_REG_CZ_TIMESTAMP, &cz_ts);
+	intel_punit_read32(dev_priv, PUNIT_REG_CZ_TIMESTAMP, &cz_ts);
 
 	render_count = I915_READ(VLV_RENDER_C0_COUNT_REG);
 	media_count = I915_READ(VLV_MEDIA_C0_COUNT_REG);

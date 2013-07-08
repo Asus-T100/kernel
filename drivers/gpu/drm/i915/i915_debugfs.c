@@ -893,7 +893,7 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 				dev_priv->rps.max_delay);
 		seq_printf(m, "Min Gpu Freq _min_delay_: %d\n",
 				dev_priv->rps.min_delay);
-		valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS,
+		intel_punit_read32(dev_priv, PUNIT_REG_GPU_FREQ_STS,
 					&pval);
 		seq_printf(m, "Cur Gpu Freq _cur_delay_: %d\n",
 				pval >> 8);
@@ -2666,7 +2666,7 @@ i915_read_turbo_api(struct file *filp,
 				"Min Gpu Freq _min_delay_: %d\n",
 				dev_priv->rps.min_delay);
 
-		valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS,	&pval);
+		intel_punit_read32(dev_priv, PUNIT_REG_GPU_FREQ_STS,	&pval);
 		len += snprintf(&buf[len], (sizeof(buf) - len),
 				"Cur Gpu Freq _cur_delay_: %d\n", pval >> 8);
 		len += snprintf(&buf[len], (sizeof(buf) - len),

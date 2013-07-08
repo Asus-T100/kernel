@@ -1816,12 +1816,9 @@ extern void intel_display_print_error_state(struct seq_file *m,
 void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv, int fw_engine);
 void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv, int fw_engine);
 int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
-int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val);
-int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val);
-int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
-				u8 addr, u32 *val);
 void gen6_gt_force_wake_restore(struct drm_i915_private *dev_priv);
 
+int intel_fuse_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val);
 u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
 void intel_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);
 
