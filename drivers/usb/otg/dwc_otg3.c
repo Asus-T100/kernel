@@ -926,8 +926,11 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 		 * Otherwise, notify 0mA.
 		*/
 		if (!cap.mA) {
-			if (otg->otg_data->charging_compliance)
+			if (otg->otg_data->charging_compliance) {
 				cap.mA = 500;
+				cap.chrg_evt =
+					POWER_SUPPLY_CHARGER_EVENT_CONNECT;
+			}
 		/* For standard SDP, if SMIP set, then ignore suspend */
 		} else if (otg->otg_data->charging_compliance)
 			return 0;
