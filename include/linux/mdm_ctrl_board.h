@@ -55,11 +55,8 @@ enum {
 #define GPIO_CDUMP	"modem-gpio2"
 #define GPIO_CDUMP_MRFL	"MODEM_CORE_DUMP"
 
-extern struct modem_base_info *mcd_reg_info;
-extern struct mdm_ctrl_cpu_data basic_data;
-
-int mcd_register_mdm_info(struct modem_base_info const *info,
-	struct platform_device *pdev);
+/* Retrieve modem parameters on ACPI framework */
+int retrieve_modem_platform_data(struct platform_device *pdev);
 
 /* Modem basical info
  * @modem_name: modem real name
@@ -72,7 +69,7 @@ int mcd_register_mdm_info(struct modem_base_info const *info,
 struct modem_base_info {
 	char	modem_name[SFI_NAME_LEN + 1];
 	int	id;
-	int	pmic;
+	void	*pmic;
 	int	cpu;
 	char	cpu_name[SFI_NAME_LEN + 1];
 	void	*data;
@@ -93,6 +90,21 @@ struct mdm_ctrl_cpu_data {
 	int	gpio_cdump;
 	bool	early_pwr_on;
 	bool	early_pwr_off;
+};
+
+/* struct mcd_pmic_data
+ * @id: PMIC internal Id
+ * @chipctrl: PMIC regsiter
+ * @chipctrlon: Pmic value for Modem ON
+ * @chipctrloff: Pmic value for Power Off
+ * @chipctrl_mask: Mask value for On and Off Pmic register bits.
+ */
+struct mdm_ctrl_pmic_data {
+	int	id;
+	int	chipctrl;
+	int	chipctrlon;
+	int	chipctrloff;
+	int	chipctrl_mask;
 };
 
 /* struct mdm_ctrl_pdata
