@@ -284,7 +284,7 @@ static int mei_cl_irq_ioctl(struct mei_cl *cl, struct mei_cl_cb *cb,
 
 
 /**
- * mei_irq_thread_read_handler - bottom half read routine after ISR to
+ * mei_irq_read_handler - bottom half read routine after ISR to
  * handle the read processing.
  *
  * @dev: the device structure

@@ -87,6 +87,7 @@ MODULE_DEVICE_TABLE(pci, mei_me_pci_tbl);
 
 /**
  * mei_quirk_probe - probe for devices that doesn't valid ME interface
+ *
  * @pdev: PCI device structure
  * @ent: entry into pci_device_table
  *
