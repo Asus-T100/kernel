@@ -1424,7 +1424,7 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"Error in request_threaded_irq(irq(%d)!!\n",
 			chc.irq);
-		goto req_irq_failed;
+		goto otg_req_failed;
 	}
 
 	retval = pmic_check_initial_events();
@@ -1462,8 +1462,8 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	return 0;
 
 unmask_irq_failed:
-	free_irq(chc.irq, &chc);
 req_irq_failed:
+	free_irq(chc.irq, &chc);
 otg_req_failed:
 	iounmap(chc.pmic_intr_iomap);
 ioremap_failed:
