@@ -1052,7 +1052,98 @@ void i915_restore_rc6_regs(struct drm_device *drm_dev)
 	I915_WRITE(VLV_RC_COUNTER_ENABLE_REG, VLV_RC_COUNTER_CONTROL);
 }
 
-#define TIMEOUT 5000
+#define TIMEOUT 100
+
+static int set_power_state_with_timeout(
+				struct drm_i915_private *dev_priv,
+				u32 ctrl, u32 ctrl_mask,
+				u32 status, u32 status_mask, u32 val)
+{
+	u32 data;
+	unsigned long timeout__;
+	val &= status_mask;
+
+	/* check if it is already in desired state */
+	intel_punit_read32(dev_priv, status, &data);
+	if ((status_mask & data) == val)
+		return 0;
+
+	/* set power state using ctrl register */
+	intel_punit_write32_bits(dev_priv, ctrl, val, ctrl_mask);
+
+	/* Timeout after 100 mili seconds */
+	timeout__ = jiffies + msecs_to_jiffies(TIMEOUT);
+	do {
+		/* wait for status change */
+		if (time_after(jiffies, timeout__))
+			return -ETIMEDOUT;
+
+		intel_punit_read32(dev_priv, status, &data);
+	} while ((status_mask & data) != val);
+
+	return 0;
+}
+
+/* Follow the sequence to powergate/ungate display
+ * for valleyview
+ */
+static void valleyview_power_gate_disp(struct drm_i915_private *dev_priv)
+{
+	int ret;
+
+	/* 1. Power Gate Display Controller */
+	pmu_nc_set_power_state(VLV_DISPLAY_ISLAND,
+			OSPM_ISLAND_DOWN, VLV_IOSFSB_PWRGT_CNT_CTRL);
+
+	/* 2. Power Gate DPIO - RX/TX Lanes */
+	ret = set_power_state_with_timeout(dev_priv,
+			VLV_IOSFSB_PWRGT_CNT_CTRL,
+			VLV_PWRGT_DPIO_RX_TX_LANES_MASK,
+			VLV_IOSFSB_PWRGT_STATUS,
+			VLV_PWRGT_DPIO_RX_TX_LANES_MASK,
+			VLV_PWRGT_DPIO_RX_TX_LANES_MASK);
+	if (ret) {
+		dev_err(&dev_priv->bridge_dev->dev,
+				"Power gate DPIO RX_TX timed out, suspend might fail\n");
+	}
+
+	/* 3. Power Gate DPIO Common Lanes */
+	ret = set_power_state_with_timeout(dev_priv, VLV_IOSFSB_PWRGT_CNT_CTRL,
+		VLV_PWRGT_DPIO_CMN_LANES_MASK, VLV_IOSFSB_PWRGT_STATUS,
+		VLV_PWRGT_DPIO_CMN_LANES_MASK, VLV_PWRGT_DPIO_CMN_LANES_MASK);
+	if (ret) {
+		dev_err(&dev_priv->bridge_dev->dev,
+				"Power gate DPIO CMN timed out, suspend might fail\n");
+	}
+}
+
+static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
+{
+	int ret;
+	/* 1. Power UnGate DPIO TX Lanes */
+	ret = set_power_state_with_timeout(dev_priv,
+		VLV_IOSFSB_PWRGT_CNT_CTRL,
+		VLV_PWRGT_DPIO_TX_LANES_MASK, VLV_IOSFSB_PWRGT_STATUS,
+		VLV_PWRGT_DPIO_TX_LANES_MASK, 0);
+	if (ret) {
+		dev_err(&dev_priv->bridge_dev->dev,
+				"Power ungate DPIO TX timed out, resume might fail\n");
+	}
+
+	/* 2. Power UnGate DPIO Common Lanes */
+	ret = set_power_state_with_timeout(dev_priv,
+		VLV_IOSFSB_PWRGT_CNT_CTRL,
+		VLV_PWRGT_DPIO_CMN_LANES_MASK, VLV_IOSFSB_PWRGT_STATUS,
+		VLV_PWRGT_DPIO_CMN_LANES_MASK, 0);
+	if (ret) {
+		dev_err(&dev_priv->bridge_dev->dev,
+				"Power ungate DPIO CMN timed out, resume might fail\n");
+	}
+
+	/* 3. Power ungate display controller */
+	pmu_nc_set_power_state(VLV_DISPLAY_ISLAND,
+			OSPM_ISLAND_UP, VLV_IOSFSB_PWRGT_CNT_CTRL);
+}
 
 /* follow the sequence below for VLV suspend*/
 /* ===========================================================================
@@ -1082,7 +1173,7 @@ static int valleyview_freeze(struct drm_device *dev)
 	reg = I915_READ(VLV_GTLC_SURVIVABILITY_REG);
 	reg |= VLV_GFX_CLK_FORCE_ON_BIT;
 	I915_WRITE(VLV_GTLC_SURVIVABILITY_REG, reg);
-	if (wait_for(((VLV_GFX_CLK_STATUS_BIT &
+	if (wait_for_atomic(((VLV_GFX_CLK_STATUS_BIT &
 		I915_READ(VLV_GTLC_SURVIVABILITY_REG)) != 0), TIMEOUT)) {
 		dev_err(&dev->pdev->dev,
 				"GFX_CLK_ON timed out, suspend might fail\n");
@@ -1138,7 +1229,7 @@ static int valleyview_freeze(struct drm_device *dev)
 	reg = I915_READ(VLV_GTLC_WAKE_CTRL);
 	reg &= ~VLV_ALLOW_WAKE_REQ_BIT;
 	I915_WRITE(VLV_GTLC_WAKE_CTRL, reg);
-	if (wait_for((0 == (I915_READ(VLV_POWER_WELL_STATUS_REG) &
+	if (wait_for_atomic((0 == (I915_READ(VLV_POWER_WELL_STATUS_REG) &
 		VLV_ALLOW_WAKE_ACK_BIT)), TIMEOUT)) {
 		dev_err(&dev->pdev->dev,
 				"ALLOW_WAKE_SET timed out, suspend might fail\n");
@@ -1146,8 +1237,7 @@ static int valleyview_freeze(struct drm_device *dev)
 
 
 	/* vii)  Power Gate Power Wells */
-	pmu_nc_set_power_state(VLV_DISPLAY_ISLAND,
-			OSPM_ISLAND_DOWN, VLV_IOSFSB_PWRGT_CNT_CTRL);
+	valleyview_power_gate_disp(dev_priv);
 
 	/* viii) Release graphics clocks */
 	reg = I915_READ(VLV_GTLC_SURVIVABILITY_REG);
@@ -1189,15 +1279,14 @@ static int valleyview_thaw(struct drm_device *dev)
 	reg = I915_READ(VLV_GTLC_SURVIVABILITY_REG);
 	reg |= VLV_GFX_CLK_FORCE_ON_BIT;
 	I915_WRITE(VLV_GTLC_SURVIVABILITY_REG, reg);
-	if (wait_for(((VLV_GFX_CLK_STATUS_BIT &
+	if (wait_for_atomic(((VLV_GFX_CLK_STATUS_BIT &
 		I915_READ(VLV_GTLC_SURVIVABILITY_REG)) != 0), TIMEOUT)) {
 		dev_err(&dev->pdev->dev,
 				"GFX_CLK_ON timed out, resume might fail\n");
 	}
 
 	/* ii)  Power ungate Power Wells */
-	pmu_nc_set_power_state(VLV_DISPLAY_ISLAND,
-			OSPM_ISLAND_UP, VLV_IOSFSB_PWRGT_CNT_CTRL);
+	valleyview_power_ungate_disp(dev_priv);
 
 	/* iii) Restore Gunit Registers */
 	i915_restore_gunit_regs(dev_priv);
@@ -1206,7 +1295,7 @@ static int valleyview_thaw(struct drm_device *dev)
 	reg = I915_READ(VLV_GTLC_WAKE_CTRL);
 	reg |= VLV_ALLOW_WAKE_REQ_BIT;
 	I915_WRITE(VLV_GTLC_WAKE_CTRL, reg);
-	if (wait_for((0 != (I915_READ(VLV_POWER_WELL_STATUS_REG) &
+	if (wait_for_atomic((0 != (I915_READ(VLV_POWER_WELL_STATUS_REG) &
 		VLV_ALLOW_WAKE_ACK_BIT)), TIMEOUT)) {
 		dev_err(&dev->pdev->dev,
 				"ALLOW_WAKE_SET timed out, resume might fail\n");
