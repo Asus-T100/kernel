@@ -1008,9 +1008,22 @@ int power_supply_register_charger(struct power_supply *psy)
 }
 EXPORT_SYMBOL(power_supply_register_charger);
 
+static inline void flush_charger_context(struct power_supply *psy)
+{
+	struct charger_props *chrgr_prop, *tmp;
+
+
+	list_for_each_entry_safe(chrgr_prop, tmp,
+				&psy_chrgr.chrgr_cache_lst, node) {
+		if (!strcmp(chrgr_prop->name, psy->name)) {
+			list_del(&chrgr_prop->node);
+			kfree(chrgr_prop);
+		}
+	}
+}
 int power_supply_unregister_charger(struct power_supply *psy)
 {
- /*TBD*/
+	flush_charger_context(psy);
 	return 0;
 }
 EXPORT_SYMBOL(power_supply_unregister_charger);
