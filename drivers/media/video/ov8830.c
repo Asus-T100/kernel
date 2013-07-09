@@ -1215,7 +1215,8 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	 * Work around for OV8835 used in Merrifield PRH(ISP2400A0), select
 	 * the lowest fps setting due to low ISP firmware performance.
 	 */
-#ifdef CONFIG_ISP2400
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER &&
+		intel_mid_soc_stepping() < 1)
 	{
 		unsigned int i, low_fps;
 
@@ -1230,7 +1231,6 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 		dev_warn(&client->dev, "use the lowest fps[%d] setting\n",
 			low_fps);
 	}
-#endif /* CONFIG_ISP2400 */
 
 	/* Write the selected resolution table values to the registers */
 	ret = ov8830_write_reg_array(client, res->regs);
@@ -1326,12 +1326,11 @@ static int ov8830_detect(struct i2c_client *client, u16 *id, u8 *revision)
 	 * PRH. To save RD effort on debugging ov8830 setting issues, force
 	 * apply ov8835 settings for ov8830 sensor.
 	 */
-#ifdef CONFIG_ISP2400
-	if (id35 != 0x35) {
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER &&
+		intel_mid_soc_stepping() < 1 && id35 != 0x35) {
 		dev_warn(&client->dev, "[PRH]Force apply OV8835 settings\n");
 		*id = OV8835_CHIP_ID;
 	}
-#endif
 
 	dev_info(&client->dev, "sensor is ov%4.4x\n", *id);
 
