@@ -371,6 +371,9 @@ struct mei_mm_device *mei_mm_init(struct device *dev, void *vaddr,
 	struct mei_mm_device *mdev;
 	int ret;
 
+	if (!dev || !paddr || size == 0)
+		return ERR_PTR(-EINVAL);
+
 	mdev = kzalloc(sizeof(struct mei_mm_device), GFP_KERNEL);
 	if (!mdev)
 		return ERR_PTR(-ENOMEM);
@@ -420,6 +423,9 @@ out:
  */
 void mei_mm_deinit(struct mei_mm_device *mdev)
 {
+
+	if (!mdev)
+		return;
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	if (mdev->dbgfs)
