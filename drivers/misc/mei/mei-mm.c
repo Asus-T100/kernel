@@ -250,7 +250,7 @@ static long mei_mm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = -ENOTTY;
 		goto out;
 	}
-	if (!access_ok(VERIFY_WRITE, (void *)arg, _IOC_SIZE(cmd))) {
+	if (!access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd))) {
 		ret = -EFAULT;
 		goto out;
 	}
