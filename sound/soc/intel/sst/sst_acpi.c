@@ -79,7 +79,6 @@ void sst_init_locks(struct intel_sst_drv *ctx)
 	mutex_init(&ctx->stream_lock);
 	mutex_init(&ctx->sst_lock);
 	mutex_init(&ctx->mixer_ctrl_lock);
-	mutex_init(&ctx->sst_in_mem_lock);
 	mutex_init(&ctx->csr_lock);
 
 	spin_lock_init(&ctx->ipc_spin_lock);
@@ -247,9 +246,6 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	sst_init_locks(ctx);
 
 	ctx->stream_cnt = 0;
-	ctx->pb_streams = 0;
-	ctx->cp_streams = 0;
-	ctx->fw = NULL;
 	ctx->fw_in_mem = NULL;
 	ctx->use_dma = 1;
 	ctx->use_lli = 1;
@@ -340,8 +336,6 @@ int sst_acpi_remove(struct platform_device *pdev)
 	kfree(ctx->runtime_param.param.addr);
 	flush_scheduled_work();
 	sst_destroy_workqueue(ctx);
-	release_firmware(ctx->fw);
-	ctx->fw = NULL;
 	kfree(ctx->fw_sg_list.src);
 	kfree(ctx->fw_sg_list.dst);
 	ctx->fw_sg_list.list_len = 0;

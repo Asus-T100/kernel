@@ -552,13 +552,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	mutex_init(&sst_drv_ctx->stream_lock);
 	mutex_init(&sst_drv_ctx->sst_lock);
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
-	mutex_init(&sst_drv_ctx->sst_in_mem_lock);
 	mutex_init(&sst_drv_ctx->csr_lock);
 
 	sst_drv_ctx->stream_cnt = 0;
-	sst_drv_ctx->pb_streams = 0;
-	sst_drv_ctx->cp_streams = 0;
-	sst_drv_ctx->fw = NULL;
 	sst_drv_ctx->fw_in_mem = NULL;
 	/* we use dma, so set to 1*/
 	sst_drv_ctx->use_dma = 1;
@@ -932,10 +928,8 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	destroy_workqueue(sst_drv_ctx->process_msg_wq);
 	destroy_workqueue(sst_drv_ctx->post_msg_wq);
 	destroy_workqueue(sst_drv_ctx->mad_wq);
-	release_firmware(sst_drv_ctx->fw);
 	pm_qos_remove_request(sst_drv_ctx->qos);
 	kfree(sst_drv_ctx->qos);
-	sst_drv_ctx->fw = NULL;
 	kfree(sst_drv_ctx->fw_sg_list.src);
 	kfree(sst_drv_ctx->fw_sg_list.dst);
 	sst_drv_ctx->fw_sg_list.list_len = 0;
@@ -1063,15 +1057,11 @@ static int intel_sst_runtime_resume(struct device *dev)
 	}
 	/* When fw_clear_cache is set, clear the cached firmware copy */
 	/* fw_clear_cache is set through debugfs support */
-	if (atomic_read(&ctx->fw_clear_cache)) {
-		mutex_lock(&ctx->sst_in_mem_lock);
-		if (ctx->fw_in_mem) {
-			pr_debug("Clearing the cached firmware\n");
-			kfree(ctx->fw_in_mem);
-			ctx->fw_in_mem = NULL;
-			atomic_set(&ctx->fw_clear_cache, 0);
-		}
-		mutex_unlock(&ctx->sst_in_mem_lock);
+	if (atomic_read(&ctx->fw_clear_cache) && ctx->fw_in_mem) {
+		pr_debug("Clearing the cached firmware\n");
+		kfree(ctx->fw_in_mem);
+		ctx->fw_in_mem = NULL;
+		atomic_set(&ctx->fw_clear_cache, 0);
 	}
 
 	sst_set_fw_state_locked(ctx, SST_UN_INIT);
