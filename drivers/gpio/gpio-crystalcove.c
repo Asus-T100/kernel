@@ -212,12 +212,14 @@ static irqreturn_t crystalcove_gpio_irq_handler(int irq, void *data)
 	pending |= (intel_mid_pmic_readb(GPIO1IRQ) & 0xff) << 8;
 	intel_mid_pmic_writeb(GPIO0IRQ, pending & 0xff);
 	intel_mid_pmic_writeb(GPIO1IRQ, (pending >> 8) & 0xff);
+	local_irq_disable();
 	for (gpio = 0; gpio < cg->chip.ngpio; gpio++) {
 		if (pending & (1 << gpio)) {
 			pr_err("crystalcove pin %d triggered\n", gpio);
 			generic_handle_irq(cg->irq_base + gpio);
 		}
 	}
+	local_irq_enable();
 	return IRQ_HANDLED;
 }
 
