@@ -319,8 +319,10 @@ static ssize_t mei_mm_dbgfs_pool_read(struct file *file,
 			char __user *user_buf,
 			size_t count, loff_t *ppos)
 {
-
 	struct mei_mm_device *mdev = file->private_data;
+	/* if the buffer is not mapped into kernel space */
+	if (!mdev->pool.vaddr)
+		return 0;
 	return simple_read_from_buffer(user_buf, count, ppos,
 				mdev->pool.vaddr, 256);
 }
