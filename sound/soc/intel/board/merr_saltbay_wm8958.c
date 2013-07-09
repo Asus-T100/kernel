@@ -38,7 +38,10 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <linux/input.h>
+
+#include <linux/mfd/wm8994/core.h>
 #include <linux/mfd/wm8994/registers.h>
+#include <linux/mfd/wm8994/pdata.h>
 #include "../../codecs/wm8994.h"
 
 #define SYSCLK_RATE        24576000
@@ -281,6 +284,111 @@ static const struct snd_soc_dapm_route map[] = {
 	{ "AIF1ADC2R", "NULL", "OSC_Clock0" },
 };
 
+static const struct wm8958_micd_rate micdet_rates[] = {
+	{ 32768,       true,  1, 4 },
+	{ 32768,       false, 1, 1 },
+	{ 44100 * 256, true,  7, 10 },
+	{ 44100 * 256, false, 7, 10 },
+};
+
+static void wm8958_custom_micd_set_rate(struct snd_soc_codec *codec)
+{
+	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
+	int best, i, sysclk, val;
+	bool idle;
+	const struct wm8958_micd_rate *rates;
+	int num_rates;
+
+	idle = !wm8994->jack_mic;
+
+	sysclk = snd_soc_read(codec, WM8994_CLOCKING_1);
+	if (sysclk & WM8994_SYSCLK_SRC)
+		sysclk = wm8994->aifclk[1];
+	else
+		sysclk = wm8994->aifclk[0];
+
+	if (wm8994->pdata && wm8994->pdata->micd_rates) {
+		rates = wm8994->pdata->micd_rates;
+		num_rates = wm8994->pdata->num_micd_rates;
+	} else {
+		rates = micdet_rates;
+		num_rates = ARRAY_SIZE(micdet_rates);
+	}
+
+	best = 0;
+	for (i = 0; i < num_rates; i++) {
+		if (rates[i].idle != idle)
+			continue;
+		if (abs(rates[i].sysclk - sysclk) <
+		    abs(rates[best].sysclk - sysclk))
+			best = i;
+		else if (rates[best].idle != idle)
+			best = i;
+	}
+
+	val = rates[best].start << WM8958_MICD_BIAS_STARTTIME_SHIFT
+		| rates[best].rate << WM8958_MICD_RATE_SHIFT;
+
+	dev_dbg(codec->dev, "MICD rate %d,%d for %dHz %s\n",
+		rates[best].start, rates[best].rate, sysclk,
+		idle ? "idle" : "active");
+
+	snd_soc_update_bits(codec, WM8958_MIC_DETECT_1,
+			    WM8958_MICD_BIAS_STARTTIME_MASK |
+			    WM8958_MICD_RATE_MASK, val);
+}
+
+static void wm8958_custom_mic_id(void *data, u16 status)
+{
+	struct snd_soc_codec *codec = data;
+	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
+
+	dev_dbg(codec->dev, "wm8958 custom mic id called with status %x\n",
+		status);
+
+	/* Either nothing present or just starting detection */
+	if (!(status & WM8958_MICD_STS)) {
+		/* If nothing present then clear our statuses */
+		dev_dbg(codec->dev, "Detected open circuit\n");
+
+		schedule_delayed_work(&wm8994->open_circuit_work,
+				      msecs_to_jiffies(2500));
+		return;
+	}
+
+	/* If the measurement is showing a high impedence we've got a
+	 * microphone.
+	 */
+	if (status & 0x600) {
+		dev_dbg(codec->dev, "Detected microphone\n");
+
+		wm8994->mic_detecting = false;
+		wm8994->jack_mic = true;
+
+		wm8958_custom_micd_set_rate(codec);
+
+		snd_soc_jack_report(wm8994->micdet[0].jack, SND_JACK_HEADSET,
+				    SND_JACK_HEADSET);
+	}
+
+
+	if (status & 0xfc) {
+		dev_dbg(codec->dev, "Detected headphone\n");
+
+		/* Partial inserts of headsets with complete insert
+		 * after an indeterminate amount of time require
+		 * continouous micdetect enabled (until open circuit
+		 * or headset is detected)
+		 * */
+		wm8994->mic_detecting = true;
+
+		wm8958_custom_micd_set_rate(codec);
+
+		snd_soc_jack_report(wm8994->micdet[0].jack, SND_JACK_HEADPHONE,
+				    SND_JACK_HEADSET);
+	}
+}
+
 static int mrfld_8958_init(struct snd_soc_pcm_runtime *runtime)
 {
 	int ret;
@@ -331,7 +439,8 @@ static int mrfld_8958_init(struct snd_soc_pcm_runtime *runtime)
 
 	snd_jack_set_key(ctx->jack.jack, SND_JACK_BTN_0, KEY_MEDIA);
 
-	wm8958_mic_detect(codec, &ctx->jack, NULL, NULL, NULL, NULL);
+	wm8958_mic_detect(codec, &ctx->jack, NULL, NULL,
+			  wm8958_custom_mic_id, codec);
 
 	snd_soc_update_bits(codec, WM8994_AIF1_DAC1_FILTERS_1, WM8994_AIF1DAC1_MUTE, 0);
 	snd_soc_update_bits(codec, WM8994_AIF1_DAC2_FILTERS_1, WM8994_AIF1DAC2_MUTE, 0);
