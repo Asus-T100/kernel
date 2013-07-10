@@ -66,7 +66,8 @@ static void try_to_suspend(struct work_struct *work)
 
 	mutex_lock(&suspend_lock);
 
-	if (!pm_save_wakeup_count(initial_count)) {
+	if (!pm_save_wakeup_count(initial_count) ||
+		system_state != SYSTEM_RUNNING) {
 		mutex_unlock(&suspend_lock);
 		goto queue_again;
 	}
