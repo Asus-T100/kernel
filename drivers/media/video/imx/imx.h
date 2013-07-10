@@ -389,6 +389,7 @@ struct imx_device {
 	int power;
 	int run_mode;
 	int vt_pix_clk_freq_mhz;
+	int fps_index;
 	u32 focus;
 	u16 sensor_id;
 	u16 coarse_itg;

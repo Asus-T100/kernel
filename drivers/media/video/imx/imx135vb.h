@@ -1448,9 +1448,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.regs = imx135vb_cif_binning,
 		.width = 368,
 		.height = 304,
-		.fps = 30,
-		.pixels_per_line = 9114, /* Binning Pixel clock: 335.36MHz */
-		.lines_per_frame = 1226,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 30,
+				 .pixels_per_line = 9114,
+				 .lines_per_frame = 1226,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 	},
@@ -1459,9 +1465,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		 .regs = imx135vb_480p_dvs_binning,
 		 .width = 936,
 		 .height = 602,
-		 .fps = 30,
-		 .pixels_per_line = 5464, /* Binning Pixel clock: 335.36MHz */
-		 .lines_per_frame = 2046,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 30,
+				 .pixels_per_line = 5464,
+				 .lines_per_frame = 2046,
+			},
+			{
+			}
+		},
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 	},
@@ -1470,9 +1482,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.regs = imx135vb_1080p_binning,
 		.width = 1936,
 		.height = 1104,
-		.fps = 30,
-		.pixels_per_line = 5464, /* Binning Pixel clock: 335.36MHz */
-		.lines_per_frame = 2046,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 30,
+				 .pixels_per_line = 5464,
+				 .lines_per_frame = 2046,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
@@ -1482,9 +1500,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.regs = imx135vb_3m_binning,
 		.width = 2064,
 		.height = 1552,
-		.fps = 30,
-		.pixels_per_line = 5464, /* Binning Pixel clock: 335.36MHz */
-		.lines_per_frame = 2046,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 30,
+				 .pixels_per_line = 5464,
+				 .lines_per_frame = 2046,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
@@ -1494,9 +1518,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.regs = imx135vb_6m,
 		.width = 3280,
 		.height = 1852,
-		.fps = 30,
-		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
-		.lines_per_frame = 2624,
+		.fps_options = {
+			{ /* Binning Pixel clock: 360.96MHz */
+				 .fps = 30,
+				 .pixels_per_line = 4572,
+				 .lines_per_frame = 2624,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1506,9 +1536,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.regs = imx135vb_8m_scaled_from_12m,
 		.width = 3280,
 		.height = 2464,
-		.fps = 24,
-		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
-		.lines_per_frame = 3280,
+		.fps_options = {
+			{ /* Pixel clock: 360.96MHz */
+				 .fps = 24,
+				 .pixels_per_line = 4572,
+				 .lines_per_frame = 3280,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1518,9 +1554,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.regs = imx135vb_10m,
 		.width = 4208,
 		.height = 2368,
-		.fps = 30,
-		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
-		.lines_per_frame = 2632,
+		.fps_options = {
+			{ /* Pixel clock: 360.96MHz */
+				 .fps = 30,
+				 .pixels_per_line = 4572,
+				 .lines_per_frame = 2632,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1530,9 +1572,15 @@ struct imx_resolution imx135vb_res_preview[] = {
 		.regs = imx135vb_13m,
 		.width = 4208,
 		.height = 3120,
-		.fps = 24,
-		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
-		.lines_per_frame = 3290,
+		.fps_options = {
+			{ /* Pixel clock: 360.96MHz */
+				 .fps = 24,
+				 .pixels_per_line = 4572,
+				 .lines_per_frame = 3290,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1555,9 +1603,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		.regs = imx135vb_cif_binning,
 		.width = 368,
 		.height = 304,
-		.fps = 30,
-		.pixels_per_line = 9114, /* Binning Pixel clock: 335.36MHz */
-		.lines_per_frame = 1226,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 30,
+				 .pixels_per_line = 9114,
+				 .lines_per_frame = 1226,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 	},
@@ -1566,9 +1620,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		 .regs = imx135vb_480p_dvs_binning,
 		 .width = 936,
 		 .height = 602,
-		 .fps = 30,
-		 .pixels_per_line = 9114, /* Binning Pixel clock: 335.36MHz */
-		 .lines_per_frame = 2453,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 30,
+				 .pixels_per_line = 9114,
+				 .lines_per_frame = 2453,
+			},
+			{
+			}
+		},
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 	},
@@ -1577,9 +1637,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		.regs = imx135vb_1080p_binning,
 		.width = 1936,
 		.height = 1104,
-		.fps = 15,
-		.pixels_per_line = 9114, /* Binning Pixel clock: 335.36MHz */
-		.lines_per_frame = 2453,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 15,
+				 .pixels_per_line = 9114,
+				 .lines_per_frame = 2453,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
@@ -1589,9 +1655,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		.regs = imx135vb_3m_binning,
 		.width = 2064,
 		.height = 1552,
-		.fps = 15,
-		.pixels_per_line = 9114, /* Binning Pixel clock: 335.36MHz */
-		.lines_per_frame = 2453,
+		.fps_options = {
+			{ /* Binning Pixel clock: 335.36MHz */
+				 .fps = 15,
+				 .pixels_per_line = 9114,
+				 .lines_per_frame = 2453,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
@@ -1601,9 +1673,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		.regs = imx135vb_6m_for_mipi_342,
 		.width = 3280,
 		.height = 1852,
-		.fps = 11,
-		.pixels_per_line = 9144, /* pixel clock @ 273.6MHz */
-		.lines_per_frame = 2664,
+		.fps_options = {
+			{ /* Pixel clock: 273.6MHz */
+				 .fps = 11,
+				 .pixels_per_line = 9114,
+				 .lines_per_frame = 2664,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1613,9 +1691,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		.regs = imx135vb_8m_scaled_from_12m_for_mipi342,
 		.width = 3280,
 		.height = 2464,
-		.fps = 15,
-		.pixels_per_line = 5500, /* pixel clock @ 273.6MHz */
-		.lines_per_frame = 3314,
+		.fps_options = {
+			{ /* Pixel clock: 273.6MHz */
+				 .fps = 15,
+				 .pixels_per_line = 5500,
+				 .lines_per_frame = 3314,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1625,9 +1709,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		.regs = imx135vb_10m_for_mipi_342,
 		.width = 4208,
 		.height = 2368,
-		.fps = 11,
-		.pixels_per_line = 9144, /* pixel clock @ 273.6MHz */
-		.lines_per_frame = 2664,
+		.fps_options = {
+			{ /* Pixel clock: 273.6MHz */
+				 .fps = 11,
+				 .pixels_per_line = 9144,
+				 .lines_per_frame = 2664,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1637,9 +1727,15 @@ struct imx_resolution imx135vb_res_still[] = {
 		.regs = imx135vb_13m_for_mipi_342,
 		.width = 4208,
 		.height = 3120,
-		.fps = 9,
-		.pixels_per_line = 9144, /* pixel clock @ 273.6MHz */
-		.lines_per_frame = 3328,
+		.fps_options = {
+			{ /* Pixel clock: 273.6MHz */
+				 .fps = 9,
+				 .pixels_per_line = 9144,
+				 .lines_per_frame = 3328,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1657,9 +1753,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_qcif_dvs_binning,
 		.width = 216,
 		.height = 176,
-		.fps = 30,
-		.pixels_per_line = 9114,
-		.lines_per_frame = 1226,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 9144,
+				 .lines_per_frame = 1226,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 	},
@@ -1668,9 +1770,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_cif_binning,
 		.width = 368,
 		.height = 304,
-		.fps = 30,
-		.pixels_per_line = 9114,
-		.lines_per_frame = 1226,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 9144,
+				 .lines_per_frame = 1226,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 	},
@@ -1679,9 +1787,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_qvga__dvs_binning,
 		.width = 408,
 		.height = 308,
-		.fps = 30,
-		.pixels_per_line = 9114,
-		.lines_per_frame = 1226,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 9144,
+				 .lines_per_frame = 1226,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 	},
@@ -1690,9 +1804,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_vga_dvs_binning,
 		.width = 820,
 		.height = 616,
-		.fps = 30,
-		.pixels_per_line = 9114,
-		.lines_per_frame = 1226,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 9144,
+				 .lines_per_frame = 1226,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 	},
@@ -1701,9 +1821,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_480p_dvs_binning,
 		.width = 936,
 		.height = 602,
-		.fps = 30,
-		.pixels_per_line = 5464,
-		.lines_per_frame = 2046,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 5464,
+				 .lines_per_frame = 2046,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 	},
@@ -1712,9 +1838,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_720p_dvs_binning,
 		.width = 1568,
 		.height = 880,
-		.fps = 30,
-		.pixels_per_line = 5464,
-		.lines_per_frame = 2046,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 5464,
+				 .lines_per_frame = 2046,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 	},
@@ -1723,9 +1855,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_wvga_dvs_binning,
 		.width = 1640,
 		.height = 1024,
-		.fps = 30,
-		.pixels_per_line = 5464,
-		.lines_per_frame = 2046,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 5464,
+				 .lines_per_frame = 2046,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 	},
@@ -1734,9 +1872,15 @@ struct imx_resolution imx135vb_res_video[] = {
 		.regs = imx135vb_2336x1320_max_clock,
 		.width = 2336,
 		.height = 1320,
-		.fps = 30,
-		.pixels_per_line = 4572, /* Pixel Clock : 360.96 MHz */
-		.lines_per_frame = 2632,
+		.fps_options = {
+			{/* Pixel Clock : 360.96 MHz */
+				 .fps = 30,
+				 .pixels_per_line = 4572,
+				 .lines_per_frame = 2632,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 	},

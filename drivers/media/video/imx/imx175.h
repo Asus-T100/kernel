@@ -1396,120 +1396,181 @@ struct imx_resolution imx175_res_preview[] = {
 		.regs = imx_CIF_strong_dvs_30fps,
 		.width = 368,
 		.height = 304,
-		.fps = 30,
-		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
-		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x11DB,
+				 .lines_per_frame = 0x0600,
+			},
+			{
+			}
+		},
+
 	},
 	{
 		.desc = "VGA_strong_dvs_30fps",
 		.regs = imx_VGA_strong_dvs_30fps,
 		.width = 820,
 		.height = 616,
-		.fps = 30,
-		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
-		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x11DB,
+				 .lines_per_frame = 0x0600,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "WIDE_PREVIEW_30fps",
 		.regs = imx_WIDE_PREVIEW_30fps,
 		.width = 1640,
 		.height = 956,
-		.fps = 30,
-		.pixels_per_line = 0x1000, /* consistent with regs arrays */
-		.lines_per_frame = 0x0D70, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x1000,
+				 .lines_per_frame = 0x0D70,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_720p_30fps",
 		.regs = imx_STILL_720p_30fps,
 		.width = 1568,
 		.height = 876,
-		.fps = 30,
-		.pixels_per_line = 0x1428, /* consistent with regs arrays */
-		.lines_per_frame = 0x0548, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x1428,
+				 .lines_per_frame = 0x0548,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_2M_30fps",
 		.regs = imx_STILL_2M_30fps,
 		.width = 1640,
 		.height = 1232,
-		.fps = 30,
-		.pixels_per_line = 0x0D66, /* consistent with regs arrays */
-		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0D66,
+				 .lines_per_frame = 0x09C4,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "1080p_strong_dvs_30fps",
 		.regs = imx_1080p_no_dvs_30fps,
 		.width = 1940,
 		.height = 1092,
-		.fps = 30,
-		.pixels_per_line = 0x0F3C, /* consistent with regs arrays */
-		.lines_per_frame = 0x07D0, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0F3C,
+				 .lines_per_frame = 0x07D0,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_3M_30fps",
 		.regs = imx_STILL_3M_30fps,
 		.width = 2064,
 		.height = 1552,
-		.fps = 30,
-		.pixels_per_line = 0x0D66, /* consistent with regs arrays */
-		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0D66,
+				 .lines_per_frame = 0x09C4,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_5M_30fps",
 		.regs = imx_STILL_5M_30fps,
 		.width = 2576,
 		.height = 1936,
-		.fps = 30,
-		.pixels_per_line = 0x0D66, /* consistent with regs arrays */
-		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0D66,
+				 .lines_per_frame = 0x09C4,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_6M_30fps",
 		.regs = imx_STILL_6M_30fps,
 		.width = 3280,
 		.height = 1852,
-		.fps = 30,
-		.pixels_per_line = 0x0D66, /* consistent with regs arrays */
-		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0D66,
+				 .lines_per_frame = 0x09C4,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_8M_30fps",
 		.regs = imx_STILL_8M_30fps,
 		.width = 3280,
 		.height = 2464,
-		.fps = 30,
-		.pixels_per_line = 0x0D66, /* consistent with regs arrays */
-		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0D66,
+				 .lines_per_frame = 0x09C4,
+			},
+			{
+			}
+		},
 	},
 };
 
@@ -1519,72 +1580,108 @@ struct imx_resolution imx175_res_still[] = {
 		.regs = imx_CIF_strong_dvs_30fps,
 		.width = 368,
 		.height = 304,
-		.fps = 30,
-		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
-		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x11DB,
+				 .lines_per_frame = 0x0600,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "VGA_strong_dvs_15fps",
 		.regs = imx_VGA_strong_dvs_15fps,
 		.width = 820,
 		.height = 616,
-		.fps = 15,
-		.pixels_per_line = 0x1C86, /* consistent with regs arrays */
-		.lines_per_frame = 0x079E, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x1C86,
+				 .lines_per_frame = 0x079E,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "imx_STILL_720p_15fps",
 		.regs = imx_STILL_720p_15fps,
 		.width = 1568,
 		.height = 876,
-		.fps = 15,
-		.pixels_per_line = 0x1838, /* consistent with regs arrays */
-		.lines_per_frame = 0x08CA, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x1838,
+				 .lines_per_frame = 0x08CA,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_2M_15fps",
 		.regs = imx_STILL_2M_15fps,
 		.width = 1640,
 		.height = 1232,
-		.fps = 15,
-		.pixels_per_line = 0x1646, /* consistent with regs arrays */
-		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x1646,
+				 .lines_per_frame = 0x0BB8,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "1080p_strong_dvs_15fps",
 		.regs = imx_1080p_no_dvs_15fps,
 		.width = 1940,
 		.height = 1092,
-		.fps = 15,
-		.pixels_per_line = 0x189C, /* consistent with regs arrays */
-		.lines_per_frame = 0x09A6, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x189C,
+				 .lines_per_frame = 0x09A6,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_3M_15fps",
 		.regs = imx_STILL_3M_15fps,
 		.width = 2064,
 		.height = 1552,
-		.fps = 15,
-		.pixels_per_line = 0x1646, /* consistent with regs arrays */
-		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x1646,
+				 .lines_per_frame = 0x0BB8,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_5M_15fps",
@@ -1597,30 +1694,51 @@ struct imx_resolution imx175_res_still[] = {
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x1646,
+				 .lines_per_frame = 0x0BB8,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_6M_15fps",
 		.regs = imx_STILL_6M_15fps,
 		.width = 3280,
 		.height = 1852,
-		.fps = 15,
-		.pixels_per_line = 0x1646, /* consistent with regs arrays */
-		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x1646,
+				 .lines_per_frame = 0x0BB8,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_8M_15fps",
 		.regs = imx_STILL_8M_15fps,
 		.width = 3280,
 		.height = 2464,
-		.fps = 15,
-		.pixels_per_line = 0x1646, /* consistent with regs arrays */
-		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 15,
+				 .pixels_per_line = 0x1646,
+				 .lines_per_frame = 0x0BB8,
+			},
+			{
+			}
+		},
 	},
 };
 
@@ -1630,72 +1748,113 @@ struct imx_resolution imx175_res_video[] = {
 		.regs = imx_QCIF_strong_dvs_30fps,
 		.width = 216,
 		.height = 176,
-		.fps = 30,
-		.pixels_per_line = 0x0D70, /* consistent with regs arrays */
-		.lines_per_frame = 0x0548, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0D70,
+				 .lines_per_frame = 0x0548,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc =	"QVGA_strong_dvs_30fps",
 		.regs = imx_QVGA_strong_dvs_30fps,
 		.width = 408,
 		.height = 308,
-		.fps = 30,
-		.pixels_per_line = 0x0D70, /* consistent with regs arrays */
-		.lines_per_frame = 0x0548, /* consistent with regs arrays */
 		.bin_factor_x =	4,
 		.bin_factor_y =	4,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x0D70,
+				 .lines_per_frame = 0x0548,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "VGA_strong_dvs_30fps",
 		.regs = imx_VGA_strong_dvs_30fps,
 		.width = 820,
 		.height = 616,
-		.fps = 30,
-		.pixels_per_line = 0x1194, /* consistent with regs arrays */
-		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x1194,
+				 .lines_per_frame = 0x0600,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "720p_strong_dvs_30fps",
 		.regs = imx_720p_strong_dvs_30fps,
 		.width = 1568,
 		.height = 876,
-		.fps = 30,
-		.pixels_per_line = 0x139C, /* consistent with regs arrays */
-		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x139C,
+				 .lines_per_frame = 0x0600,
+			},
+			{
+				 .fps = 60,
+				 .pixels_per_line = 0xD70,
+				 .lines_per_frame = 0x444,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "WVGA_strong_dvs_30fps",
 		.regs = imx_WVGA_strong_dvs_30fps,
 		.width = 1640,
 		.height = 1024,
-		.fps = 30,
-		.pixels_per_line = 0x139C, /* consistent with regs arrays */
-		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x139C,
+				 .lines_per_frame = 0x0600,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "1080p_strong_dvs_30fps",
 		.regs = imx_1080p_strong_dvs_30fps,
 		.width = 2336,
 		.height = 1308,
-		.fps = 30,
-		.pixels_per_line = 0x11C6, /* consistent with regs arrays */
-		.lines_per_frame = 0x06A4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 0x11C6,
+				 .lines_per_frame = 0x06A4,
+			},
+			{
+			}
+		},
 	},
 };
 
