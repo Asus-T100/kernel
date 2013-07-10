@@ -871,9 +871,6 @@ static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 	bool int_stat;
 	char *log_msg;
 
-	if (int_reg && stat_reg)
-		dump_pmic_regs();
-
 	for (i = 0; i < int_info_size; ++i) {
 
 		/*continue if interrupt register bit is not set */
@@ -1418,7 +1415,6 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 			return retval;
 		}
 
-		dump_pmic_tt_regs();
 		memcpy(chc.runtime_bcprof, chc.actual_bcprof,
 			sizeof(struct ps_pse_mod_prof));
 	}
