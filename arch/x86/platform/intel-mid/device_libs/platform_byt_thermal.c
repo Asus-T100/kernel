@@ -22,9 +22,11 @@
 #include <asm/intel_mid_thermal.h>
 
 #define BYT_THERM_DEV_NAME	"crystal_cove_thermal"
+#define BYT_EC_THERM_DEV_NAME	"byt_ec_thermal"
 
 enum {
 	byt_thermal,
+	byt_ec_thermal,
 };
 
 /* Correlation function to do Y=mX+C */
@@ -72,21 +74,79 @@ static struct intel_mid_thermal_sensor byt_sensors[] = {
 	},
 };
 
+static struct intel_mid_thermal_sensor byt_ec_sensors[] = {
+	{
+		.name = "CPUVR",
+		.index = 0,
+		.slope = 1000,
+		.intercept = 0,
+		.temp_correlation = linear_correlation,
+	},
+	{
+		.name = "Ambient",
+		.index = 1,
+		.slope = 1000,
+		.intercept = 0,
+		.temp_correlation = linear_correlation,
+	},
+	{
+		.name = "DDR3",
+		.index = 2,
+		.slope = 1000,
+		.intercept = 0,
+		.temp_correlation = linear_correlation,
+	},
+};
+
 static struct intel_mid_thermal_platform_data pdata[] = {
 	[byt_thermal] = {
 		.num_sensors = 4,
 		.sensors = byt_sensors,
 	},
+	[byt_ec_thermal] = {
+		.num_sensors = 3,
+		.sensors = byt_ec_sensors,
+	},
 };
+
+#ifdef CONFIG_INTEL_BYT_THERMAL
+static int set_byt_platform_thermal_data(void)
+{
+	return intel_mid_pmic_set_pdata(BYT_THERM_DEV_NAME,
+				&pdata[byt_thermal],
+				sizeof(pdata[byt_thermal]));
+}
+#endif
+
+#ifdef CONFIG_INTEL_BYT_EC_THERMAL
+static int set_byt_ec_platform_thermal_data(void)
+{
+	struct platform_device *pdev;
+
+	pdev = platform_device_register_simple(
+					BYT_EC_THERM_DEV_NAME,
+					-1, NULL, 0);
+	if (!pdev) {
+		pr_err("pdev_alloc failed for byt_ec_thermal\n");
+		return PTR_ERR(pdev);
+	}
+
+	pdev->dev.platform_data = &pdata[byt_ec_thermal];
+	return 0;
+}
+#endif
 
 static int __init byt_platform_thermal_init(void)
 {
-	int ret;
+	int ret = -EINVAL;
 
-	pr_err("in byt_platform_thermal_init");
-	ret = intel_mid_pmic_set_pdata(BYT_THERM_DEV_NAME,
-				&pdata[byt_thermal],
-				sizeof(pdata[byt_thermal]));
+#ifdef CONFIG_INTEL_BYT_THERMAL
+		ret = set_byt_platform_thermal_data();
+#elif CONFIG_INTEL_BYT_EC_THERMAL
+		ret = set_byt_ec_platform_thermal_data();
+#else
+		pr_err("Cannot detect exact BYT platform\n");
+#endif
 	if (ret)
 		pr_err("Configuring platform data failed:%d\n", ret);
 	return ret;
