@@ -5240,7 +5240,10 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	if (IS_VALLEYVIEW(dev) && intel_pipe_has_type(crtc,
 		INTEL_OUTPUT_HDMI)) {
 		dev_priv->tmds_clock_speed = adjusted_mode->clock;
+		mid_hdmi_audio_signal_event(dev_priv->dev,
+			HAD_EVENT_MODE_CHANGING);
 	}
+
 	return ret;
 }
 
