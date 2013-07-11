@@ -635,7 +635,7 @@ static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 	else if (intel_crtc->pipe == PIPE_B)
 		sdvox |= SDVO_PIPE_B_SELECT;
 
-	if (intel_hdmi->pfit) {
+	if (intel_hdmi->pfit && (adjusted_mode->hdisplay < PFIT_SIZE_LIMIT)) {
 		u32 val = 0;
 		if (intel_hdmi->pfit == AUTOSCALE)
 			val =  PFIT_ENABLE | (intel_crtc->pipe <<
@@ -661,7 +661,6 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
 	u32 temp;
 	u32 enable_bits = SDVO_ENABLE;
@@ -714,21 +713,6 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		temp &= ~enable_bits;
 	} else {
 		temp |= enable_bits;
-	}
-
-	if (intel_hdmi->pfit) {
-		u32 val = 0;
-		if (intel_hdmi->pfit == AUTOSCALE)
-			val =  PFIT_ENABLE | (intel_crtc->pipe <<
-				PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
-		if (intel_hdmi->pfit == PILLARBOX)
-			val =  PFIT_ENABLE | (intel_crtc->pipe <<
-				PFIT_PIPE_SHIFT) | PFIT_SCALING_PILLAR;
-		else if (intel_hdmi->pfit == LETTERBOX)
-			val =  PFIT_ENABLE | (intel_crtc->pipe <<
-				PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
-		DRM_DEBUG_DRIVER("pfit val = %x", val);
-		I915_WRITE(PFIT_CONTROL, val);
 	}
 
 	I915_WRITE(intel_hdmi->sdvox_reg, temp);

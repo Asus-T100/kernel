@@ -3780,8 +3780,6 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	if (!dev_priv->is_mipi)
 		intel_enable_pll(dev_priv, pipe);
 
-	vlv_pll_enable_reset(crtc);
-
 	if (dev_priv->is_mipi) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
@@ -3811,6 +3809,7 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
 	struct intel_encoder *encoder;
+	int val;
 
 	if (!intel_crtc->active)
 		return;
@@ -3844,6 +3843,15 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	intel_disable_plane(dev_priv, plane, pipe);
 	intel_disable_pipe(dev_priv, pipe);
+
+	/* disable panel fitter if enabled */
+	val = I915_READ(PFIT_CONTROL);
+	if (val & PFIT_ENABLE) {
+		val = (val & PFIT_PIPE_MASK) >> PFIT_PIPE_SHIFT;
+		DRM_DEBUG("Enable panel fitter val = %d, pipe = %d", val, pipe);
+		if (val == pipe)
+			I915_WRITE(PFIT_CONTROL, PFIT_DISABLE);
+	}
 
 	/*Reset lane for VLV platform*/
 	if (IS_VALLEYVIEW(dev)) {

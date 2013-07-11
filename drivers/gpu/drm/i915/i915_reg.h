@@ -2009,8 +2009,9 @@ EDP_PSR_SW_TIMER
 #define PP_DIVISOR	0x61210
 
 /* Panel fitting */
-#define PFIT_CONTROL	0x61230
+#define PFIT_CONTROL   0x61230
 #define   PFIT_ENABLE		(1 << 31)
+#define   PFIT_DISABLE		(0 << 31)
 #define   PFIT_PIPE_MASK	(3 << 29)
 #define   PFIT_PIPE_SHIFT	29
 #define   VERT_INTERP_DISABLE	(0 << 10)
@@ -2030,6 +2031,7 @@ EDP_PSR_SW_TIMER
 #define PFIT_PGM_RATIOS	0x61234
 #define   PFIT_VERT_SCALE_MASK			0xfff00000
 #define   PFIT_HORIZ_SCALE_MASK			0x0000fff0
+#define	PFIT_SIZE_LIMIT	2000
 /* Pre-965 */
 #define		PFIT_VERT_SCALE_SHIFT		20
 #define		PFIT_VERT_SCALE_MASK		0xfff00000

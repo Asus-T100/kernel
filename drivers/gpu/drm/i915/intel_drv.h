@@ -309,7 +309,7 @@ struct intel_hdmi {
 	bool has_hdmi_sink;
 	bool has_audio;
 	enum hdmi_force_audio force_audio;
-	enum hdmi_panel_fitter pfit;
+	enum panel_fitter pfit;
 	void (*write_infoframe)(struct drm_encoder *encoder,
 				struct dip_infoframe *frame);
 	void (*set_infoframes)(struct drm_encoder *encoder,
@@ -342,6 +342,7 @@ struct intel_dp {
 	uint8_t  link_configuration[DP_LINK_CONFIGURATION_SIZE];
 	bool has_audio;
 	enum hdmi_force_audio force_audio;
+	enum panel_fitter pfit;
 	enum port port;
 	uint32_t color_range;
 	int dpms_mode;

@@ -1025,7 +1025,7 @@ enum hdmi_force_audio {
 	HDMI_AUDIO_ON,			/* force turn on HDMI audio */
 };
 
-enum hdmi_panel_fitter {
+enum panel_fitter {
 	PFIT_OFF,
 	AUTOSCALE,
 	PILLARBOX,

@@ -233,7 +233,7 @@ void intel_dsi_encoder_dpms(struct drm_encoder *encoder, int mode)
 {
 	struct drm_connector *connector = container_of(\
 			encoder, struct drm_connector, encoder);
-	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
 	struct drm_crtc *crtc;
 
 	DRM_DEBUG_KMS("mode %d\n", mode);
@@ -584,6 +584,21 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
 				intel_dsi->dev.video_frmt_cfg_bits |
 				VIDEO_MODE_BURST);
+
+	if (intel_dsi->pfit && (adjusted_mode->hdisplay < PFIT_SIZE_LIMIT)) {
+		u32 val = 0;
+		if (intel_dsi->pfit == AUTOSCALE)
+			val =  PFIT_ENABLE | (intel_crtc->pipe <<
+				PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
+		if (intel_dsi->pfit == PILLARBOX)
+			val =  PFIT_ENABLE | (intel_crtc->pipe <<
+				PFIT_PIPE_SHIFT) | PFIT_SCALING_PILLAR;
+		else if (intel_dsi->pfit == LETTERBOX)
+			val =  PFIT_ENABLE | (intel_crtc->pipe <<
+				PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
+		DRM_DEBUG_DRIVER("pfit val = %x", val);
+		I915_WRITE(PFIT_CONTROL, val);
+	}
 }
 
 static enum drm_connector_status
@@ -662,7 +677,22 @@ static int intel_dsi_set_property(struct drm_connector *connector,
 		struct drm_property *property,
 		uint64_t value)
 {
-	DRM_DEBUG_KMS("\n");
+	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
+	struct drm_i915_private *dev_priv = connector->dev->dev_private;
+	int ret;
+
+	ret = drm_connector_property_set_value(connector, property, value);
+	if (ret)
+		return ret;
+
+	if (property == dev_priv->force_pfit_property) {
+		if (value == intel_dsi->pfit)
+			return 0;
+
+		DRM_DEBUG_DRIVER("val = %d", (int)value);
+		intel_dsi->pfit = value;
+	}
+
 	return 0;
 }
 
@@ -691,6 +721,7 @@ static const struct drm_connector_funcs intel_dsi_connector_funcs = {
 	.detect = intel_dsi_detect,
 	.destroy = intel_dsi_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
+	.set_property = intel_dsi_set_property,
 };
 
 static void dsi_config(struct drm_encoder *encoder)
@@ -722,6 +753,13 @@ static void dsi_config(struct drm_encoder *encoder)
 	I915_WRITE(MIPI_DPHY_PARAM(pipe), intel_dsi->dev.dphy_reg);
 }
 
+static void
+intel_dsi_add_properties(struct intel_dsi *intel_dsi,
+				struct drm_connector *connector)
+{
+	intel_attach_force_pfit_property(connector);
+}
+
 bool intel_dsi_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -738,6 +776,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_dsi = kzalloc(sizeof(struct intel_dsi), GFP_KERNEL);
 	if (!intel_dsi)
 		return false;
+	intel_dsi->pfit = 0;
 
 	intel_connector = kzalloc(sizeof(struct intel_connector), GFP_KERNEL);
 	if (!intel_connector) {
@@ -816,6 +855,7 @@ bool intel_dsi_init(struct drm_device *dev)
 
 	drm_encoder_helper_add(encoder, &intel_dsi_helper_funcs);
 
+	intel_dsi_add_properties(intel_dsi, connector);
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 
 	drm_sysfs_connector_add(connector);
