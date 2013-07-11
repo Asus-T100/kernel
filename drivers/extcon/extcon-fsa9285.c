@@ -214,7 +214,7 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 				"USB slave device connecetd\n");
 			drive_vbus = true;
 		}
-	} else if (stat & STATUS_ID_NO_FLOAT) {
+	} else if ((stat & STATUS_ID_NO_FLOAT) && (stat & STATUS_VBUS_VALID)) {
 		if (ohm_code == OHM_CODE_UART) {
 			dev_info(&chip->client->dev,
 				"UART device connecetd\n");
