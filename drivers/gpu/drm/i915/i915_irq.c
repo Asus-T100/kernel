@@ -30,6 +30,7 @@
 
 #include <linux/sysrq.h>
 #include <linux/slab.h>
+#include <linux/pm_runtime.h>
 #include "drmP.h"
 #include "drm.h"
 #include "i915_drm.h"
@@ -310,6 +311,7 @@ static void i915_hotplug_work_func(struct work_struct *work)
 	struct drm_mode_config *mode_config = &dev->mode_config;
 	struct intel_encoder *encoder;
 
+	pm_runtime_get_sync(&dev->pdev->dev);
 	mutex_lock(&mode_config->mutex);
 	DRM_DEBUG_KMS("running encoder hotplug functions\n");
 
@@ -321,6 +323,7 @@ static void i915_hotplug_work_func(struct work_struct *work)
 
 	/* Just fire off a uevent and let userspace tell us what to do */
 	drm_helper_hpd_irq_event(dev);
+	pm_runtime_put(&dev->pdev->dev);
 }
 /* defined intel_pm.c */
 extern spinlock_t mchdev_lock;
