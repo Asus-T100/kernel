@@ -55,7 +55,7 @@
 #define FG_FLAG_CHG			BIT(8)
 #define FG_FLAG_FC			BIT(9)
 #define ULPMC_FG_REG_NAC		0x0C /* Nominal available capacity */
-#define ULPMC_FG_REG_FAC		0x0E /* Full available capacity */
+#define ULPMC_FG_REG_FAC		0x28 /* Full available capacity */
 #define ULPMC_FG_REG_RMC		0x10 /* Remaining capacity */
 #define ULPMC_FG_REG_FCC		0x12 /* Full charge capacity */
 #define ULPMC_FG_REG_AI			0x14
