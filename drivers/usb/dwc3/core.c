@@ -451,6 +451,7 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 		"No platform data for %s.\n", dev_name(&pdev->dev));
 		goto err1;
 	}
+	mutex_init(&dwc->mutex);
 #endif
 
 	irq = platform_get_irq(pdev, 0);
