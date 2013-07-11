@@ -520,7 +520,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->asd.streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+	if (isp->asd.streaming != ATOMISP_DEVICE_STREAMING_ENABLED &&
+		!isp->acc.pipeline)
 		goto out_nowake;
 
 	if (irq_infos & CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
@@ -1176,7 +1177,8 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	mutex_lock(&isp->mutex);
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED &&
+		!isp->acc.pipeline) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		goto out;
 	}

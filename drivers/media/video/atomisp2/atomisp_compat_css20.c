@@ -38,6 +38,8 @@
 #include "ia_css_accelerate.h"
 #include "sh_css_debug.h"
 
+#include <linux/pm_runtime.h>
+
 /* Assume max number of ACC stages */
 #define MAX_ACC_STAGES	20
 
@@ -2221,20 +2223,21 @@ int atomisp_css_create_acc_pipe(struct atomisp_sub_device *asd)
 	struct ia_css_pipe_config *pipe_config;
 	struct atomisp_stream_env *stream_env = &asd->stream_env;
 
-	if (stream_env->stream) {
-		if (stream_env->stream_state == CSS_STREAM_STARTED) {
-			if (ia_css_stream_stop(stream_env->stream)
+	if (stream_env->acc_stream) {
+		if (stream_env->acc_stream_state == CSS_STREAM_STARTED) {
+			if (ia_css_stream_stop(stream_env->acc_stream)
 				!= IA_CSS_SUCCESS) {
-				dev_err(isp->dev, "stop stream failed.\n");
+				dev_err(isp->dev, "stop acc_stream failed.\n");
 				return -EBUSY;
 			}
 		}
 
-		if (ia_css_stream_destroy(stream_env->stream) != IA_CSS_SUCCESS) {
-			dev_err(isp->dev, "destroy stream failed.\n");
+		if (ia_css_stream_destroy(stream_env->acc_stream)
+			!= IA_CSS_SUCCESS) {
+			dev_err(isp->dev, "destroy acc_stream failed.\n");
 			return -EBUSY;
 		}
-		stream_env->stream = NULL;
+		stream_env->acc_stream = NULL;
 	}
 
 	pipe_config = &stream_env->pipe_configs[CSS_PIPE_ID_ACC];
@@ -2269,46 +2272,87 @@ int atomisp_css_start_acc_pipe(struct atomisp_sub_device *asd)
 		return -EBADE;
 	}
 
-	memset(&stream_env->stream_config, 0,
+	memset(&stream_env->acc_stream_config, 0,
 		sizeof(struct ia_css_stream_config));
-	if (ia_css_stream_create(&stream_env->stream_config, 1,
+	if (ia_css_stream_create(&stream_env->acc_stream_config, 1,
 				&stream_env->pipes[IA_CSS_PIPE_ID_ACC],
-				&stream_env->stream) != IA_CSS_SUCCESS) {
-		dev_err(isp->dev, "%s: create stream error.\n", __func__);
+				&stream_env->acc_stream) != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "%s: create acc_stream error.\n", __func__);
 		return -EINVAL;
 	}
+	asd->stream_env.acc_stream_state = CSS_STREAM_CREATED;
 
 	init_completion(&isp->acc.acc_done);
 	isp->acc.pipeline = stream_env->pipes[IA_CSS_PIPE_ID_ACC];
 
-	if (atomisp_css_start(asd, IA_CSS_PIPE_ID_ACC, false)
-		!= IA_CSS_SUCCESS) {
-		dev_err(isp->dev, "%s: start css error.\n", __func__);
-		return -EINVAL;
+	atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_MAX);
+
+	if (ia_css_start_sp() != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "start sp error.\n");
+		return -EIO;
 	}
 
+	if (ia_css_stream_start(asd->stream_env.acc_stream)
+		!= IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "acc_stream start error.\n");
+		return -EIO;
+	}
+
+	asd->stream_env.acc_stream_state = CSS_STREAM_STARTED;
 	return 0;
 }
 
 void atomisp_css_stop_acc_pipe(struct atomisp_sub_device *asd)
 {
-	atomisp_css_stop(asd, CSS_PIPE_ID_ACC, false);
+	if (asd->stream_env.acc_stream_state == CSS_STREAM_STARTED) {
+		ia_css_stream_stop(asd->stream_env.acc_stream);
+		asd->stream_env.acc_stream_state = CSS_STREAM_STOPPED;
+	}
 }
 
 void atomisp_css_destroy_acc_pipe(struct atomisp_sub_device *asd)
 {
-	if (ia_css_stream_destroy(asd->stream_env.stream)
-	    != IA_CSS_SUCCESS)
-		dev_warn(asd->isp->dev, "destroy ACC stream failed.\n");
-	asd->stream_env.stream = NULL;
+	if (asd->stream_env.acc_stream) {
+		if (ia_css_stream_destroy(asd->stream_env.acc_stream)
+		    != IA_CSS_SUCCESS)
+			dev_warn(asd->isp->dev,
+				"destroy acc_stream failed.\n");
+		asd->stream_env.acc_stream = NULL;
+	}
 
-	if (ia_css_pipe_destroy(asd->stream_env.pipes[IA_CSS_PIPE_ID_ACC])
-	    != IA_CSS_SUCCESS)
-		dev_warn(asd->isp->dev, "destroy ACC pipe failed.\n");
-	asd->stream_env.pipes[IA_CSS_PIPE_ID_ACC] = NULL;
+	if (asd->stream_env.pipes[IA_CSS_PIPE_ID_ACC]) {
+		if (ia_css_pipe_destroy(asd->stream_env.
+			pipes[IA_CSS_PIPE_ID_ACC]) != IA_CSS_SUCCESS)
+			dev_warn(asd->isp->dev,
+				"destroy ACC pipe failed.\n");
+		asd->stream_env.pipes[IA_CSS_PIPE_ID_ACC] = NULL;
+		asd->stream_env.update_pipe[IA_CSS_PIPE_ID_ACC] = false;
+		ia_css_pipe_config_defaults(
+			&asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_ACC]);
+		ia_css_pipe_extra_config_defaults(
+			&asd->stream_env.
+				pipe_extra_configs[IA_CSS_PIPE_ID_ACC]);
+	}
 	asd->isp->acc.pipeline = NULL;
+
+	/* css 2.0 API limitation: ia_css_stop_sp() could be only called after
+	 * destroy all pipes
+	 */
+	if (ia_css_isp_has_started())
+		ia_css_stop_sp();
+
 	kfree(asd->isp->acc.acc_stages);
 	asd->isp->acc.acc_stages = NULL;
+
+	atomisp_freq_scaling(asd->isp, ATOMISP_DFS_MODE_LOW);
+
+	/* Force power cycling when binary finished */
+	ia_css_suspend();
+	if (pm_runtime_put_sync(asd->isp->dev) < 0)
+		dev_err(asd->isp->dev, "can not disable ISP power\n");
+	else if (pm_runtime_get_sync(asd->isp->dev) < 0)
+		dev_err(asd->isp->dev, "can not enable ISP power\n");
+	ia_css_resume();
 }
 
 int atomisp_css_load_acc_binary(struct atomisp_sub_device *asd,
