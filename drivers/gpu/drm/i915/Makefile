@@ -55,6 +55,7 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 
 i915-y += bp_34_dma-buf.o
 i915-y += i915_gem_vmap.o
+i915-y += i915_dpst.o
 i915-$(CONFIG_COMPAT)   += i915_ioc32.o
 
 i915-$(CONFIG_ACPI)	+= intel_acpi.o

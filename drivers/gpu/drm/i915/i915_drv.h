@@ -764,6 +764,7 @@ typedef struct drm_i915_private {
 	u32 saveGUNIT_CZClockGatingDisable1;
 	u32 saveGUNIT_CZClockGatingDisable2;
 	u32 saveDPIO_CFG_DATA;
+	u32 saveDPST_VLV_BTGR_DATA;
 
 	struct {
 		/** Bridge to intel-gtt-ko */
@@ -996,6 +997,13 @@ typedef struct drm_i915_private {
 	int tmds_clock_speed;
 	int hdmi_audio_interrupt_mask;
 	struct work_struct hdmi_audio_wq;
+	/* Added for DPST */
+	struct task_struct *dpst_task;
+	u32 dpst_signal;
+	u32 dpst_backlight_factor;
+	u32 blc_data;
+	u32 blc_user;
+	bool is_dpst_enabled;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */
@@ -1432,6 +1440,14 @@ extern void i915_destroy_error_state(struct drm_device *dev);
 #define i915_destroy_error_state(x)
 #endif
 
+
+/* i915_dpst.c */
+int i915_dpst_context(struct drm_device *dev, void *data,
+			struct drm_file *file_priv);
+int i915_reset_histogram(struct drm_device *dev);
+int i915_dpst_enable_hist_interrupt(struct drm_device *dev, bool enable);
+u32 i915_dpst_get_brightness(struct drm_device *dev);
+void i915_dpst_set_brightness(struct drm_device *dev, u32 brightness_val);
 
 /* i915_gem.c */
 int i915_gem_init_ioctl(struct drm_device *dev, void *data,

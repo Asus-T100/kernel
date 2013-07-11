@@ -220,7 +220,7 @@ static u32 intel_panel_compute_brightness(struct drm_device *dev, u32 val)
 static u32 intel_panel_get_backlight(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 val;
+	u32 val, dpst_val;
 
 	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
 #ifdef CONFIG_CRYSTAL_COVE
@@ -244,6 +244,11 @@ static u32 intel_panel_get_backlight(struct drm_device *dev)
 	}
 
 	val = intel_panel_compute_brightness(dev, val);
+	dpst_val = i915_dpst_get_brightness(dev);
+	DRM_DEBUG_DRIVER("backlight PWM = %d dpst_val= %d\n", val, dpst_val);
+	if (dpst_val > 0)
+		val = dpst_val;
+
 	DRM_DEBUG_DRIVER("get backlight PWM = %d\n", val);
 	return val;
 }
@@ -255,7 +260,7 @@ static void intel_pch_panel_set_backlight(struct drm_device *dev, u32 level)
 	I915_WRITE(BLC_PWM_CPU_CTL, val | level);
 }
 
-static void intel_panel_actually_set_backlight(struct drm_device *dev, u32 level)
+void intel_panel_actually_set_backlight(struct drm_device *dev, u32 level)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 tmp;
@@ -296,7 +301,7 @@ void intel_panel_set_backlight(struct drm_device *dev, u32 level)
 
 	dev_priv->backlight_level = level;
 	if (dev_priv->backlight_enabled)
-		intel_panel_actually_set_backlight(dev, level);
+		i915_dpst_set_brightness(dev, level);
 }
 
 void intel_panel_disable_backlight(struct drm_device *dev)

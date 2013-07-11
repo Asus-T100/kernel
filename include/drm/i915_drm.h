@@ -235,6 +235,7 @@ typedef struct _drm_i915_sarea {
 #define DRM_I915_SET_CSC                0x39
 #define DRM_I915_GET_PSR_SUPPORT	0X3a
 #define DRM_I915_PERFMON		0x3b
+#define DRM_I915_DPST_CONTEXT		0x3c
 
 #define DRM_IOCTL_I915_INIT		DRM_IOW( DRM_COMMAND_BASE + DRM_I915_INIT, drm_i915_init_t)
 #define DRM_IOCTL_I915_FLUSH		DRM_IO ( DRM_COMMAND_BASE + DRM_I915_FLUSH)
@@ -309,6 +310,9 @@ typedef struct _drm_i915_sarea {
 						DRM_I915_GET_PSR_SUPPORT, bool)
 #define DRM_IOCTL_I915_PERFMON DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_PERFMON, \
 		struct drm_i915_perfmon)
+#define DRM_IOCTL_I915_DPST_CONTEXT			\
+		DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_DPST_CONTEXT, \
+		struct dpst_initialize_context)
 
 /* Allow drivers to submit batchbuffers directly to hardware, relying
  * on the security mechanisms provided by hardware.
@@ -372,6 +376,7 @@ struct drm_i915_edp_psr_ctl {
 #define I915_PARAM_HAS_WAIT_TIMEOUT	 19
 #define I915_PARAM_HAS_SEMAPHORES	 20
 #define I915_PARAM_HAS_VMAP		 21
+#define I915_PARAM_DPST_ACTIVE		 22
 
 typedef struct drm_i915_getparam {
 	int param;
@@ -1043,5 +1048,70 @@ struct drm_i915_plane_180_rotation {
 struct drm_i915_reserved_reg_bit_2 {
 	__u32 enable;
 	int plane;
+};
+#define	DPST_DIET_ENTRY_COUNT	33	/* Total number of DIET entries */
+#define DPST_RESET_IE		0x40004000
+#define DPST_MAX_FACTOR		100
+struct dpst_ie {
+	enum dpst_diet_alg {
+		i915_DPST_RGB_TRANSLATOR = 0,
+		i915_DPST_YUV_ADDER,
+		i915_DPST_HSV_MULTIPLIER
+	} diet_algorithm;
+	__u32  base_lut_index;	/* Base lut index (192 for legacy mode)*/
+	__u32  factor_present[DPST_DIET_ENTRY_COUNT];
+	__u32  factor_new[DPST_DIET_ENTRY_COUNT];
+	__u32  factor_scalar;
+};
+
+struct dpst_ie_container {
+	struct dpst_ie dpst_ie_st;
+	__u32	dpst_blc_freq;
+	__u32	dpst_blc_factor;
+	__u32	pipe_n;
+	__u32	reset_int;
+};
+
+struct dpst_initialize_data {
+	__u32 pipe_n;
+	__u32 threshold_gb;
+	__u32 gb_delay;
+	__u32 hist_reg_values;
+	__u32 blc_inv_settings;
+	__u32 sig_num;
+};
+
+struct dpst_histogram {
+	__u16	event;
+	__u32	status[32];
+	__u32	threshold[12];
+	__u32	gb_val;
+	__u32	gb_int_delay;
+	__u32   bkl_val;
+	enum dpst_hist_mode {
+		i915_DPST_YUV_LUMA_MODE = 0,
+		i915_DPST_HSV_INTENSITY_MODE
+	} hist_mode;
+};
+
+struct dpst_histogram_status {
+	__u32	pipe_n;
+	struct dpst_histogram histogram_bins;
+};
+
+struct dpst_initialize_context {
+	enum dpst_call_type {
+		DPST_ENABLE = 1,
+		DPST_DISABLE,
+		DPST_INIT_DATA,
+		DPST_GET_BIN_DATA,
+		DPST_APPLY_LUMA,
+		DPST_RESET_HISTOGRAM_STATUS
+	} dpst_ioctl_type;
+	union {
+		struct dpst_initialize_data	init_data;
+		struct dpst_ie_container	ie_container;
+		struct dpst_histogram_status	hist_status;
+	};
 };
 #endif				/* _I915_DRM_H_ */

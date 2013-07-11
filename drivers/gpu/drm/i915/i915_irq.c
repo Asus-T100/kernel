@@ -322,7 +322,6 @@ static void i915_hotplug_work_func(struct work_struct *work)
 	/* Just fire off a uevent and let userspace tell us what to do */
 	drm_helper_hpd_irq_event(dev);
 }
-
 /* defined intel_pm.c */
 extern spinlock_t mchdev_lock;
 
@@ -742,6 +741,12 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 			if (pipe_stats[pipe] & PLANE_FLIPDONE_INT_STATUS_VLV) {
 				intel_prepare_page_flip(dev, pipe);
 				intel_finish_page_flip(dev, pipe);
+			}
+			if (pipe_stats[pipe] & PIPE_DPST_EVENT_STATUS) {
+				if (dev_priv->dpst_task != NULL)
+					send_sig_info(dev_priv->dpst_signal,
+						SEND_SIG_FORCED,
+							dev_priv->dpst_task);
 			}
 		}
 
