@@ -19,7 +19,7 @@
 #include <asm/platform_sst.h>
 
 #define CTP_SSP_BASE 0xffa23000
-#define CTP_DMA_BASE 0xffa23000
+#define CTP_DMA_BASE 0xffaf8000
 #define CTP_MAX_CONFIG_SIZE 500
 struct sst_pci_info sst_data;
 

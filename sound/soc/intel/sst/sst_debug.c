@@ -175,8 +175,8 @@ static const struct file_operations sst_debug_shim_ops = {
 #define CHECKPOINT_DUMP_SZ	256
 #define IA_LPE_MAILBOX_DUMP_SZ	100
 #define LPE_IA_MAILBOX_DUMP_SZ	100
-#define SCU_LPE_MAILBOX_DUMP_SZ	20
-#define LPE_SCU_MAILBOX_DUMP_SZ	20
+#define SCU_LPE_MAILBOX_DUMP_SZ	256
+#define LPE_SCU_MAILBOX_DUMP_SZ	256
 
 static inline int is_fw_running(struct intel_sst_drv *drv)
 {
