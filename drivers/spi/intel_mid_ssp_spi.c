@@ -1143,9 +1143,8 @@ static int setup(struct spi_device *spi)
 		if (sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)
 			sspc->cr1_sig |= SSCR1_TRAIL;
 	} else {
-		sspc->cr1_sig = SSCR1_RIE | SSCR1_TIE | SSCR1_TINTE;
-		sspc->mask_sr = SSSR_RFS | SSSR_TFS |
-				 SSSR_ROR | SSSR_TUR | SSSR_TINT;
+		sspc->cr1_sig = SSCR1_TINTE;
+		sspc->mask_sr = SSSR_ROR | SSSR_TUR | SSSR_TINT;
 	}
 	sspc->clear_sr = SSSR_TUR | SSSR_ROR | SSSR_TINT;
 
