@@ -3982,6 +3982,22 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 static void i9xx_crtc_commit(struct drm_crtc *crtc)
 {
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	/* Enable RefA clock enable bit (bit 29) of DPLL A) for LUT access */
+	if (dev_priv->is_mipi) {
+		if (I915_READ(_DPLL_A) & DPLL_VCO_ENABLE) {
+			I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) &
+					~DPLL_VCO_ENABLE);
+			POSTING_READ(_DPLL_A);
+			udelay(150);
+		}
+		I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) |
+			DPLL_REFA_CLK_ENABLE_VLV);
+		POSTING_READ(_DPLL_A);
+		udelay(150);
+	}
 	i9xx_crtc_enable(crtc);
 }
 

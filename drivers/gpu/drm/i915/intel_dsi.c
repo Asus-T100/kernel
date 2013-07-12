@@ -230,12 +230,11 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 	DRM_DEBUG_KMS("\n");
 }
 
-/* this is basically intel_connector_dpms and intel_encoder_dpms
- * combined, with the mipi dev specific call as well
- *
- */
-static void intel_dsi_dpms(struct drm_connector *connector, int mode)
+/* Encoder dpms must, add functionality later */
+void intel_dsi_encoder_dpms(struct drm_encoder *encoder, int mode)
 {
+	struct drm_connector *connector = container_of(\
+			encoder, struct drm_connector, encoder);
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 	struct drm_crtc *crtc;
 
@@ -274,10 +273,11 @@ static void intel_dsi_dpms(struct drm_connector *connector, int mode)
 		 *
 		 */
 		/*intel_crtc_update_dpms(crtc);*/
-
-		intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, true);
+		/* FIXME: need to call dpms functions */
+		/*intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, true);*/
 	} else {
-		intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, false);
+		/* FIXME: need to call dpms functions */
+		/*intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, false);*/
 
 		/*intel_dsi->base.connectors_active = false;*/
 
@@ -669,6 +669,7 @@ static int intel_dsi_set_property(struct drm_connector *connector,
 }
 
 static const struct drm_encoder_helper_funcs intel_dsi_helper_funcs = {
+	.dpms = intel_dsi_encoder_dpms,
 	.mode_fixup = intel_dsi_mode_fixup,
 	.mode_set = intel_dsi_mode_set,
 	.disable = intel_encoder_noop,
@@ -688,7 +689,7 @@ static const struct drm_connector_helper_funcs
 };
 
 static const struct drm_connector_funcs intel_dsi_connector_funcs = {
-	.dpms = intel_dsi_dpms,
+	.dpms = drm_helper_connector_dpms,
 	.detect = intel_dsi_detect,
 	.destroy = intel_dsi_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -820,6 +821,16 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 
 	drm_sysfs_connector_add(connector);
+
+	/* XXX: Disable PPS to be done before eDP is disabled per BSPEC*/
+	/* FIXME: move to correct place */
+	if ((I915_READ(PIPEA_PP_CONTROL) & 0x00000001) != 0)
+		I915_WRITE_BITS(PIPEA_PP_CONTROL, 0, 0x00000001);
+
+	wait_for((I915_READ(PIPEA_PP_STATUS) & 0x80000000) == 0, 150);
+
+	if ((I915_READ(PIPEA_PP_STATUS) & 0x80000000) != 0)
+		DRM_ERROR("UNABLE TO clear PPS----- timedout\n");
 
 	return true;
 err:
