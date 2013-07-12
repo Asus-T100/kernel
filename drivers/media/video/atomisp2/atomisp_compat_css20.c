@@ -1732,7 +1732,28 @@ void atomisp_css_set_gamma_table(struct atomisp_sub_device *asd,
 void atomisp_css_set_ctc_table(struct atomisp_sub_device *asd,
 			struct atomisp_css_ctc_table *ctc_table)
 {
-	asd->params.config.ctc_table = ctc_table;
+	int i;
+	uint16_t *vamem_ptr = ctc_table->data.vamem_1;
+	int data_size = IA_CSS_VAMEM_1_CTC_TABLE_SIZE;
+	bool valid = false;
+
+	/* workaround: if ctc_table is all 0, do not apply it */
+	if (ctc_table->vamem_type == IA_CSS_VAMEM_TYPE_2) {
+		vamem_ptr = ctc_table->data.vamem_2;
+		data_size = IA_CSS_VAMEM_2_CTC_TABLE_SIZE;
+	}
+
+	for (i = 0; i < data_size; i++) {
+		if (*(vamem_ptr + i)) {
+			valid = true;
+			break;
+		}
+	}
+
+	if (valid)
+		asd->params.config.ctc_table = ctc_table;
+	else
+		dev_warn(asd->isp->dev, "Bypass the invalid ctc_table.\n");
 }
 
 void atomisp_css_set_anr_thres(struct atomisp_sub_device *asd,
