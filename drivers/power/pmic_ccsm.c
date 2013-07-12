@@ -257,12 +257,8 @@ static int __pmic_write_tt(u8 addr, u8 data)
 	ret = intel_scu_ipc_iowrite8(CHRTTADDR_ADDR, addr);
 	if (unlikely(ret))
 		return ret;
-	msleep(100);
 
-	ret = intel_scu_ipc_iowrite8(CHRTTDATA_ADDR, data);
-	msleep(100);
-
-	return ret;
+	return intel_scu_ipc_iowrite8(CHRTTDATA_ADDR, data);
 }
 
 static inline int pmic_write_tt(u8 addr, u8 data)
@@ -680,27 +676,9 @@ int pmic_enable_charging(bool enable)
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
-	int ret;
-	u8 rval;
 	u8 addr_cc = TT_CHRCCHOTVAL_ADDR - zone;
-
 	dev_dbg(chc.dev, "%s:%X=%X\n", __func__, addr_cc, reg_val);
-	ret = pmic_write_tt(addr_cc, reg_val);
-	if (unlikely(ret))
-		return ret;
-
-	ret = pmic_read_tt(addr_cc, &rval);
-	if (unlikely(ret))
-		return ret;
-
-	if (rval != reg_val) {
-		dev_err(chc.dev,
-			"%s:Error in writing to TT reg :%x Wrote=%X:Read=%X\n",
-			__func__, addr_cc, reg_val, rval);
-		return -EIO;
-	}
-
-	return 0;
+	return pmic_write_tt(addr_cc, reg_val);
 }
 
 static inline int update_zone_cv(int zone, u8 reg_val)
