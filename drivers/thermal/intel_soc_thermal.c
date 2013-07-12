@@ -411,7 +411,6 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 				unsigned long state)
 {
 	u32 eax, edx;
-	int ret;
 	struct soc_throttle_data *data;
 	struct cooling_device_info *cdev_info =
 			(struct cooling_device_info *)cdev->devdata;
@@ -442,7 +441,7 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 	cdev_info->soc_cur_state = state;
 
 	mutex_unlock(&cdev_info->lock_state);
-	return ret;
+	return 0;
 }
 
 static void notify_thermal_event(struct thermal_zone_device *tzd,
