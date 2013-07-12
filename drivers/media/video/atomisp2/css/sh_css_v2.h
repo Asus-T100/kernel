@@ -40,6 +40,7 @@ enum sh_css_err
 sh_css_pipe_configure_output(struct sh_css_pipe *me,
 			     unsigned int width,
 			     unsigned int height,
+			     unsigned int min_padded_width,
 			     enum sh_css_frame_format format);
 
 void
