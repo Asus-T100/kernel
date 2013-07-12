@@ -49,6 +49,7 @@
 #include <asm/intel-mid.h>
 #include <linux/i2c.h>
 #include <linux/workqueue.h>
+#include <linux/mfd/intel_msic.h>
 
 #ifdef CONFIG_BOARD_CTP
 
@@ -164,6 +165,7 @@ static DEFINE_SPINLOCK(vdd_interrupt_lock);
 
 static struct workqueue_struct *bcu_workqueue;
 static void unmask_theburst(struct work_struct *work);
+static struct intel_msic_vdd_pdata *pdata;
 
 struct vdd_info {
 	unsigned int irq;
@@ -310,19 +312,27 @@ static ssize_t store_bcu_status(struct device *dev,
 	 * bcu_enable = 1 means enable bcu, to do this it need to set 3rd
 	 * bit from right side so mask will be 0x08
 	 */
-	ret = intel_scu_ipc_update_register(VWARNA_CFG,
+	/*
+	 * pdata must be checked as pdata came as null in some platform
+	 */
+	if ((!pdata) || !(pdata->disable_unused_comparator & DISABLE_VWARNA)) {
+		ret = intel_scu_ipc_update_register(VWARNA_CFG,
 			(bcu_enable << 3), 0x08);
-	if (ret)
-		goto bcu_ipc_fail;
-	ret = intel_scu_ipc_update_register(VWARNB_CFG,
+		if (ret)
+			goto bcu_ipc_fail;
+	}
+	if ((!pdata) || !(pdata->disable_unused_comparator & DISABLE_VWARNB)) {
+		ret = intel_scu_ipc_update_register(VWARNB_CFG,
 			(bcu_enable << 3), 0x08);
-	if (ret)
-		goto bcu_ipc_fail;
-	ret = intel_scu_ipc_update_register(VCRIT_CFG,
+		if (ret)
+			goto bcu_ipc_fail;
+	}
+	if ((!pdata) || !(pdata->disable_unused_comparator & DISABLE_VCRIT)) {
+		ret = intel_scu_ipc_update_register(VCRIT_CFG,
 			(bcu_enable << 3), 0x08);
-	if (ret)
-		goto bcu_ipc_fail;
-
+		if (ret)
+			goto bcu_ipc_fail;
+	}
 	ret = count;
 bcu_ipc_fail:
 	mutex_unlock(&vdd_update_lock);
@@ -576,13 +586,13 @@ static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 	uint8_t irq_data, event = 0, clear_irq, ret;
 	struct vdd_info *vinfo = (struct vdd_info *)dev_data;
 
-	spin_lock_irq(&vdd_interrupt_lock);
 #ifndef CONFIG_BOARD_CTP
 	ret = intel_scu_ipc_ioread8(BCUIRQ, &global_irq_data);
 	if (ret)
 		dev_warn(&vinfo->pdev->dev, "ipc read/write failed\n");
-	clear_irq = global_irq_data;
 #endif
+	spin_lock_irq(&vdd_interrupt_lock);
+	clear_irq = global_irq_data;
 	irq_data = global_irq_data;
 	global_irq_data = 0;
 	spin_unlock_irq(&vdd_interrupt_lock);
@@ -688,6 +698,21 @@ static int program_bcu(struct platform_device *pdev, struct vdd_info *vinfo)
 
 configure_register:
 	/* configure all related register */
+	/* CTP and VB aren't using WARNB so disabling it and CMS is not in
+	 * place, so disabling CRIT also. Once CMS comes please remove CRIT
+	 * from this part.
+	 */
+	/*
+	 * pdata must be checked as pdata came as null in some platform
+	 */
+	if (pdata && (pdata->disable_unused_comparator & DISABLE_VWARNA))
+		vdata.vwarna_cfg = 0;
+	if (pdata && (pdata->disable_unused_comparator & DISABLE_VWARNB))
+		vdata.vwarnb_cfg = 0;
+	if (pdata && (pdata->disable_unused_comparator & DISABLE_VCRIT))
+		vdata.vcrit_cfg = 0;
+
+
 	ret = vdd_set_register(VWARNA_CFG, vdata.vwarna_cfg);
 	ret |= vdd_set_register(VWARNB_CFG, vdata.vwarnb_cfg);
 	ret |= vdd_set_register(VCRIT_CFG, vdata.vcrit_cfg);
@@ -718,7 +743,7 @@ static int mid_vdd_probe(struct platform_device *pdev)
 	vinfo->pdev = pdev;
 	vinfo->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, vinfo);
-
+	pdata = pdev->dev.platform_data;
 #ifdef CONFIG_BOARD_CTP
 	vinfo->bcu_intr_addr = ioremap(MSIC_BCU_STAT, MSIC_BCU_LEN);
 #else

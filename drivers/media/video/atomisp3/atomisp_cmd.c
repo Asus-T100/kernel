@@ -3007,10 +3007,10 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_sub_device
 			isp_subdev->params.config.yuv2rgb_cc_config =
 				&isp_subdev->params.yuv2rgb_cc_config;
 		memset(isp_subdev->params.config.yuv2rgb_cc_config, 0 ,
-				sizeof(struct ia_css_yuv2rgb_cc_config));
+				sizeof(struct ia_css_cc_config));
 		if (copy_from_user(isp_subdev->params.config.yuv2rgb_cc_config,
 				   arg->yuv2rgb_cc_config,
-				   sizeof(struct ia_css_yuv2rgb_cc_config))) {
+				   sizeof(struct ia_css_cc_config))) {
 			isp_subdev->params.config.yuv2rgb_cc_config = NULL;
 			return -EFAULT;
 		}
@@ -3020,10 +3020,10 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_sub_device
 			isp_subdev->params.config.rgb2yuv_cc_config =
 				&isp_subdev->params.rgb2yuv_cc_config;
 		memset(isp_subdev->params.config.rgb2yuv_cc_config, 0 ,
-				sizeof(struct ia_css_rgb2yuv_cc_config));
+				sizeof(struct ia_css_cc_config));
 		if (copy_from_user(isp_subdev->params.config.rgb2yuv_cc_config,
 				   arg->rgb2yuv_cc_config,
-				   sizeof(struct ia_css_rgb2yuv_cc_config))) {
+				   sizeof(struct ia_css_cc_config))) {
 			isp_subdev->params.config.rgb2yuv_cc_config = NULL;
 			return -EFAULT;
 		}
@@ -3057,6 +3057,25 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_sub_device
 
 	}
 
+	/* FIXME: since isp 2.2 for MERR has regression, make isp 2.2
+	 * specific for BYT. Please remove following restriction when
+	 * isp 2.2 is ready for MERR*/
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		if (arg->ctc_config) {
+			if (!isp_subdev->params.config.ctc_config)
+				isp_subdev->params.config.ctc_config =
+				    &isp_subdev->params.ctc_config;
+			memset(isp_subdev->params.config.ctc_config, 0 ,
+			       sizeof(struct ia_css_ctc_config));
+			if (copy_from_user(isp_subdev->params.config.ctc_config,
+					   arg->ctc_config,
+					   sizeof(struct ia_css_ctc_config))) {
+				isp_subdev->params.config.ctc_config = NULL;
+				return -EFAULT;
+			}
+
+		}
+	}
 	if (arg->xnr_table) {
 		if (!isp_subdev->params.config.xnr_table)
 			isp_subdev->params.config.xnr_table =
@@ -3948,6 +3967,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
+	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret;
 	struct atomisp_sub_device *isp_subdev =
 	    atomisp_to_sub_device(atomisp_to_video_pipe(vdev));
@@ -3980,9 +4000,33 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	if (isp->inputs[isp_subdev->input_curr].type == TEST_PATTERN)
 		return 0;
 #endif
+
 	snr_mbus_fmt.code = fmt->mbus_code;
 	snr_mbus_fmt.width = f->fmt.pix.width;
 	snr_mbus_fmt.height = f->fmt.pix.height;
+
+	/*
+	 * ISP2.2 uses Maximum 8M sensor input for output resolution low
+	 * than 8M
+	 * try sensor output 8MP for continuous capture
+	 */
+	if (isp_subdev->continuous_mode->val &&
+	    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
+		if (f->fmt.pix.width * f->fmt.pix.height <
+		    3264 * 2448) {
+			snr_mbus_fmt.width = 3264;
+			snr_mbus_fmt.height =
+			    DIV_ROUND_UP(3264 * f->fmt.pix.height,
+					 f->fmt.pix.width);
+			if (snr_mbus_fmt.height > 2448) {
+				snr_mbus_fmt.height = 2448;
+				snr_mbus_fmt.width =
+				    DIV_ROUND_UP(2448 *
+						 f->fmt.pix.width,
+						 f->fmt.pix.height);
+			}
+		}
+	}
 
 	dev_dbg(isp->dev, "try_mbus_fmt: asking for %ux%u\n",
 		snr_mbus_fmt.width, snr_mbus_fmt.height);
@@ -4228,7 +4272,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
 
-		isp_subdev->video_out_vf.sh_fmt = IA_CSS_FRAME_FORMAT_YUV420;
+		isp_subdev->video_out_vf.sh_fmt = IA_CSS_FRAME_FORMAT_NV12;
 
 		if (isp_subdev->run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || !isp_subdev->enable_vfpp->val)
@@ -4245,11 +4289,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (isp_subdev->run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			ret = __enable_continuous_mode(isp_subdev, true);
 			/*
-			 * Enable only if resolution is equal or above 5M,
-			 * Always enable raw_binning on MRFLD.
+			 * Enable only if resolution is equal or
+			 * above 5M
 			 */
-			if (width >= 2576 || height >= 1936) {
-				ia_css_enable_raw_binning(isp_subdev, true);
+			if (isp_sink_crop->width >= 2576 ||
+			    isp_sink_crop->height >= 1936) {
+				ia_css_enable_raw_binning(
+							  isp_subdev, true);
 				ia_css_input_set_two_pixels_per_clock(
 							isp_subdev, false);
 			}
@@ -4316,7 +4362,18 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		return -EINVAL;
 	}
 	if (isp_subdev->continuous_mode->val) {
-		configure_pp_input(isp_subdev, 0, 0);
+		/* FIXME: since isp 2.2 for MERR has regression, make isp 2.2
+		 * specific for BYT. Please remove following restriction when
+		 * isp 2.2 is ready for MERR*/
+		ret = configure_pp_input(isp_subdev,
+				isp_sink_crop->width,
+				isp_sink_crop->height);
+		if (ret) {
+			dev_err(isp->dev, "configure_pp_input %ux%u\n",
+				isp_sink_crop->width,
+				isp_sink_crop->height);
+			return -EINVAL;
+		}
 	} else {
 		ret = configure_pp_input(isp_subdev, isp_sink_crop->width,
 					 isp_sink_crop->height);
@@ -4377,7 +4434,8 @@ static void atomisp_get_dis_envelop(struct atomisp_sub_device *isp_subdev,
 static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *isp_subdev,
 			  struct v4l2_format *f, unsigned int pixelformat,
 			  unsigned int padding_w, unsigned int padding_h,
-			  unsigned int dvs_env_w, unsigned int dvs_env_h)
+			  unsigned int dvs_env_w, unsigned int dvs_env_h,
+			  uint16_t source_pad)
 {
 	const struct atomisp_format_bridge *format;
 	struct v4l2_mbus_framefmt ffmt;
@@ -4389,6 +4447,32 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *isp_subdev,
 		return -EINVAL;
 
 	v4l2_fill_mbus_format(&ffmt, &f->fmt.pix, format->mbus_code);
+
+	/*
+	 * ISP2.2 uses Maximum 8M sensor input for output resolution low
+	 * than 8M
+	 * try sensor output 8MP for continuous capture
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		if (isp_subdev->continuous_mode->val &&
+		    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
+			if (f->fmt.pix.width * f->fmt.pix.height <
+							2448 * 3264) {
+				ffmt.width = 3264;
+				ffmt.height =
+				    DIV_ROUND_UP(3264 * f->fmt.pix.height,
+						 f->fmt.pix.width);
+				if (ffmt.height > 2448) {
+					ffmt.height = 2448;
+					ffmt.width =
+					    DIV_ROUND_UP(2448 *
+							 f->fmt.pix.width,
+							 f->fmt.pix.height);
+				}
+			}
+		}
+	}
+
 	ffmt.height += padding_h + dvs_env_h;
 	ffmt.width += padding_w + dvs_env_w;
 
@@ -4412,7 +4496,6 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *isp_subdev,
 				       V4L2_SUBDEV_FORMAT_ACTIVE,
 				       ATOMISP_SUBDEV_PAD_SINK, &ffmt);
 }
-
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);
@@ -4528,6 +4611,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	ret = atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
 	if (ret)
 		return ret;
+
 	f->fmt.pix.width = snr_fmt.fmt.pix.width;
 	f->fmt.pix.height = snr_fmt.fmt.pix.height;
 
@@ -4594,7 +4678,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		ret = atomisp_set_fmt_to_snr(isp_subdev, f,
 					     f->fmt.pix.pixelformat,
 					     padding_w, padding_h,
-					     dvs_env_w, dvs_env_h);
+					     dvs_env_w, dvs_env_h,
+					     source_pad);
 		if (ret)
 			return -EINVAL;
 	}

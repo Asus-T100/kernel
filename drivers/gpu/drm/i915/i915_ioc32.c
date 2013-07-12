@@ -208,19 +208,22 @@ long i915_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	struct drm_device *dev = file_priv->minor->dev;
 	int ret;
 
-	if (nr < DRM_COMMAND_BASE)
-		return drm_compat_ioctl(filp, cmd, arg);
+	i915_rpm_get_ioctl(dev);
+	if (nr < DRM_COMMAND_BASE) {
+		ret = drm_compat_ioctl(filp, cmd, arg);
+		goto out;
+	}
 
 	if (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(i915_compat_ioctls))
 		fn = i915_compat_ioctls[nr - DRM_COMMAND_BASE];
 
-	i915_rpm_get_ioctl(dev);
 
 	if (fn != NULL)
 		ret = (*fn) (filp, cmd, arg);
 	else
 		ret = drm_ioctl(filp, cmd, arg);
 
+out:
 	i915_rpm_put_ioctl(dev);
 
 	return ret;

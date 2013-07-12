@@ -853,8 +853,8 @@ static int ov2722_try_mbus_fmt(struct v4l2_subdev *sd,
 					fmt->height);
 	if (idx == -1) {
 		/* return the largest resolution */
-		fmt->width = ov2722_res[0].width;
-		fmt->height = ov2722_res[0].height;
+		fmt->width = ov2722_res[N_RES - 1].width;
+		fmt->height = ov2722_res[N_RES - 1].height;
 	} else {
 		fmt->width = ov2722_res[idx].width;
 		fmt->height = ov2722_res[idx].height;

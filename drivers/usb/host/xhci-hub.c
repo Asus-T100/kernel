@@ -822,6 +822,16 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				bus_state->suspended_ports |= 1 << wIndex;
 			break;
 		case USB_PORT_FEAT_POWER:
+			/* FIXME Do not turn on BYT XHCI port 6 power,
+			 * Disable this port's power to disable HSIC hub
+			 */
+			 if ((xhci->quirks & XHCI_PORT_DISABLE_QUIRK) &&
+				(wIndex == 5)) {
+				temp = xhci_readl(xhci, port_array[wIndex]);
+				temp &= ~PORT_POWER;
+				xhci_writel(xhci, temp, port_array[wIndex]);
+				break;
+			}
 			/*
 			 * Turn on ports, even if there isn't per-port switching.
 			 * HC will report connect events even before this is set.

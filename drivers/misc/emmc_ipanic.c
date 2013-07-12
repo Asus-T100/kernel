@@ -844,6 +844,7 @@ out:
 
 static struct notifier_block panic_blk = {
 	.notifier_call = emmc_ipanic,
+	.priority = 100,
 };
 
 static int panic_dbg_get(void *data, u64 *val)

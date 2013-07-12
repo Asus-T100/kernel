@@ -116,7 +116,7 @@ extern rx_irq_info_t receiver_get_irq_info(
  */
 extern void receiver_irq_clear(
 	const rx_ID_t				ID,
-	const mipi_port_ID_t		port_ID,
+	const mipi_port_ID_t			port_ID,
 	const rx_irq_info_t			irq_info);
 
 /*! Write to a control register of INPUT_SYSTEM[ID]
@@ -128,8 +128,8 @@ extern void receiver_irq_clear(
  \return none, INPUT_SYSTEM[ID].ctrl[reg] = value
  */
 STORAGE_CLASS_INPUT_SYSTEM_H void input_system_reg_store(
-	const input_system_ID_t		ID,
-	const unsigned int			reg,
+	const input_system_ID_t			ID,
+	const hrt_address			reg,
 	const hrt_data				value);
 
 /*! Read from a control register of INPUT_SYSTEM[ID]
@@ -141,8 +141,8 @@ STORAGE_CLASS_INPUT_SYSTEM_H void input_system_reg_store(
  \return INPUT_SYSTEM[ID].ctrl[reg]
  */
 STORAGE_CLASS_INPUT_SYSTEM_H hrt_data input_system_reg_load(
-	const input_system_ID_t		ID,
-	const unsigned int			reg);
+	const input_system_ID_t			ID,
+	const hrt_address			reg);
 
 /*! Write to a control register of RECEIVER[ID]
 
@@ -154,7 +154,7 @@ STORAGE_CLASS_INPUT_SYSTEM_H hrt_data input_system_reg_load(
  */
 STORAGE_CLASS_INPUT_SYSTEM_H void receiver_reg_store(
 	const rx_ID_t				ID,
-	const unsigned int			reg,
+	const hrt_address			reg,
 	const hrt_data				value);
 
 /*! Read from a control register of RECEIVER[ID]
@@ -167,7 +167,7 @@ STORAGE_CLASS_INPUT_SYSTEM_H void receiver_reg_store(
  */
 STORAGE_CLASS_INPUT_SYSTEM_H hrt_data receiver_reg_load(
 	const rx_ID_t				ID,
-	const unsigned int			reg);
+	const hrt_address			reg);
 
 /*! Write to a control register of PORT[port_ID] of RECEIVER[ID]
 
@@ -180,8 +180,8 @@ STORAGE_CLASS_INPUT_SYSTEM_H hrt_data receiver_reg_load(
  */
 STORAGE_CLASS_INPUT_SYSTEM_H void receiver_port_reg_store(
 	const rx_ID_t				ID,
-	const mipi_port_ID_t		port_ID,
-	const unsigned int			reg,
+	const mipi_port_ID_t			port_ID,
+	const hrt_address			reg,
 	const hrt_data				value);
 
 /*! Read from a control register PORT[port_ID] of of RECEIVER[ID]
@@ -196,7 +196,7 @@ STORAGE_CLASS_INPUT_SYSTEM_H void receiver_port_reg_store(
 STORAGE_CLASS_INPUT_SYSTEM_H hrt_data receiver_port_reg_load(
 	const rx_ID_t				ID,
 	const mipi_port_ID_t		port_ID,
-	const unsigned int			reg);
+	const hrt_address			reg);
 
 /*! Write to a control register of SUB_SYSTEM[sub_ID] of INPUT_SYSTEM[ID]
 
@@ -208,9 +208,9 @@ STORAGE_CLASS_INPUT_SYSTEM_H hrt_data receiver_port_reg_load(
  \return none, INPUT_SYSTEM[ID].SUB_SYSTEM[sub_ID].ctrl[reg] = value
  */
 STORAGE_CLASS_INPUT_SYSTEM_H void input_system_sub_system_reg_store(
-	const input_system_ID_t		ID,
-	const sub_system_ID_t		sub_ID,
-	const unsigned int			reg,
+	const input_system_ID_t			ID,
+	const sub_system_ID_t			sub_ID,
+	const hrt_address			reg,
 	const hrt_data				value);
 
 /*! Read from a control register SUB_SYSTEM[sub_ID] of INPUT_SYSTEM[ID]
@@ -225,7 +225,7 @@ STORAGE_CLASS_INPUT_SYSTEM_H void input_system_sub_system_reg_store(
 STORAGE_CLASS_INPUT_SYSTEM_H hrt_data input_system_sub_system_reg_load(
 	const input_system_ID_t		ID,
 	const sub_system_ID_t		sub_ID,
-	const unsigned int			reg);
+	const hrt_address			reg);
 
 
 

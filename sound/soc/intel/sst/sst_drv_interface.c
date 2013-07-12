@@ -127,10 +127,6 @@ void free_stream_context(unsigned int str_id)
 		/* str_id is valid, so stream is alloacted */
 		if (sst_free_stream(str_id))
 			sst_clean_stream(&sst_drv_ctx->streams[str_id]);
-		if (stream->ops == STREAM_OPS_PLAYBACK)
-			sst_drv_ctx->pb_streams--;
-		else if (stream->ops == STREAM_OPS_CAPTURE)
-			sst_drv_ctx->cp_streams--;
 	}
 }
 
@@ -378,21 +374,10 @@ int sst_get_stream(struct snd_sst_params *str_param)
 		retval = -EIO;
 		goto err;
 	}
-	/*else
-		set_port_params(str_param, str_param->ops);*/
 	/* store sampling freq */
 	str_info = &sst_drv_ctx->streams[retval];
 	str_info->sfreq = sst_get_sfreq(str_param);
 
-	/* power on the analog, if reqd */
-	if (str_param->ops == STREAM_OPS_PLAYBACK) {
-		/*Only if the playback is MP3 - Send a message*/
-		sst_drv_ctx->pb_streams++;
-	} else if (str_param->ops == STREAM_OPS_CAPTURE) {
-
-		/*Send a messageif not sent already*/
-		sst_drv_ctx->cp_streams++;
-	}
 err:
 	return retval;
 }

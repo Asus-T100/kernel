@@ -20,11 +20,13 @@
 #include <linux/i2c.h>
 #include <linux/mutex.h>
 #include <linux/power_supply.h>
+#include <linux/workqueue.h>
 #include <linux/power/smb347-charger.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/usb/otg.h>
-#include <linux/kernel.h>	/* Needed for KERN_DEBUG */
+#include <linux/notifier.h>
+#include <linux/extcon.h>
 
 /*
  * Configuration registers. These are mirrored to volatile RAM and can be
@@ -123,6 +125,7 @@
  * to bits 1 & 0 respectively.
  */
 #define SMB349_IRQSTAT_E_DCIN_UV_STAT		BIT(0)
+#define SMB349_IRQSTAT_E_DCIN_OV_STAT		BIT(3)
 #define IRQSTAT_F				0x3a
 #define IRQSTAT_F_OTG_UV_IRQ			BIT(5)
 #define IRQSTAT_F_OTG_UV_STAT			BIT(4)
@@ -140,7 +143,8 @@
 #define STAT_C_CHG_SHIFT			1
 #define STAT_C_CHG_TERM				BIT(5)
 #define STAT_C_CHARGER_ERROR			BIT(6)
-#define STAT_E					0x3f
+#define STAT_D					0x3E
+#define STAT_E					0x3F
 
 #define STATUS_UPDATE_INTERVAL			(HZ * 60)	/*60 sec */
 
@@ -183,7 +187,7 @@ struct smb347_charger {
 	bool			running;
 	bool			is_smb349;
 	struct dentry		*dentry;
-	struct otg_transceiver	*otg;
+	struct usb_phy		*otg;
 	struct notifier_block	otg_nb;
 	struct work_struct	otg_work;
 	struct list_head	otg_queue;
@@ -192,6 +196,8 @@ struct smb347_charger {
 	bool			otg_battery_uv;
 	const struct smb347_charger_platform_data	*pdata;
 	struct delayed_work	smb347_statmon_worker;
+	struct extcon_dev	*edev;
+	struct notifier_block	ext_nb;
 };
 
 static struct smb347_charger *smb347_dev;
@@ -249,6 +255,39 @@ static int smb347_set_writable(struct smb347_charger *smb, bool writable)
 	return smb347_write(smb, CMD_A, ret);
 }
 
+static int smb34x_get_health(struct smb347_charger *smb)
+{
+	bool usb = 0;
+	int stat_e = 0;
+	int chrg_health;
+
+	if (!smb->is_smb349) {
+		chrg_health = POWER_SUPPLY_HEALTH_UNKNOWN;
+		goto end;
+	}
+
+	stat_e = smb347_read(smb, IRQSTAT_E);
+	if (stat_e < 0) {
+		dev_warn(&smb->client->dev, "i2c failed %d", stat_e);
+		chrg_health = POWER_SUPPLY_HEALTH_UNKNOWN;
+		goto end;
+	}
+
+	usb = !(stat_e & SMB349_IRQSTAT_E_DCIN_UV_STAT);
+	if (usb) {
+		if (stat_e & SMB349_IRQSTAT_E_DCIN_UV_STAT)
+			chrg_health = POWER_SUPPLY_HEALTH_DEAD;
+		else if (stat_e & SMB349_IRQSTAT_E_DCIN_OV_STAT)
+			chrg_health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+		else
+			chrg_health = POWER_SUPPLY_HEALTH_GOOD;
+	} else {
+			chrg_health = POWER_SUPPLY_HEALTH_UNKNOWN;
+	}
+end:
+	return chrg_health;
+}
+
 /**
  * smb347_update_status - updates the charging status
  * @smb: pointer to smb347 charger instance
@@ -270,10 +309,13 @@ static int smb347_update_status(struct smb347_charger *smb)
 	if (smb->is_smb349) {
 		if (smb->pdata->use_mains)
 			dc = !(ret & SMB349_IRQSTAT_E_DCIN_UV_STAT);
+		else if (smb->pdata->use_usb)
+			usb = !(ret & SMB349_IRQSTAT_E_DCIN_UV_STAT);
 
 		mutex_lock(&smb->lock);
-		ret = smb->mains_online != dc;
+		ret = smb->mains_online != dc || smb->usb_online != usb;
 		smb->mains_online = dc;
+		smb->usb_online = usb;
 		mutex_unlock(&smb->lock);
 		return ret;
 	}
@@ -369,7 +411,7 @@ static int smb347_charging_set(struct smb347_charger *smb, bool enable)
 	int ret = 0;
 
 	if (smb->pdata->enable_control != SMB347_CHG_ENABLE_SW) {
-		dev_dbg(&smb->client->dev,
+		dev_info(&smb->client->dev,
 			"charging enable/disable in SW disabled\n");
 		return 0;
 	}
@@ -634,16 +676,16 @@ static int smb347_hw_init(struct smb347_charger *smb)
 	case SMB347_OTG_CONTROL_SW:
 	case SMB347_OTG_CONTROL_SW_PIN:
 	case SMB347_OTG_CONTROL_SW_AUTO:
-		smb->otg = otg_get_transceiver();
+		smb->otg = usb_get_transceiver();
 		if (smb->otg) {
 			INIT_WORK(&smb->otg_work, smb347_otg_work);
 			INIT_LIST_HEAD(&smb->otg_queue);
 			spin_lock_init(&smb->otg_queue_lock);
 
 			smb->otg_nb.notifier_call = smb347_otg_notifier;
-			ret = otg_register_notifier(smb->otg, &smb->otg_nb);
+			ret = usb_register_notifier(smb->otg, &smb->otg_nb);
 			if (ret < 0) {
-				otg_put_transceiver(smb->otg);
+				usb_put_transceiver(smb->otg);
 				smb->otg = NULL;
 				goto fail;
 			}
@@ -674,8 +716,8 @@ static int smb347_hw_init(struct smb347_charger *smb)
 
 fail:
 	if (smb->otg) {
-		otg_unregister_notifier(smb->otg, &smb->otg_nb);
-		otg_put_transceiver(smb->otg);
+		usb_unregister_notifier(smb->otg, &smb->otg_nb);
+		usb_put_transceiver(smb->otg);
 		smb->otg = NULL;
 	}
 	smb347_set_writable(smb, false);
@@ -725,7 +767,10 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 	if (stat_c & STAT_C_CHARGER_ERROR) {
 		dev_err(&smb->client->dev,
 			"charging stopped due to charger error\n");
-
+		if (smb->pdata->use_usb && smb->is_smb349) {
+			smb->usb_online = 0;
+			power_supply_changed(&smb->usb);
+		}
 		if (smb->pdata->show_battery)
 			power_supply_changed(&smb->battery);
 
@@ -778,7 +823,7 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 			 */
 			if (smb->pdata->use_mains && !smb->is_smb349)
 				power_supply_changed(&smb->mains);
-			if (smb->pdata->use_usb)
+			if (smb->pdata->use_usb && !smb->is_smb349)
 				power_supply_changed(&smb->usb);
 		}
 
@@ -805,6 +850,7 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 
 	if (irqstat_f & IRQSTAT_F_PWR_OK_IRQ) {
 		dev_info(&smb->client->dev, "PowerOK INTR recieved\n");
+
 		if (smb->pdata->use_mains)
 			power_supply_changed(&smb->mains);
 		if (smb->pdata->use_usb)
@@ -898,8 +944,10 @@ static int smb347_irq_init(struct smb347_charger *smb)
 	ret = request_threaded_irq(irq, NULL, smb347_interrupt,
 				   IRQF_TRIGGER_FALLING, smb->client->name,
 				   smb);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_info(&smb->client->dev, "request irq failed");
 		goto fail_gpio;
+	}
 
 	ret = smb347_set_writable(smb, true);
 	if (ret < 0)
@@ -963,12 +1011,22 @@ static int smb347_usb_get_property(struct power_supply *psy,
 {
 	struct smb347_charger *smb =
 		container_of(psy, struct smb347_charger, usb);
+	int ret = 0;
 
-	if (prop == POWER_SUPPLY_PROP_ONLINE) {
+	switch (prop) {
+	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = smb->usb_online;
-		return 0;
+		break;
+	case POWER_SUPPLY_PROP_PRESENT:
+		val->intval = smb->usb_online;
+		break;
+	case POWER_SUPPLY_PROP_HEALTH:
+		val->intval = smb34x_get_health(smb);
+		break;
+	default:
+		return -EINVAL;
 	}
-	return -EINVAL;
+	return ret;
 }
 
 int smb347_get_charging_status(void)
@@ -984,9 +1042,6 @@ int smb347_get_charging_status(void)
 	ret = smb347_read(smb347_dev, STAT_C);
 	if (ret < 0)
 		return ret;
-
-	dev_info(&smb347_dev->client->dev,
-			"Charging Status: STAT_C:0x%x\n", ret);
 
 	if ((ret & STAT_C_CHARGER_ERROR) ||
 		(ret & STAT_C_HOLDOFF_STAT)) {
@@ -1020,6 +1075,9 @@ EXPORT_SYMBOL_GPL(smb347_get_charging_status);
 
 static enum power_supply_property smb347_usb_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_TYPE,
 };
 
 static int smb347_battery_get_property(struct power_supply *psy,
@@ -1148,6 +1206,95 @@ static int smb347_debugfs_open(struct inode *inode, struct file *file)
 	return single_open(file, smb347_debugfs_show, inode->i_private);
 }
 
+static void smb_handle_extcon_events(struct smb347_charger *smb)
+{
+	int chrg_type, idx, ret;
+	u32 event;
+
+	/* current extcon cable status */
+	event = smb->edev->state;
+	dev_info(&smb->client->dev, "extcon cur state:%d\n", event);
+
+	if (!event) {
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		goto extcon_evt_ret;
+	}
+	/* get the edev index from extcon event */
+	for (idx = 0; idx < smb->edev->max_supported; idx++) {
+		if ((event >> idx) & 0x1)
+			break;
+	}
+	/* get extcon cable type */
+	ret = extcon_find_cable_type(smb->edev, idx);
+	if (ret < 0) {
+		dev_warn(&smb->client->dev,
+			"extcon_find_cable_type failed\n");
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		goto extcon_evt_ret;
+	}
+
+	switch (ret) {
+	case EXTCON_SDP:
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		break;
+	case EXTCON_CDP:
+		chrg_type = POWER_SUPPLY_TYPE_USB_CDP;
+		break;
+	case EXTCON_DCP:
+		chrg_type = POWER_SUPPLY_TYPE_USB_DCP;
+		break;
+	case EXTCON_ACA:
+		chrg_type = POWER_SUPPLY_TYPE_USB_ACA;
+		break;
+	default:
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		dev_warn(&smb->client->dev, "unknown extcon cable\n");
+	}
+
+extcon_evt_ret:
+	if (smb->pdata->use_usb)
+		smb->usb.type = chrg_type;
+}
+
+static int smb_extcon_cb(struct notifier_block *nb,
+				unsigned long old_state, void *data)
+{
+	struct smb347_charger *smb = container_of(nb,
+					struct smb347_charger, ext_nb);
+
+	smb_handle_extcon_events(smb);
+	if (smb->pdata->use_mains)
+		power_supply_changed(&smb->mains);
+	if (smb->pdata->use_usb)
+		power_supply_changed(&smb->usb);
+	return NOTIFY_OK;
+}
+
+static int smb_extcon_dev_reg_callback(struct notifier_block *nb,
+					unsigned long event, void *data)
+{
+	struct smb347_charger *chip = container_of(nb,
+					struct smb347_charger, ext_nb);
+	int ret;
+
+
+	/* TODO: Add extcon name in platform data */
+	chip->edev = extcon_get_extcon_dev("fsa9285");
+	if (!chip->edev) {
+		dev_err(&chip->client->dev, "failed to get extcon device\n");
+		return NOTIFY_OK;
+	} else {
+		extcon_dev_unregister_notify(&chip->ext_nb);
+		chip->ext_nb.notifier_call = &smb_extcon_cb;
+		ret = extcon_register_notifier(chip->edev, &chip->ext_nb);
+		if (ret)
+			dev_err(&chip->client->dev,
+				"failed to register extcon notifier:%d\n", ret);
+	}
+
+	return NOTIFY_OK;
+}
+
 static const struct file_operations smb347_debugfs_fops = {
 	.open		= smb347_debugfs_open,
 	.read		= seq_read,
@@ -1179,6 +1326,10 @@ static int smb347_probe(struct i2c_client *client,
 	mutex_init(&smb->lock);
 	smb->client = client;
 	smb->pdata = pdata;
+
+	smb->is_smb349 = strcmp(id->name, "smb349") ? 0 : 1;
+	dev_info(&smb->client->dev, "%s chip in use.\n",
+			smb->is_smb349 ? "smb349" : "smb347");
 
 	ret = smb347_hw_init(smb);
 	if (ret < 0)
@@ -1242,6 +1393,7 @@ static int smb347_probe(struct i2c_client *client,
 			dev_warn(dev, "disabling IRQ support\n");
 		}
 	}
+
 	INIT_DELAYED_WORK_DEFERRABLE(&smb->smb347_statmon_worker,
 						smb347_status_monitor);
 
@@ -1249,14 +1401,28 @@ static int smb347_probe(struct i2c_client *client,
 	smb->dentry = debugfs_create_file("smb347-regs", S_IRUSR, NULL, smb,
 					  &smb347_debugfs_fops);
 
-	smb->is_smb349 = strcmp(id->name, "smb349") ? 0 : 1;
-	dev_info(&smb->client->dev, "%s chip in use.\n",
-			smb->is_smb349 ? "smb349" : "smb347");
 
+	/* TODO: populate the name in plf. data */
+	smb->edev = extcon_get_extcon_dev("fsa9285");
+
+	if (!smb->edev) {
+		dev_err(dev, "failed extcon");
+		smb->ext_nb.notifier_call = &smb_extcon_dev_reg_callback;
+		extcon_dev_register_notify(&smb->ext_nb);
+	} else {
+		smb->ext_nb.notifier_call = &smb_extcon_cb;
+		ret = extcon_register_notifier(smb->edev, &smb->ext_nb);
+		if (ret)
+			dev_err(dev, "failed to register extcon ntf");
+	}
+
+	if (smb->edev)
+		smb_handle_extcon_events(smb);
 	/* Start the status monitoring worker */
 	schedule_delayed_work(&smb->smb347_statmon_worker, 0);
 
 	smb347_dev = smb;
+
 	return 0;
 }
 
@@ -1275,12 +1441,15 @@ static int smb347_remove(struct i2c_client *client)
 		gpio_free(smb->pdata->irq_gpio);
 	}
 
+	if (smb->edev)
+		extcon_unregister_notifier(smb->edev, &smb->ext_nb);
+
 	if (smb->otg) {
 		struct smb347_otg_event *evt, *tmp;
 
-		otg_unregister_notifier(smb->otg, &smb->otg_nb);
+		usb_unregister_notifier(smb->otg, &smb->otg_nb);
 		smb347_otg_disable(smb);
-		otg_put_transceiver(smb->otg);
+		usb_put_transceiver(smb->otg);
 
 		/* Clear all the queued events. */
 		flush_work_sync(&smb->otg_work);
@@ -1289,7 +1458,6 @@ static int smb347_remove(struct i2c_client *client)
 			kfree(evt);
 		}
 	}
-
 	if (smb->pdata->show_battery)
 		power_supply_unregister(&smb->battery);
 	if (smb->pdata->use_usb)

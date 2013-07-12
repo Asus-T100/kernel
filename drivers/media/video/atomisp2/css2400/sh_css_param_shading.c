@@ -45,6 +45,8 @@
 	color * sht->stride + xpos)
 #endif
 
+#define DEFAULT_UNITY_VALUE	1
+#define DEFAULT_FRAC_BITS	0
 
 /** Lens color shading table. This describes the color shading artefacts
  *  introduced by lens imperfections.
@@ -245,7 +247,7 @@ generate_id_shading_table(struct sh_css_shading_table_isp **target_table,
 	result->height	  = table_height;
 	result->sensor_width  = 0;
 	result->sensor_height = 0;
-	result->fraction_bits = 0;
+	result->fraction_bits = DEFAULT_FRAC_BITS;
 
 	result->data =
 	    sh_css_malloc(SH_CSS_SC_NUM_COLORS * table_stride * table_height *
@@ -260,7 +262,7 @@ generate_id_shading_table(struct sh_css_shading_table_isp **target_table,
 	for (c = 0; c < SH_CSS_SC_NUM_COLORS; c++) {
 		for (l = 0; l < table_height; l++) {
 			for (x = 0; x < table_width; x++)
-				*sh_table_entry(result, c, l, x) = 1;
+				*sh_table_entry(result, c, l, x) = DEFAULT_UNITY_VALUE;
 			for (; x < table_stride; x++)
 				*sh_table_entry(result, c, l, x) = 0;
 		}
@@ -381,7 +383,7 @@ sh_css_param_shading_table_fraction_bits_get(void)
 {
 	if (sc_table == NULL) {
 		/* There is no shading table yet, use default unity value */
-		return 0;
+		return DEFAULT_FRAC_BITS;
 	}
 
 	return sc_table->fraction_bits;

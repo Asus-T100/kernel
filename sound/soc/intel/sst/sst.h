@@ -316,7 +316,7 @@ struct sst_ipc_msg_wq {
 struct sst_dma {
 	struct dma_chan *ch;
 	struct intel_mid_dma_slave slave;
-	struct pci_dev *dmac;
+	struct device *dev;
 };
 
 struct sst_runtime_param {
@@ -378,9 +378,6 @@ struct snd_sst_probe_bytes {
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
 #define PCI_DMAC_MRFLD_ID 0x119B
-#define SST_MAX_DMA_LEN (4095*4)
-/* On Mrfld, MAX DMA BLOCK SIZE is (2*17 - 1)*/
-#define SST_MAX_DMA_LEN_MRFLD (131071)
 
 struct sst_probe_info {
 	u32 iram_start;
@@ -467,6 +464,7 @@ struct sst_shim_regs64 {
 };
 
 /***
+ *
  * struct intel_sst_drv - driver ops
  *
  * @sst_state : current sst device state
@@ -496,7 +494,7 @@ struct sst_shim_regs64 {
  * @dev : pointer to current device struct
  * @sst_lock : sst device lock
  * @stream_lock : sst stream lock
- * @unique_id : sst unique id
+ * @pvt_id : sst private id
  * @stream_cnt : total sst active stream count
  * @pb_streams : total active pb streams
  * @cp_streams : total active cp streams
@@ -534,59 +532,48 @@ struct intel_sst_drv {
 	struct workqueue_struct *process_msg_wq;
 	struct workqueue_struct *process_reply_wq;
 	unsigned int		tstamp;
-	struct stream_info streams[MAX_NUM_STREAMS+1]; /*str_id 0 is not used*/
-	struct mutex		list_lock;/* mutex for IPC list locking */
+	struct stream_info	streams[MAX_NUM_STREAMS+1]; /*str_id 0 is not used*/
 	spinlock_t		ipc_spin_lock; /* lock for Shim reg access and ipc queue */
 	spinlock_t              block_lock; /* lock for adding block to block_list */
 	spinlock_t              pvt_id_lock; /* lock for allocating private id */
-	struct snd_pmic_ops	*scard_ops;
 	struct pci_dev		*pci;
 	struct device		*dev;
+	unsigned int		pvt_id;
 	struct mutex            sst_lock;
 	struct mutex		stream_lock;
-	unsigned int            unique_id;
-	unsigned int		stream_cnt;	/* total streams */
-	unsigned int		am_cnt;
-	unsigned int		pb_streams;	/* pb streams active */
-	unsigned int		cp_streams;	/* cp streams active */
-	/* 1 - LPA stream(MP3 pb) in progress*/
-	unsigned int		audio_start;
+	unsigned int		stream_cnt;
 	unsigned int		*fw_cntx;
 	unsigned int		fw_cntx_size;
-	unsigned int		compressed_slot;
 	unsigned int		csr_value;
-	const struct firmware	*fw;
 
 	struct sst_dma		dma;
 	void			*fw_in_mem;
 	struct sst_runtime_param runtime_param;
-	struct snd_sst_bytes get_params;
 	unsigned int		device_input_mixer;
 	struct mutex		mixer_ctrl_lock;
 	struct dma_async_tx_descriptor *desc;
-	struct sst_sg_list fw_sg_list, library_list;
+	struct sst_sg_list	fw_sg_list, library_list;
 	struct intel_sst_ops	*ops;
-	struct sst_debugfs debugfs;
-	struct pm_qos_request *qos;
-	struct sst_probe_info info;
-	unsigned int use_dma;
-	unsigned int use_lli;
-	atomic_t fw_clear_context;
-	atomic_t fw_clear_cache;
-	struct mutex sst_in_mem_lock;
+	struct sst_debugfs	debugfs;
+	struct pm_qos_request	*qos;
+	struct sst_probe_info	info;
+	unsigned int		use_dma;
+	unsigned int		use_lli;
+	atomic_t		fw_clear_context;
+	atomic_t		fw_clear_cache;
 	/* list used during FW download in memcpy mode */
-	struct list_head memcpy_list;
+	struct list_head	memcpy_list;
 	/* list used during LIB download in memcpy mode */
-	struct list_head libmemcpy_list;
-	struct sst_fw_context context;
+	struct list_head	libmemcpy_list;
+	struct sst_fw_context	context;
 	/* holds the stucts of iram/dram local buffers for dump*/
-	struct sst_dump_buf dump_buf;
+	struct sst_dump_buf	dump_buf;
 	/* Lock for CSR register change */
-	struct mutex	csr_lock;
+	struct mutex		csr_lock;
 	/* byte control to set the probe stream */
 	struct snd_sst_probe_bytes *probe_bytes;
 	/* contains the ipc registers */
-	struct sst_ipc_reg ipc_reg;
+	struct sst_ipc_reg	ipc_reg;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -625,7 +612,6 @@ int sst_resume_stream(int id);
 int sst_drop_stream(int id);
 int sst_free_stream(int id);
 int sst_start_stream(int str_id);
-int sst_send_byte_stream(void *sbytes);
 int sst_send_byte_stream_mrfld(void *sbytes);
 int sst_send_probe_bytes(struct intel_sst_drv *sst);
 int sst_set_stream_param(int str_id, struct snd_sst_params *str_param);
@@ -784,11 +770,11 @@ static inline void sst_fill_header_dsp(struct ipc_dsp_hdr *dsp, int msg,
 static inline unsigned int sst_assign_pvt_id(struct intel_sst_drv *sst_drv_ctx)
 {
 	spin_lock(&sst_drv_ctx->pvt_id_lock);
-	sst_drv_ctx->unique_id++;
-	if (sst_drv_ctx->unique_id > MAX_BLOCKS)
-		sst_drv_ctx->unique_id = 1;
+	sst_drv_ctx->pvt_id++;
+	if (sst_drv_ctx->pvt_id > MAX_BLOCKS)
+		sst_drv_ctx->pvt_id = 1;
 	spin_unlock(&sst_drv_ctx->pvt_id_lock);
-	return sst_drv_ctx->unique_id;
+	return sst_drv_ctx->pvt_id;
 }
 
 

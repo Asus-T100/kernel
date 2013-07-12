@@ -758,7 +758,7 @@ const struct pci_device_id *id)
 	dev = kzalloc(sizeof(struct dw_i2c_dev), GFP_KERNEL);
 	if (!dev) {
 		r = -ENOMEM;
-		goto err_release_region;
+		goto err_iounmap;
 	}
 
 	init_completion(&dev->cmd_complete);
@@ -791,7 +791,7 @@ const struct pci_device_id *id)
 	dev->rx_fifo_depth = controller->rx_fifo_depth;
 	r = i2c_dw_init(dev);
 	if (r)
-		goto err_iounmap;
+		goto err_kfree;
 
 	adap = &dev->adapter;
 	i2c_set_adapdata(adap, dev);
@@ -806,7 +806,7 @@ const struct pci_device_id *id)
 	r = request_irq(pdev->irq, i2c_dw_isr, IRQF_SHARED, adap->name, dev);
 	if (r) {
 		dev_err(&pdev->dev, "failure requesting irq %i\n", dev->irq);
-		goto err_iounmap;
+		goto err_kfree;
 	}
 
 	i2c_dw_disable_int(dev);
@@ -840,11 +840,12 @@ err_del_adap:
 	i2c_del_adapter(&dev->adapter);
 err_free_irq:
 	free_irq(pdev->irq, dev);
-err_iounmap:
-	iounmap(dev->base);
+err_kfree:
 	pci_set_drvdata(pdev, NULL);
 	put_device(&pdev->dev);
 	kfree(dev);
+err_iounmap:
+	iounmap(dev->base);
 err_release_region:
 	pci_release_region(pdev, 0);
 exit:

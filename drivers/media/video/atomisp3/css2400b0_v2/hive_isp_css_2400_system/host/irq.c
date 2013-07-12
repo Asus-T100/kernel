@@ -202,12 +202,12 @@ OP___assert(irq_id < N_IRQ_SW_CHANNEL_ID);
 	addr = IRQ_REQUEST_ADDR[irq_id];
 /* The SW IRQ pins are remapped to offset zero */
 	gp_device_reg_store(GP_DEVICE0_ID,
-		addr, 1);
+		(unsigned int)addr, 1);
 #ifdef HRT_CSIM
 	hrt_sleep();
 #endif
 	gp_device_reg_store(GP_DEVICE0_ID,
-		addr, 0);
+		(unsigned int)addr, 0);
 return;
 }
 
@@ -215,7 +215,8 @@ void irq_controller_get_state(
 	const irq_ID_t				ID,
 	irq_controller_state_t		*state)
 {
-	assert_exit(ID < N_IRQ_ID && state);
+assert(ID < N_IRQ_ID);
+assert(state != NULL);
 
 	state->irq_edge = irq_reg_load(ID,
 		_HRT_IRQ_CONTROLLER_EDGE_REG_IDX);
@@ -245,11 +246,11 @@ void cnd_virq_enable_channel(
 	unsigned int	channel_ID;
 	irq_ID_t		ID = virq_get_irq_id(irq_ID, &channel_ID);
 	
-	assert_exit(ID < N_IRQ_ID);
-	for (i = IRQ1_ID; i < N_IRQ_ID; i++) {
-		/* not allowed to enable the pin of a nested IRQ directly */
-		assert(irq_ID != IRQ_NESTING_ID[i]);
-	}
+assert(ID < N_IRQ_ID);
+for (i=IRQ1_ID;i<N_IRQ_ID;i++) {
+/* It is not allowed to enable the pin of a nested IRQ directly */
+	assert(irq_ID != IRQ_NESTING_ID[i]);
+}
 
 	if (en) {
 		irq_enable_channel(ID, channel_ID);
@@ -284,7 +285,7 @@ enum hrt_isp_css_irq_status virq_get_channel_signals(
 	enum hrt_isp_css_irq_status irq_status = hrt_isp_css_irq_status_error;
 	irq_ID_t ID;
 
-	assert_exit_code(irq_info, hrt_isp_css_irq_status_error);
+assert(irq_info != NULL);
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 		if (any_irq_channel_enabled(ID)) {
@@ -420,7 +421,7 @@ STORAGE_CLASS_INLINE irq_ID_t virq_get_irq_id(
 {
 	irq_ID_t ID;
 
-	assert_exit_code(channel_ID, N_IRQ_ID);
+assert(channel_ID != NULL);
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 		if (irq_ID < IRQ_N_ID_OFFSET[ID + 1]) {

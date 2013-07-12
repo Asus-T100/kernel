@@ -148,6 +148,8 @@ typedef enum {
 	N_GDC_ID
 } gdc_ID_t;
 
+#define N_GDC_ID_CPP 2 // this extra define is needed because we want to use it also in the preprocessor, and that doesn't work with enums.
+
 typedef enum {
 	VAMEM0_ID = 0,
 	VAMEM1_ID,

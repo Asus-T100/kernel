@@ -39,6 +39,10 @@ void __init *msic_vdd_platform_data(void *info)
 	}
 
 	msic_vdd_pdata.msi = BCUIRQ;
+	msic_vdd_pdata.disable_unused_comparator = false;
+	if (INTEL_MID_BOARD(1, PHONE, CLVTP))
+		msic_vdd_pdata.disable_unused_comparator =
+			 DISABLE_VCRIT | DISABLE_VWARNB;
 
 	pdev->dev.platform_data = &msic_vdd_pdata;
 

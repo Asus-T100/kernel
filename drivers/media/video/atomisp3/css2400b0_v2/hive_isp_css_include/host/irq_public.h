@@ -5,9 +5,7 @@
 #ifdef __KERNEL__
 #include <linux/types.h>
 #else
-#include <stdint.h>
-#include "stddef.h"			/* size_t */
-#include <stdbool.h>		/* bool */
+#include "stdbool.h"
 #endif
 
 /*! Read the control registers of IRQ[ID]

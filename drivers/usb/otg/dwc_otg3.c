@@ -10,8 +10,6 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
-#include <linux/pm_qos.h>
-#include <linux/intel_mid_pm.h>
 #include <linux/suspend.h>
 
 #include <linux/usb.h>
@@ -327,7 +325,6 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
-	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	/* Enable D0i3hot WA for host mode
 	 * If enable failed, then LS device will cause fabric error
 	 */
@@ -354,7 +351,6 @@ static int stop_host(struct dwc_otg2 *otg)
 		ret = hcd->driver->stop_host(hcd);
 	}
 
-	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 	return ret;
 }
 
@@ -368,7 +364,6 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
-	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	gadget->ops->start_device(gadget);
 }
 
@@ -380,13 +375,12 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 		return;
 
 	gadget->ops->stop_device(gadget);
-	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 }
 
 static int get_id(struct dwc_otg2 *otg)
 {
 	int ret, id = RID_UNKNOWN;
-	u8 idsts;
+	u8 idsts, pmic_id;
 
 	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
 			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0, \
@@ -404,14 +398,29 @@ static int get_id(struct dwc_otg2 *otg)
 
 	if (idsts & USBIDSTS_ID_FLOAT_STS)
 		id = RID_FLOAT;
-	else if (idsts & USBIDSTS_ID_GND)
-		id = RID_GND;
 	else if (idsts & USBIDSTS_ID_RARBRC_STS(1))
 		id = RID_A;
 	else if (idsts & USBIDSTS_ID_RARBRC_STS(2))
 		id = RID_B;
 	else if (idsts & USBIDSTS_ID_RARBRC_STS(3))
 		id = RID_C;
+	else {
+
+		/* PMIC A0 reports ID_GND = 0 for RID_GND but PMIC B0 reports
+		*  ID_GND = 1 for RID_GND
+		*/
+		ret = intel_scu_ipc_ioread8(0x00, &pmic_id);
+		if (ret) {
+			otg_err(otg, "Fail to read PMIC ID register\n");
+		} else if (((pmic_id & VENDOR_ID_MASK) == BASIN_COVE_PMIC_ID) &&
+			((pmic_id & PMIC_MAJOR_REV) == PMIC_A0_MAJOR_REV)) {
+				if (idsts & USBIDSTS_ID_GND)
+					id = RID_GND;
+		} else {
+			if (!(idsts & USBIDSTS_ID_GND))
+				id = RID_GND;
+		}
+	}
 
 	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
 			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0, \
@@ -1077,8 +1086,11 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	unsigned long flags, mA = 0;
 
 	/* FIXME: Skip charger detection flow for baytrail */
-	if (otg->otg_data->is_byt)
+	if (otg->otg_data->is_byt) {
+		/* for baytrail, optimization value is 0x4f for eye diagram */
+		ulpi_write(&otg->phy, TUSB1211_VENDOR_SPECIFIC1_SET, 0x4f);
 		return DWC_STATE_B_PERIPHERAL;
+	}
 
 	charger = get_charger_type(otg);
 	switch (charger) {
@@ -1393,9 +1405,11 @@ stay_host:
 
 	if (user_events & USER_RESET_HOST) {
 		otg_dbg(otg, "USER_RESET_HOST\n");
+		pm_runtime_get(otg->dev);
 		stop_host(otg);
 		reset_hw(otg);
 		start_host(otg);
+		pm_runtime_put_autosuspend(otg->dev);
 		goto stay_host;
 	}
 
@@ -2013,12 +2027,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
-	otg->qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
-	if (!otg->qos)
-		goto exit;
-	pm_qos_add_request(otg->qos, PM_QOS_CPU_DMA_LATENCY,\
-			PM_QOS_DEFAULT_VALUE);
-
 	if (!is_hybridvp(otg)) {
 		otg_info(otg, "De-assert USBRST# to enable PHY\n");
 		retval = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL,
@@ -2051,10 +2059,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	return 0;
 exit:
-	if (otg->qos) {
-		pm_qos_remove_request(otg->qos);
-		kfree(otg->qos);
-	}
 	if (the_transceiver)
 		dwc_otg_remove(pdev);
 	free_irq(otg->irqnum, NULL);
@@ -2087,13 +2091,7 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	usb_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
 
-	if (otg->qos) {
-		pm_qos_remove_request(otg->qos);
-		kfree(otg->qos);
-	}
-
 	unregister_pm_notifier(&dwc_sleep_pm_notifier);
-
 	kfree(otg);
 }
 

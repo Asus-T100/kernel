@@ -39,6 +39,14 @@
 #define D1 (1 << 1)
 #define D0 (1 << 0)
 
+#define PMIC_ID_ADDR	0x00
+
+#define PMIC_VENDOR_ID_MASK	(0x03 << 6)
+#define PMIC_MAJOR_REV_MASK	(0x07 << 3)
+
+#define PMIC_MAJOR_REV_A0	0x00
+#define PMIC_MAJOR_REV_B0	(0x01 << 3)
+
 #define PMIC_BZONE_LOW 0
 #define PMIC_BZONE_HIGH 5
 
@@ -102,12 +110,16 @@
 #define PMIC_CHRGR_EXT_CHRGR_INT_MASK	0x01
 
 #define CHGRCTRL0_ADDR			0x4B
-#define CHGRCTRL0_RSVD_MASK		(D7|D6|D5)
+#define CHGRCTRL0_WDT_NOKICK_MASK	(D7)
+#define CHGRCTRL0_RSVD_MASK		(D6|D5)
 #define CHGRCTRL0_TTLCK_MASK		D4
 #define CHGRCTRL0_SWCONTROL_MASK	D3
 #define CHGRCTRL0_EXTCHRDIS_MASK	D2
 #define	CHRCTRL0_EMRGCHREN_MASK		D1
 #define	CHRCTRL0_CHGRRESET_MASK		D0
+
+#define WDT_NOKICK_ENABLE		(0x01 << 7)
+#define WDT_NOKICK_DISABLE		(~WDT_NOKICK_ENABLE & 0xFF)
 
 #define EXTCHRDIS_ENABLE		(0x01 << 2)
 #define EXTCHRDIS_DISABLE		(~EXTCHRDIS_ENABLE & 0xFF)
@@ -136,6 +148,22 @@
 #define ACADETEN_MASK		(0x01 << 1)
 
 #define USBIDSTAT_ADDR		0x1A
+#define ID_SHORT		D4
+#define ID_SHORT_VBUS		(1 << 4)
+#define ID_NOT_SHORT_VBUS	0
+#define ID_FLOAT_STS		D3
+#define R_ID_FLOAT_DETECT	(1 << 3)
+#define R_ID_FLOAT_NOT_DETECT	0
+#define ID_RAR_BRC_STS		((D2 | D1))
+#define ID_ACA_NOT_DETECTED	0
+#define R_ID_A			(1 << 1)
+#define R_ID_B			(2 << 1)
+#define R_ID_C			(3 << 1)
+#define ID_GND			D0
+#define ID_TYPE_A		0
+#define ID_TYPE_B		1
+#define is_aca(x) ((x & R_ID_A) || (x & R_ID_B) || (x & R_ID_C))
+
 #define WAKESRC_ADDR		0x24
 
 #define CHRTTADDR_ADDR		0x56
@@ -247,6 +275,7 @@ struct pmic_chrgr_drv_context {
 	void __iomem *pmic_intr_iomap;
 	struct device *dev;
 	int health;
+	u8 pmic_id;
 	struct ps_batt_chg_prof *sfi_bcprof;
 	struct ps_pse_mod_prof *actual_bcprof;
 	struct ps_pse_mod_prof *runtime_bcprof;

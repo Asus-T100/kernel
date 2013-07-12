@@ -1868,8 +1868,8 @@ int i915_rpm_deinit(struct drm_device *dev);
 int i915_rpm_get_ring(struct intel_ring_buffer *ring);
 int i915_rpm_put_ring(struct intel_ring_buffer *ring);
 
-int i915_rpm_get_reg(struct drm_device *dev);
-int i915_rpm_put_reg(struct drm_device *dev);
+int i915_rpm_get_callback(struct drm_device *dev);
+int i915_rpm_put_callback(struct drm_device *dev);
 
 int i915_rpm_get_ioctl(struct drm_device *dev);
 int i915_rpm_put_ioctl(struct drm_device *dev);

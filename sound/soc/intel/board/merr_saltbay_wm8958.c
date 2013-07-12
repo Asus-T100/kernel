@@ -32,6 +32,7 @@
 #include <linux/gpio.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/platform_mrfld_audio.h>
+#include <asm/intel_sst_mrfld.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -380,18 +381,9 @@ static struct snd_soc_ops mrfld_8958_voip_aware_ops = {
 static struct snd_soc_compr_ops mrfld_compr_ops = {
 	.set_params = mrfld_wm8958_compr_set_params,
 };
-enum {
-	MRFLD_AUDIO = 0,
-	MRFLD_COMPR = 1,
-	MRFLD_VOIP = 2,
-	MRFLD_PROBE = 3,
-	MRFLD_AWARE = 4,
-	MRFLD_VAD = 5,
-	MRFLD_POWER = 6,
-};
 
 struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
-	[MRFLD_AUDIO] = {
+	[MERR_SALTBAY_AUDIO] = {
 		.name = "Merrifield Audio Port",
 		.stream_name = "Audio",
 		.cpu_dai_name = "Headset-cpu-dai",
@@ -402,7 +394,7 @@ struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &mrfld_8958_ops,
 	},
-	[MRFLD_COMPR] = {
+	[MERR_SALTBAY_COMPR] = {
 		.name = "Merrifield Compress Port",
 		.stream_name = "Compress",
 		.platform_name = "sst-platform",
@@ -411,7 +403,7 @@ struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
 		.codec_name = "wm8994-codec",
 		.compr_ops = &mrfld_compr_ops,
 	},
-	[MRFLD_VOIP] = {
+	[MERR_SALTBAY_VOIP] = {
 		.name = "Merrifield VOIP Port",
 		.stream_name = "Voip",
 		.cpu_dai_name = "Voip-cpu-dai",
@@ -422,7 +414,7 @@ struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &mrfld_8958_voip_aware_ops,
 	},
-	[MRFLD_PROBE] = {
+	[MERR_SALTBAY_PROBE] = {
 		.name = "Merrifield Probe Port",
 		.stream_name = "Probe",
 		.cpu_dai_name = "Probe-cpu-dai",
@@ -432,7 +424,7 @@ struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
 		.playback_count = 8,
 		.capture_count = 8,
 	},
-	[MRFLD_AWARE] = {
+	[MERR_SALTBAY_AWARE] = {
 		.name = "Merrifield Aware Port",
 		.stream_name = "Aware",
 		.cpu_dai_name = "Aware-cpu-dai",
@@ -443,7 +435,7 @@ struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &mrfld_8958_voip_aware_ops,
 	},
-	[MRFLD_VAD] = {
+	[MERR_SALTBAY_VAD] = {
 		.name = "Merrifield VAD Port",
 		.stream_name = "Vad",
 		.cpu_dai_name = "Virtual-cpu-dai",
@@ -451,7 +443,7 @@ struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
 		.codec_name = "snd-soc-dummy",
 		.platform_name = "sst-platform",
 	},
-	[MRFLD_POWER] = {
+	[MERR_SALTBAY_POWER] = {
 		.name = "Virtual Power Port",
 		.stream_name = "Power",
 		.cpu_dai_name = "Power-cpu-dai",

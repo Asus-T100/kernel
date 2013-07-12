@@ -37,61 +37,6 @@
 #include "../platform_ipc_v2.h"
 #include "sst.h"
 
-/*
- * sst_check_device_type - Check the medfield device type
- *
- * @device: Device to be checked
- * @num_ch: Number of channels queried
- * @pcm_slot: slot to be enabled for this device
- *
- * This checks the deivce against the map and calculates pcm_slot value
- */
-static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
-{
-	/* device id range starts from 1 */
-	if (device <= 0 || device > MAX_NUM_STREAMS_MFLD) {
-		pr_debug("sst: device type invalid %d\n", device);
-		return -EINVAL;
-	}
-	if (sst_drv_ctx->streams[device].status == STREAM_UN_INIT) {
-		if (device == SND_SST_DEVICE_VIBRA && num_chan == 1)
-			*pcm_slot = 0x10;
-		else if (device == SND_SST_DEVICE_HAPTIC && num_chan == 1)
-			*pcm_slot = 0x20;
-		else if (device == SND_SST_DEVICE_IHF && num_chan == 1)
-			*pcm_slot = 0x04;
-		else if (device == SND_SST_DEVICE_IHF && num_chan == 2)
-			*pcm_slot = 0x0C;
-		else if (device == SND_SST_DEVICE_HEADSET && num_chan == 1)
-			*pcm_slot = 0x01;
-		else if (device == SND_SST_DEVICE_HEADSET && num_chan == 2)
-			*pcm_slot = 0x03;
-		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 1)
-			*pcm_slot = 0x01;
-		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 2)
-			*pcm_slot = 0x03;
-		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 3)
-			*pcm_slot = 0x07;
-		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 4)
-			*pcm_slot = 0x0F;
-		else if (device == SND_SST_DEVICE_CAPTURE && num_chan > 4)
-			*pcm_slot = 0x1F;
-		else if (device == SND_SST_DEVICE_COMPRESS &&
-				(num_chan == 2 || num_chan == 1))
-			*pcm_slot = sst_drv_ctx->compressed_slot;
-		else {
-			pr_debug("No condition satisfied.. ret err\n");
-			return -EINVAL;
-		}
-	} else {
-		pr_debug("this stream state is not uni-init, is %d\n",
-					sst_drv_ctx->streams[device].status);
-		return -EBADRQC;
-	}
-	pr_debug("returning slot %x\n", *pcm_slot);
-	return 0;
-}
-
 /**
  * sst_alloc_stream - Send msg for a new stream ID
  *
@@ -312,11 +257,6 @@ int sst_alloc_stream_mfld(char *params, struct sst_block *block)
 	sparams->uc.pcm_params.ring_buffer_addr = rb_addr;
 
 
-
-	if (sst_check_device_type(device, num_ch, &pcm_slot)) {
-		kfree(sparams);
-		return -EINVAL;
-	}
 	mutex_lock(&sst_drv_ctx->stream_lock);
 	str_id = device;
 	mutex_unlock(&sst_drv_ctx->stream_lock);
@@ -467,71 +407,6 @@ int sst_send_byte_stream_mrfld(void *sbytes)
 			unsigned char *r = block->data;
 			pr_debug("read back %d bytes", bytes->len);
 			memcpy(bytes->bytes, r, bytes->len);
-		}
-	}
-	if (bytes->block)
-		sst_free_block(sst_drv_ctx, block);
-	return 0;
-}
-int sst_send_byte_stream(void *sbytes)
-{
-	struct ipc_post *msg = NULL;
-	struct snd_sst_bytes *bytes = (struct snd_sst_bytes *) sbytes;
-	unsigned long irq_flags;
-	u32 length;
-	int ret, pvt_id;
-	struct sst_block *block = NULL;
-
-	pr_debug("%s:\ntype:%d\nipc_msg:%x\nblock:%d\ntask_id:%x\npipe: %d\nlength:%d\n",
-		__func__, bytes->type, bytes->ipc_msg,
-		bytes->block, bytes->task_id,
-		bytes->pipe_id, bytes->len);
-
-	/* need some err check as this is user data, perhpas move this to the
-	 * platform driver and pass the struct
-	 */
-	if (sst_create_ipc_msg(&msg, true))
-		return -ENOMEM;
-	/* FIXME: we need pipe id here for str_id */
-
-	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-	sst_fill_header_mrfld_32(&msg->header.full, bytes->task_id,
-			bytes->ipc_msg, pvt_id, bytes->block, 1);
-	length = bytes->len;
-	pr_debug("length is %d\n", length);
-	memcpy(msg->mailbox_data, &length, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32),
-		&bytes->bytes, bytes->len);
-
-	if (bytes->block) {
-		block = sst_create_block(sst_drv_ctx, 0, pvt_id);
-		if (block == NULL) {
-			kfree(msg);
-			return -ENOMEM;
-		}
-	}
-	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-	list_add_tail(&msg->node,
-			&sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	if (bytes->block) {
-		ret = sst_wait_timeout(sst_drv_ctx, block);
-		if (ret) {
-			pr_err("%s: fw returned err %d\n", __func__, ret);
-			sst_free_block(sst_drv_ctx, block);
-			return ret;
-		}
-	}
-	if (bytes->type == SND_SST_BYTES_GET) {
-		/* copy the reply and send back
-		 * we need to update only sz and payload
-		 */
-		struct snd_sst_bytes *r;
-		if (bytes->block) {
-			r = block->data;
-			bytes->len = r->len;
-			memcpy(bytes->bytes, r->bytes, bytes->len);
 		}
 	}
 	if (bytes->block)

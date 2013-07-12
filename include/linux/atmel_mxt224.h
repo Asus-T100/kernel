@@ -15,6 +15,7 @@
  *  Modified by Richard Zhu(jianxin.zhu@borqs.com) 05/19/2011
  */
 #include <linux/ioctl.h>
+#include <linux/earlysuspend.h>
 
 #define	MXT224_I2C_ADDR1				0x4A
 #define	MXT224_I2C_ADDR2				0x4B

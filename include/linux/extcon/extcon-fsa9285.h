@@ -23,6 +23,7 @@
  * @sdp_setup  - call back to setup SDP connection
  */
 struct fsa9285_pdata {
+	int mux_gpio;
 	int (*enable_vbus)(void);
 	int (*disable_vbus)(void);
 	int (*sdp_pre_setup)(void);

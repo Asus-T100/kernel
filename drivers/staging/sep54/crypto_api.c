@@ -36,6 +36,7 @@
 #include <linux/workqueue.h>
 #include "dx_driver_abi.h"
 #include "dx_driver.h"
+#include "sep_power.h"
 #include "crypto_ctx_mgr.h"
 #include "crypto_api.h"
 
@@ -435,6 +436,9 @@ static int dispatch_crypto_op(struct sep_op_ctx *op_ctx, bool may_backlog,
 	/* Start critical section -
 	   cache allocation must be coupled to descriptor enqueue */
 	mutex_lock(&drvdata->desc_queue_sequencer);
+#ifdef SEP_RUNTIME_PM
+	dx_sep_pm_runtime_get();
+#endif
 	ctxmgr_set_sep_cache_idx(ctx_info,
 				 ctxmgr_sep_cache_alloc(drvdata->sep_cache,
 							ctx_id,
@@ -448,6 +452,9 @@ static int dispatch_crypto_op(struct sep_op_ctx *op_ctx, bool may_backlog,
 	if ((!keep_in_cache) || unlikely(IS_DESCQ_ENQUEUE_ERR(rc)))
 		ctxmgr_sep_cache_invalidate(drvdata->sep_cache, ctx_id,
 					    CRYPTO_CTX_ID_SINGLE_MASK);
+#ifdef SEP_RUNTIME_PM
+	dx_sep_pm_runtime_put();
+#endif
 	mutex_unlock(&drvdata->desc_queue_sequencer);
 	return rc;
 }
@@ -600,12 +607,18 @@ static int symcipher_ctx_init(struct crypto_tfm *tfm)
 
 	SEP_LOG_DEBUG("Initializing context @%p for %s (%d)\n",
 		      host_ctx_p, crypto_tfm_alg_name(tfm), cipher_type);
+#ifdef SEP_RUNTIME_PM
+	dx_sep_pm_runtime_get();
+#endif
 	ablktfm->reqsize += sizeof(struct async_req_ctx);
 	rc = ctxmgr_map_kernel_ctx(ctx_info, mydev, ALG_CLASS_SYM_CIPHER,
 				   (struct host_crypto_ctx *)host_ctx_p, NULL,
 				   0);
 	if (rc != 0) {
 		SEP_LOG_ERR("Failed mapping context (rc=%d)\n", rc);
+#ifdef SEP_RUNTIME_PM
+		dx_sep_pm_runtime_put();
+#endif
 		return rc;
 	}
 	/* Allocate a new Crypto context ID */
@@ -618,6 +631,9 @@ static int symcipher_ctx_init(struct crypto_tfm *tfm)
 		ctxmgr_set_ctx_state(ctx_info, CTX_STATE_PARTIAL_INIT);
 	}
 	ctxmgr_unmap_kernel_ctx(ctx_info);
+#ifdef SEP_RUNTIME_PM
+	dx_sep_pm_runtime_put();
+#endif
 	return rc;
 }
 

@@ -38,7 +38,7 @@ static int mrfld_pmu_init(void)
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
 
 	/* Put LSS8 and LSS11 as unused on  PRh */
-	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRH)) {
+	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRHA)) {
 		mid_pmu_cxt->os_sss[0] |= \
 			(SSMSK(D0I3_MASK, PMU_USB_MPH_LSS_08)|
 			SSMSK(D0I3_MASK, PMU_AUDIO_DMA0_11));
@@ -152,7 +152,7 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
 
 	/* Put LSS8 and LSS11 as unused on  PRh */
-	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRH)) {
+	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRHA)) {
 		pmu_config->pmu2_states[0] |= \
 			(SSMSK(D0I3_MASK, PMU_USB_MPH_LSS_08)|
 			SSMSK(D0I3_MASK, PMU_AUDIO_DMA0_11));
@@ -319,6 +319,29 @@ void s0ix_complete(void)
 		mid_pmu_cxt->s0ix_entered	= 0;
 	}
 }
+
+bool could_do_s0ix(void)
+{
+	bool ret = false;
+	if (unlikely(!pmu_initialized))
+		goto ret;
+
+	/* dont do s0ix if suspend in progress */
+	if (unlikely(mid_pmu_cxt->suspend_started))
+		goto ret;
+
+	/* dont do s0ix if shutdown in progress */
+	if (unlikely(mid_pmu_cxt->shutdown_started))
+		goto ret;
+
+	if (nc_device_state())
+		goto ret;
+
+	ret = true;
+ret:
+	return ret;
+}
+EXPORT_SYMBOL(could_do_s0ix);
 
 struct platform_pmu_ops mrfld_pmu_ops = {
 	.init	 = mrfld_pmu_init,

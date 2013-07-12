@@ -25,7 +25,7 @@ hrt_sleep(void)
 #include <linux/delay.h>
 STORAGE_CLASS_INLINE void hrt_sleep(void)
 {
-	udelay(1);
+       udelay(1);
 }
 /*
  * Put here everything __KERNEL__ specific not covered in

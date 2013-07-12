@@ -317,6 +317,8 @@ enum intel_mid_dma_state {
 /**
  * struct middma_device - internal representation of a DMA device
  * @pdev: PCI device
+ * @dev : pointer to current device struct
+ * @irq : holds irq for the device
  * @dma_base: MMIO register space pointer of DMA
  * @dma_pool: for allocating DMA descriptors
  * @common: embedded struct dma_device
@@ -334,7 +336,8 @@ enum intel_mid_dma_state {
  * @block_intr_mask: hold the status of block intr mask register
  */
 struct middma_device {
-	struct pci_dev		*pdev;
+	struct device		*dev;
+	unsigned int		irq;
 	void __iomem		*dma_base;
 	struct pci_pool		*dma_pool;
 	struct dma_device	common;
@@ -396,6 +399,18 @@ struct intel_mid_dma_lli {
 	u32				ctl_hi;
 } __attribute__ ((packed));
 
+struct intel_mid_dma_probe_info {
+	u8 max_chan;
+	u8 ch_base;
+	u32 block_size;
+	u32 pimr_mask;
+	u32 pimr_base;
+	u8 dword_trf;
+	u32 pimr_offset;
+	unsigned int		pci_id;
+	struct intel_mid_dma_ops *pdma_ops;
+};
+
 static inline int test_ch_en(void __iomem *dma, u32 ch_no)
 {
 	u32 en_reg = ioread32(dma + DMA_CHAN_EN);
@@ -415,6 +430,12 @@ static inline struct intel_mid_dma_slave *to_intel_mid_dma_slave
 }
 
 
+struct middma_device *mid_dma_setup_context(struct device *dev,
+					    struct intel_mid_dma_probe_info *info);
 int dma_resume(struct device *dev);
-
+int __devinit dma_acpi_probe(struct platform_device *pdev);
+int dma_acpi_remove(struct platform_device *pdev);
+struct intel_mid_dma_probe_info *mid_get_acpi_driver_data(const char *hid);
+int mid_setup_dma(struct device *dev);
+void middma_shutdown(struct device *dev);
 #endif /*__INTEL_MID_DMAC_REGS_H__*/

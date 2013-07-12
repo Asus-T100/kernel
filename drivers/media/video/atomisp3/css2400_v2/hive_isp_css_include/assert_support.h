@@ -2,7 +2,9 @@
 #define __ASSERT_SUPPORT_H_INCLUDED__
 
 #if defined(_MSC_VER)
-#include "assert.h"
+#include <wdm.h>
+#define assert(cnd) ASSERT(cnd)
+
 #define OP___assert(cnd) assert(cnd)
 #elif defined(__HIVECC)
 

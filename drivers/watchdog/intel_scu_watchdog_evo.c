@@ -1027,11 +1027,26 @@ static DEVICE_ATTR(disable, S_IWUSR | S_IRUGO,
 
 #endif
 
+#define OSNIB_WDOG_COUNTER_MASK 0xF0
+#define OSNIB_WDOG_COUNTER_SHIFT 4
+#define WDOG_COUNTER_MAX_VALUE   3
 static ssize_t counter_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	int ret;
 	pr_debug(PFX "%s\n", __func__);
+
+	ret = sscanf(buf, "%hhu", &osnib_reset);
+	if (ret != 1) {
+		pr_err(PFX "cannot get counter value\n");
+		if (ret == 0)
+			ret = -EINVAL;
+		return ret;
+	}
+	if (osnib_reset > WDOG_COUNTER_MAX_VALUE)
+		osnib_reset = WDOG_COUNTER_MAX_VALUE;
+	osnib_reset = ((osnib_reset << OSNIB_WDOG_COUNTER_SHIFT) &
+				OSNIB_WDOG_COUNTER_MASK);
 	ret = intel_scu_ipc_write_osnib_wd(&osnib_reset);
 
 	if (ret != 0) {
@@ -1042,8 +1057,7 @@ static ssize_t counter_store(struct device *dev,
 	return size;
 }
 
-#define OSNIB_WDOG_COUNTER_MASK 0xF0
-#define OSNIB_WDOG_COUNTER_SHIFT 4
+
 static ssize_t counter_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {

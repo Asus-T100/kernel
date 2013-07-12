@@ -1334,7 +1334,13 @@ void cs42l73_mclk_switch(struct device *dev, bool mode)
 		snd_soc_update_bits(card->rtd->codec, CS42L73_TST0, 0xff, 0x00);
 	} else {
 		pr_debug("%s: swith mclk to lowpower mode\n", __func__);
-
+		/* Ensure MCLK is disabled before changing clk divide ratio
+		 * and reenable after the change
+		 */
+		snd_soc_update_bits(card->rtd->codec, CS42L73_PWRCTL1, PDN, 1);
+		msleep(pdn_delay);
+		snd_soc_update_bits(card->rtd->codec,
+						CS42L73_DMMCC, MCLKDIS, 1);
 		 /* set the test bit to keep the debounce time constant
 		  * regardless of the MCLK frequency */
 		snd_soc_update_bits(card->rtd->codec, CS42L73_TST0, 0xff, 0x99);
@@ -1342,6 +1348,9 @@ void cs42l73_mclk_switch(struct device *dev, bool mode)
 		snd_soc_update_bits(card->rtd->codec, CS42L73_TST2, 0xff, 0x01);
 		snd_soc_update_bits(card->rtd->codec, CS42L73_DMMCC,
 				MCLK_DIV_MASK, MCLK_DIV_2<<1);
+		snd_soc_update_bits(card->rtd->codec,
+						CS42L73_DMMCC, MCLKDIS, 0);
+		snd_soc_update_bits(card->rtd->codec, CS42L73_PWRCTL1, PDN, 0);
 	}
 }
 EXPORT_SYMBOL_GPL(cs42l73_mclk_switch);

@@ -47,6 +47,9 @@
 
 #define DRIVER_NAME "bcove_bcu"
 
+#define CAMFLASH_STATE_ON	1
+#define CAMFLASH_STATE_OFF	0
+
 /* 'enum' of BCU events */
 enum bcu_events { WARN1, WARN2, CRIT, GSMPULSE, TXPWRTH, UNKNOWN, __COUNT };
 
@@ -66,6 +69,8 @@ struct ocd_info {
 	void *bcu_intr_addr;
 	int irq;
 };
+
+static uint8_t cam_flash_state;
 
 static void enable_volt_trip_points(void)
 {
@@ -312,13 +317,33 @@ static ssize_t show_crit_shutdown(struct device *dev,
 	return ret ? ret : sprintf(buf, "%d\n", flag);
 }
 
+static ssize_t store_camflash_ctrl(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	uint8_t value;
+	if (kstrtou8(buf, 10, &value))
+		return -EINVAL;
+
+	if ((value != CAMFLASH_STATE_ON) && (value != CAMFLASH_STATE_OFF))
+		return -EINVAL;
+
+	cam_flash_state = value;
+	return count;
+}
+
+static ssize_t show_camflash_ctrl(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", cam_flash_state);
+}
+
 static void handle_VW1_event(int event, void *dev_data)
 {
 	uint8_t irq_status, beh_data;
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
 
-	dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n", event);
+	dev_info(cinfo->dev, "EM:BCU: VW1 Event %d has occured\n", event);
 	/* Notify using UEvent */
 	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
 
@@ -355,7 +380,7 @@ static void handle_VW2_event(int event, void *dev_data)
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
 
-	dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n", event);
+	dev_info(cinfo->dev, "EM:BCU: VW2 Event %d has occured\n", event);
 	/* Notify using UEvent */
 	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
 
@@ -401,7 +426,7 @@ static void handle_VC_event(int event, void *dev_data)
 {
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 
-	dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n", event);
+	dev_info(cinfo->dev, "EM:BCU: VC Event %d has occured\n", event);
 	/* Notify using UEvent */
 	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
 
@@ -440,12 +465,12 @@ static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 	}
 	if (irq_data & GSMPULSE_IRQ) {
 		event = GSMPULSE;
-		dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n",
+		dev_info(cinfo->dev, "EM:BCU: GSMPULSE Event %d has occured\n",
 									event);
 	}
 	if (irq_data & TXPWRTH_IRQ) {
 		event = TXPWRTH;
-		dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n",
+		dev_info(cinfo->dev, "EM:BCU: TXPWRTH Event %d has occured\n",
 									event);
 	}
 
@@ -479,6 +504,9 @@ static SENSOR_DEVICE_ATTR_2(uncore_current, S_IRUGO | S_IWUSR,
 static SENSOR_DEVICE_ATTR_2(enable_crit_shutdown, S_IRUGO | S_IWUSR,
 				show_crit_shutdown, store_crit_shutdown, 0, 0);
 
+static SENSOR_DEVICE_ATTR(camflash_ctrl, S_IRUGO | S_IWUSR,
+				show_camflash_ctrl, store_camflash_ctrl, 0);
+
 static struct attribute *mrfl_ocd_attrs[] = {
 	&sensor_dev_attr_core_current.dev_attr.attr,
 	&sensor_dev_attr_uncore_current.dev_attr.attr,
@@ -486,6 +514,7 @@ static struct attribute *mrfl_ocd_attrs[] = {
 	&sensor_dev_attr_volt_warn2.dev_attr.attr,
 	&sensor_dev_attr_volt_crit.dev_attr.attr,
 	&sensor_dev_attr_enable_crit_shutdown.dev_attr.attr,
+	&sensor_dev_attr_camflash_ctrl.dev_attr.attr,
 	NULL
 };
 
@@ -556,19 +585,20 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 
 	ret = ocd_plat_data->bcu_config_data(&ocd_config_data);
 	if (ret) {
-		dev_err(&pdev->dev, "EM:BCU:Read SMIP failed:%d\n", ret);
+		dev_err(&pdev->dev, "EM:BCU: Read SMIP failed:%d\n", ret);
 		goto exit_freeirq;
 	}
 
 	/* Program the BCU with default values read from the smip*/
 	ret = program_bcu(&ocd_config_data);
 	if (ret) {
-		dev_err(&pdev->dev, "EM:BCU:program_bcu() failed:%d\n", ret);
+		dev_err(&pdev->dev, "EM:BCU: program_bcu() failed:%d\n", ret);
 		goto exit_freeirq;
 	}
 
 	enable_volt_trip_points();
 	enable_current_trip_points();
+	cam_flash_state = CAMFLASH_STATE_ON;
 
 	return 0;
 

@@ -181,24 +181,26 @@ static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_info info,
 		if (data_size)
 			pr->p_filesz += 4 - data_size;
 		*dstn = sst->iram + (pr->p_paddr - info.iram_start);
-		*dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
+		*dstn_phys = pr->p_paddr;
 		*mem_type = 1;
+	}
 #else
 	if ((pr->p_paddr >= info.iram_start) &&
-			(pr->p_paddr < info.iram_end)) {
+	    (pr->p_paddr < info.iram_end)) {
 
 		*dstn = sst->iram + (pr->p_paddr - info.iram_start);
-		*dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
+		*dstn_phys = pr->p_paddr;
 		*mem_type = 1;
+	}
 #endif
-	} else if ((pr->p_paddr >= info.dram_start) &&
-			(pr->p_paddr < info.dram_end)) {
+	else if ((pr->p_paddr >= info.dram_start) &&
+		 (pr->p_paddr < info.dram_end)) {
 
 		*dstn = sst->dram + (pr->p_paddr - info.dram_start);
-		*dstn_phys = sst->dram_base + pr->p_paddr - info.dram_start;
+		*dstn_phys = pr->p_paddr;
 		*mem_type = 1;
 	} else if ((pr->p_paddr >= info.imr_start) &&
-			(pr->p_paddr < info.imr_end)) {
+		   (pr->p_paddr < info.imr_end)) {
 
 		*dstn = sst->ddr + (pr->p_paddr - info.imr_start);
 		*dstn_phys =  sst->ddr_base + pr->p_paddr - info.imr_start;
@@ -250,7 +252,7 @@ static inline int sst_validate_elf(const struct firmware *sst_bin, bool dynamic)
 	elf = (Elf32_Ehdr *)sst_bin->data;
 
 	if ((elf->e_ident[0] != 0x7F) || (elf->e_ident[1] != 'E') ||
-		(elf->e_ident[2] != 'L') || (elf->e_ident[3] != 'F')) {
+	    (elf->e_ident[2] != 'L') || (elf->e_ident[3] != 'F')) {
 		pr_debug("ELF Header Not found!%zu\n", sst_bin->size);
 		return -EINVAL;
 	}
@@ -365,13 +367,12 @@ exit:
 static bool chan_filter(struct dma_chan *chan, void *param)
 {
 	struct sst_dma *dma = (struct sst_dma *)param;
-	bool ret = false;
 
 	/* we only need MID_DMAC1 as that can access DSP RAMs*/
-	if (chan->device->dev == &dma->dmac->dev)
-		ret = true;
+	if (chan->device->dev == dma->dev)
+		return true;
 
-	return ret;
+	return false;
 }
 
 static unsigned int
@@ -444,25 +445,32 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 	dma_cap_mask_t mask;
 	struct intel_mid_dma_slave *slave = &dma->slave;
 	int retval;
+	struct pci_dev *dmac = NULL;
 
 	pr_debug("%s\n", __func__);
+	dma->dev = NULL;
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_MEMCPY, mask);
 
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
-		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						PCI_DMAC_CLV_ID, NULL);
+		dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+				      PCI_DMAC_CLV_ID, NULL);
 	else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
-		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						PCI_DMAC_MFLD_ID, NULL);
+		dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+				      PCI_DMAC_MFLD_ID, NULL);
 	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						PCI_DMAC_MRFLD_ID, NULL);
+		dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+				      PCI_DMAC_MRFLD_ID, NULL);
+	else if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
+		dma->dev = intel_mid_get_acpi_dma();
 
-	if (!dma->dmac) {
+	if (!dmac && !dma->dev) {
 		pr_err("Can't find DMAC\n");
 		return -ENODEV;
 	}
+	if (dmac)
+		dma->dev = &dmac->dev;
+
 	dma->ch = dma_request_channel(mask, chan_filter, dma);
 	if (!dma->ch) {
 		pr_err("unable to request dma channel\n");
@@ -590,6 +598,8 @@ static int sst_fill_sglist(unsigned long from, unsigned long to,
 	unsigned long dstn, src;
 
 	pr_debug("%s entry", __func__);
+	if (!sg_src || !sg_dstn)
+		return -EINVAL;
 
 	do {
 		dstn = (unsigned long) (to + offset);
@@ -609,7 +619,7 @@ static int sst_fill_sglist(unsigned long from, unsigned long to,
 			offset = 0;
 		}
 
-		if (!sg_src || !sg_dstn)
+		if (!(*sg_src) || !(*sg_dstn))
 			return -ENOMEM;
 
 		sg_set_buf(*sg_src, (void *) src, len);
@@ -652,8 +662,7 @@ static int
 sst_parse_elf_fw_dma(struct intel_sst_drv *sst, const void *fw_in_mem,
 			struct sst_sg_list *fw_sg_list)
 {
-	int i = 0;
-
+	int i = 0, ret = 0;
 	Elf32_Ehdr *elf;
 	Elf32_Phdr *pr;
 	struct sst_info info;
@@ -674,32 +683,50 @@ sst_parse_elf_fw_dma(struct intel_sst_drv *sst, const void *fw_in_mem,
 		return -EIO;
 	}
 
-	if (sst_init_dma_sg_list(sst, sg_len, &sg_src, &sg_dst))
-		return -ENOMEM;
+	if (sst_init_dma_sg_list(sst, sg_len, &sg_src, &sg_dst)) {
+		ret = -ENOMEM;
+		goto err1;
+	}
+
 	fw_sg_list->src = sg_src;
 	fw_sg_list->dst = sg_dst;
 	fw_sg_list->list_len = sg_len;
 	fw_sg_list->sg_idx = 0;
 
 	while (i < elf->e_phnum) {
-		if ((pr[i].p_type == PT_LOAD) && (pr[i].p_filesz))
-			sst_parse_elf_module_dma(sst, fw_in_mem, info, &pr[i],
-					&sg_src, &sg_dst, fw_sg_list);
+		if ((pr[i].p_type == PT_LOAD) && (pr[i].p_filesz)) {
+			ret = sst_parse_elf_module_dma(sst, fw_in_mem, info,
+					&pr[i], &sg_src, &sg_dst, fw_sg_list);
+			if (ret)
+				goto err;
+		}
 		i++;
 	}
 	return 0;
+err:
+	kfree(fw_sg_list->src);
+	kfree(fw_sg_list->dst);
+err1:
+	fw_sg_list->src = NULL;
+	fw_sg_list->dst = NULL;
+	fw_sg_list->list_len = 0;
+	fw_sg_list->sg_idx = 0;
+
+	return ret;
 }
 
 /**
  * sst_parse_module_dma - Parse audio FW modules and populate the dma list
  *
+ * @sst_ctx	: sst driver context
  * @module	: FW module header
  * @sg_list	: Pointer to the sg_list to be populated
  * Count the length for scattergather list
  * and create the scattergather list of same length
  * returns error or 0 if module sizes are proper
  */
-static int sst_parse_module_dma(struct fw_module_header *module,
+static int sst_parse_module_dma(struct intel_sst_drv *sst_ctx,
+				struct fw_module_header *module,
 				struct sst_sg_list *sg_list)
 {
 	struct fw_block_info *block;
@@ -716,14 +743,18 @@ static int sst_parse_module_dma(struct fw_module_header *module,
 	block = (void *)module + sizeof(*module);
 
 	for (count = 0; count < module->blocks; count++) {
-		sg_len += (block->size) / SST_MAX_DMA_LEN;
+		sg_len += (block->size) / sst_drv_ctx->info.dma_max_len;
 
-		if ((block->size) % SST_MAX_DMA_LEN)
+		if (block->size % sst_drv_ctx->info.dma_max_len)
 			sg_len = sg_len + 1;
 		block = (void *)block + sizeof(*block) + block->size;
 	}
 
-	sst_init_dma_sg_list(sst_drv_ctx, sg_len, &sg_src, &sg_dst);
+	if (sst_init_dma_sg_list(sst_ctx, sg_len, &sg_src, &sg_dst)) {
+		retval = -ENOMEM;
+		goto err1;
+	}
+
 	sg_list->src = sg_src;
 	sg_list->dst = sg_dst;
 	sg_list->list_len = sg_len;
@@ -733,19 +764,21 @@ static int sst_parse_module_dma(struct fw_module_header *module,
 	for (count = 0; count < module->blocks; count++) {
 		if (block->size <= 0) {
 			pr_err("block size invalid\n");
-			return -EINVAL;
+			retval = -EINVAL;
+			goto err;
 		}
 		switch (block->type) {
 		case SST_IRAM:
-			ram = sst_drv_ctx->iram_base;
+			ram = sst_ctx->iram_base;
 			break;
 		case SST_DRAM:
-			ram = sst_drv_ctx->dram_base;
+			ram = sst_ctx->dram_base;
 			break;
 		default:
 			pr_err("wrong ram type0x%x in block0x%x\n",
 					block->type, count);
-			return -EINVAL;
+			retval = -EINVAL;
+			goto err;
 		}
 
 		/*converting from physical to virtual because
@@ -756,17 +789,22 @@ static int sst_parse_module_dma(struct fw_module_header *module,
 
 		retval = sst_fill_sglist(src, ram,
 				block->size, &sg_src, &sg_dst,
-				sg_list, sst_drv_ctx->info.dma_max_len);
-		if (retval) {
-			kfree(sg_src);
-			kfree(sg_dst);
-			sg_src = NULL;
-			sg_dst = NULL;
-			return retval;
-		}
+				sg_list, sst_ctx->info.dma_max_len);
+		if (retval)
+			goto err;
+
 		block = (void *)block + sizeof(*block) + block->size;
 	}
 	return 0;
+err:
+	kfree(sg_list->src);
+	kfree(sg_list->dst);
+err1:
+	sg_list->src = NULL;
+	sg_list->dst = NULL;
+	sg_list->list_len = 0;
+
+	return retval;
 }
 
 /**
@@ -792,7 +830,7 @@ static int sst_parse_fw_dma(const void *sst_fw_in_mem, unsigned long size,
 
 	for (count = 0; count < num_modules; count++) {
 		/* module */
-		ret_val = sst_parse_module_dma(module, fw_list);
+		ret_val = sst_parse_module_dma(sst_drv_ctx, module, fw_list);
 		if (ret_val)
 			return ret_val;
 		module = (void *)module + sizeof(*module) + module->mod_size ;
@@ -836,7 +874,9 @@ static int sst_do_dma(struct sst_sg_list *sg_list)
 	int ret_val;
 
 	/* get a dmac channel */
-	sst_alloc_dma_chan(&sst_drv_ctx->dma);
+	ret_val = sst_alloc_dma_chan(&sst_drv_ctx->dma);
+	if (ret_val)
+		return ret_val;
 
 	/* allocate desc for transfer and submit */
 	ret_val = sst_dma_firmware(&sst_drv_ctx->dma, sg_list);
@@ -1061,14 +1101,15 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 {
 	int retval = 0;
 	char name[20];
+	const struct firmware *fw;
 
 	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
 				sst->pci_id, ".bin");
 	pr_debug("Requesting FW %s now...\n", name);
-	retval = request_firmware(&sst->fw, name,
-				 sst->dev);
-	if (sst->fw == NULL) {
-		pr_err("sst->fw is returning as null\n");
+
+	retval = request_firmware(&fw, name, sst->dev);
+	if (fw == NULL) {
+		pr_err("fw is returning as null\n");
 		return -EINVAL;
 	}
 	if (retval) {
@@ -1076,12 +1117,12 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		return retval;
 	}
 	if (sst->info.use_elf == true)
-		retval = sst_validate_elf(sst->fw, false);
+		retval = sst_validate_elf(fw, false);
 	if (retval != 0) {
 		pr_err("FW image invalid...\n");
 		goto end_release;
 	}
-	sst->fw_in_mem = kzalloc(sst->fw->size, GFP_KERNEL);
+	sst->fw_in_mem = kzalloc(fw->size, GFP_KERNEL);
 	if (!sst->fw_in_mem) {
 		pr_err("%s unable to allocate memory\n", __func__);
 		retval = -ENOMEM;
@@ -1089,32 +1130,30 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 	}
 	pr_debug("copied fw to %p", sst->fw_in_mem);
 	pr_debug("phys: %lx", (unsigned long)virt_to_phys(sst->fw_in_mem));
-	memcpy(sst->fw_in_mem, sst->fw->data,
-			sst->fw->size);
+	memcpy(sst->fw_in_mem, fw->data, fw->size);
+
 	if (sst->use_dma) {
 		if (sst->info.use_elf == true)
-			retval = sst_parse_elf_fw_dma(sst,
-				sst->fw_in_mem, &sst->fw_sg_list);
+			retval = sst_parse_elf_fw_dma(sst, sst->fw_in_mem,
+							&sst->fw_sg_list);
 		else
-			retval = sst_parse_fw_dma(sst->fw_in_mem,
-				sst->fw->size, &sst->fw_sg_list);
+			retval = sst_parse_fw_dma(sst->fw_in_mem, fw->size,
+							&sst->fw_sg_list);
 	} else {
 		if (sst->info.use_elf == true)
-			retval = sst_parse_elf_fw_memcpy(sst,
-				sst->fw_in_mem, &sst->memcpy_list);
+			retval = sst_parse_elf_fw_memcpy(sst, sst->fw_in_mem,
+							&sst->memcpy_list);
 		else
-			retval = sst_parse_fw_memcpy(sst->fw_in_mem,
-				sst->fw->size, &sst->memcpy_list);
+			retval = sst_parse_fw_memcpy(sst->fw_in_mem, fw->size,
+							&sst->memcpy_list);
 	}
-
 	if (retval) {
 		kfree(sst->fw_in_mem);
-		goto end_release;
+		sst->fw_in_mem = NULL;
 	}
 
 end_release:
-	release_firmware(sst->fw);
-	sst->fw = NULL;
+	release_firmware(fw);
 	return retval;
 }
 

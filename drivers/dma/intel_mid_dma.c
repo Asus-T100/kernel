@@ -29,6 +29,7 @@
 #include <linux/intel_mid_dma.h>
 #include <linux/module.h>
 #include <linux/delay.h>
+#include <linux/platform_device.h>
 
 #include "dmaengine.h"
 
@@ -45,22 +46,13 @@
 #define INTEL_MRFLD_DMAC0_ID		0x119B
 #define INTEL_BYT_LPIO1_DMAC_ID		0x0F06
 #define INTEL_BYT_LPIO2_DMAC_ID		0x0F40
+#define INTEL_BYT_DMAC0_ID		0x0F28
 
 #define LNW_PERIPHRAL_MASK_SIZE		0x20
 
-struct intel_mid_dma_probe_info {
-	u8 max_chan;
-	u8 ch_base;
-	u32 block_size;
-	u32 pimr_mask;
-	u32 pimr_base;
-	u8 dword_trf;
-	u32 pimr_offset;
-	struct intel_mid_dma_ops *pdma_ops;
-};
-
 #define INFO(_max_chan, _ch_base, _block_size, _pimr_mask,	\
-		_pimr_base, _dword_trf, _pimr_offset, _pdma_ops)				\
+		_pimr_base, _dword_trf, _pimr_offset, _pci_id,	\
+			_pdma_ops)				\
 	((kernel_ulong_t)&(struct intel_mid_dma_probe_info) {	\
 		.max_chan = (_max_chan),			\
 		.ch_base = (_ch_base),				\
@@ -69,6 +61,7 @@ struct intel_mid_dma_probe_info {
 		.pimr_base = (_pimr_base),			\
 		.dword_trf = (_dword_trf),			\
 		.pimr_offset = (_pimr_offset),			\
+		.pci_id = (_pci_id),				\
 		.pdma_ops = (_pdma_ops)				\
 	})
 
@@ -92,18 +85,10 @@ static int get_ch_index(int status, unsigned int base)
 	return -1;
 }
 
-static inline unsigned short get_dmac_id(struct middma_device *mid)
+static inline bool is_byt_lpio_dmac(struct middma_device *mid)
 {
-	 return mid->pdev->device;
-}
-
-static inline bool is_byt_dmac(struct middma_device *mid)
-{
-	if (get_dmac_id(mid) == INTEL_BYT_LPIO1_DMAC_ID
-		|| get_dmac_id(mid) == INTEL_BYT_LPIO2_DMAC_ID)
-		return true;
-	else
-		return false;
+	return (mid->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
+		mid->pci_id == INTEL_BYT_LPIO2_DMAC_ID);
 }
 
 static void dump_dma_reg(struct dma_chan *chan)
@@ -476,7 +461,7 @@ static void midc_descriptor_complete(struct intel_mid_dma_chan *midc,
 		list_del(&desc->desc_node);
 		desc->status = DMA_SUCCESS;
 		if (desc->lli != NULL && desc->lli->llp != 0)
-			pci_pool_free(desc->lli_pool, desc->lli,
+			dma_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
 		list_add(&desc->desc_node, &midc->free_list);
 		midc->busy = false;
@@ -816,7 +801,7 @@ static int intel_mid_dma_device_control(struct dma_chan *chan,
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
 		list_del(&desc->desc_node);
 		if (desc->lli != NULL)
-			pci_pool_free(desc->lli_pool, desc->lli,
+			dma_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
 		list_add(&desc->desc_node, &midc->free_list);
 	}
@@ -907,7 +892,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 		} else {
 			cfg_hi.cfgx.protctl = 0x1; /*default value*/
 			/* Baytrail DMAC uses dynamic device instance */
-			if (is_byt_dmac(midc->dma))
+			if (is_byt_lpio_dmac(midc->dma))
 				cfg_hi.cfgx.src_per = cfg_hi.cfgx.dst_per =
 					mids->device_instance;
 			else
@@ -1185,8 +1170,8 @@ static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
 	desc->lli_length = src_sg_len;
 	desc->current_lli = 0;
 	/* DMA coherent memory pool for LLI descriptors*/
-	desc->lli_pool = pci_pool_create("intel_mid_dma_lli_pool",
-				midc->dma->pdev,
+	desc->lli_pool = dma_pool_create("intel_mid_dma_lli_pool",
+				midc->dma->dev,
 				(sizeof(struct intel_mid_dma_lli)*src_sg_len),
 				32, 0);
 	if (NULL == desc->lli_pool) {
@@ -1195,10 +1180,10 @@ static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
 	}
 	midc->lli_pool = desc->lli_pool;
 
-	desc->lli = pci_pool_alloc(desc->lli_pool, GFP_KERNEL, &desc->lli_phys);
+	desc->lli = dma_pool_alloc(desc->lli_pool, GFP_KERNEL, &desc->lli_phys);
 	if (!desc->lli) {
 		pr_err("MID_DMA: LLI alloc failed\n");
-		pci_pool_destroy(desc->lli_pool);
+		dma_pool_destroy(desc->lli_pool);
 		return NULL;
 	}
 	midc_lli_fill_sg(midc, desc, src_sg, dst_sg, src_sg_len, flags);
@@ -1325,27 +1310,27 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 	midc->descs_allocated = 0;
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
 		list_del(&desc->desc_node);
-		pci_pool_free(mid->dma_pool, desc, desc->txd.phys);
+		dma_pool_free(mid->dma_pool, desc, desc->txd.phys);
 	}
 	list_for_each_entry_safe(desc, _desc, &midc->free_list, desc_node) {
 		list_del(&desc->desc_node);
-		pci_pool_free(mid->dma_pool, desc, desc->txd.phys);
+		dma_pool_free(mid->dma_pool, desc, desc->txd.phys);
 	}
 	list_for_each_entry_safe(desc, _desc, &midc->queue, desc_node) {
 		list_del(&desc->desc_node);
-		pci_pool_free(mid->dma_pool, desc, desc->txd.phys);
+		dma_pool_free(mid->dma_pool, desc, desc->txd.phys);
 	}
 	midc->raw_tfr = 0;
 	spin_unlock_bh(&midc->lock);
 
 	if (midc->lli_pool) {
-		pci_pool_destroy(midc->lli_pool);
+		dma_pool_destroy(midc->lli_pool);
 		midc->lli_pool = NULL;
 	}
 
 	/* Disable the channel */
 	iowrite32(DISABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
-	pm_runtime_put(&mid->pdev->dev);
+	pm_runtime_put(mid->dev);
 }
 
 /**
@@ -1363,10 +1348,10 @@ static int intel_mid_dma_alloc_chan_resources(struct dma_chan *chan)
 	dma_addr_t		phys;
 	int	i = 0;
 
-	pm_runtime_get_sync(&mid->pdev->dev);
+	pm_runtime_get_sync(mid->dev);
 
 	if (mid->state == SUSPENDED) {
-		if (dma_resume(&mid->pdev->dev)) {
+		if (dma_resume(mid->dev)) {
 			pr_err("ERR_MDMA: resume failed");
 			return -EFAULT;
 		}
@@ -1375,7 +1360,7 @@ static int intel_mid_dma_alloc_chan_resources(struct dma_chan *chan)
 	/* ASSERT:  channel is idle */
 	if (midc->in_use == true) {
 		pr_err("ERR_MDMA: ch not idle\n");
-		pm_runtime_put(&mid->pdev->dev);
+		pm_runtime_put(mid->dev);
 		return -EIO;
 	}
 	dma_cookie_init(chan);
@@ -1383,10 +1368,10 @@ static int intel_mid_dma_alloc_chan_resources(struct dma_chan *chan)
 	spin_lock_bh(&midc->lock);
 	while (midc->descs_allocated < DESCS_PER_CHANNEL) {
 		spin_unlock_bh(&midc->lock);
-		desc = pci_pool_alloc(mid->dma_pool, GFP_KERNEL, &phys);
+		desc = dma_pool_alloc(mid->dma_pool, GFP_KERNEL, &phys);
 		if (!desc) {
 			pr_err("ERR_MDMA: desc failed\n");
-			pm_runtime_put(&mid->pdev->dev);
+			pm_runtime_put(mid->dev);
 			return -ENOMEM;
 			/*check*/
 		}
@@ -1565,7 +1550,7 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 	u32 isr;
 
 	/* On Baytrail, the DMAC is sharing IRQ with other devices */
-	if (is_byt_dmac(mid) && mid->state == SUSPENDED)
+	if (is_byt_lpio_dmac(mid) && mid->state == SUSPENDED)
 		return IRQ_NONE;
 
 	/*DMA Interrupt*/
@@ -1670,34 +1655,38 @@ static struct intel_mid_dma_ops v2_dma_ops = {
  * Initialize the DMA controller, channels, registers with DMA engine,
  * ISR. Initialize DMA controller channels.
  */
-static int mid_setup_dma(struct pci_dev *pdev)
+int mid_setup_dma(struct device *dev)
 {
-	struct middma_device *dma = pci_get_drvdata(pdev);
+	struct middma_device *dma = dev_get_drvdata(dev);
 	int err, i;
 
 	/* DMA coherent memory pool for DMA descriptor allocations */
-	dma->dma_pool = pci_pool_create("intel_mid_dma_desc_pool", pdev,
+	dma->dma_pool = dma_pool_create("intel_mid_dma_desc_pool", dev,
 					sizeof(struct intel_mid_dma_desc),
 					32, 0);
 	if (NULL == dma->dma_pool) {
-		pr_err("ERR_MDMA:pci_pool_create failed\n");
+		pr_err("ERR_MDMA:dma_pool_create failed\n");
 		err = -ENOMEM;
 		kfree(dma);
 		goto err_dma_pool;
 	}
 
 	INIT_LIST_HEAD(&dma->common.channels);
-	dma->pci_id = pdev->device;
-
 	if (dma->pimr_mask) {
-		dma->mask_reg = ioremap(dma->pimr_base, LNW_PERIPHRAL_MASK_SIZE);
+		dma->mask_reg = devm_ioremap(dma->dev, dma->pimr_base, LNW_PERIPHRAL_MASK_SIZE);
 		if (dma->mask_reg == NULL) {
 			pr_err("ERR_MDMA:Can't map periphral intr space !!\n");
 			err = -ENOMEM;
-			goto err_ioremap;
+			goto err_setup;
 		}
-	} else
+	} else {
 		dma->mask_reg = NULL;
+	}
+
+	/* FIXME: hack to not enable IRQ for LPIO DMAC */
+	if (dma->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
+	    dma->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
+		return 0;
 
 	pr_debug("MDMA:Adding %d channel for this controller\n", dma->max_chan);
 	/*init CH structures*/
@@ -1742,7 +1731,7 @@ static int mid_setup_dma(struct pci_dev *pdev)
 	dma_cap_set(DMA_MEMCPY, dma->common.cap_mask);
 	dma_cap_set(DMA_SLAVE, dma->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, dma->common.cap_mask);
-	dma->common.dev = &pdev->dev;
+	dma->common.dev = dev;
 
 	dma->common.device_alloc_chan_resources = dma->dma_ops.device_alloc_chan_resources;
 	dma->common.device_free_chan_resources = dma->dma_ops.device_free_chan_resources;
@@ -1760,23 +1749,23 @@ static int mid_setup_dma(struct pci_dev *pdev)
 	/*register irq */
 	if (dma->pimr_mask) {
 		pr_debug("MDMA:Requesting irq shared for DMAC1\n");
-		err = request_irq(pdev->irq, intel_mid_dma_interrupt1,
+		err = devm_request_irq(dma->dev, dma->irq, intel_mid_dma_interrupt1,
 			IRQF_SHARED, "INTEL_MID_DMAC1", dma);
 		if (0 != err)
-			goto err_irq;
+			goto err_setup;
 	} else {
 		dma->intr_mask = 0x03;
 		pr_debug("MDMA:Requesting irq for DMAC2\n");
-		err = request_irq(pdev->irq, intel_mid_dma_interrupt2,
+		err = devm_request_irq(dma->dev, dma->irq, intel_mid_dma_interrupt2,
 			IRQF_SHARED, "INTEL_MID_DMAC2", dma);
 		if (0 != err)
-			goto err_irq;
+			goto err_setup;
 	}
 	/*register device w/ engine*/
 	err = dma_async_device_register(&dma->common);
 	if (0 != err) {
 		pr_err("ERR_MDMA:device_register failed: %d\n", err);
-		goto err_engine;
+		goto err_dma_pool;
 	}
 	if (dma->pimr_mask) {
 		pr_debug("setting up tasklet1 for DMAC1\n");
@@ -1792,13 +1781,8 @@ static int mid_setup_dma(struct pci_dev *pdev)
 	}
 	return 0;
 
-err_engine:
-	free_irq(pdev->irq, dma);
-err_irq:
-	if (dma->mask_reg)
-		iounmap(dma->mask_reg);
-err_ioremap:
-	pci_pool_destroy(dma->dma_pool);
+err_setup:
+	dma_pool_destroy(dma->dma_pool);
 err_dma_pool:
 	pr_err("ERR_MDMA:setup_dma failed: %d\n", err);
 	return err;
@@ -1807,23 +1791,40 @@ err_dma_pool:
 
 /**
  * middma_shutdown -	Shutdown the DMA controller
- * @pdev: Controller PCI device structure
+ * @dev: Controller device structure
  *
  * Called by remove
  * Unregister DMa controller, clear all structures and free interrupt
  */
-static void middma_shutdown(struct pci_dev *pdev)
+void middma_shutdown(struct device *dev)
 {
-	struct middma_device *device = pci_get_drvdata(pdev);
+	struct middma_device *device = dev_get_drvdata(dev);
 
 	dma_async_device_unregister(&device->common);
-	pci_pool_destroy(device->dma_pool);
-	if (device->mask_reg)
-		iounmap(device->mask_reg);
-	if (device->dma_base)
-		iounmap(device->dma_base);
-	free_irq(pdev->irq, device);
+	dma_pool_destroy(device->dma_pool);
 	return;
+}
+
+struct middma_device *mid_dma_setup_context(struct device *dev,
+					    struct intel_mid_dma_probe_info *info)
+{
+	struct middma_device *mid_device;
+	mid_device = devm_kzalloc(dev, sizeof(*mid_device), GFP_KERNEL);
+	if (!mid_device) {
+		pr_err("ERR_MDMA:kzalloc failed probe\n");
+		return NULL;
+	}
+	mid_device->dev = dev;
+	mid_device->max_chan = info->max_chan;
+	mid_device->chan_base = info->ch_base;
+	mid_device->block_size = info->block_size;
+	mid_device->pimr_mask = info->pimr_mask;
+	mid_device->pimr_base = info->pimr_base;
+	mid_device->dword_trf = info->dword_trf;
+	mid_device->pimr_offset = info->pimr_offset;
+	mid_device->pci_id = info->pci_id;
+	memcpy(&mid_device->dma_ops, info->pdma_ops, sizeof(struct intel_mid_dma_ops));
+	return mid_device;
 }
 
 /**
@@ -1864,32 +1865,24 @@ static int __devinit intel_mid_dma_probe(struct pci_dev *pdev,
 	if (err)
 		goto err_set_dma_mask;
 
-	device = kzalloc(sizeof(*device), GFP_KERNEL);
-	if (!device) {
-		pr_err("ERR_MDMA:kzalloc failed probe\n");
-		err = -ENOMEM;
+	pci_dev_get(pdev);
+	device = mid_dma_setup_context(&pdev->dev, info);
+	if (!device)
 		goto err_kzalloc;
-	}
-	device->pdev = pci_dev_get(pdev);
+
+	device->pci_id = pdev->device;
 
 	base_addr = pci_resource_start(pdev, 0);
 	bar_size  = pci_resource_len(pdev, 0);
-	device->dma_base = ioremap_nocache(base_addr, DMA_REG_SIZE);
+	device->dma_base = devm_ioremap_nocache(&pdev->dev, base_addr, DMA_REG_SIZE);
 	if (!device->dma_base) {
 		pr_err("ERR_MDMA:ioremap failed\n");
 		err = -ENOMEM;
 		goto err_ioremap;
 	}
+	device->irq = pdev->irq;
 	pci_set_drvdata(pdev, device);
 	pci_set_master(pdev);
-	device->max_chan = info->max_chan;
-	device->chan_base = info->ch_base;
-	device->block_size = info->block_size;
-	device->pimr_mask = info->pimr_mask;
-	device->pimr_base = info->pimr_base;
-	device->dword_trf = info->dword_trf;
-	device->pimr_offset = info->pimr_offset;
-	memcpy(&device->dma_ops, info->pdma_ops, sizeof(struct intel_mid_dma_ops));
 
 #ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
 	/* PRH uses, ch 4,5,6,7 override the info table data */
@@ -1897,19 +1890,16 @@ static int __devinit intel_mid_dma_probe(struct pci_dev *pdev,
 	device->max_chan = 4;
 	device->chan_base = 4;
 #endif
-	err = mid_setup_dma(pdev);
+	err = mid_setup_dma(&pdev->dev);
 	if (err)
-		goto err_dma;
+		goto err_ioremap;
 
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
 	return 0;
 
-err_dma:
-	iounmap(device->dma_base);
 err_ioremap:
 	pci_dev_put(pdev);
-	kfree(device);
 err_kzalloc:
 err_set_dma_mask:
 	pci_release_regions(pdev);
@@ -1929,13 +1919,10 @@ err_enable_device:
  */
 static void __devexit intel_mid_dma_remove(struct pci_dev *pdev)
 {
-	struct middma_device *device = pci_get_drvdata(pdev);
-
 	pm_runtime_get_noresume(&pdev->dev);
 	pm_runtime_forbid(&pdev->dev);
-	middma_shutdown(pdev);
+	middma_shutdown(&pdev->dev);
 	pci_dev_put(pdev);
-	kfree(device);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 }
@@ -2012,31 +1999,43 @@ static int dma_runtime_idle(struct device *dev)
 */
 static struct pci_device_id intel_mid_dma_ids[] = {
 	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC1_ID),
-					INFO(2, 6, 4095, 0x200020, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
+		INFO(2, 6, SST_MAX_DMA_LEN, 0x200020, 0xFFAE8008, 1, 0x8, INTEL_MID_DMAC1_ID, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC2_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(2, 0, 2047, 0, 0, 1, 0, INTEL_MID_DMAC2_ID, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MID_GP_DMAC2_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(2, 0, 2047, 0, 0, 1, 0, INTEL_MID_GP_DMAC2_ID, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MFLD_DMAC1_ID),
-					INFO(4, 0, 4095, 0x400040, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
+		INFO(4, 0, SST_MAX_DMA_LEN, 0x400040, 0xFFAE8008, 1, 0x8, INTEL_MFLD_DMAC1_ID, &v1_dma_ops)},
 	/* Cloverview support */
 	{ PCI_VDEVICE(INTEL, INTEL_CLV_GP_DMAC2_ID),
-					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(2, 0, 2047, 0, 0, 1, 0, INTEL_CLV_GP_DMAC2_ID, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_CLV_DMAC1_ID),
-					INFO(4, 0, 4095, 0x400040, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
+		INFO(4, 0, SST_MAX_DMA_LEN, 0x400040, 0xFFAE8008, 1, 0x8, INTEL_CLV_DMAC1_ID, &v1_dma_ops)},
 	/* Mrfld */
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_GP_DMAC2_ID),
-					INFO(4, 0, 131071, 0, 0, 0, 0, &v2_dma_ops)},
+		INFO(4, 0, SST_MAX_DMA_LEN_MRFLD, 0, 0, 0, 0, INTEL_MRFLD_GP_DMAC2_ID, &v2_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_DMAC0_ID),
-					INFO(2, 6, 131071, 0xFF0000, 0xFF340018, 0, 0x10, &v2_dma_ops)},
-	/* Baytrauk Low Speed Peripheral DMA */
+		INFO(2, 6, SST_MAX_DMA_LEN_MRFLD, 0xFF0000, 0xFF340018, 0, 0x10, INTEL_MRFLD_DMAC0_ID, &v2_dma_ops)},
+	/* Baytrail Low Speed Peripheral DMA */
 	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO1_DMAC_ID),
-			INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(6, 0, 2047, 0, 0, 1, 0, INTEL_BYT_LPIO1_DMAC_ID, &v1_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO2_DMAC_ID),
-			INFO(6, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+		INFO(6, 0, 2047, 0, 0, 1, 0, INTEL_BYT_LPIO2_DMAC_ID, &v1_dma_ops)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_mid_dma_ids);
+
+struct intel_mid_dma_probe_info dma_byt_info = {
+	.max_chan = 4,
+	.ch_base = 4,
+	.block_size = 131071,
+	.pimr_mask = 0x00FF0000,
+	.pimr_base = 0xDF540018,
+	.dword_trf = 0,
+	.pimr_offset = 0x10,
+	.pci_id = INTEL_BYT_DMAC0_ID,
+	.pdma_ops = &v2_dma_ops,
+};
 
 static const struct dev_pm_ops intel_mid_dma_pm = {
 	SET_SYSTEM_SLEEP_PM_OPS(dma_suspend,
@@ -2058,10 +2057,61 @@ static struct pci_driver intel_mid_dma_pci_driver = {
 #endif
 };
 
-module_pci_driver(intel_mid_dma_pci_driver);
+static const struct acpi_device_id dma_acpi_ids[];
+
+struct intel_mid_dma_probe_info *mid_get_acpi_driver_data(const char *hid)
+{
+	const struct acpi_device_id *id;
+
+	pr_debug("%s", __func__);
+	for (id = dma_acpi_ids; id->id[0]; id++)
+		if (!strncmp(id->id, hid, 16))
+			return (struct intel_mid_dma_probe_info *)id->driver_data;
+	return NULL;
+}
+static const struct acpi_device_id dma_acpi_ids[] = {
+	{ "DMA0F28", (kernel_ulong_t)&dma_byt_info },
+	{ },
+};
+
+static struct platform_driver intel_dma_acpi_driver = {
+	.driver = {
+		.name			= "intel_dma_acpi",
+		.owner			= THIS_MODULE,
+		.acpi_match_table	= dma_acpi_ids,
+		.pm			= &intel_mid_dma_pm,
+	},
+	.probe	= dma_acpi_probe,
+	.remove	= __devexit_p(dma_acpi_remove),
+};
+
+static int __init intel_mid_dma_init(void)
+{
+	int ret;
+
+	pr_debug("INFO_MDMA: LNW DMA Driver Version %s\n",
+			INTEL_MID_DMA_DRIVER_VERSION);
+	ret = pci_register_driver(&intel_mid_dma_pci_driver);
+	if (ret)
+		pr_err("PCI dev registration failed");
+
+	ret = platform_driver_register(&intel_dma_acpi_driver);
+	if (ret)
+		pr_err("Platform dev registration failed");
+	return ret;
+}
+module_init(intel_mid_dma_init);
+
+static void __exit intel_mid_dma_exit(void)
+{
+	pci_unregister_driver(&intel_mid_dma_pci_driver);
+	platform_driver_unregister(&intel_dma_acpi_driver);
+}
+module_exit(intel_mid_dma_exit);
 
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_DESCRIPTION("Intel (R) MID DMAC Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(INTEL_MID_DMA_DRIVER_VERSION);
 MODULE_ALIAS("pci:intel_mid_dma");
+MODULE_ALIAS("acpi:intel_dma_acpi");

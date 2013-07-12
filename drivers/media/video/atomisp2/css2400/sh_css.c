@@ -1115,17 +1115,23 @@ program_input_formatter(struct sh_css_pipe *pipe,
          * Instead, IF_A and IF_B output (VMEM) addresses should be
          * swapped for this purpose (@Gokturk).
          */
-        if (two_ppc && input_is_raw && start_column%2 == 1) {
-           /* Still correct for center of image. Just subtract the part
-            * (which used to be correcting bayer order, now we do it by
-            * swapping the buffers) */
-           start_column   = start_column - 1;
-           start_column_b = start_column;
+        if (two_ppc && input_is_raw) {
+		if (start_column%2 == 1) {
+			/* Still correct for center of image. Just subtract 
+			 * the part (which used to be correcting bayer order,
+			 * now we do it by swapping the buffers) */
+			start_column   = start_column - 1;
+			
+			/* Buffer start address swap from (0, buf_offset_b) ->
+			 * (buf_offset_b, 0) */
+			buf_offset_a = buf_offset_b;
+			buf_offset_b = 0;
+		}
 
-           /* Buffer start address swap from (0, buf_offset_b) ->
-            * (buf_offset_b, 0) */
-           buf_offset_a = buf_offset_b;
-           buf_offset_b = 0;
+		/* Since each IF gets every two pixel in twoppc case, 
+		 * we need to halve the start_column per IF. */
+		start_column /= 2;
+		start_column_b = start_column;
         }
 	
 	if_a_config.start_line = start_line;
@@ -1754,12 +1760,13 @@ sh_css_set_irq_buffer(struct sh_css_pipeline_stage *stage,
 
 void sh_css_frame_info_set_width(
 	struct sh_css_frame_info *info,
-	unsigned int width)
+	unsigned int width, unsigned int min_padded_width)
 {
+	unsigned int align = width < min_padded_width ? min_padded_width : width;
+
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_set_width() enter: "
-		"width=%d, format=%d\n",
-		width, info->format);
+		"width=%d, format=%d, align=%d\n", width, info->format, align);
 
 	assert(info != NULL);
 	if (info == NULL)
@@ -1771,13 +1778,13 @@ void sh_css_frame_info_set_width(
 	   Y plane if the horizontal decimation is 2. */
 	if (info->format == SH_CSS_FRAME_FORMAT_YUV420 ||
 	    info->format == SH_CSS_FRAME_FORMAT_YV12)
-		info->padded_width = CEIL_MUL(width, 2*HIVE_ISP_DDR_WORD_BYTES);
+		info->padded_width = CEIL_MUL(align, 2*HIVE_ISP_DDR_WORD_BYTES);
 	else if (info->format == SH_CSS_FRAME_FORMAT_YUV_LINE)
-		info->padded_width = CEIL_MUL(width, 2*ISP_VEC_NELEMS);
+		info->padded_width = CEIL_MUL(align, 2*ISP_VEC_NELEMS);
 	else if (info->format == SH_CSS_FRAME_FORMAT_RAW)
-		info->padded_width = CEIL_MUL(width, 2*ISP_VEC_NELEMS);
+		info->padded_width = CEIL_MUL(align, 2*ISP_VEC_NELEMS);
 	else
-		info->padded_width = CEIL_MUL(width, HIVE_ISP_DDR_WORD_BYTES);
+		info->padded_width = CEIL_MUL(align, HIVE_ISP_DDR_WORD_BYTES);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_set_width() leave: "
@@ -1804,18 +1811,12 @@ static void sh_css_frame_info_set_format(
 }
 
 void sh_css_frame_info_init(
-	struct sh_css_frame_info *info,
-	unsigned int width,
-	unsigned int height,
-	enum sh_css_frame_format format)
+	struct sh_css_frame_info *info, unsigned int width, unsigned int height,
+	unsigned int min_padded_width, enum sh_css_frame_format format)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_info_init() enter: "
-		"width=%d, "
-		"height=%d, "
-		"format=%d\n",
-		width, height,
-		format);
+		      "sh_css_frame_info_init() enter: width=%d, min_padded_width=%d, height=%d, format=%d\n",
+		      width, min_padded_width, height, format);
 
 	assert(info != NULL);
 	if (info == NULL)
@@ -1823,7 +1824,7 @@ void sh_css_frame_info_init(
 
 	info->height = height;
 	info->format = format;
-	sh_css_frame_info_set_width(info, width);
+	sh_css_frame_info_set_width(info, width, min_padded_width);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_init() leave: return_void\n");
 }
@@ -4320,8 +4321,7 @@ static enum sh_css_err sh_css_pipeline_stop(
 }
 
 enum sh_css_err sh_css_preview_configure_pp_input(
-	unsigned int width,
-	unsigned int height)
+	unsigned int width, unsigned int height)
 {
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_pipe *pipe = &my_css.preview_pipe;
@@ -4337,7 +4337,7 @@ enum sh_css_err sh_css_preview_configure_pp_input(
 	if (pipe->yuv_ds_input_info.width != width ||
 	    pipe->yuv_ds_input_info.height != height) {
 		sh_css_frame_info_init(&pipe->yuv_ds_input_info,
-				       width, height,
+				       width, height, 0,
 				       SH_CSS_FRAME_FORMAT_YUV_LINE);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
@@ -4519,11 +4519,8 @@ sh_css_disable_capture_pp(bool disable)
 }
 
 enum sh_css_err sh_css_pipe_configure_output(
-	struct sh_css_pipe *pipe,
-	unsigned int width,
-	unsigned int height,
-	enum sh_css_frame_format format)
-
+	struct sh_css_pipe *pipe, unsigned int width, unsigned int height,
+	unsigned int min_padded_width, enum sh_css_frame_format format)
 {
 	enum sh_css_err err = sh_css_success;
 
@@ -4539,8 +4536,10 @@ enum sh_css_err sh_css_pipe_configure_output(
 		return err;
 	if (pipe->output_info.width != width ||
 	    pipe->output_info.height != height ||
+	    pipe->output_info.padded_width != min_padded_width ||
 	    pipe->output_info.format != format) {
-		sh_css_frame_info_init(&pipe->output_info, width, height, format);
+		sh_css_frame_info_init(&pipe->output_info, width, height,
+				       min_padded_width, format);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
 	return sh_css_success;
@@ -5178,8 +5177,7 @@ enum sh_css_err sh_css_video_get_input_resolution(
 }
 
 enum sh_css_err sh_css_video_configure_viewfinder(
-	unsigned int width,
-	unsigned int height,
+	unsigned int width, unsigned int height, unsigned int min_padded_width,
 	enum sh_css_frame_format format)
 {
 	enum sh_css_err err = sh_css_success;
@@ -5187,8 +5185,8 @@ enum sh_css_err sh_css_video_configure_viewfinder(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_configure_viewfinder() enter: "
-		"width=%d, height=%d format=%d\n",
-		width, height, format);
+		"width=%d, height=%d, min_padded_width=%d, format=%d\n",
+		width, height, min_padded_width, format);
 
 	err = check_res(width, height);
 	if (err != sh_css_success) {
@@ -5199,9 +5197,10 @@ enum sh_css_err sh_css_video_configure_viewfinder(
 	}
 	if (pipe->vf_output_info.width != width ||
 	    pipe->vf_output_info.height != height ||
+	    pipe->vf_output_info.padded_width != min_padded_width ||
 	    pipe->vf_output_info.format != format) {
 		sh_css_frame_info_init(&pipe->vf_output_info,
-				       width, height, format);
+				       width, height, min_padded_width, format);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -5377,7 +5376,7 @@ static void init_capture_pp_descr(
 		*in_info = pipe->output_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_YUV420;
 	in_info->raw_bit_depth = 0;
-	sh_css_frame_info_set_width(in_info, in_info->width);
+	sh_css_frame_info_set_width(in_info, in_info->width, 0);
 	init_offline_descr(pipe,
 			   &capture_pp_descr,
 			   SH_CSS_BINARY_MODE_CAPTURE_PP,
@@ -5996,7 +5995,7 @@ static enum sh_css_err load_capture_binaries(
 		if (pipe->input_format == SH_CSS_INPUT_FORMAT_BINARY_8) {
 			sh_css_frame_info_init(
 				&pipe->output_info,
-				JPEG_BYTES, 1, SH_CSS_FRAME_FORMAT_BINARY_8);
+				JPEG_BYTES, 1, 0, SH_CSS_FRAME_FORMAT_BINARY_8);
 			return sh_css_success;
 		}
 	}
@@ -6086,8 +6085,9 @@ static enum sh_css_err construct_capture_pipe(
 		in_frame->info.height = pipe->input_height;
 		in_frame->info.raw_bit_depth =
 			sh_css_pipe_input_format_bits_per_pixel(pipe);
-		sh_css_frame_info_set_width(&in_frame->info, pipe->input_width);
-	
+		sh_css_frame_info_set_width(&in_frame->info, pipe->input_width,
+					    in_frame->info.padded_width);
+
 		in_frame->contiguous = false;
 		in_frame->flash_state = SH_CSS_FRAME_NO_FLASH;
 		in_frame->dynamic_data_index = sh_css_frame_in;
@@ -6286,7 +6286,7 @@ static enum sh_css_err sh_css_pipe_get_output_frame_info(
 		*info = pipe->output_info;
 	if (copy_on_sp(pipe) &&
 	    pipe->input_format == SH_CSS_INPUT_FORMAT_BINARY_8) {
-		sh_css_frame_info_init(info, JPEG_BYTES, 1,
+		sh_css_frame_info_init(info, JPEG_BYTES, 1, 0,
 				SH_CSS_FRAME_FORMAT_BINARY_8);
 	} else if (info->format == SH_CSS_FRAME_FORMAT_RAW) {
 		info->raw_bit_depth =
@@ -6430,16 +6430,15 @@ sh_css_capture_enable_xnr(bool enable)
 }
 
 enum sh_css_err sh_css_capture_configure_viewfinder(
-	unsigned int width,
-	unsigned int height,
+	unsigned int width, unsigned int height, unsigned int min_padded_width,
 	enum sh_css_frame_format format)
 {
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_configure_viewfinder() "
-		"enter: width=%d, height=%d, format=%d\n",
-		width, height, format);
+		"enter: width=%d, height=%d, min_padded_width=%d, format=%d\n",
+		width, height, min_padded_width, format);
 	err = check_res(width, height);
 	if (err != sh_css_success) {
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -6449,9 +6448,10 @@ enum sh_css_err sh_css_capture_configure_viewfinder(
 	}
 	if (pipe->vf_output_info.width != width ||
 	    pipe->vf_output_info.height != height ||
+	    pipe->vf_output_info.padded_width != min_padded_width ||
 	    pipe->vf_output_info.format != format) {
 		sh_css_frame_info_init(&pipe->vf_output_info,
-				       width, height, format);
+				       width, height, min_padded_width, format);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -6461,8 +6461,7 @@ enum sh_css_err sh_css_capture_configure_viewfinder(
 }
 
 enum sh_css_err sh_css_capture_configure_pp_input(
-	unsigned int width,
-	unsigned int height)
+	unsigned int width, unsigned int height)
 {
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 	enum sh_css_err err = sh_css_success;
@@ -6481,7 +6480,7 @@ enum sh_css_err sh_css_capture_configure_pp_input(
 	if (pipe->yuv_ds_input_info.width != width ||
 	    pipe->yuv_ds_input_info.height != height) {
 		sh_css_frame_info_init(&pipe->yuv_ds_input_info,
-				       width, height,
+				       width, height, 0,
 				       SH_CSS_FRAME_FORMAT_YUV420);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
@@ -7759,57 +7758,54 @@ sh_css_video_get_enable_dz(bool *enable_dz)
 }
 
 enum sh_css_err sh_css_preview_configure_output(
-	unsigned int width,
-	unsigned int height,
+	unsigned int width, unsigned int height, unsigned int min_padded_width,
 	enum sh_css_frame_format format)
 {
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_preview_configure_output() enter: "
-		"width=%d, height=%d format=%d\n",
-		width, height, format);
+		"width=%d, height=%d, min_padded_width=%d, format=%d\n",
+		width, height, min_padded_width, format);
 
 	err = sh_css_pipe_configure_output(&my_css.preview_pipe, width,
-					    height, format);
+					   height, min_padded_width, format);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_preview_configure_output() leave: return_err=%d\n",err);
 return err;
 }
 
 enum sh_css_err sh_css_capture_configure_output(
-	unsigned int width,
-	unsigned int height,
+	unsigned int width, unsigned int height, unsigned int min_padded_width,
 	enum sh_css_frame_format format)
 {
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_capture_configure_output() enter: "
-		"width=%d, height=%d format=%d\n",
-		width, height, format);
+		"width=%d, height=%d, min_padded_width=%d,  format=%d\n",
+		width, height, min_padded_width, format);
 
 	err = sh_css_pipe_configure_output(&my_css.capture_pipe, width,
-					    height, format);
+					   height, min_padded_width, format);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_capture_configure_output() leave: return_err=%d\n",err);
 return err;
 }
 
 enum sh_css_err sh_css_video_configure_output(
-	unsigned int width,
-	unsigned int height,
+	unsigned int width, unsigned int height, unsigned int min_padded_width,
 	enum sh_css_frame_format format)
 {
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_configure_output() enter: "
-		"width=%d, height=%d format=%d\n",
-		width, height, format);
+		"width=%d, height=%d, min_padded_width=%d, format=%d\n",
+		width, height, min_padded_width, format);
 
 	err = sh_css_pipe_configure_output(&my_css.video_pipe, width,
-					    height, format);
+					   height, min_padded_width, format);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_configure_output() leave: return_err=%d\n", err);

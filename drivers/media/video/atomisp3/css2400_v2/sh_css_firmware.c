@@ -46,7 +46,8 @@ setup_sp(struct ia_css_fw_info *fw, const char *fw_data)
 	const char  *blob_data = fw_data + fw->blob.offset;
 
 	sh_css_sp_fw = *fw;
-	sh_css_sp_fw.blob.text = blob_data + fw->blob.text_source;
+	/* MW: code starts at "offset" */
+	sh_css_sp_fw.blob.code = blob_data /* + fw->blob.text_source */;
 	sh_css_sp_fw.blob.data = blob_data + fw->blob.data_source;
 }
 
@@ -79,10 +80,10 @@ sh_css_load_firmware(const char *fw_data,
 
 		name = (const char *)fw_data + bi->blob.prog_name_offset;
 
-		/* sanity check */
-		if (bi->blob.size != bi->blob.text_size + bi->blob.icache_size + bi->blob.data_size)
+		if (bi->blob.size != bi->blob.text_size + bi->blob.icache_size + bi->blob.data_size + bi->blob.padding_size) {
+/* sanity check, note the padding bytes added for section to DDR alignment */
 			return IA_CSS_ERR_INTERNAL_ERROR;
-
+		}
 		if (bi->blob.offset + bi->blob.size > fw_size)
 			return IA_CSS_ERR_INTERNAL_ERROR;
 
@@ -124,10 +125,12 @@ sh_css_load_blob(const unsigned char *blob, unsigned size)
 	/* this will allocate memory aligned to a DDR word boundary which
 	   is required for the CSS DMA to read the instructions. */
 	mmgr_store(target_addr, blob, size);
-	if (SH_CSS_PREVENT_UNINIT_READS) {
+#if SH_CSS_PREVENT_UNINIT_READS == 1
+	{
 		unsigned padded_size = CEIL_MUL(size, HIVE_ISP_DDR_WORD_BYTES);
 		mmgr_clear(target_addr + size, padded_size - size);
 	}
+#endif
 	return target_addr;
 }
 

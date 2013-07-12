@@ -139,7 +139,6 @@ struct fsa9285_chip {
 	struct fsa9285_pdata	*pdata;
 	struct usb_phy		*otg;
 	struct extcon_dev	*edev;
-	int mux_gpio;
 
 	/* reg data */
 	u8	cntl;
@@ -277,14 +276,17 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 		ret = chip->pdata->sdp_pre_setup();
 	else
 		ret = chip->pdata->sdp_post_setup();
+
 	if (ret < 0)
 		dev_warn(&chip->client->dev,
 			"sdp cable control failed\n");
 
-	if (vbus_mask)
-		gpio_direction_output(chip->mux_gpio, 1);
-	else
-		gpio_direction_output(chip->mux_gpio, 0);
+	if (chip->pdata->mux_gpio != -1) {
+		if (vbus_mask)
+			gpio_direction_output(chip->pdata->mux_gpio, 1);
+		else
+			gpio_direction_output(chip->pdata->mux_gpio, 0);
+	}
 
 	/* enable manual charge detection */
 	ret = fsa9285_write_reg(client,
@@ -413,7 +415,11 @@ static int fsa9285_irq_init(struct fsa9285_chip *chip)
 	chip->man_chg_cntl = man_chg_cntl;
 
 	/* get kernel GPIO number */
+#ifdef CONFIG_BYT_ULPMC_BATTERY
 	gpio_num = acpi_get_gpio("\\_SB.GPO2", 0x6);
+#else
+	gpio_num = acpi_get_gpio("\\_SB.GPO2", 0x1);
+#endif
 	/* get irq number */
 	chip->client->irq = gpio_to_irq(gpio_num);
 	if (client->irq) {
@@ -444,19 +450,19 @@ irq_i2c_failed:
  * based on SPID.
  */
 static struct fsa9285_pdata fsa_pdata;
-static int fsa_dummy_vbus_enable(void)
+static inline int fsa_dummy_vbus_enable(void)
 {
 	return 0;
 }
-static int fsa_dummy_vbus_disable(void)
+static inline int fsa_dummy_vbus_disable(void)
 {
 	return 0;
 }
-static int fsa_dummy_sdp_pre_setup(void)
+static inline int fsa_dummy_sdp_pre_setup(void)
 {
 	return 0;
 }
-static int fsa_dummy_sdp_post_setup(void)
+static inline int fsa_dummy_sdp_post_setup(void)
 {
 	return 0;
 }
@@ -464,8 +470,13 @@ static void *get_platform_data(void)
 {
 	fsa_pdata.enable_vbus = crystal_cove_enable_vbus;
 	fsa_pdata.disable_vbus = crystal_cove_disable_vbus;
+#ifdef CONFIG_BYT_ULPMC_BATTERY
 	fsa_pdata.sdp_pre_setup = byt_ulpmc_suspend_sdp_charging;
 	fsa_pdata.sdp_post_setup = byt_ulpmc_reset_charger;
+#else
+	fsa_pdata.sdp_pre_setup = fsa_dummy_sdp_pre_setup;
+	fsa_pdata.sdp_post_setup = fsa_dummy_sdp_post_setup;
+#endif
 
 	return &fsa_pdata;
 }
@@ -520,12 +531,14 @@ static int fsa9285_probe(struct i2c_client *client,
 		goto otg_reg_failed;
 	}
 
+	chip->pdata->mux_gpio = -1;
 	ret = gpio_request(OTG_MUX_GPIO, "fsa-otg-mux");
 	if (ret) {
 		dev_warn(&client->dev, "unable to request GPIO pin\n");
-		goto gpio_req_failed;
+		/* WA for FFRD8 as USB3 mux not available */
+		chip->pdata->mux_gpio = -1;
 	} else {
-		chip->mux_gpio = OTG_MUX_GPIO;
+		chip->pdata->mux_gpio = OTG_MUX_GPIO;
 	}
 
 	ret = fsa9285_irq_init(chip);
@@ -546,8 +559,10 @@ static int fsa9285_probe(struct i2c_client *client,
 intr_reg_failed:
 	if (client->irq)
 		free_irq(client->irq, chip);
-	gpio_free(chip->mux_gpio);
-gpio_req_failed:
+/* WA for FFRD8 */
+	if (chip->pdata->mux_gpio != -1)
+		gpio_free(chip->pdata->mux_gpio);
+/* gpio_req_failed: */
 	usb_put_transceiver(chip->otg);
 otg_reg_failed:
 	extcon_dev_unregister(chip->edev);
@@ -562,7 +577,8 @@ static int fsa9285_remove(struct i2c_client *client)
 {
 	struct fsa9285_chip *chip = i2c_get_clientdata(client);
 
-	gpio_free(chip->mux_gpio);
+	if (chip->pdata->mux_gpio != -1)
+		gpio_free(chip->pdata->mux_gpio);
 	free_irq(client->irq, chip);
 	usb_put_transceiver(chip->otg);
 	extcon_dev_unregister(chip->edev);

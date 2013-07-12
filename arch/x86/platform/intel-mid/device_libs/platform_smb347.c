@@ -11,9 +11,12 @@
  */
 
 #include <linux/gpio.h>
+#include <asm/intel-mid.h>
 #include <linux/lnw_gpio.h>
 #include <linux/power/smb347-charger.h>
 #include <asm/intel-mid.h>
+#include <linux/acpi.h>
+#include <linux/acpi_gpio.h>
 #include "platform_smb347.h"
 
 /* Redridge DV2.1 */
@@ -116,6 +119,41 @@ static struct smb347_charger_platform_data smb347_ev10_pdata = {
 					},
 };
 
+/* baytrail ffrd8 */
+static struct smb347_charger_platform_data byt_t_ffrd8_pdata = {
+	.battery_info	= {
+		.name			= "UP110005",
+		.technology		= POWER_SUPPLY_TECHNOLOGY_LIPO,
+		.voltage_max_design	= 3700000,
+		.voltage_min_design	= 3000000,
+		.charge_full_design	= 6894000,
+	},
+	.use_mains			= false,
+	.use_usb			= true,
+	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
+	.otg_control			= SMB347_OTG_CONTROL_DISABLED,
+	.char_config_regs		= {
+						/* Reg  Value */
+						0x00, 0x46,
+						0x01, 0x65,
+						0x02, 0x93,
+						0x03, 0xED,
+						0x04, 0x38,
+						0x05, 0x05,
+						0x06, 0x74,
+						0x07, 0x95,
+						0x09, 0x00,
+						0x0A, 0xC7,
+						0x0B, 0x95,
+						0x0C, 0x8F,
+						0x0D, 0xB4,
+						0x0E, 0x60,
+						0x10, 0x40,
+			/* disable suspend as charging didnot start*/
+						0x30, 0x42,  /*orig:0x46*/
+						0x31, 0x80
+					},
+};
 static void *get_platform_data(void)
 {
 	/* Redridge all */
@@ -131,8 +169,12 @@ static void *get_platform_data(void)
 		/* EV 1.0 and later */
 		else
 			return &smb347_ev10_pdata;
+	} else if (intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		byt_t_ffrd8_pdata.irq_gpio = acpi_get_gpio("\\_SB_GPO2", 2);
+		byt_t_ffrd8_pdata.irq_gpio = 132;  /* sus0_2 */
+		return &byt_t_ffrd8_pdata; /* WA till the config data */
 	}
-
 	return NULL;
 }
 

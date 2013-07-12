@@ -605,7 +605,7 @@ static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
 	u32 sdvox;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	sdvox = SDVO_ENCODING_HDMI;
 	if (!HAS_PCH_SPLIT(dev))
 		sdvox |= intel_hdmi->color_range;
@@ -655,7 +655,7 @@ static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 	POSTING_READ(intel_hdmi->sdvox_reg);
 
 	intel_hdmi->set_infoframes(encoder, adjusted_mode);
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
@@ -667,7 +667,7 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	u32 temp;
 	u32 enable_bits = SDVO_ENABLE;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	if (intel_hdmi->has_audio)
 		enable_bits |= SDVO_AUDIO_ENABLE;
 
@@ -742,7 +742,7 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		I915_WRITE(intel_hdmi->sdvox_reg, temp);
 		POSTING_READ(intel_hdmi->sdvox_reg);
 	}
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static int intel_hdmi_mode_valid(struct drm_connector *connector,

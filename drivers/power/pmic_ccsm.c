@@ -486,7 +486,6 @@ void dump_pmic_regs(void)
 	}
 	dev_info(chc.dev, "====================\n");
 }
-EXPORT_SYMBOL(dump_pmic_regs);
 
 void dump_pmic_tt_regs(void)
 {
@@ -646,7 +645,19 @@ int pmic_get_health(void)
 {
 	return chc.health;
 }
-EXPORT_SYMBOL(pmic_get_health);
+
+int pmic_enable_vbus(bool enable)
+{
+	int ret;
+
+	if (enable) {
+		return intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
+				WDT_NOKICK_ENABLE, CHGRCTRL0_WDT_NOKICK_MASK);
+	}
+
+	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
+			WDT_NOKICK_DISABLE, CHGRCTRL0_WDT_NOKICK_MASK);
+}
 
 int pmic_enable_charging(bool enable)
 {
@@ -666,7 +677,6 @@ int pmic_enable_charging(bool enable)
 			val, CHGRCTRL0_EXTCHRDIS_MASK);
 	return ret;
 }
-EXPORT_SYMBOL(pmic_enable_charging);
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
@@ -736,7 +746,8 @@ int pmic_set_cc(int new_cc)
 				bcprof->temp_mon_range[i].full_chrg_cur);
 
 		if (new_cc1 != r_bcprof->temp_mon_range[i].full_chrg_cur) {
-			chc.pdata->cc_to_reg(new_cc1, &reg_val);
+			if (chc.pdata->cc_to_reg)
+				chc.pdata->cc_to_reg(new_cc1, &reg_val);
 			ret = update_zone_cc(i, reg_val);
 			if (unlikely(ret))
 				return ret;
@@ -750,7 +761,6 @@ int pmic_set_cc(int new_cc)
 
 	return 0;
 }
-EXPORT_SYMBOL(pmic_set_cc);
 
 int pmic_set_cv(int new_cv)
 {
@@ -774,7 +784,8 @@ int pmic_set_cv(int new_cv)
 				bcprof->temp_mon_range[i].full_chrg_vol);
 
 		if (new_cv1 != r_bcprof->temp_mon_range[i].full_chrg_vol) {
-			chc.pdata->cv_to_reg(new_cv1, &reg_val);
+			if (chc.pdata->cv_to_reg)
+				chc.pdata->cv_to_reg(new_cv1, &reg_val);
 
 			ret = update_zone_cv(i, reg_val);
 			if (unlikely(ret))
@@ -790,7 +801,6 @@ int pmic_set_cv(int new_cv)
 
 	return 0;
 }
-EXPORT_SYMBOL(pmic_set_cv);
 
 int pmic_set_ilimmA(int ilim_mA)
 {
@@ -802,7 +812,6 @@ int pmic_set_ilimmA(int ilim_mA)
 		CHGRCTRL1_ADDR, reg_val);
 	return intel_scu_ipc_iowrite8(CHGRCTRL1_ADDR, reg_val);
 }
-EXPORT_SYMBOL(pmic_set_ilimmA);
 
 /**
  * pmic_read_adc_val - read ADC value of specified sensors
@@ -853,7 +862,6 @@ int pmic_get_battery_pack_temp(int *temp)
 		return -ENODEV;
 	return pmic_read_adc_val(GPADC_BATTEMP0, temp, &chc);
 }
-EXPORT_SYMBOL(pmic_get_battery_pack_temp);
 
 static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 				struct interrupt_info int_info[],
@@ -913,34 +921,48 @@ static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 {
 	int mask;
+	u8 usb_id_sts;
+	int ret;
 
 	if (!int_reg)
 		return;
 
 	mask = !!(int_reg & stat_reg);
-
 	if (int_reg & CHRGRIRQ1_SUSBIDDET_MASK) {
-			if (mask)
-				dev_info(chc.dev, "USB ID Detected. Notifying OTG driver\n");
-			else {
-				if (wake_lock_active(&chc.wakelock))
-					wake_unlock(&chc.wakelock);
-				dev_info(chc.dev, "USB ID Removed. Notifying OTG driver\n");
-			}
-			atomic_notifier_call_chain(&chc.otg->notifier,
+		if (mask)
+			dev_info(chc.dev, "USB ID Detected. Notifying OTG driver\n");
+		else
+			dev_info(chc.dev, "USB ID Removed. Notifying OTG driver\n");
+		atomic_notifier_call_chain(&chc.otg->notifier,
 				USB_EVENT_ID, &mask);
 	}
 
 	if (int_reg & CHRGRIRQ1_SVBUSDET_MASK) {
-		if (mask)
-			dev_info(chc.dev, "USB VBUS Detected. Notifying OTG driver\n");
-		else {
-			if (wake_lock_active(&chc.wakelock))
-				wake_unlock(&chc.wakelock);
+		if (mask) {
+			dev_info(chc.dev,
+				"USB VBUS Detected. Notifying OTG driver\n");
+			ret = intel_scu_ipc_ioread8(USBIDSTAT_ADDR,
+							&usb_id_sts);
+			if (unlikely(ret))
+				return ret;
+			if ((stat_reg & CHRGRIRQ1_SUSBIDDET_MASK) &&
+				(!(is_aca(usb_id_sts)))) {
+				dev_dbg(chc.dev, "VBUS drive for device!!\n");
+				if (wake_lock_active(&chc.wakelock)) {
+					dev_dbg(chc.dev,
+						"Releasing wakelock for device!!\n");
+					wake_unlock(&chc.wakelock);
+				}
+			}
+		} else {
 			dev_info(chc.dev, "USB VBUS Removed. Notifying OTG driver\n");
+			if (wake_lock_active(&chc.wakelock)) {
+				dev_dbg(chc.dev, "Releasing the wakelock!!\n");
+				wake_unlock(&chc.wakelock);
+			}
 		}
 		atomic_notifier_call_chain(&chc.otg->notifier,
-			USB_EVENT_VBUS, &mask);
+				USB_EVENT_VBUS, &mask);
 	}
 
 	return;
@@ -1107,8 +1129,9 @@ static int pmic_init(void)
 				i);
 			return ret;
 		}
-		chc.pdata->cc_to_reg(bcprof->temp_mon_range[i].
-				full_chrg_cur, &reg_val);
+		if (chc.pdata->cc_to_reg)
+			chc.pdata->cc_to_reg(bcprof->temp_mon_range[i].
+					full_chrg_cur, &reg_val);
 
 		ret = update_zone_cc(i, reg_val);
 		if (unlikely(ret)) {
@@ -1118,8 +1141,9 @@ static int pmic_init(void)
 			return ret;
 		}
 
-		chc.pdata->cv_to_reg(bcprof->temp_mon_range[i].
-				full_chrg_vol, &reg_val);
+		if (chc.pdata->cv_to_reg)
+			chc.pdata->cv_to_reg(bcprof->temp_mon_range[i].
+					full_chrg_vol, &reg_val);
 
 		ret = update_zone_cv(i, reg_val);
 		if (unlikely(ret)) {
@@ -1336,6 +1360,13 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	if (chc.pdata == NULL) {
 		dev_err(chc.dev, "Platform data not initialized\n");
 		return -EFAULT;
+	}
+
+	retval = intel_scu_ipc_ioread8(PMIC_ID_ADDR, &chc.pmic_id);
+	if (retval) {
+		dev_err(chc.dev,
+			"Error reading PMIC ID register\n");
+		return retval;
 	}
 
 	chc.sfi_bcprof = kzalloc(sizeof(struct ps_batt_chg_prof),

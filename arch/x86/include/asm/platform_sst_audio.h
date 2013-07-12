@@ -13,8 +13,6 @@
 #define _PLATFORM_SST_AUDIO_H_
 
 #include <linux/sfi.h>
-#define MAX_DEVICES_MFLD 6
-#define MAX_DEVICES_MRFLD 24
 
 /* The stream map status is used to dynamically assign
  * device-id to a device, for example probe device. If
@@ -26,13 +24,6 @@
 enum sst_strm_map_status {
 	SST_DEV_MAP_FREE = 0,
 	SST_DEV_MAP_IN_USE,
-};
-
-/* Device IDs for Medfield are PCM Slot numbers to be used */
-enum sst_audio_device_id_mfld {
-	SST_HEADSET_MAX_SLOTS = 0x3,
-	SST_IHF_MAX_SLOTS = 0xC,
-	SST_CAPTURE_MAX_SLOTS = 0xF,
 };
 
 /* Device IDs for CTP are same as stream IDs */

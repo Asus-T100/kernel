@@ -50,6 +50,7 @@
 
 #define CHRG_TERM_WORKER_DELAY (30 * HZ)
 #define EXCEPTION_MONITOR_DELAY (60 * HZ)
+#define WDT_RESET_DELAY (15 * HZ)
 
 /* BQ24261 registers */
 #define BQ24261_STAT_CTRL0_ADDR		0x00
@@ -273,6 +274,7 @@ struct bq24261_charger {
 	struct bq24261_plat_data *pdata;
 	struct power_supply psy_usb;
 	struct delayed_work sw_term_work;
+	struct delayed_work wdt_work;
 	struct delayed_work low_supply_fault_work;
 	struct delayed_work exception_mon_work;
 	struct notifier_block otg_nb;
@@ -281,6 +283,7 @@ struct bq24261_charger {
 	struct work_struct irq_work;
 	struct list_head otg_queue;
 	struct list_head irq_queue;
+	wait_queue_head_t wait_ready;
 	spinlock_t otg_queue_lock;
 	void __iomem *irq_iomap;
 
@@ -366,7 +369,6 @@ void bq24261_cc_to_reg(int cc, u8 *reg_val)
 	return lookup_regval(bq24261_cc, ARRAY_SIZE(bq24261_cc), cc, reg_val);
 
 }
-EXPORT_SYMBOL_GPL(bq24261_cc_to_reg);
 
 void bq24261_cv_to_reg(int cv, u8 *reg_val)
 {
@@ -377,9 +379,8 @@ void bq24261_cv_to_reg(int cv, u8 *reg_val)
 		(((val - BQ24261_MIN_CV) / BQ24261_CV_DIV)
 			<< BQ24261_CV_BIT_POS);
 }
-EXPORT_SYMBOL_GPL(bq24261_cv_to_reg);
 
-static inline void bq24261_inlmt_to_reg(int inlmt, u8 *regval)
+void bq24261_inlmt_to_reg(int inlmt, u8 *regval)
 {
 	return lookup_regval(bq24261_inlmt, ARRAY_SIZE(bq24261_inlmt),
 			     inlmt, regval);
@@ -591,6 +592,31 @@ static inline int bq24261_enable_charging(
 {
 	u8 reg_val;
 	int ret;
+	bool is_ready;
+
+	ret = bq24261_read_reg(chip->client,
+					BQ24261_STAT_CTRL0_ADDR);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"Error(%d) in reading BQ24261_STAT_CTRL0_ADDR\n", ret);
+	}
+
+	is_ready =  (ret & BQ24261_STAT_MASK) != BQ24261_STAT_FAULT;
+
+	/* If status is fault, wait for READY before enabling the charging */
+
+	if (!is_ready) {
+		ret = wait_event_timeout(chip->wait_ready,
+			(chip->chrgr_stat != BQ24261_CHRGR_STAT_READY),
+				HZ);
+		dev_info(&chip->client->dev,
+			"chrgr_stat=%x\n", chip->chrgr_stat);
+		if (ret == 0) {
+			dev_err(&chip->client->dev,
+				"Waiting for Charger Ready Failed.Enabling charging anyway\n");
+		}
+	}
+
 
 	if (chip->pdata->enable_charging)
 		chip->pdata->enable_charging(val);
@@ -611,6 +637,12 @@ static inline int bq24261_enable_charging(
 	return bq24261_tmr_ntc_init(chip);
 }
 
+static inline int bq24261_reset_timer(struct bq24261_charger *chip)
+{
+	return bq24261_read_modify_reg(chip->client, BQ24261_STAT_CTRL0_ADDR,
+			BQ24261_TMR_RST_MASK, BQ24261_TMR_RST);
+}
+
 static inline int bq24261_enable_charger(
 	struct bq24261_charger *chip, int val)
 {
@@ -629,11 +661,7 @@ static inline int bq24261_enable_charger(
 	if (ret)
 		return ret;
 
-	reg_val = BQ24261_TMR_RST;
-	ret = bq24261_read_modify_reg(chip->client, BQ24261_STAT_CTRL0_ADDR,
-			BQ24261_TMR_RST_MASK, reg_val);
-	return ret;
-
+	return bq24261_reset_timer(chip);
 }
 
 static inline int bq24261_set_cc(struct bq24261_charger *chip, int cc)
@@ -756,6 +784,9 @@ static inline int bq24261_enable_boost_mode(
 
 	if (val) {
 
+		if (chip->pdata->enable_vbus)
+			chip->pdata->enable_vbus(true);
+
 		/* TODO: Support different Host Mode Current limits */
 
 		bq24261_enable_charger(chip, true);
@@ -772,8 +803,11 @@ static inline int bq24261_enable_boost_mode(
 			return ret;
 		chip->boost_mode = true;
 
+		schedule_delayed_work(&chip->wdt_work, 0);
+
 		dev_info(&chip->client->dev, "Boost Mode enabled\n");
 	} else {
+
 		ret =
 		    bq24261_read_modify_reg(chip->client,
 					    BQ24261_STAT_CTRL0_ADDR,
@@ -789,6 +823,10 @@ static inline int bq24261_enable_boost_mode(
 			bq24261_enable_charger(chip, false);
 		chip->boost_mode = false;
 		dev_info(&chip->client->dev, "Boost Mode disabled\n");
+		cancel_delayed_work_sync(&chip->wdt_work);
+
+		if (chip->pdata->enable_vbus)
+			chip->pdata->enable_vbus(false);
 
 		/* Notify power supply subsystem to enable charging
 		 * if needed. Eg. if DC adapter is connected
@@ -1121,6 +1159,22 @@ static inline int get_battery_current(int *cur)
 	return ret;
 }
 
+static void bq24261_wdt_reset_worker(struct work_struct *work)
+{
+
+	struct bq24261_charger *chip = container_of(work,
+			    struct bq24261_charger, wdt_work.work);
+	int ret;
+	ret = bq24261_reset_timer(chip);
+
+	if (ret)
+		dev_err(&chip->client->dev, "Error (%d) in WDT reset\n");
+	else
+		dev_info(&chip->client->dev, "WDT reset\n");
+
+	schedule_delayed_work(&chip->wdt_work, WDT_RESET_DELAY);
+}
+
 static void bq24261_sw_charge_term_worker(struct work_struct *work)
 {
 
@@ -1147,7 +1201,6 @@ int bq24261_get_bat_health(void)
 
 	return chip->bat_health;
 }
-EXPORT_SYMBOL(bq24261_get_bat_health);
 
 
 static void bq24261_low_supply_fault_work(struct work_struct *work)
@@ -1253,7 +1306,6 @@ static void bq24261_exception_mon_work(struct work_struct *work)
 static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 {
 	struct i2c_client *client = chip->client;
-	int ret;
 	bool notify = true;
 
 	dev_info(&client->dev, "%s:%d stat=0x%x\n",
@@ -1265,6 +1317,7 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Ready\n");
+		notify = false;
 		break;
 	case BQ24261_STAT_CHRG_PRGRSS:
 		chip->chrgr_stat = BQ24261_CHRGR_STAT_CHARGING;
@@ -1351,6 +1404,8 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		if (chip->chrgr_stat == BQ24261_CHRGR_STAT_FAULT && notify)
 			bq24261_dump_regs(dump_master);
 	}
+
+	wake_up(&chip->wait_ready);
 
 	chip->is_vsys_on = bq24261_is_vsys_on(chip);
 	if (notify)
@@ -1550,6 +1605,7 @@ static int bq24261_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
+	init_waitqueue_head(&chip->wait_ready);
 	i2c_set_clientdata(client, chip);
 	chip->pdata = client->dev.platform_data;
 
@@ -1600,6 +1656,8 @@ static int bq24261_probe(struct i2c_client *client,
 				bq24261_low_supply_fault_work);
 	INIT_DELAYED_WORK(&chip->exception_mon_work,
 				bq24261_exception_mon_work);
+	INIT_DELAYED_WORK(&chip->wdt_work,
+				bq24261_wdt_reset_worker);
 
 	INIT_WORK(&chip->irq_work, bq24261_irq_worker);
 	if (chip->client->irq) {

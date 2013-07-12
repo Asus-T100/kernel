@@ -187,7 +187,7 @@ sh_css_acc_start(struct ia_css_acc_fw *firmware)
 	const unsigned char *isp_program;
 #endif
 
-	*(const void **)&sp_fw->blob.text = IA_CSS_ACC_SP_CODE(firmware);
+	*(const void **)&sp_fw->blob.code = IA_CSS_ACC_SP_CODE(firmware);
 	*(const void **)&sp_fw->blob.data = IA_CSS_ACC_SP_DATA(firmware);
 
 	if (is_extension)

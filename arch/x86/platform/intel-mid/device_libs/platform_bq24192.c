@@ -18,11 +18,14 @@
 #include <linux/power_supply.h>
 #include <linux/power/battery_id.h>
 #include <asm/intel-mid.h>
+#include <asm/spid.h>
 #include <asm/intel_mid_gpadc.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_remoteproc.h>
 #include "platform_bq24192.h"
 #include <linux/usb/otg.h>
+
+#define FPO_OVERRIDE_BIT	(1 << 1)
 
 static void *chgr_gpadc_handle;
 
@@ -109,11 +112,45 @@ void *platform_init_battery_adc(int num_sensors, int chan_number, int flag)
 				  chan_number | flag));
 }
 
-static void platform_get_sfi_batt_table(void *table)
+static void dump_batt_chrg_profile(struct ps_pse_mod_prof *bcprof,
+				struct platform_batt_profile *batt_prof)
+{
+	int i;
+
+	pr_info("ChrgProf: batt_id:%s\n", bcprof->batt_id);
+	pr_info("ChrgProf: battery_type:%u\n", bcprof->battery_type);
+	pr_info("ChrgProf: capacity:%u\n", bcprof->capacity);
+	pr_info("ChrgProf: voltage_max:%u\n", bcprof->voltage_max);
+	pr_info("ChrgProf: chrg_term_mA:%u\n", bcprof->chrg_term_mA);
+	pr_info("ChrgProf: low_batt_mV:%u\n", bcprof->low_batt_mV);
+	pr_info("ChrgProf: disch_tmp_ul:%u\n", bcprof->disch_tmp_ul);
+	pr_info("ChrgProf: disch_tmp_ll:%u\n", bcprof->disch_tmp_ll);
+	pr_info("ChrgProf: temp_mon_ranges:%u\n",
+			bcprof->temp_mon_ranges);
+
+	for (i = 0; i < batt_prof->temp_mon_ranges; ++i) {
+		pr_info("ChrgProf: temp_up_lim[%d]:%d\n",
+				i, batt_prof->temp_mon_range[i].temp_up_lim);
+		pr_info("ChrgProf: full_chrg_vol[%d]:%d\n",
+				i, batt_prof->temp_mon_range[i].full_chrg_vol);
+		pr_info("ChrgProf: full_chrg_cur[%d]:%d\n",
+				i, batt_prof->temp_mon_range[i].full_chrg_cur);
+		pr_info("ChrgProf: maint_chrgr_vol_ll[%d]:%d\n",
+			i, batt_prof->temp_mon_range[i].maint_chrg_vol_ll);
+		pr_info("ChrgProf: maint_chrgr_vol_ul[%d]:%d\n",
+			i, batt_prof->temp_mon_range[i].maint_chrg_vol_ul);
+		pr_info("ChrgProf: maint_chrg_cur[%d]:%d\n",
+			i, batt_prof->temp_mon_range[i].maint_chrg_cur);
+	}
+	pr_info("ChrgProf: temp_low_lim:%d\n", bcprof->temp_low_lim);
+}
+
+static void platform_get_sfi_batt_table(void *table, bool fpo_override_bit)
 {
 	struct sfi_table_simple *sb =
 			 (struct sfi_table_simple *)get_oem0_table();
 	struct platform_batt_profile *batt_prof;
+	u8 *bprof_ptr;
 
 	int num_entries, i;
 
@@ -122,20 +159,6 @@ static void platform_get_sfi_batt_table(void *table)
 	if (sb == NULL) {
 		pr_debug("Invalid Battery detected\n");
 		return;
-	}
-
-	num_entries = SFI_GET_NUM_ENTRIES(sb, struct platform_batt_profile);
-	batt_prof = (struct platform_batt_profile *)table;
-
-	pr_debug("%s: num_entries = %d\n", __func__, num_entries);
-
-	if (num_entries) {
-		memcpy(batt_prof, sb->pentry,
-		num_entries * sizeof(struct platform_batt_profile));
-	} else {
-		batt_prof->temp_mon_ranges = 0;
-		memcpy((void *)batt_prof->batt_id,
-			(void *)"UNKNOWN", 8);
 	}
 
 	/* Allocate the memory for sharing battery profile */
@@ -161,15 +184,55 @@ static void platform_get_sfi_batt_table(void *table)
 		return;
 	}
 
-	memcpy(ps_pse_mod_prof->batt_id, batt_prof->batt_id, BATTID_STR_LEN);
-	ps_pse_mod_prof->battery_type = batt_prof->battery_type;
-	ps_pse_mod_prof->capacity = batt_prof->capacity;
-	ps_pse_mod_prof->voltage_max = batt_prof->voltage_max;
-	ps_pse_mod_prof->temp_mon_ranges = batt_prof->temp_mon_ranges;
+	bprof_ptr = (u8 *)sb->pentry;
+	memcpy(ps_pse_mod_prof->batt_id, bprof_ptr, BATTID_STR_LEN);
+
+	bprof_ptr += BATTID_STR_LEN;
+	ps_pse_mod_prof->voltage_max = *(u16 *)bprof_ptr;
+	bprof_ptr += 2;
+
+	if (fpo_override_bit) {
+		pr_info("OVERRIDE. Read battery profile from SMIP\n");
+		ps_pse_mod_prof->capacity = *(u32 *)(bprof_ptr);
+		bprof_ptr += 4;
+	} else if (INTEL_MID_BOARD(3, PHONE, CLVTP, VB, PRO, PR1B)) {
+		pr_info("PR1 Battery detected\n");
+		ps_pse_mod_prof->capacity = *(u16 *)(bprof_ptr);
+		bprof_ptr += 2;
+	} else {
+		pr_info("PR2 Battery detected\n");
+		ps_pse_mod_prof->capacity = *(u32 *)(bprof_ptr);
+		bprof_ptr += 4;
+	}
+
+	ps_pse_mod_prof->battery_type = *bprof_ptr;
+	ps_pse_mod_prof->temp_mon_ranges = *++bprof_ptr;
 	ps_pse_mod_prof->chrg_term_mA = 128;
 	ps_pse_mod_prof->low_batt_mV = 3400;
 	ps_pse_mod_prof->disch_tmp_ul = 60;
 	ps_pse_mod_prof->disch_tmp_ll = 0;
+
+	num_entries = SFI_GET_NUM_ENTRIES(sb, struct platform_batt_profile);
+	batt_prof = (struct platform_batt_profile *)table;
+
+	pr_info("num_entries = %d\n", num_entries);
+
+	if (num_entries) {
+		/* Fill the local structure for back up*/
+		memcpy(batt_prof->batt_id,
+				ps_pse_mod_prof->batt_id, BATTID_STR_LEN);
+		batt_prof->voltage_max = ps_pse_mod_prof->voltage_max;
+		batt_prof->capacity = ps_pse_mod_prof->capacity;
+		batt_prof->battery_type = ps_pse_mod_prof->battery_type;
+		batt_prof->temp_mon_ranges = ps_pse_mod_prof->temp_mon_ranges;
+		memcpy(batt_prof->temp_mon_range, bprof_ptr+1,
+			TEMP_NR_RNG * sizeof(struct platform_temp_mon_table));
+	} else {
+		batt_prof->temp_mon_ranges = 0;
+		memcpy((void *)batt_prof->batt_id,
+			(void *)"UNKNOWN", 8);
+	}
+
 
 	for (i = 0; i < batt_prof->temp_mon_ranges; i++) {
 		ps_pse_mod_prof->temp_mon_range[i].temp_up_lim =
@@ -180,8 +243,8 @@ static void platform_get_sfi_batt_table(void *table)
 			batt_prof->temp_mon_range[i].full_chrg_cur;
 		ps_pse_mod_prof->temp_mon_range[i].maint_chrg_vol_ll =
 			batt_prof->temp_mon_range[i].maint_chrg_vol_ll;
-		ps_pse_mod_prof->temp_mon_range[i].maint_chrg_vol_ll =
-			batt_prof->temp_mon_range[i].maint_chrg_vol_ll;
+		ps_pse_mod_prof->temp_mon_range[i].maint_chrg_vol_ul =
+			batt_prof->temp_mon_range[i].maint_chrg_vol_ul;
 	}
 
 	/* Change need in SMIP since temp zone 4 has all 0's */
@@ -189,6 +252,9 @@ static void platform_get_sfi_batt_table(void *table)
 
 	ps_batt_chrg_prof->chrg_prof_type = PSE_MOD_CHRG_PROF;
 	ps_batt_chrg_prof->batt_prof = ps_pse_mod_prof;
+
+	/* Dump the battery charging profile*/
+	dump_batt_chrg_profile(ps_pse_mod_prof, batt_prof);
 
 #ifdef CONFIG_POWER_SUPPLY_BATTID
 	battery_prop_changed(POWER_SUPPLY_BATTERY_INSERTED,
@@ -238,10 +304,9 @@ static void platform_init_battery_threshold(u8 total_temp_range,
 {
 	int ret;
 	u8 validate_smip_data[4];
+	bool fpo_override_bit = false;
 
 	pr_debug("%s:%d:\n", __func__, __LINE__);
-
-	platform_get_sfi_batt_table(batt_profile);
 
 	safe_param->vbatt_sh_min = BATT_VMIN_THRESHOLD_DEF;
 	safe_param->vbatt_crit = BATT_CRIT_CUTOFF_VOLT_DEF;
@@ -265,6 +330,16 @@ static void platform_init_battery_threshold(u8 total_temp_range,
 				validate_smip_data[3] == RSYS_MOHMS)) {
 
 		pr_debug("EM:%s: Valid SMIP data\n", __func__);
+		pr_info("validate_smip_data[1] %x\n", validate_smip_data[1]);
+
+		/*
+		 * Check for the override bit FPO[1]. If this is set offset
+		 * would change for right battery parameters while reading
+		 * from SMIP.
+		 */
+		if (validate_smip_data[1] & FPO_OVERRIDE_BIT)
+			fpo_override_bit = true;
+
 		/* Read the threshold values from SRAM */
 		ret = intel_scu_ipc_read_mip((u8 *)safe_param,
 				sizeof(struct platform_batt_safety_param),
@@ -282,6 +357,9 @@ static void platform_init_battery_threshold(u8 total_temp_range,
 		 *  SMIP_SRAM_BATT_PROP_OFFSET+4 -> ignore b1idmin and b1idmax
 		 */
 	}
+
+	/* Get the battery profile */
+	platform_get_sfi_batt_table(batt_profile, fpo_override_bit);
 
 	if (batt_profile->temp_mon_ranges == 0) {
 		/* BELOW CODE WILL BE USED IN INVALID BATTERY

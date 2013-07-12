@@ -48,7 +48,7 @@ extern void sp_get_state(
  */
 STORAGE_CLASS_SP_H void sp_ctrl_store(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const hrt_data		value);
 
 /*! Read from the status and control register of SP[ID]
@@ -61,7 +61,7 @@ STORAGE_CLASS_SP_H void sp_ctrl_store(
  */
 STORAGE_CLASS_SP_H hrt_data sp_ctrl_load(
 	const sp_ID_t		ID,
-	const unsigned int	reg);
+	const hrt_address	reg);
 
 /*! Get the status of a bitfield in the control register of SP[ID]
 
@@ -73,7 +73,7 @@ STORAGE_CLASS_SP_H hrt_data sp_ctrl_load(
  */
 STORAGE_CLASS_SP_H bool sp_ctrl_getbit(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const unsigned int	bit);
 
 /*! Set a bitfield in the control register of SP[ID]
@@ -86,7 +86,7 @@ STORAGE_CLASS_SP_H bool sp_ctrl_getbit(
  */
 STORAGE_CLASS_SP_H void sp_ctrl_setbit(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const unsigned int	bit);
 
 /*! Clear a bitfield in the control register of SP[ID]
@@ -99,7 +99,7 @@ STORAGE_CLASS_SP_H void sp_ctrl_setbit(
  */
 STORAGE_CLASS_SP_H void sp_ctrl_clearbit(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const unsigned int	bit);
 
 /*! Write to the DMEM of SP[ID]
@@ -113,7 +113,7 @@ STORAGE_CLASS_SP_H void sp_ctrl_clearbit(
  */
 STORAGE_CLASS_SP_H void sp_dmem_store(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const void			*data,
 	const size_t		size);
 
@@ -128,8 +128,8 @@ STORAGE_CLASS_SP_H void sp_dmem_store(
  */
 STORAGE_CLASS_SP_H void sp_dmem_load(
 	const sp_ID_t		ID,
-	const unsigned int	addr,
-	void				*data,
+	const hrt_address	addr,
+	void			*data,
 	const size_t		size);
 
 /*! Write a 8-bit datum to the DMEM of SP[ID]
@@ -143,7 +143,7 @@ STORAGE_CLASS_SP_H void sp_dmem_load(
  */
 STORAGE_CLASS_SP_H void sp_dmem_store_uint8(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const uint8_t		data);
 
 /*! Write a 16-bit datum to the DMEM of SP[ID]
@@ -157,7 +157,7 @@ STORAGE_CLASS_SP_H void sp_dmem_store_uint8(
  */
 STORAGE_CLASS_SP_H void sp_dmem_store_uint16(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const uint16_t		data);
 
 /*! Write a 32-bit datum to the DMEM of SP[ID]
@@ -171,7 +171,7 @@ STORAGE_CLASS_SP_H void sp_dmem_store_uint16(
  */
 STORAGE_CLASS_SP_H void sp_dmem_store_uint32(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const uint32_t		data);
 
 /*! Load a 8-bit datum from the DMEM of SP[ID]
@@ -185,7 +185,7 @@ STORAGE_CLASS_SP_H void sp_dmem_store_uint32(
  */
 STORAGE_CLASS_SP_H uint8_t sp_dmem_load_uint8(
 	const sp_ID_t		ID,
-	const unsigned int	addr);
+	const hrt_address	addr);
 
 /*! Load a 16-bit datum from the DMEM of SP[ID]
 
@@ -198,7 +198,7 @@ STORAGE_CLASS_SP_H uint8_t sp_dmem_load_uint8(
  */
 STORAGE_CLASS_SP_H uint16_t sp_dmem_load_uint16(
 	const sp_ID_t		ID,
-	const unsigned int	addr);
+	const hrt_address	addr);
 
 /*! Load a 32-bit datum from the DMEM of SP[ID]
 
@@ -211,6 +211,6 @@ STORAGE_CLASS_SP_H uint16_t sp_dmem_load_uint16(
  */
 STORAGE_CLASS_SP_H uint32_t sp_dmem_load_uint32(
 	const sp_ID_t		ID,
-	const unsigned int	addr);
+	const hrt_address	addr);
 
 #endif /* __SP_PUBLIC_H_INCLUDED__ */

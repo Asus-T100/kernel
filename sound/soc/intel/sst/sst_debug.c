@@ -835,8 +835,9 @@ static ssize_t sst_debug_dwnld_mode_write(struct file *file,
 	char buf[16];
 	int sz = min(count, sizeof(buf)-1);
 
-	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
-		pr_err("FW should be in suspended state\n");
+	if (sst_drv_ctx->sst_state != SST_SUSPENDED &&
+	    sst_drv_ctx->sst_state != SST_UN_INIT) {
+		pr_err("FW should be in suspended/uninit state\n");
 		return -EFAULT;
 	}
 

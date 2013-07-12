@@ -49,6 +49,42 @@ enum ia_css_pipe_mode __pipe_id_to_pipe_mode(enum ia_css_pipe_id pipe_id)
 	}
 
 }
+static void __apply_additional_pipe_config(
+				struct atomisp_sub_device *isp_subdev,
+				enum ia_css_pipe_id pipe_id)
+{
+	if (pipe_id < 0 || pipe_id >= IA_CSS_PIPE_ID_NUM) {
+		v4l2_err(&atomisp_dev,
+			 "wrong pipe_id for additional pipe config.\n");
+		return;
+	}
+
+	isp_subdev->css2_basis.pipe_configs[pipe_id].isp_pipe_version = 2;
+
+	/* apply isp 2.2 specific config */
+	switch (pipe_id) {
+	case IA_CSS_PIPE_ID_CAPTURE:
+		/* enable capture pp manually or digital zoom would
+		 * fail*/
+		isp_subdev->css2_basis.pipe_configs[pipe_id]
+		    .default_capture_config.enable_capture_pp = true;
+		break;
+	case IA_CSS_PIPE_ID_VIDEO:
+		/* enable reduced pipe to have binary
+		 * video_dz_2_min selected*/
+		isp_subdev->css2_basis.pipe_extra_configs[pipe_id]
+		    .enable_reduced_pipe = true;
+		isp_subdev->css2_basis.pipe_extra_configs[pipe_id]
+		    .enable_dz = false;
+		break;
+	case IA_CSS_PIPE_ID_PREVIEW:
+	case IA_CSS_PIPE_ID_COPY:
+	case IA_CSS_PIPE_ID_ACC:
+		break;
+	default:
+		break;
+	}
+}
 static void __configure_output(struct atomisp_sub_device *isp_subdev,
 			       unsigned int width,
 			       unsigned int height,
@@ -60,12 +96,24 @@ static void __configure_output(struct atomisp_sub_device *isp_subdev,
 	    __pipe_id_to_pipe_mode(pipe_id);
 	isp_subdev->css2_basis.update_pipe[pipe_id] = true;
 
-	isp_subdev->css2_basis.pipe_configs[pipe_id].output_info.res.width =
-	    width;
-	isp_subdev->css2_basis.pipe_configs[pipe_id].output_info.res.height =
-	    height;
-	isp_subdev->css2_basis.pipe_configs[pipe_id].output_info.format =
-	    format;
+	isp_subdev->css2_basis.pipe_configs[pipe_id].
+			output_info.res.width = width;
+	isp_subdev->css2_basis.pipe_configs[pipe_id].
+			output_info.res.height = height;
+	isp_subdev->css2_basis.pipe_configs[pipe_id].
+			output_info.format = format;
+
+	if (width * height >
+	    isp_subdev->css2_basis.stream_config.
+	    effective_res.width *
+	    isp_subdev->css2_basis.stream_config.
+	    effective_res.height) {
+		isp_subdev->css2_basis.stream_config.
+		    effective_res.width = width;
+		isp_subdev->css2_basis.stream_config.
+		    effective_res.height = height;
+	}
+
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
 		 "configuring pipe[%d] output info w=%d.h=%d.f=%d.\n",
 		 pipe_id, width, height, format);
@@ -83,13 +131,30 @@ static void __configure_pp_input(struct atomisp_sub_device *isp_subdev,
 	    __pipe_id_to_pipe_mode(pipe_id);
 	isp_subdev->css2_basis.update_pipe[pipe_id] = true;
 
+	if (width <=
+	    isp_subdev->css2_basis.pipe_configs[pipe_id].
+	    output_info.res.width ||
+	    height <=
+	    isp_subdev->css2_basis.pipe_configs[pipe_id].
+	    output_info.res.height
+	   )
+		return;
+
 	isp_subdev->css2_basis.pipe_extra_configs[pipe_id].enable_yuv_ds = true;
-	isp_subdev->css2_basis.pipe_configs[pipe_id].bayer_ds_out_res.width =
-	    width;
-	isp_subdev->css2_basis.pipe_configs[pipe_id].bayer_ds_out_res.height =
-	    height;
+
+	/*
+	 * isp 2.2 require the bayer_ds_out_res equals to effective input,
+	 * or isp would time
+	 */
+	isp_subdev->css2_basis.pipe_configs[pipe_id].
+	    bayer_ds_out_res.width =
+	    isp_subdev->css2_basis.stream_config.effective_res.width;
+	isp_subdev->css2_basis.pipe_configs[pipe_id].
+	    bayer_ds_out_res.height =
+	    isp_subdev->css2_basis.stream_config.effective_res.height;
+
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
-		 "configuring pipe[%d]capture pp input w=%d.h=%d.\n",
+		 "configuring pipe[%d] capture pp input w=%d.h=%d.\n",
 		 pipe_id, width, height);
 }
 static void __configure_vf_output(struct atomisp_sub_device *isp_subdev,
@@ -142,6 +207,81 @@ static enum ia_css_err __destroy_pipes(struct atomisp_sub_device *isp_subdev,
 
 	return ret;
 }
+static void __dump_pipe_config(struct atomisp_sub_device *isp_subdev,
+			       unsigned int pipe_id)
+{
+	struct ia_css_pipe_config *p_config;
+	struct ia_css_pipe_extra_config *pe_config;
+	int i = pipe_id;
+
+	if (isp_subdev->css2_basis.pipes[i]) {
+		p_config = &isp_subdev->css2_basis.pipe_configs[i];
+		pe_config = &isp_subdev->css2_basis.
+		    pipe_extra_configs[i];
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "dumping pipe[%d] config:\n", i);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.pipe_id:%d.\n", p_config->mode);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.output_info w=%d, h=%d.\n",
+			 p_config->output_info.res.width,
+			 p_config->output_info.res.height);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.bin_out w=%d, h=%d.\n",
+			 p_config->bin_out_res.width,
+			 p_config->bin_out_res.height);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.output.padded w=%d.\n",
+			 p_config->output_info.padded_width);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.vf_output_info w=%d, h=%d.\n",
+			 p_config->vf_output_info.res.width,
+			 p_config->vf_output_info.res.height);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.bayer_ds_out_res w=%d, h=%d.\n",
+			 p_config->bayer_ds_out_res.width,
+			 p_config->bayer_ds_out_res.height);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.envelope w=%d, h=%d.\n",
+			 p_config->dvs_envelope.width,
+			 p_config->dvs_envelope.height);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.isp_pipe_version:%d.\n",
+			p_config->isp_pipe_version);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.default_capture_config.capture_mode=%d.\n",
+			 p_config->default_capture_config.mode);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_config.default_capture_config.enable_capture_pp=%d.\n",
+			 p_config->default_capture_config.enable_capture_pp);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "dumping pipe[%d] extra config:\n", i);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.enable_raw_binning:%d.\n",
+			 pe_config->enable_raw_binning);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.enable_yuv_ds:%d.\n",
+			 pe_config->enable_yuv_ds);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.enable_high_speed:%d.\n",
+			 pe_config->enable_high_speed);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.enable_dvs_6axis:%d.\n",
+			 pe_config->enable_dvs_6axis);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.enable_reduced_pipe:%d.\n",
+			 pe_config->enable_reduced_pipe);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.enable_dz:%d.\n",
+			 pe_config->enable_dz);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.disable_vf_pp:%d.\n",
+			 pe_config->disable_vf_pp);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "pipe_extra_config.disable_capture_pp:%d.\n",
+			 pe_config->disable_capture_pp);
+	}
+}
 static enum ia_css_err __create_pipe(struct atomisp_sub_device *isp_subdev)
 {
 
@@ -154,6 +294,7 @@ static enum ia_css_err __create_pipe(struct atomisp_sub_device *isp_subdev)
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		if (isp_subdev->css2_basis.pipe_configs[i].output_info.
 		    res.width) {
+			__apply_additional_pipe_config(isp_subdev, i);
 			if (!memcmp(&extra_config,
 					&isp_subdev->css2_basis.
 					pipe_extra_configs[i],
@@ -171,21 +312,7 @@ static enum ia_css_err __create_pipe(struct atomisp_sub_device *isp_subdev)
 				v4l2_err(&atomisp_dev, "create pipe[%d] error.\n", i);
 				goto pipe_err;
 			}
-			v4l2_dbg(5, dbg_level, &atomisp_dev,
-				 "dump pipe[%d] info w=%d, h=%d,f=%d vf_w=%d vf_h=%d vf_f=%d.\n",
-				 i,
-				 isp_subdev->css2_basis.pipe_configs[i].
-				 output_info.res.width,
-				 isp_subdev->css2_basis.pipe_configs[i].
-				 output_info.res.height,
-				 isp_subdev->css2_basis.pipe_configs[i].
-				 output_info.format,
-				 isp_subdev->css2_basis.pipe_configs[i].
-				 vf_output_info.res.width,
-				 isp_subdev->css2_basis.pipe_configs[i].
-				 vf_output_info.res.height,
-				 isp_subdev->css2_basis.pipe_configs[i].
-				 vf_output_info.format);
+			__dump_pipe_config(isp_subdev, i);
 		}
 	}
 
@@ -199,69 +326,10 @@ pipe_err:
 
 	return ret;
 }
-static void __dump_stream_pipe_config(struct atomisp_sub_device *isp_subdev)
-{
-	struct ia_css_pipe_config *p_config;
-	struct ia_css_pipe_extra_config *pe_config;
-	struct ia_css_stream_config *s_config;
-	int i = 0;
 
-	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
-		if (isp_subdev->css2_basis.pipes[i]) {
-			p_config = &isp_subdev->css2_basis.pipe_configs[i];
-			pe_config = &isp_subdev->css2_basis.
-			    pipe_extra_configs[i];
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "dumping pipe[%d] config:\n", i);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_config.pipe_id:%d.\n", p_config->mode);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_config.output_info w=%d, h=%d.\n",
-				p_config->output_info.res.width,
-				p_config->output_info.res.height);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_config.vf_output_info w=%d, h=%d.\n",
-				p_config->vf_output_info.res.width,
-				p_config->vf_output_info.res.height);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_config.bayer_ds_out_res w=%d, h=%d.\n",
-				p_config->bayer_ds_out_res.width,
-				p_config->bayer_ds_out_res.height);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_config.envelope w=%d, h=%d.\n",
-				p_config->dvs_envelope.width,
-				p_config->dvs_envelope.height);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_config.default_capture_config.capture_mode=%d.\n",
-				p_config->default_capture_config.mode);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "dumping pipe[%d] extra config:\n", i);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.enable_raw_binning:%d.\n",
-				pe_config->enable_raw_binning);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.enable_yuv_ds:%d.\n",
-				pe_config->enable_yuv_ds);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.enable_high_speed:%d.\n",
-				pe_config->enable_high_speed);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.enable_dvs_6axis:%d.\n",
-				pe_config->enable_dvs_6axis);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.enable_reduced_pipe:%d.\n",
-				pe_config->enable_reduced_pipe);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.enable_dz:%d.\n",
-				pe_config->enable_dz);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.disable_vf_pp:%d.\n",
-				pe_config->disable_vf_pp);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.disable_capture_pp:%d.\n",
-				pe_config->disable_capture_pp);
-		}
-	}
+static void __dump_stream_config(struct atomisp_sub_device *isp_subdev)
+{
+	struct ia_css_stream_config *s_config;
 
 	s_config = &isp_subdev->css2_basis.stream_config;
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
@@ -419,12 +487,12 @@ static enum ia_css_err __create_stream(struct atomisp_sub_device *isp_subdev)
 	const struct ia_css_stream_config *s_config =
 			&isp_subdev->css2_basis.stream_config;
 
-	__dump_stream_pipe_config(isp_subdev);
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		if (isp_subdev->css2_basis.pipes[i])
 			multi_pipes[pipe_index++] =
 			    isp_subdev->css2_basis.pipes[i];
 	}
+	__dump_stream_config(isp_subdev);
 	return ia_css_stream_create(s_config, pipe_index, multi_pipes,
 				    &isp_subdev->css2_basis.stream);
 }
@@ -582,6 +650,7 @@ enum ia_css_err ia_css_video_configure_output(
 {
 	__configure_output(isp_subdev, width, height, format,
 			   IA_CSS_PIPE_ID_VIDEO);
+
 	return IA_CSS_SUCCESS;
 }
 
@@ -617,7 +686,19 @@ enum ia_css_err ia_css_preview_configure_pp_input(
 	unsigned int width,
 	unsigned int height)
 {
-	__configure_pp_input(isp_subdev, width, height, IA_CSS_PIPE_ID_PREVIEW);
+	if (isp_subdev->css2_basis.pipe_extra_configs[IA_CSS_PIPE_ID_PREVIEW].
+					enable_raw_binning == false)
+		__configure_pp_input(isp_subdev, width, height,
+					IA_CSS_PIPE_ID_PREVIEW);
+
+	/* since the preview size may larger than still capture, set effective
+	 * resolution to bayer_ds_out again*/
+	if (width > isp_subdev->css2_basis.
+	    pipe_configs[IA_CSS_PIPE_ID_CAPTURE].
+	    bayer_ds_out_res.width)
+		__configure_pp_input(isp_subdev,
+				     width, height, IA_CSS_PIPE_ID_CAPTURE);
+
 	return IA_CSS_SUCCESS;
 }
 
@@ -674,23 +755,36 @@ void
 ia_css_enable_raw_binning(struct atomisp_sub_device *isp_subdev,
 			     bool enable)
 {
-	int i;
+	isp_subdev->css2_basis.pipe_extra_configs[IA_CSS_PIPE_ID_PREVIEW].
+	    enable_raw_binning = enable;
 
-	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
-		if (isp_subdev->css2_basis.pipe_extra_configs[i].
-		    enable_raw_binning != enable) {
-			isp_subdev->css2_basis.pipe_extra_configs[i].
-			    enable_raw_binning = enable;
-			isp_subdev->css2_basis.update_pipe[i] = true;
-		}
+	/* for isp 2.2, bin_out_res needs to be the same with effective
+	 * resolution, or it might cause isp timeout*/
+	if (enable) {
+		isp_subdev->css2_basis.
+		    pipe_configs[IA_CSS_PIPE_ID_PREVIEW].
+		    bin_out_res.width =
+		    isp_subdev->css2_basis.stream_config.
+		    effective_res.width;
+		isp_subdev->css2_basis.
+		    pipe_configs[IA_CSS_PIPE_ID_PREVIEW].
+		    bin_out_res.height =
+		    isp_subdev->css2_basis.stream_config.
+		    effective_res.height;
+		isp_subdev->css2_basis.
+		    pipe_configs[IA_CSS_PIPE_ID_PREVIEW].
+		    output_info.padded_width =
+		    isp_subdev->css2_basis.stream_config.
+		    effective_res.width;
 	}
+
+	isp_subdev->css2_basis.update_pipe[IA_CSS_PIPE_ID_PREVIEW] = true;
 }
 
 void ia_css_enable_continuous(struct atomisp_sub_device *isp_subdev,
 				  bool enable)
 {
 	int i;
-
 	if (isp_subdev->css2_basis.stream_config.continuous != enable) {
 		isp_subdev->css2_basis.stream_config.continuous = enable;
 		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
@@ -702,7 +796,6 @@ void ia_css_preview_enable_online(struct atomisp_sub_device *isp_subdev,
 				  bool enable)
 {
 	int i;
-
 	if (isp_subdev->css2_basis.stream_config.online != enable) {
 		isp_subdev->css2_basis.stream_config.online = enable;
 		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
