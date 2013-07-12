@@ -1584,6 +1584,10 @@ static int sst_relocate_got_entries(Elf32_Rela *table, unsigned int size,
 			}
 			target_addr = (Elf32_Addr *)(in_elf + entry->r_offset);
 			unreloc_addr = *target_addr + entry->r_addend;
+			if (unreloc_addr > elf_size) {
+				pr_err("GOT table entry invalid\n");
+				continue;
+			}
 			*target_addr = unreloc_addr + rel_base;
 		}
 	}
@@ -1638,19 +1642,25 @@ static void sst_init_lib_mem_mgr(struct sst_mem_mgr *mgr)
 	mgr->avail = MRFLD_FW_MOD_END - MRFLD_FW_MOD_START;
 }
 
+#define ALIGN_256 0x100
+
 static int sst_get_next_lib_mem(struct sst_mem_mgr *mgr, int size,
 			u32 *lib_base)
 {
 	int retval = 0;
 
+	pr_debug("library orig size = 0x%x", size);
 	if (size > mgr->avail)
 		return -ENOMEM;
+	if (size % ALIGN_256)
+		size += (ALIGN_256 - (size % ALIGN_256));
 
 	*lib_base = mgr->current_base;
 	mgr->current_base += size;
 	mgr->avail -= size;
 	mgr->count++;
 	pr_debug("library base = 0x%x", *lib_base);
+	pr_debug("library aligned size = 0x%x", size);
 	pr_debug("lib count = %d\n", mgr->count);
 	return retval;
 
@@ -1662,6 +1672,7 @@ static int sst_download_lib_elf(struct intel_sst_drv *sst, const void *lib,
 	int retval = 0;
 
 	pr_debug("In %s\n", __func__);
+
 	if (sst->use_dma) {
 		retval = sst_parse_elf_fw_dma(sst, lib,
 				 &sst->library_list);
