@@ -997,7 +997,7 @@ static irqreturn_t pmic_isr(int irq, void *data)
 	u16 pmic_intr;
 	u8 chgrirq0_int;
 	u8 chgrirq1_int;
-	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK | CHRGRIRQ1_SUSBIDDET_MASK);
+	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK);
 
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	chgrirq0_int = (u8)pmic_intr;
@@ -1302,7 +1302,7 @@ static int pmic_check_initial_events(void)
 {
 	struct pmic_event *evt;
 	int ret;
-	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK | CHRGRIRQ1_SUSBIDDET_MASK);
+	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK);
 
 	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
 	if (evt == NULL) {
