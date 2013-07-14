@@ -526,8 +526,8 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	dsi_config(encoder);
 
 	I915_WRITE(MIPI_DPI_RESOLUTION(pipe),
-		   adjusted_mode->vdisplay << VERTICAL_ADDRESS_SHIFT |
-		   adjusted_mode->hdisplay << HORIZONTAL_ADDRESS_SHIFT);
+		((adjusted_mode->vdisplay + 1) << VERTICAL_ADDRESS_SHIFT) |
+		(adjusted_mode->hdisplay << HORIZONTAL_ADDRESS_SHIFT));
 
 	set_dsi_timings(encoder, adjusted_mode);
 
