@@ -199,7 +199,7 @@ int dsi_15percent_formula(struct intel_dsi *intel_dsi,
 
 	dsi_pixel_clk = (mode->clock * bpp) /
 			(intel_dsi->dev.lane_count * 1000);
-	*dsi_clk = ((dsi_pixel_clk * 15) / 100) + dsi_pixel_clk;
+	*dsi_clk = /*((dsi_pixel_clk * 15) / 100) + */dsi_pixel_clk;
 
 	return 0;
 }

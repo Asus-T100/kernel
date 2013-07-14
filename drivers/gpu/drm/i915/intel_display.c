@@ -3781,8 +3781,6 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 		intel_enable_pll(dev_priv, pipe);
 
 	vlv_pll_enable_reset(crtc);
-	intel_enable_pipe(dev_priv, pipe, false);
-	intel_enable_plane(dev_priv, plane, pipe);
 
 	if (dev_priv->is_mipi) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
@@ -3792,6 +3790,9 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 			}
 		}
 	}
+
+	intel_enable_pipe(dev_priv, pipe, false);
+	intel_enable_plane(dev_priv, plane, pipe);
 
 	intel_crtc_load_lut(crtc);
 	intel_update_fbc(dev);
@@ -3809,9 +3810,19 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
+	struct intel_encoder *encoder;
 
 	if (!intel_crtc->active)
 		return;
+
+	if (dev_priv->is_mipi) {
+		for_each_encoder_on_crtc(dev, crtc, encoder) {
+			if (encoder->type == INTEL_OUTPUT_DSI) {
+				intel_dsi_disable(encoder);
+				break;
+			}
+		}
+	}
 
 	/* Give the overlay scaler a chance to disable if it's on this pipe */
 	intel_crtc_wait_for_pending_flips(crtc);
@@ -5198,9 +5209,10 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 
 	I915_WRITE(PIPECONF(pipe), pipeconf);
 	POSTING_READ(PIPECONF(pipe));
-	intel_enable_pipe(dev_priv, pipe, false);
-
-	intel_wait_for_vblank(dev, pipe);
+	if (!is_dsi) {
+		intel_enable_pipe(dev_priv, pipe, false);
+		intel_wait_for_vblank(dev, pipe);
+	}
 
 	I915_WRITE(DSPCNTR(plane), dspcntr);
 	POSTING_READ(DSPCNTR(plane));
@@ -5258,7 +5270,6 @@ int intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
 
 	return 0;
 }
-
 /*
  * Initialize reference clocks when the driver loads
  */

@@ -116,6 +116,13 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.dev_ops = &auo_b080xat_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
+	{
+		.panel_id = MIPI_DSI_JDI_LPM070W425B_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "jdi-lpm070w425b-dsi-vid-mode-display",
+		.dev_ops = &jdi_lpm070w425b_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
 };
 
 /* Prototype for internal functions */
@@ -175,28 +182,18 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
 	POSTING_READ(MIPI_PORT_CTRL(pipe));
 
-	/* XXX: Placement of this? */
 	temp = I915_READ(MIPI_DEVICE_READY(pipe));
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp | DEVICE_READY);
 
-
-	/* XXX: Enable DPMS later */
-	/*intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, true); */
-
-	/* XXX: fix the bits with constants */
-	I915_WRITE(MIPI_DPI_CONTROL(pipe), ((0x1 << 1) &
-			~(0x1 << 0) & ~(0x1 << 6)));
-	I915_WRITE(MIPI_DPI_CONTROL(pipe), 0x2);
-
-	/* Wait till SPL Packet Sent status bit is not set */
-	if (wait_for(I915_READ(MIPI_INTR_STAT(pipe)) &
-			SPL_PKT_SENT_INTERRUPT, 50))
-		DRM_DEBUG_KMS("SPL Packet Sent failed\n");
+	if (intel_dsi->dev.dev_ops->enable)
+		intel_dsi->dev.dev_ops->enable(&intel_dsi->dev);
 }
 
 /* XXX: We need to call this from crtc disable sequence ??? */
-static void intel_dsi_disable(struct intel_encoder *encoder)
+void intel_dsi_disable(struct intel_encoder *encoder)
 {
+	struct drm_encoder *drm_encoder = &encoder->base;
+	struct drm_device *dev = drm_encoder->dev;
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
@@ -204,28 +201,28 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
+	intel_panel_disable_backlight(dev);
 
-	/* XXX: Check if we have to do this
-	I915_WRITE_BITS(0x61204, 0, 0x00000001);
-	while (I915_READ(0x61200) & 0xB0000000) {};
-	*/
+#if 0
+	/* Shut down packet */
+	I915_WRITE(0xB004, 0x40000000);
+	I915_WRITE(0xB048, 0x00000001);
+	/* Wait till SPL Packet Sent status bit is not set */
+	if (wait_for(I915_READ(MIPI_INTR_STAT(pipe)) &
+				SPL_PKT_SENT_INTERRUPT, 50))
+		DRM_DEBUG_KMS("SPL Packet Sent failed\n");
 
-	intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, false);
+	I915_WRITE(0xB048, 0x00000001);
+	I915_WRITE(0xB004, 0xFFFFFFFF);
+	msleep(100);
+	if (wait_for((I915_READ(0xb074) & 0x10000000) == 0, 50))
+		DRM_DEBUG_KMS("DPI fifo not empty\n");
 
-	/* lanes to ulps in MIPI_DEVICE_READY */
-	temp = I915_READ(MIPI_DEVICE_READY(pipe));
-	temp &= ~ULPS_STATE_MASK;
-	temp &= ~DEVICE_READY;
-	I915_WRITE(MIPI_DEVICE_READY(pipe), temp | ULPS_STATE_ENTER);
-
-	/* XXX: port ctrl is a mess */
-	temp = I915_READ(MIPI_PORT_CTRL(pipe));
-	I915_WRITE(MIPI_PORT_CTRL(pipe), temp & ~DPI_ENABLE);
-	POSTING_READ(MIPI_PORT_CTRL(pipe));
-
-	/* dpi: SHUTDOWN in MIPI_DPI_CONTROL through dpi_send_cmd */
-
-	/* device ready state off */
+	I915_WRITE(0x61190, I915_READ(0x61190) & 0x7FFFFFFF);
+	I915_WRITE(0xB000, I915_READ(0xB000) & 0xFFFFFFFE);
+	intel_cck_write32(dev_priv, 0x48, 0x00000000);
+	intel_cck_write32(dev_priv, 0x4c, 0x00000000);
+#endif
 }
 
 static void intel_dsi_post_disable(struct intel_encoder *encoder)
@@ -363,7 +360,29 @@ static void intel_dsi_mode_prepare(struct drm_encoder *encoder)
 
 static void intel_dsi_commit(struct drm_encoder *encoder)
 {
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
+	int pipe = intel_crtc->pipe;
+
 	DRM_DEBUG_KMS("\n");
+
+	/* XXX: fix the bits with constants */
+	I915_WRITE(MIPI_DPI_CONTROL(pipe), ((0x1 << 1) &
+			~(0x1 << 0) & ~(0x1 << 6)));
+	I915_WRITE(MIPI_DPI_CONTROL(pipe), 0x2);
+
+	/* Wait till SPL Packet Sent status bit is not set */
+	if (wait_for(I915_READ(MIPI_INTR_STAT(pipe)) &
+			SPL_PKT_SENT_INTERRUPT, 50))
+		DRM_DEBUG_KMS("SPL Packet Sent failed\n");
+
+	if (intel_dsi->dev.dev_ops->commit)
+		intel_dsi->dev.dev_ops->commit(&intel_dsi->dev);
+
+	intel_panel_enable_backlight(dev, pipe);
+
 }
 
 /* return pixels in terms of txbyteclkhs */
@@ -504,8 +523,6 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	/* MIPI PORT Control register */
 	I915_WRITE(0x61190, 0x80010000);
 
-	intel_panel_enable_backlight(dev, pipe);
-
 	dsi_config(encoder);
 
 	I915_WRITE(MIPI_DPI_RESOLUTION(pipe),
@@ -546,6 +563,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 					intel_dsi->dev.hs_to_lp_count);
 	I915_WRITE(MIPI_LP_BYTECLK(pipe), intel_dsi->dev.lp_byte_clk);
 	I915_WRITE(MIPI_DBI_BW_CTRL(pipe), intel_dsi->dev.bw_timer);
+	I915_WRITE(MIPI_MAX_RETURN_PKT_SIZE(pipe), 0x64);
 
 	I915_WRITE(MIPI_CLK_LANE_SWITCH_TIME_CNT(pipe),
 		((u32)intel_dsi->dev.clk_lp_to_hs_count
@@ -776,6 +794,7 @@ bool intel_dsi_init(struct drm_device *dev)
 		intel_dsi->dsi_packet_format = dsi_24Bpp_packed;
 
 	intel_dsi->channel = 0;
+	intel_dsi->hs = 1;
 
 	if (i == ARRAY_SIZE(intel_dsi_devices))
 		goto err;
