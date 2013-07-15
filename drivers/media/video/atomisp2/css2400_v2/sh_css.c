@@ -2243,7 +2243,7 @@ static uint8_t
 generate_pipe_number(void)
 {
 	uint8_t i;
-	uint8_t pipe_num = UINT8_MAX;
+	uint8_t pipe_num = 0xFF;
 	/*Assign a new pipe_num .... search for empty place */
 	for (i = 0; i < MAX_NUM_PIPES; i++)
 	{
@@ -2253,7 +2253,7 @@ generate_pipe_number(void)
 			break;
 		}
 	}
-	assert(pipe_num != UINT8_MAX);
+	assert(pipe_num != 0xFF);
 	pipe_num_counter++;
 	map_pipe_num_to_sp_thread(pipe_num);
 	return pipe_num;
@@ -2388,7 +2388,7 @@ ia_css_pipe_destroy(struct ia_css_pipe *pipe)
 	case IA_CSS_PIPE_MODE_PREVIEW:
 		/* need to take into account that this function is also called
 		   on the internal copy pipe */
-		if (old_pipe->mode == IA_CSS_PIPE_MODE_PREVIEW) {
+		if (old_pipe->mode == IA_CSS_PIPE_ID_PREVIEW) {
 			destroy_frames(NUM_CONTINUOUS_FRAMES,
 				old_pipe->continuous_frames);
 			if (old_pipe->pipe.preview.copy_pipe) {
@@ -2399,7 +2399,7 @@ ia_css_pipe_destroy(struct ia_css_pipe *pipe)
 		}
 		break;
 	case IA_CSS_PIPE_MODE_VIDEO:
-		if (old_pipe->mode == IA_CSS_PIPE_MODE_VIDEO) {
+		if (old_pipe->mode == IA_CSS_PIPE_ID_VIDEO) {
 			destroy_frames(NUM_CONTINUOUS_FRAMES,
 				old_pipe->continuous_frames);
 			if (old_pipe->pipe.video.copy_pipe) {
@@ -3033,7 +3033,7 @@ alloc_continuous_frames(
 	bool continuous = pipe->stream->config.continuous;
 	bool input_needs_raw_binning = pipe->input_needs_raw_binning;
 	unsigned int i;
-	unsigned int left_cropping;
+	unsigned int left_cropping = 0;
 	uint8_t raw_binning = 0;
 
 	if (pipe_id == IA_CSS_PIPE_ID_PREVIEW) {
@@ -4165,8 +4165,8 @@ static void decode_sp_event(
  	uint8_t *arg2,
  	uint8_t *arg3)
 {
-	enum ia_css_event_type event_code;
-
+	enum ia_css_event_type event_code = IA_CSS_EVENT_TYPE_NONE;
+	enum sh_css_sp_event_type sh_event_id;
  	assert(arg1 != NULL);
  	assert(arg2 != NULL);
  	assert(arg3 != NULL);
@@ -4182,10 +4182,10 @@ static void decode_sp_event(
  	*arg1 = (event >> 8) & 0xff;
  	*arg2 = (event >> 16) & 0xff;
  	*arg3 = 0;
-	event_code = event & 0xff;
+	sh_event_id = event & 0xff;
 
 	/* convert event_code from sp (SH) domain to host (IA) domain */
-	switch (event_code) {
+	switch (sh_event_id) {
 	case SH_CSS_SP_EVENT_OUTPUT_FRAME_DONE:
 		event_code = IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE;
 		break;
@@ -8253,7 +8253,7 @@ ia_css_stream_destroy(struct ia_css_stream *stream)
 			/* clear reference to stream */
 			entry->old_pipe->stream = NULL;
 			/* check internal copy pipe */
-			if (entry->old_pipe->mode == IA_CSS_PIPE_MODE_PREVIEW &&
+			if (entry->old_pipe->mode == IA_CSS_PIPE_ID_PREVIEW &&
 			    entry->old_pipe->pipe.preview.copy_pipe) {
 				sh_css_dtrace(SH_DBG_TRACE,
 					"ia_css_stream_destroy: "

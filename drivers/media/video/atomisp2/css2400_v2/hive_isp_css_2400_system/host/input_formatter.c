@@ -1,7 +1,6 @@
 
-#include <stddef.h>		/* NULL */
-#include <stdbool.h>
-#include <stdint.h>
+//#include "stddef.h"		/* NULL */
+//#include <stdbool.h>
 
 #include "input_formatter.h"
 #include "gp_device.h"

@@ -274,8 +274,8 @@ assert(binary != NULL);
 	}
 	if (info->enable.dvs_envelope) {
 		assert(dvs_env);
-		dvs_env_width  = max(dvs_env->width, SH_CSS_MIN_DVS_ENVELOPE);
-		dvs_env_height = max(dvs_env->height, SH_CSS_MIN_DVS_ENVELOPE);
+		dvs_env_width  = max(dvs_env->width, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
+		dvs_env_height = max(dvs_env->height, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
 	}
 	binary->dvs_envelope.width  = dvs_env_width;
 	binary->dvs_envelope.height = dvs_env_height;

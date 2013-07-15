@@ -3,7 +3,9 @@
 
 #include "sp.h"
 
-#include <stdbool.h>	/* bool				*/
+#ifndef __KERNEL__
+#include "stdbool.h"	/* bool				*/
+#endif
 
 /* MW: The queue should be application agnostic */
 #include "sh_css_internal.h"
