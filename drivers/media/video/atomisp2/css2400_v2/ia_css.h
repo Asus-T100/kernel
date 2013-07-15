@@ -29,7 +29,6 @@
 /* Move to "platform_support.h" */
 #ifdef __KERNEL__
 #include <linux/kernel.h>
-#include <linux/types.h>
 #else
 #include <stdbool.h>
 #include <stdint.h>
@@ -457,6 +456,15 @@ struct ia_css_frame_info {
 						      for RAW bayer frames */
 };
 
+/** 
+ *  Specifies the DVS loop delay in "frame periods"  
+ */
+enum ia_css_frame_delay {
+	IA_CSS_FRAME_DELAY_0, /**< Frame delay = 0 */
+	IA_CSS_FRAME_DELAY_1, /**< Frame delay = 1 */
+	IA_CSS_FRAME_DELAY_2  /**< Frame delay = 2 */
+};
+
 /* Temporary hack, hivecc fails to properly compile if this struct is
  * included. */
 #ifndef __HIVECC__
@@ -488,6 +496,9 @@ struct ia_css_pipe_config {
 	struct ia_css_capture_config default_capture_config;
 	/**< Default capture config for initial capture pipe configuration. */
 	struct ia_css_resolution dvs_envelope; /**< temporary */
+	enum ia_css_frame_delay dvs_frame_delay;
+	/**< indicates the DVS loop delay in frame periods */
+
 };
 #else
 struct ia_css_pipe_config;
@@ -755,11 +766,16 @@ enum ia_css_event_type {
 	IA_CSS_EVENT_TYPE_3A_STATISTICS_DONE   = 1 << 2, /**< Indication that 3A statistics are available. */
 	IA_CSS_EVENT_TYPE_DIS_STATISTICS_DONE  = 1 << 3, /**< Indication that DIS statistics are available. */
 	IA_CSS_EVENT_TYPE_PIPELINE_DONE        = 1 << 4, /**< Pipeline Done event, sent after last pipeline stage. */
-	IA_CSS_EVENT_TYPE_PORT_EOF	       = 1 << 5, /**< End Of Frame event, sent when in buffered sensor mode. */
+	IA_CSS_EVENT_TYPE_FRAME_TAGGED	       = 1 << 5, /**< Frame tagged. */
+	IA_CSS_EVENT_TYPE_PORT_EOF	       = 1 << 6, /**< End Of Frame event, sent when in buffered sensor mode.  MUST BE LAST */
 };
-#define IA_CSS_EVENT_TYPE_NUM (IA_CSS_EVENT_TYPE_PORT_EOF + 1)
 #define IA_CSS_EVENT_TYPE_NONE 0
-#define IA_CSS_EVENT_TYPE_ALL  0xFFFF
+/* IA_CSS_EVENT_TYPE_ALL is a mask for alle events except IA_CSS_EVENT_TYPE_PORT_EOF
+ * we create it by sbutracting 1 from IA_CSS_EVENT_TYPE_PORT_EOF
+ * alternate implementation could be or-ing of all the events.
+ * (IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE | IA_CSS_EVENT_TYPE_VF_OUTPUT_FRAME_DONE | ... | IA_CSS_EVENT_TYPE_FRAME_TAGGED)
+ */
+#define IA_CSS_EVENT_TYPE_ALL  (IA_CSS_EVENT_TYPE_PORT_EOF - 1)
 
 /** The event struct, container for the event type and its related values.
  * Depending on the event type, either pipe or port will be filled.
@@ -768,9 +784,10 @@ enum ia_css_event_type {
  * filled.
  */
 struct ia_css_event {
-	struct ia_css_pipe    *pipe; /**< Pipe handle on which event happened, NULL for non pipe related events. */
-	enum ia_css_event_type type; /**< Type of Event, always valid/filled. */
-	uint8_t                port; /**< Port number for EOF event (not valid/filled for other events). */
+	struct ia_css_pipe    *pipe;   /**< Pipe handle on which event happened, NULL for non pipe related events. */
+	enum ia_css_event_type type;   /**< Type of Event, always valid/filled. */
+ 	uint8_t                port;   /**< Port number for EOF event (not valid for other events). */
+	uint8_t                exp_id; /**< Exposure id for EOF/TAGGED_FRAME event (not valid for other events). */
 };
 
 /** Interrupt info structure. This structure contains information about an
@@ -795,9 +812,10 @@ struct ia_css_irq {
  *				printing.
  * @param[in]	fw		Firmware package containing the firmware for all
  *				predefined ISP binaries.
- * @param[in]	l1_base         Base address (isp2300) or base index (isp2400)
+ * @param[in]	l1_base         Base index (isp2400)
  *                              of the L1 page table. This is a physical
  *                              address or index.
+ * @param[in]	irq_type 	The type of interrupt to be used (edge or level)
  * @return			Returns IA_CSS_ERR_INTERNAL_ERROR in case of any
  *				errors and IA_CSS_SUCCESS otherwise.
  *
@@ -1008,13 +1026,13 @@ ia_css_pipe_enqueue_buffer(struct ia_css_pipe *pipe,
 
 /** @brief Dequeue a buffer from an image pipe.
  *
- * @param[in]    pipe	The pipeline that the buffer queue belongs to.
- * @param[inout] buffer The buffer is used to lookup the type which determines
- *                      which internal queue to use.
- *                      The resulting buffer pointer is written into the dta
- *                      field.
- * @return		IA_CSS_ERR_NO_BUFFER if the queue is empty or
- *			IA_CSS_SUCCESS otherwise.
+ * @param[in]    pipe	 The pipeline that the buffer queue belongs to.
+ * @param[in,out] buffer The buffer is used to lookup the type which determines
+ *                       which internal queue to use.
+ *                       The resulting buffer pointer is written into the dta
+ *                       field.
+ * @return		 IA_CSS_ERR_NO_BUFFER if the queue is empty or
+ *			 IA_CSS_SUCCESS otherwise.
  *
  * This function dequeues a buffer from a buffer queue. The queue is indicated
  * by the buffer type argument. This function can be called after an interrupt
@@ -1047,23 +1065,26 @@ ia_css_dequeue_event(struct ia_css_event *event);
 /** @brief Controls when the Event generator raises an IRQ to the Host.
  *
  * @param[in]	pipe	The pipe.
- * @param[in]	or_mask	Binary or of enum ia_css_event_irq_mask_type. Each event
-			that is part of this mask will directly raise an IRQ to
-			the Host when the event occurs in the CSS.
+ * @param[in]	or_mask	Binary or of enum ia_css_event_irq_mask_type. Each pipe
+ 			related event that is part of this mask will directly
+ 			raise an IRQ to	the Host when the event occurs in the
+ 			CSS.
  * @param[in]	and_mask Binary or of enum ia_css_event_irq_mask_type. An event
-			IRQ for the Host is only raised after all events have
-			occurred at least once for all the active pipes. Events
-			are remembered and don't need to occure at the same
-			moment in time. There is no control over the order of
-			these events. Once an IRQ has been raised all
-			remembered events are reset.
+			IRQ for the Host is only raised after all pipe related
+			events have occurred at least once for all the active
+			pipes. Events are remembered and don't need to occure
+			at the same moment in time. There is no control over
+			the order of these events. Once an IRQ has been raised
+			all remembered events are reset.
  * @return		IA_CSS_SUCCESS.
  *
  Controls when the Event generator in the CSS raises an IRQ to the Host.
  The main purpose of this function is to reduce the amount of interrupts
  between the CSS and the Host. This will help saving power as it wakes up the
  Host less often. In case both or_mask and and_mask are
- IA_CSS_EVENT_TYPE_NONE for all pipes, no event IRQ's will be raised.
+ IA_CSS_EVENT_TYPE_NONE for all pipes, no event IRQ's will be raised. An
+ exception holds for IA_CSS_EVENT_TYPE_PORT_EOF, for this event an IRQ is always
+ raised.
  Note that events are still queued and the Host can poll for them. The
  or_mask and and_mask may be be active at the same time\n
  \n
@@ -1073,7 +1094,7 @@ ia_css_dequeue_event(struct ia_css_event *event);
  \n
  Examples\n
  \code
- ia_css_pipe_set_irq_mask(IA_CSS_PIPE_ID_PREVIEW,
+ ia_css_pipe_set_irq_mask(h_pipe,
  IA_CSS_EVENT_TYPE_3A_STATISTICS_DONE |
  IA_CSS_EVENT_TYPE_DIS_STATISTICS_DONE ,
  IA_CSS_EVENT_TYPE_NONE);
@@ -1084,12 +1105,12 @@ ia_css_dequeue_event(struct ia_css_event *event);
  output frame available.
 
  \code
- ia_css_pipe_set_irq_mask(IA_CSS_PIPE_ID_PREVIEW,
+ ia_css_pipe_set_irq_mask(h_pipe_preview,
 	IA_CSS_EVENT_TYPE_NONE,
 	IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE |
 	IA_CSS_EVENT_TYPE_3A_STATISTICS_DONE );
 
- ia_css_pipe_set_irq_mask(IA_CSS_PIPE_ID_CAPTURE,
+ ia_css_pipe_set_irq_mask(h_pipe_capture,
 	IA_CSS_EVENT_TYPE_NONE,
 	IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE );
  \endcode
@@ -1100,15 +1121,11 @@ ia_css_dequeue_event(struct ia_css_event *event);
  relevant.
 
  \code
- ia_css_pipe_set_irq_mask(IA_CSS_PIPE_ID_PREVIEW,
+ ia_css_pipe_set_irq_mask(h_pipe_preview,
 	IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE,
 	IA_CSS_EVENT_TYPE_ALL );
 
- ia_css_pipe_set_irq_mask(IA_CSS_PIPE_ID_COPY,
-	IA_CSS_EVENT_TYPE_NONE,
-	IA_CSS_EVENT_TYPE_NONE );
-
- ia_css_pipe_set_irq_mask(IA_CSS_PIPE_ID_CAPTURE,
+ ia_css_pipe_set_irq_mask(h_pipe_capture,
 	IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE,
 	IA_CSS_EVENT_TYPE_ALL );
  \endcode
@@ -1124,7 +1141,7 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 
 /** @brief Reads the current event IRQ mask from the CSS.
  *
- * @param[in]	The pipe.
+ * @param[in]	pipe The pipe.
  * @param[out]	or_mask	Current or_mask. The bits in this mask are a binary or
 		of enum ia_css_event_irq_mask_type. Pointer may be NULL.
  * @param[out]	and_mask Current and_mask.The bits in this mask are a binary or
@@ -1197,8 +1214,6 @@ ia_css_frame_allocate_from_info(struct ia_css_frame **frame,
 void
 ia_css_frame_free(struct ia_css_frame *frame);
 
-/* ===== FPGA display frames ====== */
-
 /** @brief Allocate a contiguous CSS frame structure
  *
  * @param	frame		The allocated frame.
@@ -1211,6 +1226,7 @@ ia_css_frame_free(struct ia_css_frame *frame);
  *
  * Contiguous frame allocation, only for FPGA display driver which needs
  * physically contiguous memory.
+ * Deprecated.
  */
 enum ia_css_err
 ia_css_frame_allocate_contiguous(struct ia_css_frame **frame,
@@ -1230,6 +1246,7 @@ ia_css_frame_allocate_contiguous(struct ia_css_frame **frame,
  * This is a convenience function, implemented on top of
  * ia_css_frame_allocate_contiguous().
  * Only for FPGA display driver which needs physically contiguous memory.
+ * Deprecated.
  */
 enum ia_css_err
 ia_css_frame_allocate_contiguous_from_info(struct ia_css_frame **frame,
@@ -1237,6 +1254,7 @@ ia_css_frame_allocate_contiguous_from_info(struct ia_css_frame **frame,
 
 /** @brief Map an existing frame data pointer to a CSS frame.
  *
+ * @param	frame		Pointer to the frame to be initialized
  * @param[in]	info		The frame info.
  * @param[in]	data		Pointer to the allocated frame data.
  * @param[in]	attribute	Attributes to be passed to mmgr_mmap.
@@ -1619,5 +1637,14 @@ enum ia_css_err
 ia_css_mipi_frame_specify(const unsigned int	size_mem_words,
 				const bool contiguous);
 
+/** @brief Dequeue param buffers from sp2host_queue
+ *
+ * @return                                       no return code
+ *
+ * This function must be called at every driver interrupt handler to prevent
+ * overflow of sp2host_queue.
+ */
+void
+ia_css_dequeue_param_buffers(void);
 
 #endif /* _IA_CSS_H_ */

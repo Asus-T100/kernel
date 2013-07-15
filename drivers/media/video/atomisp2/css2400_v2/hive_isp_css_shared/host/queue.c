@@ -3,9 +3,7 @@
 
 #include "sp.h"
 
-#ifndef __KERNEL__
-#include "stdbool.h"	/* bool				*/
-#endif
+#include <stdbool.h>	/* bool				*/
 
 /* MW: The queue should be application agnostic */
 #include "sh_css_internal.h"
@@ -383,22 +381,22 @@ static void store_sp_queue(
 	if (size)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_size / sizeof(offset->size),
-			*size);
+			(uint8_t)*size);
 
 	if (step)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_step / sizeof(offset->step),
-			*step);
+			(uint8_t)*step);
 
 	if (start)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_start / sizeof(offset->start),
-			*start);
+			(uint8_t)*start);
 
 	if (end)
 		store_sp_array_uint8(host_sp_queue,
 			entry_to_cb_end / sizeof(offset->end),
-			*end);
+			(uint8_t)*end);
 }
 
 static void load_sp_queue(
@@ -554,7 +552,7 @@ static bool is_sp_queue_full(
 	load_sp_queue (offset, &cb_size, NULL, &cb_start, &cb_end);
 
 	/* check whether the queue is full or not */
-	is_full = (0 == cb_size) ? true : ((cb_end + 1) % cb_size == cb_start);
+	is_full = ((cb_end + 1) % cb_size == cb_start);
 
 	return is_full;
 }
@@ -682,15 +680,15 @@ static void dump_sp_queue(
 	}
 
 #ifdef C_RUN
-	sh_css_print("base     = %d\n", base);
-	sh_css_print("cb_size  = %d\n", cb_size);
-	sh_css_print("cb_step  = %d (bytes)\n", cb_step);
-	sh_css_print("cb_start = %d\n", cb_start);
-	sh_css_print("cb_end   = %d\n", cb_end);
+	printf("base     = %d\n", base);
+	printf("cb_size  = %d\n", cb_size);
+	printf("cb_step  = %d (bytes)\n", cb_step);
+	printf("cb_start = %d\n", cb_start);
+	printf("cb_end   = %d\n", cb_end);
 	for (i = 0 ; i < SH_CSS_CIRCULAR_BUF_NUM_ELEMS; i++)
-		sh_css_print("cb_elems[%d] = %d\n", i, cb_elems[i]);
+		printf("cb_elems[%d] = %d\n", i, cb_elems[i]);
 
-	sh_css_print("\n");
+	printf("\n");
 #endif
 }
 #endif

@@ -2,7 +2,9 @@
 #define __ASSERT_SUPPORT_H_INCLUDED__
 
 #if defined(_MSC_VER)
-#include "assert.h"
+#include <wdm.h>
+#define assert(cnd) ASSERT(cnd)
+
 #define OP___assert(cnd) assert(cnd)
 #elif defined(__HIVECC)
 
@@ -47,19 +49,5 @@
 #else /* default is for unknown environments */
 #define assert(cnd) ((void)0)
 #endif
-
-#define assert_exit(exp)						\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return;						\
-	} while (0)
-
-#define assert_exit_code(exp, code)					\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return code;					\
-	} while (0)
 
 #endif /* __ASSERT_SUPPORT_H_INCLUDED__ */

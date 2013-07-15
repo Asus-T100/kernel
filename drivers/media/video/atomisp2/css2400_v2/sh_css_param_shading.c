@@ -178,10 +178,7 @@ crop_and_interpolate(unsigned int cropped_width,
 			s_ll = in_ptr[(table_width*src_y1)+src_x0];
 			s_lr = in_ptr[(table_width*src_y1)+src_x1];
 
-			*out_ptr = (dx0*dy0*s_lr +
-				    dx0*dy1*s_ur +
-				    dx1*dy0*s_ll +
-				    dx1*dy1*s_ul) / (divx*divy);
+			*out_ptr = (unsigned short) ((dx0*dy0*s_lr + dx0*dy1*s_ur + dx1*dy0*s_ll + dx1*dy1*s_ul) / (divx*divy));
 		}
 	}
 }

@@ -26,11 +26,8 @@
 #include "sh_css_param_dvs.h"
 #include "sh_css_debug.h"
 
-#ifdef __KERNEL__
-#include <linux/string.h>
-#else
 #include <string.h>		/* memcpy() */
-#endif
+
 
 struct ia_css_dvs_6axis_config *
 generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct ia_css_resolution *dvs_offset)
@@ -207,8 +204,8 @@ free_dvs_6axis_table(struct ia_css_dvs_6axis_config  **dvs_6axis_config)
 		
 		sh_css_free(*dvs_6axis_config);
 		*dvs_6axis_config = NULL;
-		sh_css_dtrace(SH_DBG_TRACE, "<- free_dvs_6axis_table\n");
 	}
+	sh_css_dtrace(SH_DBG_TRACE, "<- free_dvs_6axis_table dvs_6axis_config %p\n",(*dvs_6axis_config));
 }
 
 void copy_dvs_6axis_table(struct ia_css_dvs_6axis_config *dvs_config_dst,

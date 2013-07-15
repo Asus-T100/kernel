@@ -122,16 +122,9 @@ void sh_css_dump_isp_state(void)
 				stall.fifo5);
 		sh_css_dtrace(2, "\t%-32s: %d\n", "[6] sp_FIFO stalled",
 				stall.fifo6);
-#elif defined(HAS_ISP_2300_MEDFIELD) || defined(HAS_ISP_2300_MEDFIELD_DEMO)
-		sh_css_dtrace(2, "\t%-32s: %d\n", "[3] gdc_FIFO stalled",
-				stall.fifo3);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "[4] gpio_FIFO stalled",
-				stall.fifo4);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "[5] sp_FIFO stalled",
-				stall.fifo5);
 #else
 #error "sh_css_debug: ISP cell must be \
-	one of {2300_MEDFIELD, 2300_MEDFIELD_DEMO, 2400_MAMOIADA,, 2400A0_MAMOIADA, 2401_MAMOIADA}"
+	one of {2400_MAMOIADA,, 2400A0_MAMOIADA, 2401_MAMOIADA}"
 #endif
 		sh_css_dtrace(2, "\t%-32s: %d\n", "status & control stalled",
 				stall.stat_ctrl);
@@ -185,26 +178,9 @@ void sh_css_dump_sp_state(void)
 				stall.fifo9);
 		sh_css_dtrace(2, "\t%-32s: %d\n", "irq FIFO stalled",
 				stall.fifoa);
-#elif defined(HAS_SP_2300) || defined(HAS_SP_2300_DEMO)
-		sh_css_dtrace(2, "\t%-32s: %d\n", "if_prim_a_FIFO stalled",
-				stall.fifo0);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "if_sec_FIFO stalled",
-				stall.fifo1);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "str_to_mem_FIFO stalled",
-				stall.fifo2);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "dma_FIFO stalled",
-				stall.fifo3);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "gdc_FIFO stalled",
-				stall.fifo4);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "isp_FIFO stalled",
-				stall.fifo5);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "gp_FIFO stalled",
-				stall.fifo6);
-		sh_css_dtrace(2, "\t%-32s: %d\n", "if_prim_b_FIFO stalled",
-				stall.fifo7);
 #else
 #error "sh_css_debug: SP cell must be \
-	one of {SP_2300, SP_2300_DEMO, SP2400, SP2400A0}"
+	one of {SP2400, SP2400A0}"
 #endif
 		sh_css_dtrace(2, "\t%-32s: %d\n", "dmem stalled",
 				stall.dmem);
@@ -756,10 +732,6 @@ void sh_css_dump_dma_state(void)
 				ch->connection);
 		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Sign extend",
 				ch->sign_extend);
-#if defined(IS_DMA_VERSION_1)
-		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Reverse elems",
-				ch->reverse_elem_order);
-#endif
 		sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "Stride Dev A",
 				ch->stride_a);
 		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Elems Dev A",

@@ -22,6 +22,7 @@ STORAGE_CLASS_FIFO_MONITOR_C void fifo_switch_set(
 assert(ID == FIFO_MONITOR0_ID);
 assert(FIFO_MONITOR_BASE[ID] != (hrt_address)-1);
 assert(switch_id < N_FIFO_SWITCH);
+	(void)ID;
 
 	gp_device_reg_store(GP_DEVICE0_ID, FIFO_SWITCH_ADDR[switch_id], sel);
 
@@ -35,6 +36,7 @@ STORAGE_CLASS_FIFO_MONITOR_C hrt_data fifo_switch_get(
 assert(ID == FIFO_MONITOR0_ID);
 assert(FIFO_MONITOR_BASE[ID] != (hrt_address)-1);
 assert(switch_id < N_FIFO_SWITCH);
+	(void)ID;
 
 return gp_device_reg_load(GP_DEVICE0_ID, FIFO_SWITCH_ADDR[switch_id]);
 }

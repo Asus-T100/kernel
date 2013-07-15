@@ -1,9 +1,6 @@
 #include "ia_css_i_rmgr.h"
 
-#ifndef __KERNEL__
 #include <stdbool.h>
-#endif
-
 #include <assert_support.h>
 
 
