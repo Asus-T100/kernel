@@ -951,6 +951,14 @@ typedef struct drm_i915_private {
 	u8 fmax;
 	u8 fstart;
 
+#ifdef CONFIG_DEBUG_FS
+	/* Variables declaration for DPST */
+	struct {
+		u32 bin_data[DPST_BIN_COUNT];
+		u32 luma_data[DPST_LUMA_COUNT];
+		u32 num_interrupt;
+	} dpst;
+#endif
 	/* Adding this to fallback to normal Turbo logic */
 	bool use_RC0_residency_for_turbo;
 

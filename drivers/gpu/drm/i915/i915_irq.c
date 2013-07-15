@@ -794,6 +794,9 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 				intel_finish_page_flip(dev, pipe);
 			}
 			if (pipe_stats[pipe] & PIPE_DPST_EVENT_STATUS) {
+#ifdef CONFIG_DEBUG_FS
+				dev_priv->dpst.num_interrupt++;
+#endif
 				if (dev_priv->dpst_task != NULL)
 					send_sig_info(dev_priv->dpst_signal,
 						SEND_SIG_FORCED,

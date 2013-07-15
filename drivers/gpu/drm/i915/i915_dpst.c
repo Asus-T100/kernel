@@ -122,10 +122,14 @@ int i915_dpst_context(struct drm_device *dev, void *data,
 		for (index = 0; index < DPST_BIN_COUNT; index++) {
 			bdr_data =
 			I915_READ(VLV_DISPLAY_BASE + DPST_VLV_IEBDR_REG);
+
 			if (!(bdr_data & IEBDR_BUSY_BIT)) {
 				init_context->hist_status.histogram_bins.
 					status[index] =	bdr_data &
 						DPST_SEGVALUE_MAX_22_BIT;
+#ifdef CONFIG_DEBUG_FS
+				dev_priv->dpst.bin_data[index] = bdr_data;
+#endif
 			} else {
 				/* Engine is busy. Reset index to 0 to grab
 				 * fresh histogram data */
@@ -181,6 +185,9 @@ int i915_dpst_context(struct drm_device *dev, void *data,
 			 * register */
 			I915_WRITE(VLV_DISPLAY_BASE + DPST_VLV_IEBDR_REG,
 					diet_factor);
+#ifdef CONFIG_DEBUG_FS
+			dev_priv->dpst.luma_data[i] = diet_factor;
+#endif
 		}
 		/* reset the mask */
 		temp = I915_READ(VLV_DISPLAY_BASE + DPST_VLV_IEHCR_REG);
