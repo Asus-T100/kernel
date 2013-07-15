@@ -38,9 +38,11 @@ enum sst_audio_device_id_ctp {
 enum sst_audio_task_id_mrfld {
 	SST_TASK_ID_NONE = 0,
 	SST_TASK_ID_SBA = 1,
-	SST_TASK_ID_FBA = 2,
+	SST_TASK_ID_FBA_UL = 2,
 	SST_TASK_ID_MEDIA = 3,
 	SST_TASK_ID_AWARE = 4,
+	SST_TASK_ID_FBA_DL = 5,
+	SST_TASK_ID_MAX = SST_TASK_ID_FBA_DL,
 };
 
 /* Device IDs for Merrifield are Pipe IDs,
