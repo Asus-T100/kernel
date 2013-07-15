@@ -71,7 +71,7 @@
 #define TS_ENABLE_ALL	0x27
 
 /* ADC to Temperature conversion table length */
-#define TABLE_LENGTH	24
+#define TABLE_LENGTH	34
 #define TEMP_INTERVAL	5
 
 /* Default Alert threshold 85 C */
@@ -152,9 +152,11 @@ static const int alert_regs_l[3][4] = {
  */
 static const int adc_code[2][TABLE_LENGTH] = {
 	{977, 961, 941, 917, 887, 853, 813, 769, 720, 669, 615, 561, 508, 456,
-		407, 357, 315, 277, 243, 212, 186, 162, 140, 107},
+		407, 357, 315, 277, 243, 212, 186, 162, 140, 107,
+		94, 82, 72, 64, 56, 50, 44, 39, 35, 31},
 	{-20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
-		65, 70, 75, 80, 85, 90, 100},
+		65, 70, 75, 80, 85, 90, 100, 105, 110, 115, 120, 125,
+		130, 135, 140, 145, 150},
 	};
 
 static DEFINE_MUTEX(thrm_update_lock);
@@ -625,8 +627,9 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 		return -EINVAL;
 	}
 
-	/* Convert from mC to C */
-	trip_temp /= 1000;
+	/* Calibrate w.r.t slope & intercept values */
+	trip_temp = (trip_temp - td_info->sensor->intercept) /
+				td_info->sensor->slope;
 
 	/* Minimum Tcrit for PMIC DIE is different from that of others */
 	if (td_info->sensor->direct)
@@ -664,6 +667,13 @@ static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
 		goto exit;
 
 	ret = adc_to_temp(td_info->sensor->direct, adc_val, trip_temp);
+	if (ret)
+		goto exit;
+
+	/* Calibrate w.r.t slope & intercept values */
+	if (td_info->sensor->temp_correlation)
+		ret = td_info->sensor->temp_correlation(td_info->sensor,
+						*trip_temp, trip_temp);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;

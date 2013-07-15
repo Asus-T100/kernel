@@ -51,17 +51,17 @@ static struct intel_mid_thermal_sensor byt_sensors[] = {
 		.temp_correlation = linear_correlation,
 	},
 	{
-		.name = "SYSTHERM1",
+		.name = "skin0",
 		.index = 1,
-		.slope = 1000,
-		.intercept = 0,
+		.slope = 477,
+		.intercept = 22002,
 		.temp_correlation = linear_correlation,
 	},
 	{
-		.name = "SYSTHERM2",
+		.name = "skin1",
 		.index = 2,
-		.slope = 1000,
-		.intercept = 0,
+		.slope = 347,
+		.intercept = 17940,
 		.temp_correlation = linear_correlation,
 	},
 	{
