@@ -1,8 +1,8 @@
 
 #include "fifo_monitor.h"
-
+#ifndef __KERNEL__
 #include <stdbool.h>
-
+#endif
 #include "device_access.h"
 
 #include <hrt/bits.h>
