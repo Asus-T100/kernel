@@ -140,6 +140,8 @@
 #define BQ24261_DEF_BAT_VOLT_MAX_DESIGN		4200000
 
 /* Settings for Voltage / DPPM Register (05) */
+#define BQ24261_VBATT_LEVEL1		3700000
+#define BQ24261_VBATT_LEVEL2		3960000
 #define BQ24261_VINDPM_MASK		(0x07)
 #define BQ24261_VINDPM_320MV		(0x01 << 2)
 #define BQ24261_VINDPM_160MV		(0x01 << 1)
@@ -590,8 +592,8 @@ static inline int bq24261_tmr_ntc_init(struct bq24261_charger *chip)
 static inline int bq24261_enable_charging(
 	struct bq24261_charger *chip, bool val)
 {
-	u8 reg_val;
 	int ret;
+	u8 reg_val;
 	bool is_ready;
 
 	ret = bq24261_read_reg(chip->client,
@@ -617,15 +619,16 @@ static inline int bq24261_enable_charging(
 		}
 	}
 
-
 	if (chip->pdata->enable_charging)
 		chip->pdata->enable_charging(val);
 
-	reg_val = val ? (~BQ24261_CE_DISABLE & BQ24261_CE_MASK) :
-			BQ24261_CE_DISABLE;
-
-	if (val && chip->is_hw_chrg_term)
-		reg_val |= BQ24261_TE_ENABLE;
+	if (val) {
+		reg_val = (~BQ24261_CE_DISABLE & BQ24261_CE_MASK);
+		if (chip->is_hw_chrg_term)
+			reg_val |= BQ24261_TE_ENABLE;
+	} else {
+		reg_val = BQ24261_CE_DISABLE;
+	}
 
 	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
 		       BQ24261_RESET_MASK|BQ24261_CE_MASK|BQ24261_TE_MASK,
@@ -703,7 +706,39 @@ static inline int bq24261_set_cc(struct bq24261_charger *chip, int cc)
 
 static inline int bq24261_set_cv(struct bq24261_charger *chip, int cv)
 {
+	int bat_volt;
+	int ret;
 	u8 reg_val;
+	u8 vindpm_val = 0x0;
+
+	/*
+	* Setting VINDPM value as per the battery voltage
+	*  VBatt           Vindpm     Register Setting
+	*  < 3.7v           4.2v       0x0 (default)
+	*  3.71v - 3.96v    4.36v      0x2
+	*  > 3.96v          4.6v       0x5
+	*/
+	ret = get_battery_voltage(&bat_volt);
+	if (ret) {
+		dev_err(&chip->client->dev,
+			"Error getting battery voltage!!\n");
+	} else {
+		if (bat_volt > BQ24261_VBATT_LEVEL2)
+			vindpm_val =
+				(BQ24261_VINDPM_320MV | BQ24261_VINDPM_80MV);
+		else if (bat_volt > BQ24261_VBATT_LEVEL1)
+			vindpm_val = BQ24261_VINDPM_160MV;
+	}
+
+	ret = bq24261_read_modify_reg(chip->client,
+			BQ24261_VINDPM_STAT_ADDR,
+			BQ24261_VINDPM_MASK,
+			vindpm_val);
+	if (ret) {
+		dev_err(&chip->client->dev,
+			"Error setting VINDPM setting!!\n");
+		return ret;
+	}
 
 	if (chip->pdata->set_cv)
 		return chip->pdata->set_cv(cv);
