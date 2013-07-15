@@ -2966,6 +2966,14 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 						 f->fmt.pix.width,
 						 f->fmt.pix.height);
 			}
+			/*WORKAROUND: for qvga offline still capture, isp
+			 * would timeout for 8MP output from sensor.
+			 * but won't timeout for 720p sensor output*/
+			if (f->fmt.pix.width == 320
+				&& f->fmt.pix.height == 240) {
+				snr_mbus_fmt.width = 1280;
+				snr_mbus_fmt.height = 720;
+			}
 		}
 	}
 #endif
@@ -3444,6 +3452,14 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 				    DIV_ROUND_UP(2448 *
 						 f->fmt.pix.width,
 						 f->fmt.pix.height);
+			}
+			/*WORKAROUND: for qvga offline still capture, isp
+			 * would timeout for 8MP output from sensor.
+			 * but won't timeout for 720p sensor output*/
+			if (f->fmt.pix.width == 320
+				&& f->fmt.pix.height == 240) {
+				ffmt.width = 1280;
+				ffmt.height = 720;
 			}
 		}
 	}
