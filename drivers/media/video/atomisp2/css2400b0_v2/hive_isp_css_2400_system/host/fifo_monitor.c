@@ -1,8 +1,8 @@
 
 #include "fifo_monitor.h"
-#ifndef __KERNEL__
+
 #include <stdbool.h>
-#endif
+
 #include "device_access.h"
 
 #include <hrt/bits.h>
@@ -13,14 +13,8 @@
 
 #ifndef __INLINE_FIFO_MONITOR__
 #define STORAGE_CLASS_FIFO_MONITOR_DATA static const
-
-STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH];
-
-#include "fifo_monitor_private.h"
 #else
 #define STORAGE_CLASS_FIFO_MONITOR_DATA const
-
-STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH];
 #endif /* __INLINE_FIFO_MONITOR__ */
 
 STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH] = {
@@ -28,6 +22,9 @@ STORAGE_CLASS_FIFO_MONITOR_DATA unsigned int FIFO_SWITCH_ADDR[N_FIFO_SWITCH] = {
 	_REG_GP_SWITCH_GDC1_ADDR,
 	_REG_GP_SWITCH_GDC2_ADDR};
 
+#ifndef __INLINE_FIFO_MONITOR__
+#include "fifo_monitor_private.h"
+#endif /* __INLINE_FIFO_MONITOR__ */
 
 STORAGE_CLASS_INLINE bool fifo_monitor_status_valid (
 	const fifo_monitor_ID_t		ID,
@@ -45,7 +42,8 @@ void fifo_channel_get_state(
 	const fifo_channel_t		channel_id,
 	fifo_channel_state_t		*state)
 {
-	assert_exit(state && channel_id < N_FIFO_CHANNEL);
+assert(state != NULL);
+assert(channel_id < N_FIFO_CHANNEL);
 
 	switch (channel_id) {
 	case FIFO_CHANNEL_ISP0_TO_SP0:
@@ -499,9 +497,9 @@ void fifo_switch_get_state(
 {
 	hrt_data		data = (hrt_data)-1;
 
-	assert_exit(state);
-	assert(switch_id < N_FIFO_SWITCH);
-	assert(ID == FIFO_MONITOR0_ID);
+assert(state != NULL);
+assert(switch_id < N_FIFO_SWITCH);
+assert(ID == FIFO_MONITOR0_ID);
 
 (void)ID;
 
@@ -521,8 +519,8 @@ void fifo_monitor_get_state(
 	fifo_channel_t	ch_id;
 	fifo_switch_t	sw_id;
 
-	assert_exit(state);
-	assert(ID < N_FIFO_MONITOR_ID);
+assert(state != NULL);
+assert(ID < N_FIFO_MONITOR_ID);
 
 	for (ch_id = 0; ch_id < N_FIFO_CHANNEL; ch_id++) {
 		fifo_channel_get_state(ID, ch_id,

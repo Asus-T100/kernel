@@ -12,7 +12,7 @@
 
 STORAGE_CLASS_SP_C void sp_ctrl_store(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const hrt_data		value)
 {
 assert(ID < N_SP_ID);
@@ -23,7 +23,7 @@ return;
 
 STORAGE_CLASS_SP_C hrt_data sp_ctrl_load(
 	const sp_ID_t		ID,
-	const unsigned int	reg)
+	const hrt_address	reg)
 {
 assert(ID < N_SP_ID);
 assert(SP_CTRL_BASE[ID] != (hrt_address)-1);
@@ -32,7 +32,7 @@ return device_load_uint32(SP_CTRL_BASE[ID] + reg*sizeof(hrt_data));
 
 STORAGE_CLASS_SP_C bool sp_ctrl_getbit(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const unsigned int	bit)
 {
 	hrt_data val = sp_ctrl_load(ID, reg);
@@ -41,7 +41,7 @@ return (val & (1UL << bit)) != 0;
 
 STORAGE_CLASS_SP_C void sp_ctrl_setbit(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const unsigned int	bit)
 {
 	hrt_data	data = sp_ctrl_load(ID, reg);
@@ -51,7 +51,7 @@ return;
 
 STORAGE_CLASS_SP_C void sp_ctrl_clearbit(
 	const sp_ID_t		ID,
-	const unsigned int	reg,
+	const hrt_address	reg,
 	const unsigned int	bit)
 {
 	hrt_data	data = sp_ctrl_load(ID, reg);
@@ -61,7 +61,7 @@ return;
 
 STORAGE_CLASS_SP_C void sp_dmem_store(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const void			*data,
 	const size_t		size)
 {
@@ -77,7 +77,7 @@ return;
 
 STORAGE_CLASS_SP_C void sp_dmem_load(
 	const sp_ID_t		ID,
-	const unsigned int	addr,
+	const hrt_address	addr,
 	void				*data,
 	const size_t		size)
 {
@@ -93,11 +93,12 @@ return;
 
 STORAGE_CLASS_SP_C void sp_dmem_store_uint8(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const uint8_t		data)
 {
 assert(ID < N_SP_ID);
 assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	device_store_uint8(SP_DMEM_BASE[SP0_ID] + addr, data);
 #else
@@ -108,11 +109,12 @@ return;
 
 STORAGE_CLASS_SP_C void sp_dmem_store_uint16(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const uint16_t		data)
 {
 assert(ID < N_SP_ID);
 assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	device_store_uint16(SP_DMEM_BASE[SP0_ID] + addr, data);
 #else
@@ -123,11 +125,12 @@ return;
 
 STORAGE_CLASS_SP_C void sp_dmem_store_uint32(
 	const sp_ID_t		ID,
-	unsigned int		addr,
+	hrt_address		addr,
 	const uint32_t		data)
 {
 assert(ID < N_SP_ID);
 assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	device_store_uint32(SP_DMEM_BASE[SP0_ID] + addr, data);
 #else
@@ -138,10 +141,11 @@ return;
 
 STORAGE_CLASS_SP_C uint8_t sp_dmem_load_uint8(
 	const sp_ID_t		ID,
-	const unsigned int	addr)
+	const hrt_address	addr)
 {
 assert(ID < N_SP_ID);
 assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	return device_load_uint8(SP_DMEM_BASE[SP0_ID] + addr);
 #else
@@ -151,10 +155,11 @@ assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
 
 STORAGE_CLASS_SP_C uint16_t sp_dmem_load_uint16(
 	const sp_ID_t		ID,
-	const unsigned int	addr)
+	const hrt_address	addr)
 {
 assert(ID < N_SP_ID);
 assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	return device_load_uint16(SP_DMEM_BASE[SP0_ID] + addr);
 #else
@@ -164,10 +169,11 @@ assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
 
 STORAGE_CLASS_SP_C uint32_t sp_dmem_load_uint32(
 	const sp_ID_t		ID,
-	const unsigned int	addr)
+	const hrt_address	addr)
 {
 assert(ID < N_SP_ID);
 assert(SP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	return device_load_uint32(SP_DMEM_BASE[SP0_ID] + addr);
 #else

@@ -17,10 +17,8 @@
 
 #include "sw_event.h"
 
-#ifndef __KERNEL__
-#include "stdbool.h"		/* bool */
-#include "stddef.h"		/* NULL */
-#endif
+#include <stdbool.h>		/* bool */
+#include <stddef.h>		/* NULL */
 
 #include "assert_support.h"	/* OP___assert() */
 

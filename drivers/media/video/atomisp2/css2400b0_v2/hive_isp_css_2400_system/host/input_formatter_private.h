@@ -8,8 +8,8 @@
 #include "assert_support.h"
 
 STORAGE_CLASS_INPUT_FORMATTER_C void input_formatter_reg_store(
-	const input_formatter_ID_t	ID,
-	const unsigned int			reg_addr,
+	const input_formatter_ID_t		ID,
+	const hrt_address			reg_addr,
 	const hrt_data				value)
 {
 assert(ID < N_INPUT_FORMATTER_ID);
