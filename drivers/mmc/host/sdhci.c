@@ -1261,6 +1261,9 @@ static int sdhci_set_power(struct sdhci_host *host, unsigned short power)
 
 	if (pwr == 0) {
 		sdhci_writeb(host, 0, SDHCI_POWER_CONTROL);
+		/* disable the power by setting GPIO pin */
+		if (host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE)
+			gpio_set_value(host->gpio_pwr_en, 1);
 		return 0;
 	}
 
@@ -1281,6 +1284,10 @@ static int sdhci_set_power(struct sdhci_host *host, unsigned short power)
 	pwr |= SDHCI_POWER_ON;
 
 	sdhci_writeb(host, pwr, SDHCI_POWER_CONTROL);
+
+	/* enable the power by setting GPIO pin */
+	if (host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE)
+		gpio_set_value(host->gpio_pwr_en, 0);
 
 	/*
 	 * Some controllers need an extra 10ms delay of 10ms before they
@@ -1965,6 +1972,9 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 		/* Set 1.8V Signal Enable in the Host Control2 register to 0 */
 		ctrl &= ~SDHCI_CTRL_VDD_180;
 		sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+		/* 3.3v by setting GPIO pin */
+		if (host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE)
+			gpio_set_value(host->gpio_1p8_en, 0);
 
 		/* Wait for 5ms */
 		usleep_range(5000, 5500);
@@ -1983,6 +1993,9 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 			/* Set 1.8V Signal Enable in the Host Control2 Reg */
 			ctrl |= SDHCI_CTRL_VDD_180;
 			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+			/* 1.8v by setting GPIO pin */
+			if (host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE)
+				gpio_set_value(host->gpio_1p8_en, 1);
 			return 0;
 		}
 
@@ -2001,6 +2014,9 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 			 */
 			ctrl |= SDHCI_CTRL_VDD_180;
 			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+			/* 1.8v by setting GPIO pin */
+			if (host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE)
+				gpio_set_value(host->gpio_1p8_en, 1);
 
 			/* Wait for 5ms */
 			usleep_range(5000, 5500);

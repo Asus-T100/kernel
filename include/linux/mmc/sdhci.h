@@ -116,6 +116,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_WAIT_FOR_IDLE			(1<<25)
 /* BAD sd cd in HOST IC. This will cause system hang when removing SD */
 #define SDHCI_QUIRK2_BAD_SD_CD				(1<<26)
+/* Power pin needs working at GPIO mode */
+#define SDHCI_QUIRK2_POWER_PIN_GPIO_MODE		(1<<27)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
@@ -214,6 +216,9 @@ struct sdhci_host {
 	unsigned int		tuning_mode;	/* Re-tuning mode supported by host */
 #define SDHCI_TUNING_MODE_1	0
 	struct timer_list	tuning_timer;	/* Timer for tuning */
+
+	unsigned int		gpio_pwr_en;
+	unsigned int		gpio_1p8_en;
 
 	unsigned long private[0] ____cacheline_aligned;
 };

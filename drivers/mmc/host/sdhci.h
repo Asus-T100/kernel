@@ -17,6 +17,7 @@
 #include <linux/compiler.h>
 #include <linux/types.h>
 #include <linux/io.h>
+#include <linux/gpio.h>
 
 #include <linux/mmc/sdhci.h>
 
