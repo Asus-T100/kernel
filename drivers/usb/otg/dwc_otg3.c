@@ -11,6 +11,7 @@
 #include <linux/kthread.h>
 #include <linux/version.h>
 #include <linux/suspend.h>
+#include <linux/intel_mid_pm.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -30,7 +31,6 @@ static const char driver_name[] = "dwc_otg3";
 static void dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
 static struct dwc_otg2 *the_transceiver;
-static int use_s3_wa;
 
 static struct {
 
@@ -42,36 +42,6 @@ static struct {
 
 };
 
-static int d3hot_wa_enabled(struct dwc_otg2 *otg)
-{
-	if (!otg || !otg->otg_data)
-		return 0;
-
-	return otg->otg_data->d3hot_wa;
-}
-
-static int enable_d3hot_wa(struct dwc_otg2 *otg, bool on_off)
-{
-	void __iomem *addr;
-	unsigned int val = 0;
-
-	if (!d3hot_wa_enabled(otg))
-		return 0;
-
-	addr = ioremap_nocache(APBFB_OTG3_MISC1, 4);
-	if (!addr)
-		return -EFAULT;
-
-	val = readl(addr);
-	if (on_off)
-		val |= OTG3_MISC1_DO_D3COLD_RESUME;
-	else
-		val &= ~OTG3_MISC1_DO_D3COLD_RESUME;
-	writel(val, addr);
-	iounmap(addr);
-
-	return 0;
-}
 
 static int is_hybridvp(struct dwc_otg2 *otg)
 {
@@ -325,13 +295,6 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
-	/* Enable D0i3hot WA for host mode
-	 * If enable failed, then LS device will cause fabric error
-	 */
-	if (enable_d3hot_wa(otg, true)) {
-		printk(KERN_ERR "D3hot WA can't be enabled. Host start failed\n");
-		return -EFAULT;
-	}
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -869,29 +832,6 @@ cleanup:
 	return type;
 }
 
-static int dwc_sleep_pm_callback(struct notifier_block *nfb,
-			unsigned long action, void *ignored)
-{
-	struct dwc_otg2 *otg = the_transceiver;
-
-	switch (action) {
-	case PM_POST_SUSPEND:
-		use_s3_wa = 0;
-		return NOTIFY_OK;
-	case PM_SUSPEND_PREPARE:
-		if (otg->dev->power.runtime_status == RPM_SUSPENDED)
-			if (otg->state == DWC_STATE_A_HOST)
-				use_s3_wa = 1;
-		return NOTIFY_OK;
-	}
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block dwc_sleep_pm_notifier = {
-	.notifier_call = dwc_sleep_pm_callback,
-	.priority = 0
-};
-
 static int is_self_powered_b_device(struct dwc_otg2 *otg)
 {
 	return get_id(otg) == RID_GND;
@@ -1181,14 +1121,6 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	dwc_otg_charger_hwdet(false);
 
-	/* Disable D0i3hot WA by default
-	 * If disable failed, then maybe cause device mode D0i3 can't work
-	 * after resumed. But only can be when host enter sleep/hibernation
-	 * state which is not easy to met by user. So just print one warning.
-	 */
-	if (enable_d3hot_wa(otg, false))
-		printk(KERN_ERR "dwc-otg: D3hot WA disable failed\n");
-
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
 	if (!is_hybridvp(otg))
@@ -1325,7 +1257,7 @@ stay_host:
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_A_DEV_SESS_END_DET_EVNT;
-	user_mask = USER_A_BUS_DROP | USER_RESET_HOST;
+	user_mask = USER_A_BUS_DROP;
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	user_mask |= USER_ID_B_CHANGE_EVENT;
 #endif
@@ -1405,16 +1337,6 @@ stay_host:
 		return DWC_STATE_INIT;
 	}
 #endif
-
-	if (user_events & USER_RESET_HOST) {
-		otg_dbg(otg, "USER_RESET_HOST\n");
-		pm_runtime_get(otg->dev);
-		stop_host(otg);
-		reset_hw(otg);
-		start_host(otg);
-		pm_runtime_put_autosuspend(otg->dev);
-		goto stay_host;
-	}
 
 	/* Invalid state */
 	return DWC_STATE_INVALID;
@@ -1638,23 +1560,6 @@ static inline struct dwc_otg2 *xceiv_to_dwc_otg2(struct usb_otg *x)
 static int dwc_otg2_set_suspend(struct usb_phy *x, int suspend)
 {
 	return 0;
-}
-
-static int dwc_otg2_whether_to_use_s3_wa(struct dwc_otg2 *otg)
-{
-	if (!d3hot_wa_enabled(otg))
-		return 0;
-
-	return use_s3_wa;
-}
-
-static void dwc_otg2_reset_host(struct dwc_otg2 *otg)
-{
-	unsigned long flags;
-	spin_lock_irqsave(&otg->lock, flags);
-	otg->user_events |= USER_RESET_HOST;
-	wakeup_main_thread(otg);
-	spin_unlock_irqrestore(&otg->lock, flags);
 }
 
 static int dwc_otg2_set_peripheral(struct usb_otg *x,
@@ -1914,9 +1819,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
-	if (d3hot_wa_enabled(otg))
-		otg->reset_host	= dwc_otg2_reset_host;
-	otg->whether_to_use_s3_wa = dwc_otg2_whether_to_use_s3_wa;
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
@@ -2038,11 +1940,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 			otg_err(otg, "Fail to de-assert USBRST#\n");
 	}
 
-	if (register_pm_notifier(&dwc_sleep_pm_notifier)) {
-		printk(KERN_ERR "dwc-otg: Fail to register PM notifier\n");
-		goto exit;
-	}
-
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -2094,7 +1991,6 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	usb_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
 
-	unregister_pm_notifier(&dwc_sleep_pm_notifier);
 	kfree(otg);
 }
 
@@ -2161,11 +2057,6 @@ static int dwc_otg_runtime_resume(struct device *dev)
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
-	if (dwc_otg2_whether_to_use_s3_wa(otg)) {
-		otg_dbg(otg, "%s: for S3 WA, return directly\n", __func__);
-		return 0;
-	}
-
 	pci_set_power_state(pci_dev, PCI_D0);
 
 	/* From synopsys spec 12.2.11.
@@ -2200,11 +2091,6 @@ static int dwc_otg_suspend(struct device *dev)
 
 	if (!otg) {
 		printk(KERN_ERR "%s: dwc_otg2 haven't init.\n", __func__);
-		return 0;
-	}
-
-	if (dwc_otg2_whether_to_use_s3_wa(otg)) {
-		otg_dbg(otg, "%s: for S3 WA, return directly\n", __func__);
 		return 0;
 	}
 

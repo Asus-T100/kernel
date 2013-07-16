@@ -348,7 +348,6 @@ struct intel_dwc_otg_pdata {
 	int no_host_mode;
 	int no_device_mode;
 	int charging_compliance;
-	int d3hot_wa;
 };
 
 /** The main structure to keep track of OTG driver state. */
@@ -402,9 +401,6 @@ struct dwc_otg2 {
 	/** a_bus_drop event from userspace */
 #define USER_A_BUS_DROP 0x100
 
-	/** reset host event from host driver */
-#define USER_RESET_HOST 0x200
-
 	/* States */
 	enum dwc_otg_state prev;
 	enum dwc_otg_state state;
@@ -415,19 +411,6 @@ struct dwc_otg2 {
 	struct power_supply_cable_props charging_cap;
 	struct notifier_block nb;
 	struct intel_dwc_otg_pdata *otg_data;
-
-	/* This is one workaround for silicon BUGs.
-	 * If host resume from D3hot due to usb device plug in,
-	 * it will me enumerated failed. So need reset host stack
-	 * for this issue.
-	 */
-	void (*reset_host)(struct dwc_otg2 *otg);
-
-	/* Due to D0i3hot WA. For S3 suspend/resume flow, USB3 driver
-	 * need also do some WA. If follow standard S3 flow, the D0i3hot
-	 * issue still can reproduce and cause system can't enter S3 anymore.
-	 */
-	int (*whether_to_use_s3_wa)(struct dwc_otg2 *otg);
 };
 
 /* Invalid SDP checking timeout */
