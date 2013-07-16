@@ -39,50 +39,9 @@ static int dwc_host_setup(struct usb_hcd *hcd);
 static int xhci_release_host(struct usb_hcd *hcd);
 static struct platform_driver xhci_dwc_driver;
 
-static void set_phy_suspend_resume(struct usb_hcd *hcd, int on_off)
-{
-	/* Comment the actual PHY operations. This is not final hardware desgin.
-	 * And on current HVP platform, it will cause LS/FS devices
-	 * can't enumerate success after resume from D0I1 mode.
-	 */
-#if 0
-	u32 data = 0;
-	struct xhci_hcd		*xhci = hcd_to_xhci(hcd);
-
-	switch (hcd->speed) {
-	case HCD_USB2:
-		data = readl(hcd->regs + GUSB2PHYCFG0);
-		if (on_off)
-			data |= GUSB2PHYCFG_SUS_PHY;
-		else
-			data &= ~GUSB2PHYCFG_SUS_PHY;
-		writel(data, hcd->regs + GUSB2PHYCFG0);
-		break;
-	case HCD_USB3:
-		data = readl(hcd->regs + GUSB3PIPECTL0);
-		if (on_off)
-			data |= GUSB3PIPECTL_SUS_EN;
-		else
-			data &= ~GUSB3PIPECTL_SUS_EN;
-		writel(data, hcd->regs + GUSB3PIPECTL0);
-		break;
-	default:
-		xhci_err(xhci, "Invalid arguments in %s!\n", __func__);
-		return;
-	}
-#endif
-
-	printk(KERN_ERR "DWC USB%d phy set %s.\n",
-			HCD_USB2 == hcd->speed ? 2 : 3,
-			on_off ? "suspend" : "resume");
-}
-
 static int xhci_dwc_bus_suspend(struct usb_hcd *hcd)
 {
-	int ret;
-	ret = xhci_bus_suspend(hcd);
-	set_phy_suspend_resume(hcd, 1);
-	return ret;
+	return xhci_bus_suspend(hcd);
 }
 
 static int xhci_dwc_bus_resume(struct usb_hcd *hcd)
@@ -93,7 +52,6 @@ static int xhci_dwc_bus_resume(struct usb_hcd *hcd)
 	mdelay(1);
 
 	ret = xhci_bus_resume(hcd);
-	set_phy_suspend_resume(hcd, 0);
 	return ret;
 }
 
@@ -418,11 +376,6 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 
 	xhci_dwc_driver.shutdown = NULL;
 
-	if (HCD_RH_RUNNING(hcd))
-		set_phy_suspend_resume(hcd, 1);
-	else if (HCD_RH_RUNNING(xhci->shared_hcd))
-		set_phy_suspend_resume(xhci->shared_hcd, 1);
-
 	if (xhci->shared_hcd) {
 		usb_remove_hcd(xhci->shared_hcd);
 		usb_put_hcd(xhci->shared_hcd);
@@ -664,6 +617,7 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 	}
 	hcd->rpm_control = 1;
 	hcd->rpm_resume = 0;
+	hcd->rpm_early_resume = 0;
 
 	platform_set_drvdata(pdev, hcd);
 	pm_runtime_set_autosuspend_delay(hcd->self.controller, 100);
@@ -783,6 +737,18 @@ static int dwc_hcd_suspend_common(struct device *dev)
 			data |= GCTL_GBL_HIBERNATION_EN;
 			writel(data, hcd->regs + GCTL);
 			printk(KERN_ERR "set xhci hibernation enable!\n");
+
+			/* Due to MERR platform will call ISR before resume
+			 * to D0 when device under D0i3. So disable interrupt
+			 * before enter D0i3, and re-enable it after resume
+			 * done. By SYNS controller design, wakeup event is
+			 * not depend on this register. So it will no impact
+			 * to wakeup.
+			 */
+			data = xhci_readl(xhci, &xhci->op_regs->command);
+			data &= ~CMD_EIE;
+			xhci_writel(xhci, data, &xhci->op_regs->command);
+
 			retval = xhci_suspend(xhci);
 		}
 
@@ -809,6 +775,7 @@ static int dwc_hcd_resume_common(struct device *dev)
 	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
 	struct xhci_hcd		*xhci = hcd_to_xhci(hcd);
 	int			retval = 0;
+	u32 data;
 
 	if (!xhci) {
 		printk(KERN_ERR "%s: xHCI equal NULL, return\n", __func__);
@@ -832,6 +799,12 @@ static int dwc_hcd_resume_common(struct device *dev)
 		}
 	}
 
+	/* Enable ISR before enable interrupt. */
+	hcd->rpm_early_resume = 1;
+	data = xhci_readl(xhci, &xhci->op_regs->command);
+	data |= CMD_EIE;
+	xhci_writel(xhci, data, &xhci->op_regs->command);
+
 	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
 
 	return retval;
@@ -840,6 +813,10 @@ static int dwc_hcd_resume_common(struct device *dev)
 static int dwc_hcd_runtime_suspend(struct device *dev)
 {
 	int retval;
+	struct platform_device		*pdev = to_platform_device(dev);
+	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+
+	hcd->rpm_early_resume = 0;
 
 	retval = dwc_hcd_suspend_common(dev);
 
