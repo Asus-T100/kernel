@@ -41,6 +41,12 @@
 /*Added for HDMI Audio */
 #include "hdmi_audio_if.h"
 
+int i915_rotation __read_mostly;
+module_param_named(i915_rotation, i915_rotation, int, 0600);
+MODULE_PARM_DESC(i915_rotation,
+		"Enable 180 degree hardware rotation support, "
+		"1=180 degree, 0=0 degree ");
+
 static int i915_modeset __read_mostly = -1;
 module_param_named(modeset, i915_modeset, int, 0400);
 MODULE_PARM_DESC(modeset,

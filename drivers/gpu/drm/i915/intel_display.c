@@ -2232,6 +2232,41 @@ unsigned long intel_gen4_compute_page_offset(int *x, int *y,
 	}
 }
 
+int i915_rotation_ffrd(const struct drm_device *dev,
+			const struct drm_crtc *crtc)
+{
+	u32 val;
+	int reg;
+	/* Rotate only for local display.
+	 * Hardcoded to be on pipe A.
+	 * ToDo - Generalize pipe for local display.
+	 */
+	int pipe = 0;
+	u32 sprctla;
+	u32 sprctlb;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI))
+		return 0;
+
+	reg = DSPCNTR(pipe);
+	val = I915_READ(reg);
+	sprctla = I915_READ(SPCNTR(pipe, 0));
+	sprctlb = I915_READ(SPCNTR(pipe, 1));
+	memcpy(&rot_mode, &(crtc->hwmode), sizeof(struct drm_display_mode));
+
+	if (i915_rotation) {
+		val |= DISPPLANE_180_ROTATION_ENABLE;
+		I915_WRITE(reg, val);
+		sprctla |= DISPPLANE_180_ROTATION_ENABLE;
+		I915_WRITE(SPCNTR(pipe, 0), sprctla);
+		sprctlb |= DISPPLANE_180_ROTATION_ENABLE;
+		I915_WRITE(SPCNTR(pipe, 1), sprctlb);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(i915_rotation_ffrd);
+
 int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
 				struct drm_file *file)
 {
@@ -2323,7 +2358,9 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 	u32 dspcntr;
 	u32 reg;
 	int pixel_size;
-
+	/* Called to enable 180 degree rotation */
+	if (i915_rotation)
+		i915_rotation_ffrd(dev, crtc);
 	switch (plane) {
 	case 0:
 	case 1:
