@@ -1141,6 +1141,26 @@ static int __init acpi_parse_pidv(struct acpi_table_header *table)
 	memcpy(&intel_mid_ssn, &(pidv_tbl->pidv.part_number),
 			INTEL_MID_SSN_SIZE);
 	intel_mid_ssn[INTEL_MID_SSN_SIZE] = '\0';
+	pr_info("SPID updated according to ACPI Table:\n");
+	pr_info("\tspid customer id        : %04x\n"
+		"\tspid vendor id          : %04x\n"
+		"\tspid manufacturer id    : %04x\n"
+		"\tspid platform family id : %04x\n"
+		"\tspid product line id    : %04x\n"
+		"\tspid hardware id        : %04x\n"
+		"\tspid fru[4..0]          : %02x %02x %02x %02x %02x\n"
+		"\tspid fru[9..5]          : %02x %02x %02x %02x %02x\n"
+		"\tssn                     : %s\n",
+		spid.customer_id,
+		spid.vendor_id,
+		spid.manufacturer_id,
+		spid.platform_family_id,
+		spid.product_line_id,
+		spid.hardware_id,
+		spid.fru[4], spid.fru[3], spid.fru[2], spid.fru[1],
+		spid.fru[0], spid.fru[9], spid.fru[8], spid.fru[7],
+		spid.fru[6], spid.fru[5],
+		intel_mid_ssn);
 
 	return 0;
 }
@@ -1200,11 +1220,11 @@ static int __init intel_mid_platform_init(void)
 #ifdef CONFIG_ACPI
 		/* FIXME: fake sfi support */
 		handle_sfi_table(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
+		acpi_table_parse(ACPI_SIG_PIDV, acpi_parse_pidv);
 		handle_sfi_table(SFI_SIG_OEM0, NULL, NULL, sfi_parse_oem0);
 		handle_sfi_table(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
 		handle_sfi_table(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 
-		acpi_table_parse(ACPI_SIG_PIDV, acpi_parse_pidv);
 		pidv_kobj = kobject_create_and_add("pidv", firmware_kobj);
 		if (!pidv_kobj) {
 			pr_err("pidv: ENOMEM for pidv_kobj\n");
