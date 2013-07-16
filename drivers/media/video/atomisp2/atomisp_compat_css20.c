@@ -159,20 +159,28 @@ uint32_t atomisp_css2_hw_load_32(hrt_address addr)
 static void atomisp_css2_hw_store(hrt_address addr,
 				  const void *from, uint32_t n)
 {
+	unsigned long flags;
 	unsigned i;
 	unsigned int _to = (unsigned int)addr;
 	const char *_from = (const char *)from;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	for (i = 0; i < n; i++, _to++, _from++)
 		_hrt_master_port_store_8(_to , *_from);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
 static void atomisp_css2_hw_load(hrt_address addr, void *to, uint32_t n)
 {
+	unsigned long flags;
 	unsigned i;
 	char *_to = (char *)to;
 	unsigned int _from = (unsigned int)addr;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	for (i = 0; i < n; i++, _to++, _from++)
 		*_to = _hrt_master_port_load_8(_from);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
 static int atomisp_css2_dbg_print(const char *fmt, va_list args)
