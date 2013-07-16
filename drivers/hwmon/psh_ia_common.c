@@ -552,6 +552,31 @@ ssize_t ia_clear_counter(struct device *dev,
 		return count;
 }
 
+ssize_t ia_get_version(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	int ret;
+	struct ia_cmd cmd;
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+	char version[VERSION_STR_MAX_SIZE];
+	cmd.cmd_id = CMD_GET_VERSION;
+	cmd.sensor_id = 0;
+	psh_ia_data->version_str = version;
+
+	ret = ia_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd, 3);
+	if (ret) {
+		pr_err("get_verison failed when send_cmd\n");
+		return ret;
+	}
+
+	if (!wait_for_completion_timeout(&psh_ia_data->cmd_version_comp, HZ))
+		return snprintf(buf, PAGE_SIZE, "no response\n");
+
+	ret = snprintf(buf, PAGE_SIZE, "%s\n", psh_ia_data->version_str);
+	psh_ia_data->version_str = NULL;
+	return ret;
+}
 static SENSOR_DEVICE_ATTR(status_mask, S_IWUSR | S_IRUGO,
 				ia_get_status_mask, ia_set_status_mask, 0);
 static SENSOR_DEVICE_ATTR(status_trig, S_IWUSR, NULL, ia_trig_get_status, 1);
@@ -561,6 +586,7 @@ static SENSOR_DEVICE_ATTR(control, S_IWUSR, NULL, ia_start_control, 1);
 static SENSOR_DEVICE_ATTR(data_size, S_IRUGO, ia_read_data_size, NULL, 2);
 static SENSOR_DEVICE_ATTR(counter, S_IWUSR | S_IRUGO, ia_get_counter,
 				ia_clear_counter, 0);
+static SENSOR_DEVICE_ATTR(fw_version, S_IRUGO, ia_get_version, NULL, 0);
 
 static struct bin_attribute bin_attr = {
 	.attr = { .name = "data", .mode = S_IRUGO },
@@ -579,7 +605,8 @@ static struct bin_attribute dbg_attr = {
 int ia_handle_frame(struct psh_ia_priv *psh_ia_data, void *dbuf, int size)
 {
 	struct cmd_resp *resp = dbuf;
-	const struct snr_info *sinfo = (struct snr_info *)resp->buf;
+	const struct snr_info *sinfo;
+	const struct resp_version *version;
 
 	switch (resp->type) {
 	case RESP_BIST_RESULT:
@@ -594,6 +621,7 @@ int ia_handle_frame(struct psh_ia_priv *psh_ia_data, void *dbuf, int size)
 				resp->buf, resp->data_len);
 		return size;
 	case RESP_GET_STATUS:
+		sinfo = (struct snr_info *)resp->buf;
 		if (!resp->data_len) {
 			complete(&psh_ia_data->get_status_comp);
 			ia_handle_snr_info(&psh_ia_data->circ_dbg, NULL);
@@ -613,6 +641,23 @@ int ia_handle_frame(struct psh_ia_priv *psh_ia_data, void *dbuf, int size)
 		memcpy(&psh_ia_data->counter, resp->buf,
 				sizeof(psh_ia_data->counter));
 		complete(&psh_ia_data->cmd_counter_comp);
+		return 0;
+	case RESP_GET_VERSION:
+		version = (struct resp_version *)resp->buf;
+		if (psh_ia_data->version_str == NULL) {
+			pr_err("Wrong RESP_GET_VERSION!\n");
+			return 0;
+		}
+		if (likely(version->str_len < VERSION_STR_MAX_SIZE))
+			memcpy(psh_ia_data->version_str, version->str,
+					version->str_len + 1);
+		else {
+			memcpy(psh_ia_data->version_str, version->str,
+					VERSION_STR_MAX_SIZE - 1);
+			psh_ia_data->version_str[VERSION_STR_MAX_SIZE - 1]
+				= '\0';
+		}
+		complete(&psh_ia_data->cmd_version_comp);
 		return 0;
 	default:
 		break;
@@ -668,6 +713,23 @@ void ia_process_lbuf(struct device *dev)
 					sizeof(psh_ia_data->counter));
 			complete(&psh_ia_data->cmd_counter_comp);
 			continue;
+		} else if (resp->type == RESP_GET_VERSION) {
+			const struct resp_version *version =
+					(struct resp_version *)resp->buf;
+			char *ver_str = psh_ia_data->version_str;
+			if (ver_str == NULL)
+				continue;
+
+			if (likely(version->str_len < VERSION_STR_MAX_SIZE))
+				memcpy(ver_str, version->str,
+					version->str_len + 1);
+			else {
+				memcpy(ver_str, version->str,
+					VERSION_STR_MAX_SIZE - 1);
+				ver_str[VERSION_STR_MAX_SIZE - 1] = '\0';
+			}
+			complete(&psh_ia_data->cmd_version_comp);
+			continue;
 		}
 		pr_debug("one DDR frame, data of sensor %d, size %d\n",
 				resp->sensor_id, size);
@@ -702,6 +764,7 @@ int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 	init_completion(&psh_ia_data->cmd_reset_comp);
 	init_completion(&psh_ia_data->cmd_load_comp);
 	init_completion(&psh_ia_data->cmd_counter_comp);
+	init_completion(&psh_ia_data->cmd_version_comp);
 
 	psh_ia_data->reset_in_progress = 0;
 
@@ -744,6 +807,8 @@ int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 			&sensor_dev_attr_data_size.dev_attr.attr);
 	ret += sysfs_create_file(&dev->kobj,
 			&sensor_dev_attr_counter.dev_attr.attr);
+	ret += sysfs_create_file(&dev->kobj,
+			&sensor_dev_attr_fw_version.dev_attr.attr);
 	ret += sysfs_create_bin_file(&dev->kobj, &bin_attr);
 	ret += sysfs_create_bin_file(&dev->kobj, &dbg_attr);
 	if (ret) {
@@ -766,6 +831,8 @@ sysfs_err:
 		&sensor_dev_attr_data_size.dev_attr.attr);
 	sysfs_remove_file(&dev->kobj,
 		&sensor_dev_attr_counter.dev_attr.attr);
+	sysfs_remove_file(&dev->kobj,
+		&sensor_dev_attr_fw_version.dev_attr.attr);
 	sysfs_remove_bin_file(&dev->kobj, &bin_attr);
 	sysfs_remove_bin_file(&dev->kobj, &dbg_attr);
 
@@ -797,6 +864,8 @@ void psh_ia_common_deinit(struct device *dev)
 		&sensor_dev_attr_data_size.dev_attr.attr);
 	sysfs_remove_file(&dev->kobj,
 		&sensor_dev_attr_counter.dev_attr.attr);
+	sysfs_remove_file(&dev->kobj,
+		&sensor_dev_attr_fw_version.dev_attr.attr);
 	sysfs_remove_bin_file(&dev->kobj, &bin_attr);
 	sysfs_remove_bin_file(&dev->kobj, &dbg_attr);
 
