@@ -3,6 +3,7 @@
 #
 
 CFLAGS_pmic_basin_cove.0		:= -Werror
+CFLAGS_pmic_crystal_cove.0		:= -Werror
 
 obj-$(CONFIG_REGULATOR) += core.o dummy.o fixed-helper.o
 obj-$(CONFIG_OF) += of_regulator.o
@@ -55,5 +56,6 @@ obj-$(CONFIG_REGULATOR_WM8350) += wm8350-regulator.o
 obj-$(CONFIG_REGULATOR_WM8400) += wm8400-regulator.o
 obj-$(CONFIG_REGULATOR_WM8994) += wm8994-regulator.o
 obj-$(CONFIG_REGULATOR_PMIC_BASIN_COVE) += pmic_basin_cove.o
+obj-$(CONFIG_CRYSTAL_COVE) += pmic_crystal_cove.o
 
 ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG

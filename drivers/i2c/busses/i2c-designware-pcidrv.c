@@ -624,8 +624,8 @@ static int i2c_dw_pci_runtime_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops i2c_dw_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(i2c_dw_pci_suspend,
-				i2c_dw_pci_resume)
+	.suspend_late = i2c_dw_pci_suspend,
+	.resume_early = i2c_dw_pci_resume,
 	SET_RUNTIME_PM_OPS(i2c_dw_pci_runtime_suspend,
 			   i2c_dw_pci_runtime_resume,
 			   NULL)
