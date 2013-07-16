@@ -2143,8 +2143,10 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 	 */
 	local_irq_save(flags);
 
-	/* Do Runtime-PM Operation if hcd->rpm_control == 1 */
-	if (hcd->rpm_control) {
+	/* Do Runtime-PM Operation rpm state is ACTIVE,
+	 * or controller got interrupt handle capability
+	 */
+	if (hcd->rpm_control && !hcd->rpm_early_resume) {
 		struct device		*dev = hcd->self.controller;
 
 		if ((hcd->rpm_resume)

@@ -135,6 +135,9 @@ struct usb_hcd {
 	*  rpm_control to 1 to let it work. */
 	unsigned		rpm_control:1;	/* Runtime-PM control flag */
 	int			rpm_resume;	/* Runtime-PM flow control */
+	/* USB controller re-get IRQ handle capability after
+	 * resume from suspended state */
+	int			rpm_early_resume;
 
 	unsigned int		irq;		/* irq allocated */
 	void __iomem		*regs;		/* device memory/io */
