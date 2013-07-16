@@ -113,17 +113,10 @@ static void otg_event_worker(struct work_struct *work)
 
 }
 
-static int otg_handle_notification(struct notifier_block *nb,
-				   unsigned long event, void *data)
+static int process_cable_props(struct power_supply_cable_props *cap)
 {
 
-	struct power_supply_cable_props *cap;
 	struct charger_cable *cable = NULL;
-
-	cap = (struct power_supply_cable_props *)data;
-
-	if (event != USB_EVENT_CHARGER)
-		return NOTIFY_DONE;
 
 	cable = get_cable(cap->chrg_type);
 	if (!cable) {
@@ -160,6 +153,24 @@ static int otg_handle_notification(struct notifier_block *nb,
 
 	cable->cable_props.mA = cap->mA;
 	schedule_work(&otg_work);
+
+	return 0;
+
+}
+
+static int otg_handle_notification(struct notifier_block *nb,
+				   unsigned long event, void *data)
+{
+
+	struct power_supply_cable_props *cap;
+
+	cap = (struct power_supply_cable_props *)data;
+
+	if (event != USB_EVENT_CHARGER)
+		return NOTIFY_DONE;
+
+	process_cable_props(cap);
+
 
 	return NOTIFY_OK;
 }
@@ -202,8 +213,10 @@ static void init_charger_cables(struct charger_cable *cable_lst, int count)
 	struct charger_cable *cable;
 	struct extcon_chrgr_cbl_props cable_props;
 	const char *cable_name;
+	struct power_supply_cable_props cap;
 
 	otg_register();
+
 	while (--count) {
 		cable = cable_lst++;
 		/* initialize cable instance */
@@ -232,6 +245,10 @@ static void init_charger_cables(struct charger_cable *cable_lst, int count)
 			cable->cable_props.mA = cable_props.mA;
 		}
 	}
+
+	if (!otg_get_chr_status(otg_xceiver, &cap))
+		process_cable_props(&cap);
+
 }
 
 static inline void get_cur_chrgr_prop(struct power_supply *psy,
