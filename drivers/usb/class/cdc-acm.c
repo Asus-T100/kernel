@@ -444,9 +444,17 @@ static void acm_read_bulk_callback(struct urb *urb)
 	usb_mark_last_busy(acm->dev);
 
 	if (urb->status) {
-		dev_dbg(&acm->data->dev, "%s - non-zero urb status: %d\n",
+		dev_dbg(&acm->data->dev,
+			"%s - non-zero urb status: %d, length: %d\n",
+			__func__, urb->status, urb->actual_length);
+		if ((urb->status != -ENOENT) ||
+			(urb->actual_length == 0)) {
+			dev_dbg(&acm->data->dev,
+				"%s - No handling for non-zero urb status: %d\n",
 							__func__, urb->status);
-		return;
+			return;
+		}
+
 	}
 	acm_process_read_urb(acm, urb);
 
