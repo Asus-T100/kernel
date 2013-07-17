@@ -1599,8 +1599,8 @@ int atomisp_gamma(struct atomisp_sub_device *asd, int flag,
 			return -EINVAL;
 	} else {
 		/* Set gamma table to isp parameters */
-		memcpy(&asd->params.gamma_table.data, config,
-		       sizeof(asd->params.gamma_table.data));
+		memcpy(&asd->params.gamma_table, config,
+		       sizeof(asd->params.gamma_table));
 		atomisp_css_set_gamma_table(asd, &asd->params.gamma_table);
 	}
 
@@ -2097,6 +2097,22 @@ static int __atomisp_set_general_isp_parameters(
 		atomisp_css_set_3a_config(asd, &asd->params.s3a_config);
 	}
 
+	if (arg->macc_config) {
+		if (copy_from_user(&asd->params.macc_table,
+			&arg->macc_config->table,
+			sizeof(struct atomisp_css_macc_table)))
+			return -EFAULT;
+		asd->params.color_effect = arg->macc_config->color_effect;
+		atomisp_css_set_macc_table(asd, &asd->params.macc_table);
+	}
+
+	if (arg->gamma_table) {
+		if (copy_from_user(&asd->params.gamma_table, arg->gamma_table,
+			sizeof(asd->params.gamma_table)))
+			return -EFAULT;
+		atomisp_css_set_gamma_table(asd, &asd->params.gamma_table);
+	}
+
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	if (arg->ecd_config) {
 		if (copy_from_user(&asd->params.ecd_config, arg->ecd_config,
@@ -2212,23 +2228,6 @@ static int __atomisp_set_general_isp_parameters(
 			return -EFAULT;
 		atomisp_css_set_anr_thres(asd, &asd->params.anr_thres);
 	}
-#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	if (arg->macc_config) {
-		if (copy_from_user(&asd->params.macc_table,
-			&arg->macc_config->table,
-			sizeof(struct atomisp_css_macc_table)))
-			return -EFAULT;
-		asd->params.color_effect = arg->macc_config->color_effect;
-		atomisp_css_set_macc_table(asd, &asd->params.macc_table);
-	}
-
-	if (arg->gamma_table) {
-		if (copy_from_user(&asd->params.gamma_table, arg->gamma_table,
-			sizeof(asd->params.gamma_table)))
-			return -EFAULT;
-		atomisp_css_set_gamma_table(asd, &asd->params.gamma_table);
-	}
-
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	return 0;
 }

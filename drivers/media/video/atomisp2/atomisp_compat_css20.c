@@ -2125,10 +2125,13 @@ int atomisp_css_get_ctc_table(struct atomisp_sub_device *asd,
 	}
 
 	tab = vzalloc(sizeof(struct atomisp_css_ctc_table));
+	if (!tab)
+		return -ENOMEM;
+
 	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 	isp_config.ctc_table = tab;
 	ia_css_stream_get_isp_config(asd->stream_env.stream, &isp_config);
-	memcpy(config, &tab->data, sizeof(tab->data));
+	memcpy(config, tab, sizeof(*tab));
 	vfree(tab);
 
 	return 0;
@@ -2148,10 +2151,13 @@ int atomisp_css_get_gamma_table(struct atomisp_sub_device *asd,
 	}
 
 	tab = vzalloc(sizeof(struct atomisp_css_gamma_table));
+	if (!tab)
+		return -ENOMEM;
+
 	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 	isp_config.gamma_table = tab;
 	ia_css_stream_get_isp_config(asd->stream_env.stream, &isp_config);
-	memcpy(config, &tab->data, sizeof(tab->data));
+	memcpy(config, tab, sizeof(*tab));
 	vfree(tab);
 
 	return 0;
