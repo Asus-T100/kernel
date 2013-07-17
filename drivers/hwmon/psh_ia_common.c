@@ -679,61 +679,7 @@ void ia_process_lbuf(struct device *dev)
 	mutex_lock(&psh_ia_data->cmd_mutex);
 	while (!ia_lbuf_read_next(psh_ia_data,
 			&psh_ia_data->lbuf, &dbuf, &size)) {
-		struct cmd_resp *resp = (struct cmd_resp *)dbuf;
-		if (resp->type == RESP_BIST_RESULT) {
-			if (psh_ia_data->reset_in_progress) {
-				psh_ia_data->reset_in_progress = 0;
-				complete(&psh_ia_data->cmd_reset_comp);
-				continue;
-			}
-		} else if (resp->type == RESP_DEBUG_MSG) {
-			ia_circ_put_data(&psh_ia_data->circ_dbg,
-					resp->buf, resp->data_len);
-			continue;
-		} else if (resp->type == RESP_GET_STATUS) {
-			const struct snr_info *sinfo =
-					(struct snr_info *)resp->buf;
-
-			if (!resp->data_len)
-				complete(&psh_ia_data->get_status_comp);
-			else if (SNR_INFO_SIZE(sinfo) == resp->data_len)
-				ia_handle_snr_info(&psh_ia_data->circ_dbg,
-						sinfo);
-			else {
-				pr_err("Wrong RESP_GET_STATUS!\n");
-				continue;
-			}
-		} else if (resp->type == RESP_DEBUG_GET_MASK) {
-			memcpy(&psh_ia_data->dbg_mask, resp->buf,
-					sizeof(psh_ia_data->dbg_mask));
-			complete(&psh_ia_data->cmpl);
-			continue;
-		} else if (resp->type == RESP_COUNTER) {
-			memcpy(&psh_ia_data->counter, resp->buf,
-					sizeof(psh_ia_data->counter));
-			complete(&psh_ia_data->cmd_counter_comp);
-			continue;
-		} else if (resp->type == RESP_GET_VERSION) {
-			const struct resp_version *version =
-					(struct resp_version *)resp->buf;
-			char *ver_str = psh_ia_data->version_str;
-			if (ver_str == NULL)
-				continue;
-
-			if (likely(version->str_len < VERSION_STR_MAX_SIZE))
-				memcpy(ver_str, version->str,
-					version->str_len + 1);
-			else {
-				memcpy(ver_str, version->str,
-					VERSION_STR_MAX_SIZE - 1);
-				ver_str[VERSION_STR_MAX_SIZE - 1] = '\0';
-			}
-			complete(&psh_ia_data->cmd_version_comp);
-			continue;
-		}
-		pr_debug("one DDR frame, data of sensor %d, size %d\n",
-				resp->sensor_id, size);
-		ia_circ_put_data(&psh_ia_data->circ, dbuf, size);
+		ia_handle_frame(psh_ia_data, dbuf, size);
 	}
 	mutex_unlock(&psh_ia_data->cmd_mutex);
 	sysfs_notify(&dev->kobj, NULL, "data_size");
