@@ -1392,10 +1392,10 @@ static void __configure_pp_input(struct atomisp_sub_device *asd,
 	if (width == 0 && height == 0)
 		return;
 
-	if (width <=
+	if (width * 9 / 10 <
 	    asd->stream_env.pipe_configs[pipe_id].
 	    output_info.res.width ||
-	    height <=
+	    height * 9 / 10 <
 	    asd->stream_env.pipe_configs[pipe_id].
 	    output_info.res.height
 	   )

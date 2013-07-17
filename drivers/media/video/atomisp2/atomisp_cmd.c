@@ -3147,7 +3147,7 @@ static int css_input_resolution_changed(struct atomisp_device *isp,
 		struct v4l2_mbus_framefmt *ffmt)
 {
 	struct atomisp_sub_device *asd = &isp->asd;
-	int ret;
+	int ret = 0;
 
 	dev_dbg(isp->dev, "css_input_resolution_changed to %ux%u\n",
 		ffmt->width, ffmt->height);
@@ -3178,12 +3178,13 @@ static int css_input_resolution_changed(struct atomisp_device *isp,
 		}
 	}
 
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	ret = atomisp_css_capture_configure_pp_input(asd, ffmt->width,
 				ffmt->height);
 	if (ret)
 		dev_err(isp->dev, "configure_pp_input %ux%u\n",
 			ffmt->width, ffmt->height);
-
+#endif
 	return ret;
 
 	/*
