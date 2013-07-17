@@ -23,7 +23,7 @@
 #define VERSION "2.10a"
 
 static void reset_hw(struct dwc_otg2 *otg);
-
+static void usb2phy_eye_optimization(struct dwc_otg2 *otg);
 static int otg_id = -1;
 static struct mutex lock;
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off);
@@ -295,6 +295,8 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
+	usb2phy_eye_optimization(otg);
+
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -327,6 +329,7 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
+	usb2phy_eye_optimization(otg);
 	gadget->ops->start_device(gadget);
 }
 
@@ -1021,6 +1024,17 @@ static enum dwc_otg_state do_charging(struct dwc_otg2 *otg)
 	return DWC_STATE_INVALID;
 }
 
+static void usb2phy_eye_optimization(struct dwc_otg2 *otg)
+{
+	if (otg->otg_data->is_byt)
+		/* for baytrail, optimization value is 0x4f for eye diagram */
+		ulpi_write(&otg->phy, 0x4f, TUSB1211_VENDOR_SPECIFIC1_SET);
+	else
+		/* Set 0x7f for better quality in eye diagram
+		 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
+		ulpi_write(&otg->phy, 0x7f, TUSB1211_VENDOR_SPECIFIC1_SET);
+}
+
 static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 {
 	enum dwc_otg_state state = DWC_STATE_INVALID;
@@ -1029,11 +1043,8 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	unsigned long flags, mA = 0;
 
 	/* FIXME: Skip charger detection flow for baytrail */
-	if (otg->otg_data->is_byt) {
-		/* for baytrail, optimization value is 0x4f for eye diagram */
-		ulpi_write(&otg->phy, TUSB1211_VENDOR_SPECIFIC1_SET, 0x4f);
+	if (otg->otg_data->is_byt)
 		return DWC_STATE_B_PERIPHERAL;
-	}
 
 	charger = get_charger_type(otg);
 	switch (charger) {
@@ -1109,7 +1120,6 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	unsigned long flags;
 	u32 events = 0, user_events = 0;
 	u32 otg_mask = 0, user_mask = 0, tmp;
-	enum dwc_otg_state state = DWC_STATE_INVALID;
 	u32 gctl;
 
 	otg_dbg(otg, "\n");
@@ -1435,11 +1445,8 @@ static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 				0xff, PMIC_VLDOCNT_VUSBPHYEN);
 		if (ret)
 			otg_err(otg, "Fail to enable VBUSPHY\n");
-		msleep(20);
 
-		/* Set 0x7f for better quality in eye diagram
-		 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
-		ulpi_write(&otg->phy, 0x7f, TUSB1211_VENDOR_SPECIFIC1_SET);
+		msleep(20);
 	} else {
 		ret = intel_scu_ipc_update_register(PMIC_VLDOCNT,
 				0x00, PMIC_VLDOCNT_VUSBPHYEN);
@@ -2059,6 +2066,17 @@ static int dwc_otg_runtime_resume(struct device *dev)
 
 	pci_set_power_state(pci_dev, PCI_D0);
 
+
+	/* This is one WA for silicon BUG.
+	 * Without this WA, the USB2 phy will enter low power
+	 * mode during hibernation resume flow. and met
+	 * fabric error
+	 */
+	if (otg->state == DWC_STATE_A_HOST) {
+		enable_usb_phy(otg, false);
+		enable_usb_phy(otg, true);
+	}
+
 	/* From synopsys spec 12.2.11.
 	 * Software cannot access memory-mapped I/O space
 	 * for 10ms.
@@ -2118,6 +2136,16 @@ static int dwc_otg_resume(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
 	pci_set_power_state(pci_dev, PCI_D0);
+
+	/* This is one WA for silicon BUG.
+	 * Without this WA, the USB2 phy will enter low power
+	 * mode during hibernation resume flow. and met
+	 * fabric error
+	 */
+	if (otg->state == DWC_STATE_A_HOST) {
+		enable_usb_phy(otg, false);
+		enable_usb_phy(otg, true);
+	}
 
 	/* From synopsys spec 12.2.11.
 	 * Software cannot access memory-mapped I/O space
