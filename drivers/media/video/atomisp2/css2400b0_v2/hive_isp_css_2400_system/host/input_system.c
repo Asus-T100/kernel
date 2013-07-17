@@ -107,8 +107,7 @@ void input_system_get_state(
 {
 	sub_system_ID_t	sub_id;
 
-assert(ID < N_INPUT_SYSTEM_ID);
-assert(state != NULL);
+	assert_exit(ID < N_INPUT_SYSTEM_ID && state);
 
 	state->str_multicastA_sel = input_system_sub_system_reg_load(ID,
 		GPREGS_UNIT0_ID,
@@ -167,8 +166,7 @@ void receiver_get_state(
 	mipi_port_ID_t	port_id;
 	unsigned int	ch_id;
 
-assert(ID < N_RX_ID);
-assert(state != NULL);
+	assert_exit(ID < N_RX_ID && state);
 
 	state->fs_to_ls_delay = (uint8_t)receiver_reg_load(ID,
 		_HRT_CSS_RECEIVER_FS_TO_LS_DELAY_REG_IDX);
@@ -253,9 +251,9 @@ void receiver_set_compression(
 {
 	const unsigned int	field_id = cfg_ID % N_MIPI_FORMAT_CUSTOM;
 	const unsigned int	ch_id = cfg_ID / N_MIPI_FORMAT_CUSTOM;
-	hrt_data			val;
-	hrt_address			addr;
-	hrt_data			reg;
+	hrt_data			val = 0;
+	hrt_address			addr = 0;
+	hrt_data			reg = 0;
 
 assert(ID < N_RX_ID);
 assert(cfg_ID < N_MIPI_COMPRESSOR_CONTEXT);
@@ -347,8 +345,8 @@ STORAGE_CLASS_INLINE void capture_unit_get_state(
 	const sub_system_ID_t			sub_id,
 	capture_unit_state_t			*state)
 {
-assert(state != NULL);
-assert(/*(sub_id >= CAPTURE_UNIT0_ID) &&*/ (sub_id <= CAPTURE_UNIT2_ID));
+	assert_exit(state);
+	assert(sub_id <= CAPTURE_UNIT2_ID);
 
 	state->StartMode = input_system_sub_system_reg_load(ID,
 		sub_id,
@@ -409,8 +407,8 @@ STORAGE_CLASS_INLINE void acquisition_unit_get_state(
 	const sub_system_ID_t			sub_id,
 	acquisition_unit_state_t		*state)
 {
-assert(state != NULL);
-assert(sub_id == ACQUISITION_UNIT0_ID);
+	assert_exit(state);
+	assert(sub_id == ACQUISITION_UNIT0_ID);
 
 	state->Start_Addr = input_system_sub_system_reg_load(ID,
 		sub_id,
@@ -459,8 +457,8 @@ STORAGE_CLASS_INLINE void ctrl_unit_get_state(
 	const sub_system_ID_t			sub_id,
 	ctrl_unit_state_t				*state)
 {
-assert(state != NULL);
-assert(sub_id == CTRL_UNIT0_ID);
+	assert_exit(state);
+	assert(sub_id == CTRL_UNIT0_ID);
 
 	state->captA_start_addr = input_system_sub_system_reg_load(ID,
 		sub_id,
@@ -544,9 +542,9 @@ STORAGE_CLASS_INLINE void mipi_port_get_state(
 {
 	int	i;
 
-assert(ID < N_RX_ID);
-assert(port_ID < N_MIPI_PORT_ID);
-assert(state != NULL);
+	assert(ID < N_RX_ID);
+	assert(port_ID < N_MIPI_PORT_ID);
+	assert_exit(state);
 
 	state->device_ready = receiver_port_reg_load(ID,
 		port_ID, _HRT_CSS_RECEIVER_DEVICE_READY_REG_IDX);
@@ -580,9 +578,9 @@ STORAGE_CLASS_INLINE void rx_channel_get_state(
 {
 	int	i;
 
-assert(ID < N_RX_ID);
-assert(ch_id < N_RX_CHANNEL_ID);
-assert(state != NULL);
+	assert(ID < N_RX_ID);
+	assert(ch_id < N_RX_CHANNEL_ID);
+	assert_exit(state);
 
 	switch (ch_id) {
 		case 0:
@@ -749,8 +747,8 @@ static void input_switch_cfg(
 {
 	int addr_offset;
 	
-assert(ID < N_GP_DEVICE_ID);
-assert(cfg != NULL);
+	assert(ID < N_GP_DEVICE_ID);
+	assert_exit(cfg);
 	
 	// Initialize the data&hsync LUT.
 	for (addr_offset = 0; addr_offset < N_RX_CHANNEL_ID * 2; addr_offset++) {
@@ -1028,9 +1026,9 @@ static void capture_unit_configure(
 	const sub_system_ID_t			sub_id,
 	const ib_buffer_t* const		cfg)
 {
-assert(ID < N_INPUT_SYSTEM_ID);
-assert(/*(sub_id >= CAPTURE_UNIT0_ID) &&*/ (sub_id <= CAPTURE_UNIT2_ID)); // Commented part is always true.
-assert(cfg != NULL);
+	assert(ID < N_INPUT_SYSTEM_ID);
+	assert(sub_id <= CAPTURE_UNIT2_ID);/* Commented part is always true */
+	assert_exit(cfg);
 
 	input_system_sub_system_reg_store(ID,
 		sub_id,
@@ -1054,9 +1052,9 @@ static void acquisition_unit_configure(
 	const sub_system_ID_t			sub_id,
 	const ib_buffer_t* const		cfg)
 {
-assert(ID < N_INPUT_SYSTEM_ID);
-assert(sub_id == ACQUISITION_UNIT0_ID);
-assert(cfg != NULL);
+	assert(ID < N_INPUT_SYSTEM_ID);
+	assert(sub_id == ACQUISITION_UNIT0_ID);
+	assert_exit(cfg);
 
 	input_system_sub_system_reg_store(ID,
 		sub_id,
@@ -1080,9 +1078,9 @@ static void ctrl_unit_configure(
 	const sub_system_ID_t			sub_id,
 	const ctrl_unit_cfg_t* const	cfg)
 {
-assert(ID < N_INPUT_SYSTEM_ID);
-assert(sub_id == CTRL_UNIT0_ID);
-assert(cfg != NULL);
+	assert(ID < N_INPUT_SYSTEM_ID);
+	assert(sub_id == CTRL_UNIT0_ID);
+	assert_exit(cfg);
 
 	input_system_sub_system_reg_store(ID,
 		sub_id,
@@ -1148,8 +1146,9 @@ static void input_system_network_configure(
 {
 	uint32_t sub_id;
 
-assert(ID < N_INPUT_SYSTEM_ID);
-assert(cfg != NULL);
+	assert(ID < N_INPUT_SYSTEM_ID);
+	assert_exit(cfg);
+
 
 	// Set all 3 multicasts.
 	input_system_sub_system_reg_store(ID,
@@ -1600,6 +1599,7 @@ static input_system_error_t input_system_configure_channel_sensor(
 	input_system_multiplex_t mux;
 
 	//check if port > N_INPUT_SYSTEM_MULTIPLEX
+	assert_exit_code(port < N_CSI_PORTS, N_INPUT_SYSTEM_ERR);
 
 	status = set_source_type(&(config.source_type), channel.source_type, &config.source_type_flags);
 	if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
@@ -1675,9 +1675,8 @@ static input_system_error_t set_source_type(
 		const input_system_source_t 			rhs,
 		input_system_config_flags_t * const 	flags)
 {
-// MW: Not enough asserts
-assert(lhs != NULL);
-assert(flags != NULL);
+	/* MW: Not enough asserts */
+	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {
 		*flags |= INPUT_SYSTEM_CFG_FLAG_CONFLICT;
@@ -1715,9 +1714,7 @@ static input_system_error_t set_csi_cfg(
 {
 	uint32_t memory_required;
 	uint32_t acq_memory_required;
-
-assert(lhs != NULL);
-assert(flags != NULL);
+	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {
 		*flags |= INPUT_SYSTEM_CFG_FLAG_CONFLICT;
@@ -1781,8 +1778,7 @@ static input_system_error_t input_system_multiplexer_cfg(
 	const input_system_multiplex_t		rhs,
 	input_system_config_flags_t* const	flags)
 {
-assert(lhs != NULL);
-assert(flags != NULL);
+	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {
 		*flags |= INPUT_SYSTEM_CFG_FLAG_CONFLICT;

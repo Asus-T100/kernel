@@ -160,9 +160,9 @@ sh_css_sp_start_binary_copy(unsigned int pipe_num, struct ia_css_frame *out_fram
 	enum ia_css_pipe_id pipe_id;
 	unsigned int thread_id;
 	struct sh_css_sp_pipeline *pipe;
-	uint8_t stage_num = 0;
+	unsigned stage_num = 0;
 
-assert(out_frame != NULL);
+	assert_exit(out_frame);
 	pipe_id = IA_CSS_PIPE_ID_CAPTURE;
 	sh_css_query_sp_thread_id(pipe_num, &thread_id);
 	pipe = &sh_css_sp_group.pipe[thread_id];
@@ -200,10 +200,10 @@ sh_css_sp_start_raw_copy(struct ia_css_frame *out_frame,
 {
 	enum ia_css_pipe_id pipe_id;
 	unsigned int thread_id;
-	uint8_t stage_num = 0;
+	unsigned stage_num = 0;
 	struct sh_css_sp_pipeline *pipe;
 
-assert(out_frame != NULL);
+	assert_exit(out_frame);
 
 	{
 		/**
@@ -791,6 +791,7 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 
 	sh_css_sp_stage.deinterleaved = stage == 0 && continuous;
 
+	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
 	/*
 	 * TODO: Make the Host dynamically determine
 	 * the stage type.
