@@ -1580,11 +1580,33 @@ static int sst_pipe_id_control_set(struct snd_kcontrol *kcontrol,
 static int sst_compr_vol_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
 	struct sst_algo_int_control_v2 *amc = (void *)kcontrol->private_value;
+	u16 gain;
+	unsigned int gain_offset, ret;
 
-	ucontrol->value.integer.value[0] = amc->value;
-	pr_debug("%s: cell_gain = %d\n", __func__, amc->value);
+	sst_create_compr_vol_ipc(sst->byte_stream, SND_SST_BYTES_GET, amc);
+	mutex_lock(&sst->lock);
+	ret = sst_dsp->ops->set_generic_params(SST_SET_BYTE_STREAM,
+						sst->byte_stream);
+	mutex_unlock(&sst->lock);
+	if (ret) {
+		pr_err("failed to get compress vol from fw: %d\n", ret);
+		return ret;
+	}
+	gain_offset = sizeof(struct snd_sst_bytes_v2) +
+				sizeof(struct ipc_dsp_hdr);
 
+	/* Get params format for vol ctrl lib, size 6 bytes :
+	 * u16 left_gain, u16 right_gain, u16 ramp
+	 */
+	memcpy(&gain,
+		(unsigned int *)(sst->byte_stream + gain_offset),
+		sizeof(u16));
+	pr_debug("%s: cell_gain = %d\n", __func__, gain);
+	amc->value = gain;
+	ucontrol->value.integer.value[0] = gain;
 	return 0;
 }
 

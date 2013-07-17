@@ -657,6 +657,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			msg_id = msg_low & SST_ASYNC_MSG_MASK;
 			if (msg_id == IPC_IA_FW_INIT_CMPLT_MRFLD)
 				process_fw_init(msg);
+			goto end;
 		} else {
 			/* FW sent async error as large msg */
 			struct snd_sst_async_msg err_msg;
@@ -669,6 +670,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			memcpy(&err_msg, (void *) msg->mailbox,
 							sizeof(err_msg));
 			print_fw_async_error_msg(&err_msg);
+			goto end;
 		}
 	}
 	/* Process all valid responses */

@@ -75,9 +75,17 @@ void sst_create_compr_vol_ipc(char *bytes, unsigned int type,
 	gain1.gain_time_const = SST_GAIN_V2_TIME_CONST;
 
 	/* fill dsp header */
+	/* Get params format for vol ctrl lib, size 6 bytes :
+	 * u16 left_gain, u16 right_gain, u16 ramp
+	 */
 	memset(&dsp_hdr, 0, sizeof(dsp_hdr));
-	len = sizeof(gain1);
-	ipc_msg = IPC_SET_PARAMS;
+	if (type == SND_SST_BYTES_GET) {
+		len = 6;
+		ipc_msg = IPC_GET_PARAMS;
+	} else {
+		len = sizeof(gain1);
+		ipc_msg = IPC_SET_PARAMS;
+	}
 
 	sst_fill_dsp_hdr(&dsp_hdr, 0, kdata->pipe_id, kdata->module_id,
 				IPC_IA_SET_GAIN_MRFLD, len);
@@ -92,7 +100,8 @@ void sst_create_compr_vol_ipc(char *bytes, unsigned int type,
 	tmp = bytes;
 	memcpy(tmp, &byte_hdr, sizeof(byte_hdr));
 	memcpy((tmp + sizeof(byte_hdr)), &dsp_hdr, sizeof(dsp_hdr));
-	memcpy((tmp + sizeof(byte_hdr) + sizeof(dsp_hdr)), &gain1,
+	if (type != SND_SST_BYTES_GET)
+		memcpy((tmp + sizeof(byte_hdr) + sizeof(dsp_hdr)), &gain1,
 			sizeof(gain1));
 #ifdef DEBUG_HEX_DUMP_BYTES
 	print_hex_dump_bytes(__func__, DUMP_PREFIX_NONE, bytes, 32);
