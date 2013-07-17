@@ -986,7 +986,7 @@ void i915_save_gunit_regs(struct drm_i915_private *dev_priv)
 	dev_priv->saveGUNIT_CZClockGatingDisable1 =
 		I915_READ(GUNIT_CZCLOCK_GATING_DISABLE1);
 	dev_priv->saveGUNIT_CZClockGatingDisable2 =
-		I915_READ(GUNIT_CZCLOCK_GATING_DISABLE1);
+		I915_READ(GUNIT_CZCLOCK_GATING_DISABLE2);
 	dev_priv->saveDPIO_CFG_DATA = I915_READ(DPIO_CTL);
 }
 
@@ -996,7 +996,7 @@ void i915_restore_gunit_regs(struct drm_i915_private *dev_priv)
 	I915_WRITE(GUNIT_CONTROL1, dev_priv->saveGUNIT_Control2);
 	I915_WRITE(GUNIT_CZCLOCK_GATING_DISABLE1,
 			dev_priv->saveGUNIT_CZClockGatingDisable1);
-	I915_WRITE(GUNIT_CZCLOCK_GATING_DISABLE1,
+	I915_WRITE(GUNIT_CZCLOCK_GATING_DISABLE2,
 			dev_priv->saveGUNIT_CZClockGatingDisable2);
 	I915_WRITE(DPIO_CTL, dev_priv->saveDPIO_CFG_DATA);
 }
