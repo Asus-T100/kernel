@@ -45,8 +45,8 @@ static struct intel_mid_thermal_sensor ctp_sensors[] = {
 	{
 		.name = MSIC_DIE_NAME,
 		.index = 2,
-		.slope = 884,
-		.intercept = 588640,
+		.slope = 368,
+		.intercept = 219560,
 		.adc_channel = 0x03 | CH_NEED_VCALIB,
 		.direct = true,
 	},
@@ -85,8 +85,8 @@ static struct intel_mid_thermal_sensor vb_sensors[] = {
 	{
 		.name = MSIC_DIE_NAME,
 		.index = 2,
-		.slope = 884,
-		.intercept = 588640,
+		.slope = 368,
+		.intercept = 219560,
 		.adc_channel = 0x03 | CH_NEED_VCALIB,
 		.direct = true,
 	},
