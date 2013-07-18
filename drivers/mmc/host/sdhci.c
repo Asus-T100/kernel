@@ -1478,6 +1478,8 @@ static int sdhci_acquire_ownership(struct mmc_host *mmc)
 		host->clock = 0;
 		host->pwr = 0;
 		sdhci_do_set_ios(host, &host->mmc->ios);
+		sdhci_do_start_signal_voltage_switch(host,
+					&host->mmc->ios, false);
 		pm_runtime_put(mmc->parent);
 	}
 
@@ -1768,16 +1770,6 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 		clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
 		clk &= ~SDHCI_CLOCK_CARD_EN;
 		sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
-
-		/*
-		 * Some SDHC Host controller has dummy value of 1.8V
-		 * Signaling Enable bit in Host Control 2 Register.
-		 * No need to set the 1.8V Signaling Enable bit for
-		 * those kind of SDHC Host Controller.
-		 */
-		if (!(host->quirks2 & SDHCI_QUIRK2_V2_0_SUPPORT_DDR50))
-			sdhci_do_start_signal_voltage_switch(host,
-						&host->mmc->ios, false);
 
 		if (host->ops->set_uhs_signaling)
 			host->ops->set_uhs_signaling(host, ios->timing);
@@ -3619,6 +3611,8 @@ int sdhci_resume_host(struct sdhci_host *host)
 		host->pwr = 0;
 		host->clock = 0;
 		sdhci_do_set_ios(host, &host->mmc->ios);
+		sdhci_do_start_signal_voltage_switch(host,
+					&host->mmc->ios, false);
 	} else {
 		sdhci_init(host, (host->mmc->pm_flags & MMC_PM_KEEP_POWER));
 		mmiowb();
@@ -3742,6 +3736,8 @@ int sdhci_runtime_resume_host(struct sdhci_host *host)
 	host->pwr = 0;
 	host->clock = 0;
 	sdhci_do_set_ios(host, &host->mmc->ios);
+	sdhci_do_start_signal_voltage_switch(host,
+				&host->mmc->ios, false);
 
 	if (host_flags & SDHCI_PV_ENABLED)
 		sdhci_do_enable_preset_value(host, true);
