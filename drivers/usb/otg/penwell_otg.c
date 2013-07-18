@@ -3322,6 +3322,10 @@ static void penwell_otg_work(struct work_struct *work)
 				if (retval)
 					dev_warn(pnw->dev, "ulpi failed\n");
 				penwell_otg_charger_hwdet(false);
+			} else if (type == POWER_SUPPLY_CHARGER_TYPE_SE1) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
 			}
 		}
 		break;
