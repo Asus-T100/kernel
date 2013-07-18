@@ -680,7 +680,7 @@ static const struct sdhci_pci_fixes sdhci_intel_pch_sdio = {
 
 /* Define Host controllers for Intel Merrifield platform */
 #define INTEL_MRFL_EMMC_0	0
-#define INTEL_MRFL_EMMC_1	1
+#define INTEL_MRFL_EMMC0H	1
 #define INTEL_MRFL_SD		2
 #define INTEL_MRFL_SDIO		3
 
@@ -688,17 +688,27 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int ret = 0;
 
-	if ((PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0) ||
-		(PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_1))
+	switch (PCI_FUNC(slot->chip->pdev->devfn)) {
+	case INTEL_MRFL_EMMC_0:
+		sdhci_alloc_panic_host(slot->host);
 		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
 					MMC_CAP_NONREMOVABLE |
 					MMC_CAP_1_8V_DDR;
-
-	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_SDIO)
+		break;
+	case INTEL_MRFL_EMMC0H:
+		if (slot->chip->pdev->revision == 0x1) { /* B0 stepping */
+			slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
+						MMC_CAP_NONREMOVABLE |
+						MMC_CAP_1_8V_DDR;
+			slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR;
+			/* WA for async abort silicon issue */
+			slot->host->quirks2 |= SDHCI_QUIRK2_WAIT_FOR_IDLE;
+		}
+		break;
+	case INTEL_MRFL_SDIO:
 		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
-
-	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0)
-		sdhci_alloc_panic_host(slot->host);
+		break;
+	}
 
 	slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
 				MMC_CAP2_INIT_CARD_SYNC;
@@ -1615,6 +1625,8 @@ static int sdhci_pci_get_tuning_count(struct sdhci_host *host)
 
 	switch (slot->chip->pdev->device) {
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
+		tuning_count = 4; /* using 8 seconds, this can be tuning */
+	case PCI_DEVICE_ID_INTEL_MRFL_MMC:
 		tuning_count = 4; /* using 8 seconds, this can be tuning */
 	default:
 		break;
