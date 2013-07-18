@@ -136,8 +136,6 @@ int i915_dpst_context(struct drm_device *dev, void *data,
 		}
 		init_context->hist_status.histogram_bins.bkl_val =
 			dev_priv->backlight_level;
-		init_context->hist_status.histogram_bins.status[index] =
-			bdr_data;
 	}
 	break;
 
