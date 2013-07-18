@@ -216,8 +216,6 @@ static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
 static void atomisp_isp_parameters_clean_up(
 				struct atomisp_css_isp_config *config)
 {
-	if (config->shading_table)
-		ia_css_shading_table_free(config->shading_table);
 	if (config->morph_table)
 		ia_css_morph_table_free(config->morph_table);
 

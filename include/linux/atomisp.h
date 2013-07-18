@@ -387,6 +387,19 @@ struct atomisp_morph_table {
 #define ATOMISP_NUM_SC_COLORS	4
 #define ATOMISP_SC_FLAG_QUERY	(1 << 0)
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+struct atomisp_shading_table {
+	__u32 enable;
+
+	__u32 sensor_width;
+	__u32 sensor_height;
+	__u32 width;
+	__u32 height;
+	__u32 fraction_bits;
+
+	__u16 *data[ATOMISP_NUM_SC_COLORS];
+};
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 struct atomisp_shading_table {
 	/*
 	 * If flag ATOMISP_SC_FLAG_QUERY is set, IOCTL will only query current
@@ -412,6 +425,7 @@ struct atomisp_shading_table {
 	/* one table for each color (use sh_css_sc_color to index) */
 	__u16 __user *data[ATOMISP_NUM_SC_COLORS];
 };
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 struct atomisp_makernote_info {
 	/* bits 31-16: numerator, bits 15-0: denominator */

@@ -2239,13 +2239,13 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 	unsigned int i;
 	unsigned int len_table;
 	struct atomisp_css_shading_table *shading_table;
-	struct atomisp_css_shading_table *old_shading_table;
+	struct atomisp_css_shading_table *old_table;
 	struct atomisp_device *isp = asd->isp;
 
 	if (!user_st)
 		return 0;
 
-	old_shading_table = isp->inputs[asd->input_curr].shading_table;
+	old_table = isp->inputs[asd->input_curr].shading_table;
 
 	/* user config is to disable the shading table. */
 	if (!user_st->enable) {
@@ -2281,6 +2281,33 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 	shading_table->sensor_width = user_st->sensor_width;
 	shading_table->sensor_height = user_st->sensor_height;
 	shading_table->fraction_bits = user_st->fraction_bits;
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	shading_table->enable = user_st->enable;
+
+	/* No need to update shading table if it is the same */
+	if (old_table != NULL &&
+		old_table->sensor_width == shading_table->sensor_width &&
+		old_table->sensor_height == shading_table->sensor_height &&
+		old_table->width == shading_table->width &&
+		old_table->height == shading_table->height &&
+		old_table->fraction_bits == shading_table->fraction_bits &&
+		old_table->enable == shading_table->enable) {
+		bool data_is_same = true;
+
+		for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+			if (memcmp(shading_table->data[i], old_table->data[i],
+				len_table) != 0) {
+				data_is_same = false;
+				break;
+			}
+		}
+
+		if (data_is_same) {
+			atomisp_css_shading_table_free(shading_table);
+			return 0;
+		}
+	}
+#endif
 
 set_lsc:
 	/* set LSC to CSS */
@@ -2288,8 +2315,8 @@ set_lsc:
 	atomisp_css_set_shading_table(asd, shading_table);
 	asd->params.sc_en = shading_table != NULL;
 
-	if (old_shading_table)
-		atomisp_css_shading_table_free(old_shading_table);
+	if (old_table)
+		atomisp_css_shading_table_free(old_table);
 
 	return 0;
 }
@@ -3821,10 +3848,12 @@ int atomisp_set_shading_table(struct atomisp_sub_device *asd,
 	if (!user_shading_table)
 		return -EINVAL;
 
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	if (user_shading_table->flags & ATOMISP_SC_FLAG_QUERY) {
 		user_shading_table->enable = asd->params.sc_en;
 		return 0;
 	}
+#endif
 
 	if (!user_shading_table->enable) {
 		atomisp_css_set_shading_table(asd, NULL);
