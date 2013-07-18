@@ -90,6 +90,7 @@ static inline int platform_is(u8 model)
 #else
 #define CSTATE_EXIT_LATENCY_LPMP3 1040
 #define CSTATE_EXIT_LATENCY_S0i1 1040
+#define CSTATE_EXIT_LATENCY_S0i2 2000
 #define CSTATE_EXIT_LATENCY_S0i3 2800
 #endif
 #define BYT_S0I1_STATE         0x60

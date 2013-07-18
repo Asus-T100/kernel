@@ -585,8 +585,8 @@ static int intel_idle(struct cpuidle_device *dev,
 	unsigned int cstate;
 	int cpu = smp_processor_id();
 
-#if (defined(CONFIG_X86_MRFLD) && defined(CONFIG_PM_DEBUG))
-	{
+#ifdef CONFIG_PM_DEBUG
+	if (platform_is(INTEL_ATOM_MRFLD) || platform_is(INTEL_ATOM_BYT)) {
 		/* Get Cstate based on ignore table from PMU driver */
 		unsigned int ncstate;
 		cstate =

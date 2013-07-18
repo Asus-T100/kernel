@@ -82,4 +82,5 @@ struct mid_pmc_dev {
 	u32 s3_residency;
 };
 
+extern void cstate_ignore_add_init(void);
 #endif

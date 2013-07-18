@@ -381,6 +381,8 @@ static int byt_pmu_init(void)
 	(void) debugfs_create_file("nc_set_power", S_IFREG | S_IRUGO,
 				NULL, NULL, &nc_set_power_operations);
 
+	cstate_ignore_add_init();
+
 	writel(DISABLE_LPC_CLK_WAKE_EN, mid_pmc_cxt->s0ix_wake_en);
 	return 0;
 }
