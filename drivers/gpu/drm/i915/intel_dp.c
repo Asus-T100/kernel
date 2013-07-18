@@ -1327,7 +1327,8 @@ static void intel_dp_prepare(struct drm_encoder *encoder)
 	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
 	/* Some of the FFRD10 PR1.1B boards doesnt like when edp panel power
 	 * is off */
-	/* ironlake_edp_panel_off(intel_dp); */
+	if (!i915_bytffrd_support)
+		ironlake_edp_panel_off(intel_dp);
 	intel_dp_link_down(intel_dp);
 }
 
@@ -1622,7 +1623,8 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		intel_dp_sink_dpms(intel_dp, mode);
 		/* Some of the FFRD10 PR1.1B boards doesnt like when edp
 		 * panel power is off */
-		/* ironlake_edp_panel_off(intel_dp); */
+		if (!i915_bytffrd_support)
+			ironlake_edp_panel_off(intel_dp);
 		intel_dp_link_down(intel_dp);
 
 		if (is_cpu_edp(intel_dp))
