@@ -7479,15 +7479,15 @@ static int display_disable_wq(struct drm_device *drm_dev)
 	cancel_work_sync(&dev_priv->error_work);
 	cancel_work_sync(&dev_priv->parity_error_work);
 	cancel_work_sync(&dev_priv->rps.work);
-	cancel_work_sync(&dev_priv->hdmi_audio_wq);
+	/* Uncomment this once HDMI audio code is integrated */
+	/* cancel_work_sync(&dev_priv->hdmi_audio_wq); */
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
-			if (intel_encoder->type == INTEL_OUTPUT_EDP) {
-				struct intel_dp *intel_dp = container_of(\
-					intel_encoder, struct intel_dp, base);
+			struct intel_dp *intel_dp = container_of(intel_encoder,
+					struct intel_dp, base);
+			if (intel_dp)
 				cancel_delayed_work_sync(\
 					&intel_dp->panel_vdd_work);
-			}
 		}
 	}
 	/* flush any delayed tasks or pending work */
