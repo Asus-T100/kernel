@@ -4087,6 +4087,10 @@ int xhci_update_device(struct usb_hcd *hcd, struct usb_device *udev)
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
 	int		ret;
 
+	/* Just return if XHCI_LPM_DISABLE_QUIRK set */
+	if (xhci->quirks & XHCI_LPM_DISABLE_QUIRK)
+		return 0;
+
 	ret = xhci_usb2_software_lpm_test(hcd, udev);
 	if (!ret) {
 		xhci_dbg(xhci, "software LPM test succeed\n");
