@@ -1504,6 +1504,8 @@ static bool IS_DISPLAYREG(u32 reg)
 	case VLV_GTICZPMW:
 	case VLV_RENDER_C0_COUNT_REG:
 	case VLV_MEDIA_C0_COUNT_REG:
+	case RING_TIMESTAMP_LO(RENDER_RING_BASE):
+	case RING_TIMESTAMP_HI(RENDER_RING_BASE):
 
 	/* Counter registers */
 	case PR_CTR_CTL:
@@ -1637,7 +1639,8 @@ static const struct register_whitelist {
 	uint32_t size;
 	uint32_t gen_bitmask; /* support gens, 0x10 for 4, 0x30 for 4 and 5, etc. */
 } whitelist[] = {
-	{ RING_TIMESTAMP(RENDER_RING_BASE), 8, 0xF0 },
+	{ RING_TIMESTAMP_LO(RENDER_RING_BASE), 4, 0xF0 },
+	{ RING_TIMESTAMP_HI(RENDER_RING_BASE), 4, 0xF0 }
 };
 
 int i915_reg_read_ioctl(struct drm_device *dev,
