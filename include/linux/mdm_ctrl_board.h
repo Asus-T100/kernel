@@ -30,22 +30,85 @@
 #include <linux/module.h>
 
 #define DEVICE_NAME "modem_control"
+#define DRVNAME "mdm_ctrl"
 
 /* Supported Modem IDs*/
-#define MODEM_UNSUP	0
-#define MODEM_6260	6260
-#define MODEM_6268	6268
-#define MODEM_6360	6360
-#define MODEM_7160	7160
-#define MODEM_7260	7260
+enum {
+	MODEM_UNSUP,
+	MODEM_6260,
+	MODEM_6268,
+	MODEM_6360,
+	MODEM_7160,
+	MODEM_7260
+};
 
 /* Supported PMIC IDs*/
 enum {
-	UNKNOWN_PMIC,
-	MFLD_PMIC,
-	CLVT_PMIC,
-	MRFL_PMIC,
-	BYT_PMIC
+	PMIC_UNSUP,
+	PMIC_MFLD,
+	PMIC_CLVT,
+	PMIC_MRFL,
+	PMIC_BYT
+};
+
+/* Supported CPU IDs*/
+enum {
+	CPU_UNSUP,
+	CPU_PWELL,
+	CPU_CLVIEW,
+	CPU_TANGIER,
+	CPU_VVIEW2
+};
+
+struct mdm_ops {
+	int	(*init) (void *data);
+	int	(*cleanup) (void *data);
+	int	(*get_cflash_delay) (void *data);
+	int	(*get_wflash_delay) (void *data);
+	int	(*power_on) (void *data, int gpio_rst, int gpio_pwr);
+	int	(*power_off) (void *data, int gpio_rst);
+	int	(*warm_reset) (void *data, int gpio_rst);
+};
+
+struct cpu_ops {
+	int	(*init) (void *data);
+	int	(*cleanup) (void *data);
+	int	(*get_mdm_state) (void *data);
+	int	(*get_irq_cdump) (void *data);
+	int	(*get_irq_rst) (void *data);
+	int	(*get_gpio_rst) (void *data);
+	int	(*get_gpio_pwr) (void *data);
+};
+
+struct pmic_ops {
+	int	(*init) (void *data);
+	int	(*cleanup) (void *data);
+	int	(*power_on_mdm) (void *data);
+	int	(*power_off_mdm) (void *data);
+	int	(*get_early_pwr_on) (void *data);
+	int	(*get_early_pwr_off) (void *data);
+};
+
+struct mcd_base_info {
+	/* modem infos */
+	int		mdm_ver;
+	struct	mdm_ops mdm;
+	void	*modem_data;
+
+	/* cpu infos */
+	int		cpu_ver;
+	struct	cpu_ops cpu;
+	void	*cpu_data;
+
+	/* pmic infos */
+	int		pmic_ver;
+	struct	pmic_ops pmic;
+	void	*pmic_data;
+};
+
+struct sfi_to_mdm {
+	char modem_name[SFI_NAME_LEN + 1];
+	int modem_type;
 };
 
 /* GPIO names */
@@ -58,76 +121,49 @@ enum {
 /* Retrieve modem parameters on ACPI framework */
 int retrieve_modem_platform_data(struct platform_device *pdev);
 
-/* Modem basical info
- * @modem_name: modem real name
- * @id: Modem id to retrieve sequences from
- * @pmic: pmic id
- * @cpu: cpu id
- * @cpu_name: cpu real name
- * @data: pointer to any supplementary data
- */
-struct modem_base_info {
-	char	modem_name[SFI_NAME_LEN + 1];
-	int	id;
-	void	*pmic;
-	int	cpu;
-	char	cpu_name[SFI_NAME_LEN + 1];
-	void	*data;
-};
+int mcd_register_mdm_info(struct mcd_base_info *info,
+			  struct platform_device *pdev);
 
 /* struct mcd_cpu_data
  * @gpio_rst_out: Reset out gpio (self reset indicator)
  * @gpio_pwr_on: Power on gpio (ON1 - Power up pin)
  * @gpio_rst_bbn: RST_BB_N gpio (Reset pin)
  * @gpio_cdump: CORE DUMP indicator
- * @early_pwr_on: call to power_on on probe indicator
- * @early_pwr_off: call to power_off on probe indicator
+ * @irq_cdump: CORE DUMP irq
+ * @irq_reset: RST_BB_N irq
  */
 struct mdm_ctrl_cpu_data {
-	int	gpio_rst_out;
-	int	gpio_pwr_on;
-	int	gpio_rst_bbn;
-	int	gpio_cdump;
-	bool	early_pwr_on;
-	bool	early_pwr_off;
+	/* GPIOs */
+	char	*gpio_rst_out_name;
+	int		gpio_rst_out;
+	char	*gpio_pwr_on_name;
+	int		gpio_pwr_on;
+	char	*gpio_rst_bbn_name;
+	int		gpio_rst_bbn;
+	char	*gpio_cdump_name;
+	int		 gpio_cdump;
+
+	/* IRQs */
+	int	irq_cdump;
+	int	irq_reset;
 };
 
-/* struct mcd_pmic_data
- * @id: PMIC internal Id
- * @chipctrl: PMIC regsiter
- * @chipctrlon: Pmic value for Modem ON
- * @chipctrloff: Pmic value for Power Off
- * @chipctrl_mask: Mask value for On and Off Pmic register bits.
- */
-struct mdm_ctrl_pmic_data {
-	int	id;
-	int	chipctrl;
-	int	chipctrlon;
-	int	chipctrloff;
-	int	chipctrl_mask;
-};
-
-/* struct mdm_ctrl_pdata
- * @modem_name: Modem name, used to select correct sequences
+/* struct mdm_ctrl_pmic_data
  * @chipctrl: PMIC base address
  * @chipctrlon: Modem power on PMIC value
  * @chipctrloff: Modem power off PMIC value
- * @pre_pwr_down_delay:Delay before powering down the modem (us)
+ * @early_pwr_on: call to power_on on probe indicator
+ * @early_pwr_off: call to power_off on probe indicator
  * @pwr_down_duration:Powering down duration (us)
- * @device_data: Device related data
- * @archdata: Architecture-dependent device data
  */
-struct mdm_ctrl_pdata {
-	int				modem;
-	int				chipctrl;
-	int				chipctrlon;
-	int				chipctrloff;
-	int				chipctrl_mask;
-	int				pre_pwr_down_delay;
-	int				pwr_down_duration;
-	bool				is_mdm_ctrl_disabled;
-	void				*device_data;
-	struct mdm_ctrl_cpu_data	*cpu_data;
+struct mdm_ctrl_pmic_data {
+	int		chipctrl;
+	int		chipctrlon;
+	int		chipctrloff;
+	int		chipctrl_mask;
+	bool	early_pwr_on;
+	bool	early_pwr_off;
+	int		pwr_down_duration;
 };
 
 /* struct mdm_ctrl_device_info - Board and modem infos
@@ -139,13 +175,13 @@ struct mdm_ctrl_pdata {
  * @flash_duration:Flashing window durtion (ms)int  Not used ?
  * @warm_rst_duration:Warm reset duration (ms)
  */
-struct mdm_ctrl_device_info {
+struct mdm_ctrl_mdm_data {
 	int	pre_on_delay;
 	int	on_duration;
 	int	pre_wflash_delay;
 	int	pre_cflash_delay;
 	int	flash_duration;
 	int	warm_rst_duration;
+	int	pre_pwr_down_delay;
 };
-
-#endif /* __MDM_CTRL_BOARD_H__ */
+#endif				/* __MDM_CTRL_BOARD_H__ */

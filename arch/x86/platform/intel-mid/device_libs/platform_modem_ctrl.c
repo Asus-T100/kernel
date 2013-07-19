@@ -30,47 +30,115 @@
 
 #include "platform_modem_ctrl.h"
 
-/* Conversion table: modem_name->modem_type */
-static struct modem_base_info mdm_info_table[] = {
+/* Conversion table: SFI_NAME to mcd mdm version */
+static struct sfi_to_mdm mdm_assoc_table[] = {
 	/* IMC products */
-	{"XMM_6260", MODEM_6260, UNKNOWN_PMIC, 0, {} },
-	{"XMM_6268", MODEM_6268, UNKNOWN_PMIC, 0, {} },
-	{"XMM_6360", MODEM_6360, UNKNOWN_PMIC, 0, {} },
-	{"XMM_7160", MODEM_7160, UNKNOWN_PMIC, 0, {} },
-	{"XMM_7160_REV1", MODEM_7160, UNKNOWN_PMIC, 0, {} },
-	{"XMM_7160_REV3", MODEM_7160, UNKNOWN_PMIC, 0, {} },
-	{"XMM_7160_REV3_5", MODEM_7160, UNKNOWN_PMIC, 0, {} },
-	{"XMM_7160_REV4", MODEM_7160, UNKNOWN_PMIC, 0, {} },
-	{"XMM_7260", MODEM_7260, UNKNOWN_PMIC, 0, {} },
+	{"XMM_6260", MODEM_6260},
+	{"XMM_6268", MODEM_6268},
+	{"XMM_6360", MODEM_6360},
+	{"XMM_7160", MODEM_7160},
+	{"XMM_7260", MODEM_7260},
 	/* Any other IMC products: set to 7160 by default */
-	{"XMM", MODEM_7160, UNKNOWN_PMIC, 0, {} },
-	/* RMC products */
-	{"CYGNUS", MODEM_UNSUP, UNKNOWN_PMIC, 0, {} },
-	{"PEGASUS", MODEM_UNSUP, UNKNOWN_PMIC, 0, {} },
-	/* Any other RMC products */
-	{"RMC", MODEM_UNSUP, UNKNOWN_PMIC, 0, {} },
-	{},
+	{"XMM", MODEM_7160},
+	/* RMC products, not supported */
+	{"CYGNUS", MODEM_UNSUP},
+	{"PEGASUS", MODEM_UNSUP},
+	{"RMC", MODEM_UNSUP},
+	/* Whatever it may be, it's not supported */
+	{"", MODEM_UNSUP},
 };
 
-/* Go through modem names table and return associated numeric Id */
-int get_id_from_modem_name(char *mdm_name)
-{
-	int modem = 0;
-	/* Retrieve modem ID from modem name */
-	while (mdm_info_table[modem].modem_name[0]) {
-		/* Search for mdm_name in table.
-		 * Consider support as far as generic name is in the table.
-		 */
-		if (strstr(mdm_name, mdm_info_table[modem].modem_name))
-			break;
-		modem++;
-	}
+/* Modem data */
+static struct mdm_ctrl_mdm_data mdm_6260 = {
+	.pre_on_delay = 200,
+	.on_duration = 60,
+	.pre_wflash_delay = 30,
+	.pre_cflash_delay = 60,
+	.flash_duration = 60,
+	.warm_rst_duration = 60,
+	.pre_pwr_down_delay = 60,
+};
 
-	if (!mdm_info_table[modem].modem_name[0])
-		return MODEM_UNSUP;
+static struct mdm_ctrl_mdm_data mdm_generic = {
+	.pre_on_delay = 200,
+	.on_duration = 60,
+	.pre_wflash_delay = 30,
+	.pre_cflash_delay = 60,
+	.flash_duration = 60,
+	.warm_rst_duration = 60,
+	.pre_pwr_down_delay = 650,
+};
 
-	return mdm_info_table[modem].id;
-}
+/* PMIC data */
+static struct mdm_ctrl_pmic_data pmic_mfld = {
+	.chipctrl = 0x0E0,
+	.chipctrlon = 0x4,
+	.chipctrloff = 0x2,
+	.chipctrl_mask = 0xF8,
+	.early_pwr_on = true,
+	.early_pwr_off = false,
+	.pwr_down_duration = 20000
+};
+
+static struct mdm_ctrl_pmic_data pmic_ctp = {
+	.chipctrl = 0x100,
+	.chipctrlon = 0x10,
+	.chipctrloff = 0x10,
+	.chipctrl_mask = 0x00,
+	.early_pwr_on = false,
+	.early_pwr_off = true,
+	.pwr_down_duration = 20000
+};
+
+static struct mdm_ctrl_pmic_data pmic_mrfl = {
+	.chipctrl = 0x31,
+	.chipctrlon = 0x2,
+	.chipctrloff = 0x0,
+	.chipctrl_mask = 0xFC,
+	.early_pwr_on = false,
+	.early_pwr_off = true,
+	.pwr_down_duration = 20000
+};
+
+/* CPU Data */
+static struct mdm_ctrl_cpu_data cpu_generic = {
+	.gpio_rst_out_name = GPIO_RST_OUT,
+	.gpio_pwr_on_name = GPIO_PWR_ON,
+	.gpio_rst_bbn_name = GPIO_RST_BBN,
+	.gpio_cdump_name = GPIO_CDUMP
+};
+
+static struct mdm_ctrl_cpu_data cpu_tangier = {
+	.gpio_rst_out_name = GPIO_RST_OUT,
+	.gpio_pwr_on_name = GPIO_PWR_ON,
+	.gpio_rst_bbn_name = GPIO_RST_BBN,
+	.gpio_cdump_name = GPIO_CDUMP_MRFL
+};
+
+void *modem_data[] = {
+	NULL,			/* MODEM_UNSUP */
+	&mdm_6260,		/* MODEM_6260 */
+	&mdm_generic,		/* MODEM_6268 */
+	&mdm_generic,		/* MODEM_6360 */
+	&mdm_generic,		/* MODEM_7160 */
+	&mdm_generic		/* MODEM_7260 */
+};
+
+void *pmic_data[] = {
+	NULL,			/* PMIC_UNSUP */
+	&pmic_mfld,		/* PMIC_MFLD */
+	&pmic_ctp,		/* PMIC_CLVT */
+	&pmic_mrfl,		/* PMIC_MRFL */
+	NULL			/* PMIC_BYT, not supported throught SFI */
+};
+
+void *cpu_data[] = {
+	NULL,			/* CPU_UNSUP */
+	&cpu_generic,		/* CPU_PWELL */
+	&cpu_generic,		/* CPU_CLVIEW */
+	&cpu_tangier,		/* CPU_TANGIER */
+	&cpu_generic,		/* CPU_VVIEW */
+};
 
 /*
  * Element to be read through sysfs entry
@@ -82,8 +150,7 @@ static char cpu_name[SFI_NAME_LEN];
  * Modem name accessor
  */
 static ssize_t modem_name_show(struct kobject *kobj,
-		struct kobj_attribute *attr,
-		char *buf)
+			       struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%s\n", modem_name);
 }
@@ -95,8 +162,7 @@ static struct kobj_attribute modem_name_attribute = __ATTR_RO(modem_name);
  * Cpu-name accessor
  */
 static ssize_t cpu_name_show(struct kobject *kobj,
-		struct kobj_attribute *attr,
-		char *buf)
+			     struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%s\n", cpu_name);
 }
@@ -107,7 +173,7 @@ static struct kobj_attribute cpu_name_attribute = __ATTR_RO(cpu_name);
 static struct attribute *mdm_attrs[] = {
 	&modem_name_attribute.attr,
 	&cpu_name_attribute.attr,
-	NULL,	/* need to NULL terminate the list of attributes */
+	NULL, /* need to NULL terminate the list of attributes */
 };
 
 static struct attribute_group mdm_attr_group = {
@@ -130,231 +196,170 @@ int create_sysfs_telephony_entry(void *pdata)
 	if (retval)
 		kobject_put(telephony_kobj);
 
-	/* Set values with the one retrieved previously
-	 * through modem_platform_data call.
-	 */
-	strncpy(modem_name,
-			((struct modem_base_info *)pdata)->modem_name,
-			SFI_NAME_LEN);
-
-	strncpy(cpu_name,
-			((struct modem_base_info *)pdata)->cpu_name,
-			SFI_NAME_LEN);
-
 	return retval;
 }
 
-/* Modem info to be passed to MCD through platform_device.platform_data */
-struct modem_base_info *mcd_reg_info;
-struct mdm_ctrl_cpu_data *basic_data;
-struct mdm_ctrl_pmic_data *pmic_data;
+void mcd_register_finalize(struct mcd_base_info const *info)
+{
+	switch (info->cpu_ver) {
+	case CPU_PWELL:
+	case CPU_CLVIEW:
+	case CPU_TANGIER:
+		{
+			struct mdm_ctrl_cpu_data *cpu_data =
+			    info->cpu_data;
+			cpu_data->gpio_rst_out =
+			    get_gpio_by_name(cpu_data->gpio_rst_out_name);
+			cpu_data->gpio_pwr_on =
+			    get_gpio_by_name(cpu_data->gpio_pwr_on_name);
+			cpu_data->gpio_rst_bbn =
+			    get_gpio_by_name(cpu_data->gpio_rst_bbn_name);
+			cpu_data->gpio_cdump =
+			    get_gpio_by_name(cpu_data->gpio_cdump_name);
+			break;
+		}
+	}
+	return;
+}
 
 /**
  * mcd_register_mdm_info - Register information retrieved from SFI table
  * @info: struct including modem name and PMIC.
  */
-int mcd_register_mdm_info(struct modem_base_info const *info,
-		struct platform_device *pdev)
+int mcd_register_mdm_info(struct mcd_base_info *info,
+			  struct platform_device *pdev)
 {
-	int ret = 0;
-	struct modem_base_info *mcd_reg_tmp_info;
-	mcd_reg_tmp_info = kzalloc(sizeof(struct modem_base_info), GFP_ATOMIC);
-	if (!mcd_reg_tmp_info) {
+	struct mcd_base_info *mcd_reg_info =
+	    kzalloc(sizeof(struct mcd_base_info), GFP_ATOMIC);
+	if (!mcd_reg_info) {
 		pr_err("SFI can't allocate mcd_reg_tmp_info memory");
-		ret = -ENOMEM;
-		goto free_mid_info;
-	};
-	(void) memcpy(mcd_reg_tmp_info, info, sizeof(struct modem_base_info));
-	mcd_reg_info = mcd_reg_tmp_info;
-
-	basic_data = kzalloc(sizeof(struct mdm_ctrl_cpu_data), GFP_ATOMIC);
-	if (!basic_data) {
-		pr_err("SFI can't allocate mdm_ctrl_cpu_data memory");
-		ret = -ENOMEM;
-		goto free_mid_info;
+		return -ENOMEM;
 	};
 
 	pr_info("%s : cpu info setup\n", __func__);
-	/* Check if the cpu is supported */
-	switch (mcd_reg_info->cpu) {
-	case INTEL_MID_CPU_CHIP_PENWELL:
-		basic_data->gpio_cdump = get_gpio_by_name(GPIO_CDUMP);
-		basic_data->early_pwr_on = true;
-		basic_data->early_pwr_off = false;
-		break;
-	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
-		basic_data->gpio_cdump = get_gpio_by_name(GPIO_CDUMP);
-		basic_data->early_pwr_on = false;
-		basic_data->early_pwr_off = true;
-		break;
-	case INTEL_MID_CPU_CHIP_TANGIER:
-		basic_data->gpio_cdump = get_gpio_by_name(GPIO_CDUMP_MRFL);
-		basic_data->early_pwr_on = false;
-		basic_data->early_pwr_off = true;
-		break;
-	case INTEL_MID_CPU_CHIP_ANNIEDALE:
-		basic_data->gpio_cdump = get_gpio_by_name(GPIO_CDUMP_MRFL);
-		basic_data->early_pwr_on = false;
-		basic_data->early_pwr_off = true;
-		break;
-	default:
-		pr_err("%s: Platform not supported %d", __func__,
-				mcd_reg_info->cpu);
-		ret = -ENODEV;
-		goto free_mid_info;
-	}
+	info->modem_data = modem_data[info->mdm_ver];
+	info->cpu_data = cpu_data[info->cpu_ver];
+	info->pmic_data = pmic_data[info->pmic_ver];
+	mcd_register_finalize(info);
 
-	basic_data->gpio_rst_out = get_gpio_by_name(GPIO_RST_OUT);
-	basic_data->gpio_pwr_on = get_gpio_by_name(GPIO_PWR_ON);
-	basic_data->gpio_rst_bbn = get_gpio_by_name(GPIO_RST_BBN);
-
-	mcd_reg_info->data = basic_data;
+	memcpy(mcd_reg_info, info, sizeof(struct mcd_base_info));
 	pdev->dev.platform_data = mcd_reg_info;
+
 	return 0;
+}
 
-free_mid_info:
-	if (!pmic_data)
-		kfree(pmic_data);
-	pmic_data = NULL;
-	if (!basic_data)
-		kfree(basic_data);
-	basic_data = NULL;
-	if (!mcd_reg_info)
-		kfree(mcd_reg_info);
-	mcd_reg_info = NULL;
+int mcd_get_modem_ver(char *mdm_name)
+{
+	int modem = 0;
+	strncpy(modem_name, mdm_name, SFI_NAME_LEN);
+	/* Retrieve modem ID from modem name */
+	while (mdm_assoc_table[modem].modem_name[0]) {
+		/* Search for mdm_name in table.
+		 * Consider support as far as generic name is in the table.
+		 */
+		if (strstr(mdm_name, mdm_assoc_table[modem].modem_name))
+			return mdm_assoc_table[modem].modem_type;
+		modem++;
+	}
+	return MODEM_UNSUP;
+}
 
-	return ret;
+int mcd_get_cpu_ver(void)
+{
+	enum intel_mid_cpu_type mid_cpu = intel_mid_identify_cpu();
+
+	switch (mid_cpu) {
+	case INTEL_MID_CPU_CHIP_PENWELL:
+		strncpy(cpu_name, "PENWELL", SFI_NAME_LEN);
+		return CPU_PWELL;
+	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
+		strncpy(cpu_name, "CLOVERVIEW", SFI_NAME_LEN);
+		return CPU_CLVIEW;
+	case INTEL_MID_CPU_CHIP_TANGIER:
+		strncpy(cpu_name, "TANGIER", SFI_NAME_LEN);
+		return CPU_TANGIER;
+	default:
+		strncpy(cpu_name, "UNKNOWN", SFI_NAME_LEN);
+		return CPU_UNSUP;
+	}
+	return CPU_UNSUP;
+}
+
+int mcd_get_pmic_ver(void)
+{
+	/* Deduce the PMIC from the platform */
+	switch (spid.platform_family_id) {
+	case INTEL_MFLD_PHONE:
+	case INTEL_MFLD_TABLET:
+		return PMIC_MFLD;
+	case INTEL_CLVTP_PHONE:
+	case INTEL_CLVT_TABLET:
+		return PMIC_CLVT;
+	case INTEL_MRFL_PHONE:
+	case INTEL_MRFL_TABLET:
+		return PMIC_MRFL;
+	case INTEL_BYT_PHONE:
+	case INTEL_BYT_TABLET:
+		return PMIC_BYT;
+	default:
+		return PMIC_UNSUP;
+	}
 }
 
 /*
  * modem_platform_data - Platform data builder for modem devices
- * @data: pointer to modem name retrieved in sfi table
+ * @data: pointer to modem name retrived in sfi table
  */
 void *modem_platform_data(void *data)
 {
-	char *mdm_name = (char *)data;
-	int modem = 0;
+	char *mdm_name = data;
+	struct mcd_base_info *mcd_info;
+	pr_debug("SFI %s: modem info setup\n", __func__);
 
-	struct modem_base_info *mdm_info;
-
-	pr_debug("%s: modem info setup\n", __func__);
-	mdm_info = kzalloc(sizeof(*mdm_info), GFP_KERNEL);
-	if (!mdm_info) {
-		pr_err("SFI can't allocate modem_base_info memory");
+	mcd_info = kzalloc(sizeof(*mcd_info), GFP_KERNEL);
+	if (!mcd_info)
 		return NULL;
-	}
 
-	pmic_data = kzalloc(sizeof(struct mdm_ctrl_pmic_data), GFP_ATOMIC);
-	if (!pmic_data) {
-		pr_err("SFI can't allocate mdm_ctrl_pmic_data memory");
-		goto free_mid_info;
-	};
+	mcd_info->mdm_ver = mcd_get_modem_ver(mdm_name);
+	mcd_info->cpu_ver = mcd_get_cpu_ver();
+	mcd_info->pmic_ver = mcd_get_pmic_ver();
 
-	/* Retrieve modem ID from modem name */
-	modem = get_id_from_modem_name(mdm_name);
-	if (modem == MODEM_UNSUP) {
-		pr_err("SFI can't find modem name.\n");
-		goto free_mid_info;
-	}
-	mdm_info->id = modem;
+	pr_info("SFI %s cpu: %d mdm: %d pmic: %d.\n", __func__,
+		mcd_info->cpu_ver, mcd_info->mdm_ver, mcd_info->pmic_ver);
 
-	/*
-	 * Real name provisioning. Retrieved from devs_id table.
-	 */
-	strncpy(mdm_info->modem_name, mdm_name, SFI_NAME_LEN);
-
-#define CASE_PLATFORM(x) { case INTEL_##x##_PHONE:\
-	case INTEL_##x##_TABLET:\
-				pmic_data->id = x##_PMIC;\
-	break;\
-	}
-
-	switch (spid.platform_family_id) {
-	CASE_PLATFORM(MFLD);
-	case INTEL_CLVTP_PHONE:
-	case INTEL_CLVT_TABLET:
-		pmic_data->id = CLVT_PMIC;
-		break;
-	CASE_PLATFORM(MRFL);
-	CASE_PLATFORM(BYT);
-	default:
-		pmic_data->id = UNKNOWN_PMIC;
-	}
-
-	mdm_info->pmic = pmic_data;
-	mdm_info->cpu = intel_mid_identify_cpu();
-
-	/*
-	 * Provisionning cpu name in order to simplify telephony
-	 * components life. All needed info in one place.
-	 */
-	switch (mdm_info->cpu) {
-	case INTEL_MID_CPU_CHIP_PENWELL:
-		strncpy(mdm_info->cpu_name, "PENWELL", SFI_NAME_LEN);
-		break;
-	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
-		strncpy(mdm_info->cpu_name, "CLOVERVIEW", SFI_NAME_LEN);
-		break;
-	case INTEL_MID_CPU_CHIP_TANGIER:
-		strncpy(mdm_info->cpu_name, "TANGIER", SFI_NAME_LEN);
-		break;
-	case INTEL_MID_CPU_CHIP_ANNIEDALE:
-		strncpy(mdm_info->cpu_name, "ANNIEDALE", SFI_NAME_LEN);
-		break;
-	default:
-		strncpy(mdm_info->cpu_name, "UNKNOWN", SFI_NAME_LEN);
-	}
-
-	pr_info("%s: modem setup done\n", __func__);
-	pr_debug("%s name:%16.16s id:%d pmic:%d cpu:%s\n",
-			__func__,
-			mdm_info->modem_name,
-			mdm_info->id,
-			pmic_data->id,
-			mdm_info->cpu_name);
-
-	return mdm_info;
-free_mid_info:
-	if (!mdm_info)
-		kfree(mdm_info);
-	if (!pmic_data)
-		kfree(pmic_data);
-	pmic_data = NULL;
-	return NULL;
+	return mcd_info;
 }
 
 static struct platform_device mcd_device = {
-	.name	= DEVICE_NAME,
-	.id		= -1,
+	.name = DEVICE_NAME,
+	.id = -1,
 };
 
 /*
  * sfi_handle_mdm - specific handler for intel's platform modem devices.
  * @pentry: sfi table entry
- * @dev: device id retrived by sfi dev parser
+ * @dev: device id retrieved by sfi dev parser
  */
-void sfi_handle_mdm(struct sfi_device_table_entry *pentry,
-		struct devs_id *dev)
+void sfi_handle_mdm(struct sfi_device_table_entry *pentry, struct devs_id *dev)
 {
 	void *pdata = NULL;
 
-	pr_info("SFI retrieve modem entry, name = %16.16s\n",
-			pentry->name);
+	pr_info("SFI retrieve modem entry, name = %16.16s\n", pentry->name);
 
 	pdata = dev->get_platform_data(dev->name);
 
 	if (pdata) {
 		pr_info("SFI register modem platform data for MCD device %s\n",
-				dev->name);
+			dev->name);
 		mcd_register_mdm_info(pdata, &mcd_device);
 		platform_device_register(&mcd_device);
 		if (!telephony_kobj) {
 			pr_info("SFI creates sysfs entry for modem named %s\n",
-					dev->name);
+				dev->name);
 			create_sysfs_telephony_entry(pdata);
 		} else {
 			pr_info("Unexpected SFI entry for modem named %s\n",
-					dev->name);
+				dev->name);
 		}
 		kfree(pdata);
 	}
@@ -365,28 +370,26 @@ acpi_status get_acpi_param(acpi_handle handle, int type, char *id,
 			   union acpi_object **result)
 {
 	acpi_status status = AE_OK;
-	struct acpi_buffer obj_buffer = {ACPI_ALLOCATE_BUFFER, NULL };
+	struct acpi_buffer obj_buffer = { ACPI_ALLOCATE_BUFFER, NULL };
 	union acpi_object *out_obj;
 
 	status = acpi_evaluate_object(handle, id, NULL, &obj_buffer);
-	pr_err("%s: acpi_evaluate_object, status:%d\n", __func__,
-			status);
+	pr_err("%s: acpi_evaluate_object, status:%d\n", __func__, status);
 	if (ACPI_FAILURE(status)) {
-		pr_err("%s: ERROR %d evaluating ID:%s\n", __func__,
-			status, id);
-		goto Error;
+		pr_err("%s: ERROR %d evaluating ID:%s\n", __func__, status, id);
+		goto error;
 	}
 
 	out_obj = obj_buffer.pointer;
 	if (!out_obj || out_obj->type != type) {
 		pr_err("%s: Invalid type:%d for Id:%s\n", __func__, type, id);
 		status = AE_BAD_PARAMETER;
-		goto Error;
+		goto error;
 	} else {
 		*result = out_obj;
 	}
 
-Error:
+ error:
 	return status;
 }
 #endif
@@ -396,45 +399,31 @@ Error:
  *
  * @pdev : The platform device object to identify ACPI data.
  */
-int retrieve_acpi_modem_data(struct platform_device *pdev)
+void *retrieve_acpi_modem_data(struct platform_device *pdev)
 {
-	int ret = -ENODEV;
 #ifdef CONFIG_ACPI
-	struct modem_base_info *mcd_reg_tmp_info;
+	struct mcd_base_info *mcd_reg_info;
 	acpi_status status = AE_OK;
 	acpi_handle handle;
 	union acpi_object *out_obj;
 	union acpi_object *item;
+	struct mdm_ctrl_cpu_data *cpu_data;
+	struct mdm_ctrl_mdm_data *mdm_data;
+	struct mdm_ctrl_pmic_data *pmic_data;
 
 	if (!pdev) {
 		pr_err("%s: platform device is NULL.", __func__);
-		return -ENODEV;
+		return NULL;
 	}
 
 	/* Get ACPI handle */
 	handle = DEVICE_ACPI_HANDLE(&pdev->dev);
 
-	mcd_reg_tmp_info = kzalloc(sizeof(struct modem_base_info), GFP_ATOMIC);
-	if (!mcd_reg_tmp_info) {
+	mcd_reg_info = kzalloc(sizeof(struct mcd_base_info), GFP_ATOMIC);
+	if (!mcd_reg_info) {
 		pr_err("%s: can't allocate mcd_reg_tmp_info memory", __func__);
-		ret = -ENOMEM;
 		goto Free_mdm_info;
 	}
-	mcd_reg_info = mcd_reg_tmp_info;
-
-	basic_data = kzalloc(sizeof(struct mdm_ctrl_cpu_data), GFP_ATOMIC);
-	if (!basic_data) {
-		pr_err("%s: can't allocate mdm_ctrl_cpu_data memory", __func__);
-		ret = -ENOMEM;
-		goto Free_mdm_info;
-	}
-
-	pmic_data = kzalloc(sizeof(struct mdm_ctrl_pmic_data), GFP_ATOMIC);
-	if (!pmic_data) {
-		pr_err("%s: can't allocate mdm_ctrl_pmic_data memory",
-		       __func__);
-		goto Free_mdm_info;
-	};
 
 	pr_info("%s: Getting platform data...\n", __func__);
 
@@ -444,16 +433,18 @@ int retrieve_acpi_modem_data(struct platform_device *pdev)
 		pr_err("%s: ERROR evaluating CPU Name\n", __func__);
 		goto Free_mdm_info;
 	}
-	strncpy(mcd_reg_info->cpu_name, out_obj->string.pointer, SFI_NAME_LEN);
-
-	pr_info("%s: Found CPU name:%s\n", __func__, mcd_reg_info->cpu_name);
 
 	/* CPU Id */
-	if (strstr(mcd_reg_info->cpu_name, "ValleyView2")) {
-		mcd_reg_info->cpu = INTEL_MID_CPU_CHIP_VALLEYVIEW2;
+	if (strstr(out_obj->string.pointer, "ValleyView2")) {
+		mcd_reg_info->cpu_ver = CPU_VVIEW2;
+		strncpy(cpu_name, "VALLEYVIEW2", SFI_NAME_LEN);
+		/* mrfl is closest to BYT and anyway */
+		/* we will overwrite most of the values */
+		mcd_reg_info->cpu_data = &cpu_tangier;
+		cpu_data = mcd_reg_info->cpu_data;
 	} else {
 		pr_err("%s: ERROR CPU name %s Not supported!\n", __func__,
-		mcd_reg_info->cpu_name);
+		       cpu_name);
 		goto Free_mdm_info;
 	}
 
@@ -463,26 +454,28 @@ int retrieve_acpi_modem_data(struct platform_device *pdev)
 		pr_err("%s: ERROR evaluating Modem Name\n", __func__);
 		goto Free_mdm_info;
 	}
-	strncpy(mcd_reg_info->modem_name,
-		out_obj->string.pointer,
-		SFI_NAME_LEN);
 
-	mcd_reg_info->id = get_id_from_modem_name(mcd_reg_info->modem_name);
-	if (mcd_reg_info->id == MODEM_UNSUP) {
+	mcd_reg_info->mdm_ver = mcd_get_modem_ver(out_obj->string.pointer);
+	if (mcd_reg_info->mdm_ver == MODEM_UNSUP) {
 		pr_err("%s: ERROR Modem %s Not supported!\n", __func__,
-			mcd_reg_info->modem_name);
+		       modem_name);
 		goto Free_mdm_info;
 	}
+	mcd_reg_info->modem_data = modem_data[mcd_reg_info->mdm_ver];
 
 	/* PMIC */
-	if (mcd_reg_info->cpu == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		pmic_data->id = BYT_PMIC;
+	if (mcd_reg_info->cpu_ver == CPU_VVIEW2)
+		mcd_reg_info->pmic_ver = PMIC_BYT;
 
 	status = get_acpi_param(handle, ACPI_TYPE_PACKAGE, "PMIC", &out_obj);
 	if (ACPI_FAILURE(status)) {
 		pr_err("%s: ERROR evaluating PMIC info\n", __func__);
 		goto Free_mdm_info;
 	}
+
+	/* mrfl is closest to BYT */
+	mcd_reg_info->pmic_data = &pmic_mrfl;
+	pmic_data = mcd_reg_info->pmic_data;
 
 	item = &(out_obj->package.elements[0]);
 	pmic_data->chipctrl = (int)item->integer.value;
@@ -496,61 +489,38 @@ int retrieve_acpi_modem_data(struct platform_device *pdev)
 		__func__, pmic_data->chipctrl, pmic_data->chipctrlon,
 		pmic_data->chipctrloff, pmic_data->chipctrl_mask);
 
-	mcd_reg_info->pmic = pmic_data;
-
-	pr_info("%s: Modem:%16.16s id:%d pmic:0x%x cpu:%s\n",
-		__func__,
-		mcd_reg_info->modem_name,
-		mcd_reg_info->id,
-		pmic_data->chipctrl,
-		mcd_reg_info->cpu_name);
-
 	pr_info("%s: cpu info setup\n", __func__);
 
-	basic_data->gpio_pwr_on = acpi_get_gpio_by_index(&pdev->dev, 0, NULL);
-	basic_data->gpio_cdump = acpi_get_gpio_by_index(&pdev->dev, 1, NULL);
-	basic_data->gpio_rst_out = acpi_get_gpio_by_index(&pdev->dev, 2, NULL);
-	basic_data->gpio_rst_bbn = acpi_get_gpio_by_index(&pdev->dev, 3, NULL);
+	/* finalize cpu data */
+	cpu_data->gpio_pwr_on = acpi_get_gpio_by_index(&pdev->dev, 0, NULL);
+	cpu_data->gpio_cdump = acpi_get_gpio_by_index(&pdev->dev, 1, NULL);
+	cpu_data->gpio_rst_out = acpi_get_gpio_by_index(&pdev->dev, 2, NULL);
+	cpu_data->gpio_rst_bbn = acpi_get_gpio_by_index(&pdev->dev, 3, NULL);
 
 	pr_info("%s:Setup GPIOs(PO:%d, RO:%d, RB:%d, CD:%d)",
 		__func__,
-		basic_data->gpio_pwr_on,
-		basic_data->gpio_rst_out,
-		basic_data->gpio_rst_bbn,
-		basic_data->gpio_cdump);
+		cpu_data->gpio_pwr_on,
+		cpu_data->gpio_rst_out,
+		cpu_data->gpio_rst_bbn, cpu_data->gpio_cdump);
 
 	status = get_acpi_param(handle, ACPI_TYPE_PACKAGE, "EPWR", &out_obj);
 	if (ACPI_FAILURE(status)) {
-		pr_err("%s: ERROR evaluating Early PWR info info\n", __func__);
+		pr_err("%s: ERROR evaluating Early PWR info\n", __func__);
 		goto Free_mdm_info;
 	}
 
 	item = &(out_obj->package.elements[0]);
-	basic_data->early_pwr_on = (int)item->integer.value;
+	pmic_data->early_pwr_on = (int)item->integer.value;
 	item = &(out_obj->package.elements[1]);
-	basic_data->early_pwr_off = (int)item->integer.value;
+	pmic_data->early_pwr_off = (int)item->integer.value;
 
-	pr_info("%s:Setup Early Power: On:%d, Off:%d", __func__,
-		       basic_data->early_pwr_on,
-		       basic_data->early_pwr_off);
+	return mcd_reg_info;
 
-	mcd_reg_info->data = basic_data;
-
-	return 0;
-
-Free_mdm_info:
+ Free_mdm_info:
 	pr_err("%s: ERROR retrieving data from ACPI!!!\n", __func__);
-	if (!pmic_data)
-		kfree(pmic_data);
-	pmic_data = NULL;
-	if (!basic_data)
-		kfree(basic_data);
-	basic_data = NULL;
-	if (!mcd_reg_info)
-		kfree(mcd_reg_info);
+	kfree(mcd_reg_info);
 #endif
-	mcd_reg_info = NULL;
-	return ret;
+	return NULL;
 }
 
 /*
@@ -562,35 +532,37 @@ int retrieve_modem_platform_data(struct platform_device *pdev)
 {
 	int ret = -ENODEV;
 
+	struct mcd_base_info *info;
 	if (!pdev) {
-		pr_err("%s: platform device is NULL!!!\n", __func__);
+		pr_err("%s: platform device is NULL, aborting\n", __func__);
 		return ret;
 	}
 
-	if (ACPI_HANDLE(&pdev->dev)) {
-		pr_err("%s: Retrieving modem info from ACPI for device %s\n",
-			__func__, pdev->name);
-		ret = retrieve_acpi_modem_data(pdev);
-	} else {
-		pr_err("%s: platform device is NOT ACPI!!!\n", __func__);
+	if (!ACPI_HANDLE(&pdev->dev)) {
+		pr_err("%s: platform device is NOT ACPI, aborting", __func__);
+		goto out;
 	}
 
-	if (ret)
-		goto Error;
+	pr_err("%s: Retrieving modem info from ACPI for device %s\n",
+	       __func__, pdev->name);
+	info = retrieve_acpi_modem_data(pdev);
+
+	if (!info)
+		goto out;
 
 	/* Store modem parameters in platform device */
-	pdev->dev.platform_data = mcd_reg_info;
+	pdev->dev.platform_data = info;
 
-	if (!telephony_kobj) {
-		pr_err("%s: creates sysfs entry for device named %s\n",
-				__func__, pdev->name);
-		create_sysfs_telephony_entry(pdev->dev.platform_data);
-	} else {
+	if (telephony_kobj) {
 		pr_err("%s: Unexpected entry for device named %s\n",
-				__func__, pdev->name);
+		       __func__, pdev->name);
+		goto out;
 	}
 
-	return 0;
-Error:
+	pr_err("%s: creates sysfs entry for device named %s\n",
+	       __func__, pdev->name);
+	ret = create_sysfs_telephony_entry(pdev->dev.platform_data);
+
+ out:
 	return ret;
 }
