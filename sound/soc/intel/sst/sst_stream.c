@@ -353,10 +353,10 @@ int sst_start_stream(int str_id)
 int sst_send_byte_stream_mrfld(void *sbytes)
 {
 	struct ipc_post *msg = NULL;
-	struct snd_sst_bytes *bytes = (struct snd_sst_bytes *) sbytes;
+	struct snd_sst_bytes_v2 *bytes = (struct snd_sst_bytes_v2 *) sbytes;
 	unsigned long irq_flags;
 	u32 length;
-	int ret, pvt_id;
+	int pvt_id, ret = 0;
 	struct sst_block *block = NULL;
 
 	pr_debug("%s:\ntype:%d\nipc_msg:%x\nblock:%d\ntask_id:%x\npipe: %d\nlength:%d\n",
@@ -632,6 +632,9 @@ int sst_drop_stream(int str_id)
 		} else {
 			if (sst_create_ipc_msg(&msg, true))
 				return -ENOMEM;
+			str_info->prev = STREAM_UN_INIT;
+			str_info->status = STREAM_INIT;
+			str_info->cumm_bytes = 0;
 			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 			sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
 					      str_info->task_id, 1, pvt_id);

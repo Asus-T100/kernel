@@ -2240,6 +2240,8 @@ out:
  *
  * @obj: object which may be in use on another ring.
  * @to: ring we wish to use the object on. May be NULL.
+ * @add_request: do we need to add a request to track operations
+ *    submitted on ring with sync_to function
  *
  * This code is meant to abstract object synchronization with the GPU.
  * Calling with NULL implies synchronizing the object with the CPU
@@ -2249,7 +2251,7 @@ out:
  */
 int
 i915_gem_object_sync(struct drm_i915_gem_object *obj,
-		     struct intel_ring_buffer *to)
+		     struct intel_ring_buffer *to, bool add_request)
 {
 	struct intel_ring_buffer *from = obj->ring;
 	u32 seqno;
@@ -2272,9 +2274,11 @@ i915_gem_object_sync(struct drm_i915_gem_object *obj,
 		return ret;
 
 	ret = to->sync_to(to, from, seqno);
-	if (!ret)
+	if (!ret) {
 		from->sync_seqno[idx] = seqno;
-
+		if (add_request)
+			i915_add_request_noflush(to);
+	}
 	return ret;
 }
 
@@ -3235,7 +3239,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	int ret;
 
 	if (pipelined != obj->ring) {
-		ret = i915_gem_object_sync(obj, pipelined);
+		ret = i915_gem_object_sync(obj, pipelined, true);
 		if (ret)
 			return ret;
 	}

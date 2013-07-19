@@ -2551,9 +2551,14 @@ void gen6_disable_rps(struct drm_device *dev)
 
 int intel_enable_rc6(const struct drm_device *dev)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	/* Respect the kernel parameter if it is set */
 	if (i915_enable_rc6 >= 0)
 		return i915_enable_rc6;
+
+	if (dev_priv->rc6_user_disable_count > 0)
+		return 0;
 
 	if (INTEL_INFO(dev)->gen == 5) {
 		DRM_DEBUG_DRIVER("Ironlake: only RC6 available\n");
@@ -2876,7 +2881,7 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 bool vlv_turbo_initialize(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 val = 0;
+	u32 val = 0, cck_fuse = 0;
 	unsigned long flags;
 
 	/* Setting RC0 mode by default on VLV. Make this 0
@@ -2937,7 +2942,8 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 		dev_priv->rps.cz_freq = VLV_CZ_CLOCK_FREQ_DDR_MODE_1333;
 		break;
 	}
-	DRM_DEBUG_DRIVER("GPLL enabled? %s\n", val & 8 ? "yes" : "no");
+	dev_priv->gpll = val & 0x10;
+	DRM_DEBUG_DRIVER("GPLL enabled? %s\n", dev_priv->gpll ? "yes" : "no");
 	DRM_DEBUG_DRIVER("GPU status: 0x%08x\n", val);
 
 	DRM_DEBUG_DRIVER("Starting GPU freq: %x\n", (val >> 8) & 0xff);
@@ -2954,6 +2960,22 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 
 	valleyview_set_rps(dev_priv->dev, dev_priv->rps.min_delay);
 	DRM_DEBUG_DRIVER("setting GPU freq to %d\n", dev_priv->rps.min_delay);
+
+	intel_cck_read(dev_priv , 0x8, &cck_fuse);
+	switch (cck_fuse & 0x3) {
+	case 0:
+		dev_priv->cck_freq = 800;
+		break;
+	case 1:
+		dev_priv->cck_freq = 1600;
+		break;
+	case 2:
+		dev_priv->cck_freq = 2000;
+		break;
+	case 3:
+		dev_priv->cck_freq = 2400;
+		break;
+	}
 
 	/* Clear out any stale interrupts first */
 	spin_lock_irqsave(&dev_priv->rps.lock, flags);
@@ -3009,10 +3031,14 @@ void valleyview_enable_rps(struct drm_device *dev)
 	/* Setup RC6 */
 	vlv_rs_initialize(dev);
 
-	/* Setu Gfx Turbo */
-	if (i915_enable_turbo > 0)
+	/* Setup Gfx Turbo */
+	if (i915_enable_turbo > 0) {
 		vlv_turbo_initialize(dev);
-
+		if (dev_priv->max_frequency_mode) {
+			vlv_turbo_disable(dev);
+			valleyview_set_rps(dev, dev_priv->rps.max_delay);
+		}
+	}
 }
 
 void ironlake_teardown_rc6(struct drm_device *dev)
@@ -3699,8 +3725,6 @@ static void intel_init_emon(struct drm_device *dev)
 /* This routine is to clean up RC6, Turbo and other power features on VLV */
 void valleyview_disable_rps(struct drm_device *dev)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
 	/* Clear RC6 */
 	vlv_rs_setstate(dev, false);
 

@@ -35,10 +35,13 @@
 #include <linux/jiffies.h>
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
+#include <linux/dma-mapping.h>
 
 #include <linux/pm_runtime.h>
 
 #include <linux/mei.h>
+
+#include "mei-mm.h"
 
 #include "mei_dev.h"
 #include "hw-txe.h"
@@ -48,12 +51,52 @@ module_param_named(nopg, nopg, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(nopg, "don't enable power gating (default = false)");
 
 
+static char dmapool[32] = "4M";
+module_param_string(dmapool, dmapool, 32, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dmapool, "dma pool size (default=4M)");
+
 static DEFINE_PCI_DEVICE_TABLE(mei_txe_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0F18)},
 	{0, }
 };
 MODULE_DEVICE_TABLE(pci, mei_txe_pci_tbl);
 
+
+static int mei_alloc_dma(struct mei_device *dev)
+{
+	struct mei_txe_hw *hw = to_txe_hw(dev);
+	hw->pool_size = memparse(dmapool, NULL);
+
+	if (hw->pool_size == 0)
+		return 0;
+
+	/*  Limmit pools size to satt max range */
+	hw->pool_size = min_t(size_t, hw->pool_size, SATT_RANGE_MAX);
+
+	hw->pool_vaddr = dma_alloc_coherent(&dev->pdev->dev, hw->pool_size,
+		&hw->pool_paddr, GFP_KERNEL);
+
+	dev_dbg(&dev->pdev->dev, "DMA Memory Allocated vaddr=%p, paddr=%lu, size=%zd\n",
+			hw->pool_vaddr,
+			(unsigned long)hw->pool_paddr, hw->pool_size);
+
+	if (hw->pool_paddr & ~DMA_BIT_MASK(36)) {
+		dev_err(&dev->pdev->dev, "Phys Address is beyond DMA_MASK(36) 0x%0lX\n",
+			(unsigned long)hw->pool_paddr);
+	}
+
+	return hw->pool_vaddr ? 0 : -ENOMEM;
+}
+
+
+static void mei_free_dma(struct mei_device *dev)
+{
+	struct mei_txe_hw *hw = to_txe_hw(dev);
+	if (hw->pool_vaddr)
+		dma_free_coherent(&dev->pdev->dev,
+			hw->pool_size, hw->pool_vaddr, hw->pool_paddr);
+	hw->pool_vaddr = NULL;
+}
 
 static void mei_txe_pci_iounmap(struct pci_dev *pdev, struct mei_txe_hw *hw)
 {
@@ -113,6 +156,13 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	hw = to_txe_hw(dev);
 
 
+	if (err)
+		goto free_device;
+
+	err = mei_alloc_dma(dev);
+	if (err)
+		goto free_device;
+
 	/* mapping  IO device memory */
 	for (i = SEC_BAR; i < NUM_OF_MEM_BARS; i++) {
 		hw->mem_addr[i] = pci_iomap(pdev, i, 0);
@@ -152,11 +202,22 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto release_irq;
 	}
 
+	err = mei_txe_setup_satt2(dev,
+		dma_to_phys(&dev->pdev->dev, hw->pool_paddr), hw->pool_size);
+	if (err)
+		goto release_irq;
+
 	err = mei_register(dev);
 	if (err)
 		goto release_irq;
 
 	pci_set_drvdata(pdev, dev);
+
+	hw->mdev = mei_mm_init(&dev->pdev->dev,
+		hw->pool_vaddr, hw->pool_paddr, hw->pool_size);
+
+	if (IS_ERR_OR_NULL(hw->mdev))
+		goto deregister_mei;
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
 	pm_runtime_use_autosuspend(&pdev->dev);
@@ -170,6 +231,8 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	return 0;
 
+deregister_mei:
+	mei_deregister(dev);
 release_irq:
 	/* disable interrupts */
 	mei_disable_interrupts(dev);
@@ -180,6 +243,7 @@ release_irq:
 	pci_disable_msi(pdev);
 
 free_device:
+	mei_free_dma(dev);
 	mei_txe_pci_iounmap(pdev, hw);
 	kfree(dev);
 release_regions:
@@ -220,6 +284,12 @@ static void mei_txe_remove(struct pci_dev *pdev)
 	mei_disable_interrupts(dev);
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);
+
+	mei_free_dma(dev);
+
+	mei_mm_deinit(hw->mdev);
+
+	mei_free_dma(dev);
 
 	pci_set_drvdata(pdev, NULL);
 

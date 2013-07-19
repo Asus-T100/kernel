@@ -254,6 +254,15 @@ drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 		      int block, int len)
 {
 	unsigned char start = block * EDID_LENGTH;
+	unsigned char segmentIndex = block >> 1;
+
+	unsigned char messageCount;
+
+	if (segmentIndex == 0)
+		messageCount = 2;
+	else
+		messageCount = 3;
+
 	int ret, retries = 5;
 
 	/* The core i2c driver will automatically retry the transfer if the
@@ -265,6 +274,11 @@ drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 	do {
 		struct i2c_msg msgs[] = {
 			{
+				.addr   = DDC_SEGMENT_ADDR,
+				.flags  = 0,
+				.len    = 1,
+				.buf    = &segmentIndex,
+			}, {
 				.addr	= DDC_ADDR,
 				.flags	= 0,
 				.len	= 1,
@@ -276,15 +290,18 @@ drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 				.buf	= buf,
 			}
 		};
-		ret = i2c_transfer(adapter, msgs, 2);
+		if (segmentIndex == 0)
+			ret = i2c_transfer(adapter, &msgs[1], messageCount);
+		else
+			ret = i2c_transfer(adapter, msgs, messageCount);
 		if (ret == -ENXIO) {
 			DRM_DEBUG_KMS("drm: skipping non-existent adapter %s\n",
 					adapter->name);
 			break;
 		}
-	} while (ret != 2 && --retries);
+	} while (ret != messageCount && --retries);
 
-	return ret == 2 ? 0 : -1;
+	return ret == messageCount ? 0 : -1;
 }
 
 static bool drm_edid_is_zero(u8 *in_edid, int length)
@@ -1515,7 +1532,7 @@ do_cea_modes (struct drm_connector *connector, u8 *db, u8 len)
 		if (cea_mode < drm_num_cea_modes) {
 			struct drm_display_mode *newmode;
 			newmode = drm_mode_duplicate(dev,
-						     &edid_cea_modes[cea_mode]);
+					&(edid_cea_modes[cea_mode].mode));
 			if (newmode) {
 				drm_mode_probed_add(connector, newmode);
 				modes++;

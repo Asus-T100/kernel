@@ -175,15 +175,16 @@ static const struct file_operations sst_debug_shim_ops = {
 #define CHECKPOINT_DUMP_SZ	256
 #define IA_LPE_MAILBOX_DUMP_SZ	100
 #define LPE_IA_MAILBOX_DUMP_SZ	100
-#define SCU_LPE_MAILBOX_DUMP_SZ	20
-#define LPE_SCU_MAILBOX_DUMP_SZ	20
+#define SCU_LPE_MAILBOX_DUMP_SZ	256
+#define LPE_SCU_MAILBOX_DUMP_SZ	256
 
 static inline int is_fw_running(struct intel_sst_drv *drv)
 {
 	pm_runtime_get_sync(drv->dev);
+	atomic_inc(&drv->pm_usage_count);
 	if (drv->sst_state != SST_FW_RUNNING) {
 		pr_err("FW not running, cannot read SRAM\n");
-		pm_runtime_put(drv->dev);
+		sst_pm_runtime_put(drv);
 		return -EFAULT;
 	}
 	return 0;
@@ -253,8 +254,7 @@ static ssize_t sst_debug_sram_lpe_debug_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, RESVD_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_RESERVED_OFFSET),
 				       SST_RESERVED_OFFSET);
-
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret;
 }
 
@@ -276,7 +276,7 @@ static ssize_t sst_debug_sram_lpe_checkpoint_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, CHECKPOINT_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_CHECKPOINT_OFFSET),
 				       SST_CHECKPOINT_OFFSET);
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret;
 }
 
@@ -299,7 +299,7 @@ static ssize_t sst_debug_sram_ia_lpe_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, IA_LPE_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_MAILBOX_SEND),
 				       SST_MAILBOX_SEND);
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret;
 }
 
@@ -327,7 +327,7 @@ static ssize_t sst_debug_sram_lpe_ia_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, LPE_IA_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + mailbox_offset),
 				       mailbox_offset);
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret;
 }
 
@@ -348,7 +348,7 @@ static ssize_t sst_debug_sram_lpe_scu_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, LPE_SCU_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_LPE_SCU_MAILBOX),
 				       SST_LPE_SCU_MAILBOX);
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret;
 }
 
@@ -368,7 +368,7 @@ static ssize_t sst_debug_sram_scu_lpe_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, SCU_LPE_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_SCU_LPE_MAILBOX),
 				       SST_SCU_LPE_MAILBOX);
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret;
 }
 
@@ -451,7 +451,7 @@ static ssize_t sst_debug_lpe_log_enable_write(struct file *file,
 	drv->ops->sync_post_message(msg);
 	ret_val = buf_size;
 put_pm_runtime:
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret_val;
 }
 
@@ -549,7 +549,7 @@ update_rd_ptr:
 	buf = NULL;
 	ret = bytes_read;
 put_pm_runtime:
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 	return ret;
 }
 
@@ -888,7 +888,7 @@ static ssize_t sst_debug_ssp_reg_read(struct file *file,
 			sst_reg_read(sst_drv_ctx->debugfs.ssp, ssp_reg_off[index]));
 		index++;
 	}
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 					buf, pos);
@@ -951,7 +951,7 @@ static ssize_t sst_debug_dma_reg_read(struct file *file,
 			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, dma_reg_off[index]));
 		index++;
 	}
-	pm_runtime_put(drv->dev);
+	sst_pm_runtime_put(drv);
 
 	ret = simple_read_from_buffer(user_buf, count, ppos,
 					buf, pos);

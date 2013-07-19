@@ -248,7 +248,7 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 
 	/* Configure Tx/Rx FIFO threshold levels */
 	dw_writel(dev, dev->tx_fifo_depth/2, DW_IC_TX_TL);
-	dw_writel(dev, 0, DW_IC_RX_TL);
+	dw_writel(dev, dev->rx_fifo_depth/2, DW_IC_RX_TL);
 
 	/* configure the i2c master */
 	dw_writel(dev, dev->master_cfg , DW_IC_CON);
@@ -357,14 +357,6 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 			/* new i2c_msg */
 			buf = msgs[dev->msg_write_idx].buf;
 			buf_len = msgs[dev->msg_write_idx].len;
-
-			if (msgs[dev->msg_write_idx].flags & I2C_M_RD) {
-				rx_tl = (msgs[dev->msg_write_idx].len <
-					dev->rx_fifo_depth) ?
-					msgs[dev->msg_write_idx].len - 1 :
-					dev->rx_fifo_depth - 1;
-				dw_writel(dev, rx_tl, DW_IC_RX_TL);
-			}
 		}
 
 		tx_limit = dev->tx_fifo_depth - dw_readl(dev, DW_IC_TXFLR);
@@ -631,6 +623,9 @@ irqreturn_t i2c_dw_isr(int this_irq, void *dev_id)
 	}
 
 	stat = i2c_dw_read_clear_intrbits(dev);
+
+	if (stat & DW_IC_INTR_RX_OVER)
+		dev_warn(dev->dev, "RX fifo overrun\n");
 
 	if (stat & DW_IC_INTR_TX_ABRT) {
 		dev->cmd_err |= DW_IC_ERR_TX_ABRT;

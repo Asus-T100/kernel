@@ -526,7 +526,6 @@ err:
 int sb_read32(struct drm_i915_private *dev_priv, u8 port_id,
 		u32 reg, u32 *val)
 {
-	unsigned long flags;
 	u32 cmd, devfn, opcode, port, be, bar;
 
 	bar = 0;

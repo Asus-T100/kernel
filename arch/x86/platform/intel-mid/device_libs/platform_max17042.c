@@ -215,6 +215,12 @@ static int ctp_fg_save_config_data(const char *name, void *data, int len)
 }
 EXPORT_SYMBOL(ctp_fg_save_config_data);
 
+static bool ctp_is_volt_shutdown_enabled(void)
+{
+	 /* FPO1 is reserved in case of CTP so we are returning true */
+	return true;
+}
+
 static int ctp_get_vsys_min(void)
 {
 	struct ps_batt_chg_prof batt_profile;
@@ -357,6 +363,7 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 		pdata->get_vmin_threshold = ctp_get_vsys_min;
 		pdata->reset_chip = true;
 		pdata->battery_pack_temp = ctp_get_battery_temp;
+		pdata->is_volt_shutdown_enabled = ctp_is_volt_shutdown_enabled;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)
 			|| INTEL_MID_BOARD(1, TABLET, MRFL)) {
 		/* MRFL Phones and tablets*/

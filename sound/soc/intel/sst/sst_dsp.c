@@ -1535,6 +1535,8 @@ wake:
 
 struct sst_module_info sst_modules_mrfld[] = {
 	{"mp3_dec", SST_CODEC_TYPE_MP3, 0, SST_LIB_NOT_FOUND},
+	{"aac_dec", SST_CODEC_TYPE_AAC, 0, SST_LIB_NOT_FOUND},
+	{"audclass_lib", SST_CODEC_AUDCLASSIFIER, 0, SST_LIB_NOT_FOUND},
 };
 
 /* In relocatable elf file, there can be  relocatable variables and functions.

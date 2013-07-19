@@ -14,13 +14,6 @@ config HSI_BOARDINFO
 	bool
 	default y
 
-config HSI_NO_MODEM
-	bool "HSI no modem support"
-	default n
-	help
-	  modem switch off
-
-source "drivers/hsi/controllers/Kconfig"
 source "drivers/hsi/clients/Kconfig"
 
 endif # HSI

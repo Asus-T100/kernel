@@ -34,48 +34,7 @@
 /* fuel gauge table type for DV10 platfrom */
 #define MAX17042_TBL_TYPE_DV10	0xff
 
-#if !defined(CONFIG_X86_MRFLD) && !defined(CONFIG_BOARD_CTP) \
-		&& !defined(CONFIG_BYT_FFRD8_CHARGER)
 struct max17042_config_data {
-	/*
-	 * if config_init is 0, which means new
-	 * configuration has been loaded in that case
-	 * we need to perform complete init of chip
-	 */
-	u16	size;
-	u16	checksum;
-	u8	table_type;
-	u8	config_init;
-
-	u16	rcomp0;
-	u16	tempCo;
-	u16	kempty0;
-	u16	full_cap;
-	u16	cycles;
-	u16	full_capnom;
-
-	u16	qrtbl00;
-	u16	qrtbl10;
-	u16	qrtbl20;
-	u16	qrtbl30;
-	u16	full_soc_thr;
-	u16	vempty;
-
-	u16	soc_empty;
-	u16	ichgt_term;
-	u16	design_cap;
-	u16	etc;
-	u16	rsense;
-	u16	cfg;
-	u16	learn_cfg;
-	u16	filter_cfg;
-	u16	relax_cfg;
-
-
-	u16	cell_char_tbl[CELL_CHAR_TBL_SAMPLES];
-} __packed;
-#else
-	struct max17042_config_data {
 	/*
 	* if config_init is 0, which means new
 	* configuration has been loaded in that case
@@ -116,7 +75,6 @@ struct max17042_config_data {
 
 	u16	cell_char_tbl[CELL_CHAR_TBL_SAMPLES];
 } __packed;
-#endif
 
 struct max17042_platform_data {
 	bool enable_current_sense;

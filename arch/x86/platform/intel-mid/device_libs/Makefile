@@ -24,7 +24,11 @@ obj-$(subst m,y,$(CONFIG_GPIO_INTEL_PMIC))				+= platform_pmic_gpio.o
 obj-$(subst m,y,$(CONFIG_MID_PWM))                                      += platform_mid_pwm.o
 obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
 obj-$(subst m,y,$(CONFIG_SENSORS_THERMAL_MRFLD))			+= platform_mrfl_thermal.o
+ifdef CONFIG_INTEL_BYT_THERMAL
 obj-$(subst m,y,$(CONFIG_INTEL_BYT_THERMAL))				+= platform_byt_thermal.o
+else
+obj-$(subst m,y,$(CONFIG_INTEL_BYT_EC_THERMAL))				+= platform_byt_thermal.o
+endif
 obj-$(subst m,y,$(CONFIG_SENSORS_MID_VDD))				+= platform_msic_vdd.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MRFL_OCD))				+= platform_mrfl_ocd.o
 obj-$(subst m,y,$(CONFIG_PMIC_CCSM))                                    += platform_mrfl_pmic.o
@@ -58,6 +62,7 @@ obj-$(subst m,y,$(CONFIG_SENSORS_L3G4200D_POLL))			+= platform_l3g4200d.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3DH_ACC))				+= platform_lis3dh.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LSM303_MAG))				+= platform_lsm303.o
 obj-$(subst m,y,$(CONFIG_PN544_NFC))					+= platform_pn544.o
+obj-$(subst m,y,$(CONFIG_PN544_NFC_FORK))				+= platform_pn544.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MS5607))				+= platform_ms5607.o
 ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C))              += platform_rmi4.o
@@ -110,6 +115,7 @@ obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
 obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
+obj-$(subst m,y,$(CONFIG_TI_ST_FORK))					+= platform_btwilink.o
 ifndef CONFIG_ACPI
 obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
 endif

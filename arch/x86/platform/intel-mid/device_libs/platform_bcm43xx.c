@@ -114,7 +114,7 @@ static void bcm43xx_vwlan_device_release(struct device *dev) {}
 
 static struct platform_device bcm43xx_vwlan_device = {
 	.name		= "reg-fixed-voltage",
-	.id		= 1,
+	.id		= PLATFORM_DEVID_AUTO,
 	.dev = {
 		.platform_data	= &bcm43xx_vwlan,
 		.release = bcm43xx_vwlan_device_release,

@@ -37,11 +37,10 @@
 #include "intel_drv.h"
 #include "intel_dsi.h"
 #include "intel_dsi_cmd.h"
+#include "dsi_mod_auo_b080xat.h"
 
-#include "acer_b080xat.h"
 
-
-static void  b080xat_get_panel_info(int pipe, struct drm_connector *connector)
+static void b080xat_get_panel_info(int pipe, struct drm_connector *connector)
 {
 	DRM_DEBUG_KMS("\n");
 	if (!connector)
@@ -102,7 +101,6 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	 * - esd interval, ulps timeout
 	 *
 	 */
-	struct intel_dsi_dev_priv *dev_priv = dsi->dev_priv;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -234,7 +232,7 @@ void b080xat_dump_regs(struct intel_dsi_device *dsi) { }
 void b080xat_destroy(struct intel_dsi_device *dsi) { }
 
 /* Callbacks. We might not need them all. */
-struct intel_dsi_dev_ops b080xat_dsi_display_ops = {
+struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops = {
 	.init = b080xat_init,
 	.get_info = b080xat_get_panel_info,
 	.create_resources = b080xat_create_resources,

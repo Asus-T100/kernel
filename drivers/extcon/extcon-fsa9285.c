@@ -36,6 +36,7 @@
 #include <linux/acpi_gpio.h>
 #include <linux/extcon/extcon-fsa9285.h>
 #include <linux/power/byt_ulpmc_battery.h>
+#include <linux/power/smb347-charger.h>
 #include <asm/intel_crystalcove_pwrsrc.h>
 
 /* FSA9285 I2C registers */
@@ -213,7 +214,7 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 				"USB slave device connecetd\n");
 			drive_vbus = true;
 		}
-	} else if (stat & STATUS_ID_NO_FLOAT) {
+	} else if ((stat & STATUS_ID_NO_FLOAT) && (stat & STATUS_VBUS_VALID)) {
 		if (ohm_code == OHM_CODE_UART) {
 			dev_info(&chip->client->dev,
 				"UART device connecetd\n");
@@ -473,6 +474,9 @@ static void *get_platform_data(void)
 #ifdef CONFIG_BYT_ULPMC_BATTERY
 	fsa_pdata.sdp_pre_setup = byt_ulpmc_suspend_sdp_charging;
 	fsa_pdata.sdp_post_setup = byt_ulpmc_reset_charger;
+#elif CONFIG_CHARGER_SMB347
+	fsa_pdata.sdp_pre_setup = smb347_disable_charger;
+	fsa_pdata.sdp_post_setup = smb347_enable_charger;
 #else
 	fsa_pdata.sdp_pre_setup = fsa_dummy_sdp_pre_setup;
 	fsa_pdata.sdp_post_setup = fsa_dummy_sdp_post_setup;

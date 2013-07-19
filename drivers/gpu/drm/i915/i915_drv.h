@@ -77,7 +77,12 @@ enum port {
 };
 #define port_name(p) ((p) + 'A')
 
-#define I915_GEM_GPU_DOMAINS	(~(I915_GEM_DOMAIN_CPU | I915_GEM_DOMAIN_GTT))
+#define I915_GEM_GPU_DOMAINS \
+	(I915_GEM_DOMAIN_RENDER | \
+	I915_GEM_DOMAIN_SAMPLER | \
+	I915_GEM_DOMAIN_COMMAND | \
+	I915_GEM_DOMAIN_INSTRUCTION | \
+	I915_GEM_DOMAIN_VERTEX)
 
 #define for_each_pipe(p) for ((p) = 0; (p) < dev_priv->num_pipe; (p)++)
 
@@ -459,6 +464,9 @@ typedef struct drm_i915_private {
 	unsigned int fw_rendercount;
 	unsigned int fw_mediacount;
 
+	/** counter for user requests to disable/re-enable RC6 */
+	unsigned int rc6_user_disable_count;
+
 	/** gt_lock is also taken in irq contexts. */
 	struct spinlock gt_lock;
 
@@ -572,6 +580,7 @@ typedef struct drm_i915_private {
 	 */
 	bool is_edp;
 	bool is_mipi;
+	bool is_hdmi;
 
 	bool no_aux_handshake;
 
@@ -582,7 +591,7 @@ typedef struct drm_i915_private {
 	int fence_reg_start; /* 4 if userland hasn't ioctl'd us yet */
 	int num_fence_regs; /* 8 on pre-965, 16 otherwise */
 
-	unsigned int fsb_freq, mem_freq, is_ddr3;
+	unsigned int fsb_freq, mem_freq, is_ddr3, cck_freq, gpll;
 
 	spinlock_t error_lock;
 	/* Protected by dev->error_lock. */
@@ -760,6 +769,7 @@ typedef struct drm_i915_private {
 	u32 saveGUNIT_CZClockGatingDisable1;
 	u32 saveGUNIT_CZClockGatingDisable2;
 	u32 saveDPIO_CFG_DATA;
+	u32 saveDPST_VLV_BTGR_DATA;
 
 	struct {
 		/** Bridge to intel-gtt-ko */
@@ -892,6 +902,7 @@ typedef struct drm_i915_private {
 	struct child_device_config *child_dev;
 	struct drm_connector *int_lvds_connector;
 	struct drm_connector *int_edp_connector;
+	struct drm_connector *int_mipi_connector;
 
 	bool mchbar_need_disable;
 
@@ -939,6 +950,8 @@ typedef struct drm_i915_private {
 		atomic_t up_threshold;
 		atomic_t down_threshold;
 	} turbodebug;
+
+	int max_frequency_mode;
 
 	u64 last_count1;
 	unsigned long last_time1;
@@ -989,6 +1002,13 @@ typedef struct drm_i915_private {
 	int tmds_clock_speed;
 	int hdmi_audio_interrupt_mask;
 	struct work_struct hdmi_audio_wq;
+	/* Added for DPST */
+	struct task_struct *dpst_task;
+	u32 dpst_signal;
+	u32 dpst_backlight_factor;
+	u32 blc_data;
+	u32 blc_user;
+	bool is_dpst_enabled;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */
@@ -1426,6 +1446,14 @@ extern void i915_destroy_error_state(struct drm_device *dev);
 #endif
 
 
+/* i915_dpst.c */
+int i915_dpst_context(struct drm_device *dev, void *data,
+			struct drm_file *file_priv);
+int i915_reset_histogram(struct drm_device *dev);
+int i915_dpst_enable_hist_interrupt(struct drm_device *dev, bool enable);
+u32 i915_dpst_get_brightness(struct drm_device *dev);
+void i915_dpst_set_brightness(struct drm_device *dev, u32 brightness_val);
+
 /* i915_gem.c */
 int i915_gem_init_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
@@ -1467,6 +1495,9 @@ int i915_gem_leavevt_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv);
 int i915_gem_vmap_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
+int i915_perfmon_ioctl(struct drm_device *dev, void *data,
+			struct drm_file *file);
+int i915_perfmon_set_rc6(struct drm_device *dev, __u32 enable);
 int i915_gem_set_tiling(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 int i915_gem_get_tiling(struct drm_device *dev, void *data,
@@ -1499,7 +1530,7 @@ int i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj,
 				  u32 *offset);
 int __must_check i915_mutex_lock_interruptible(struct drm_device *dev);
 int i915_gem_object_sync(struct drm_i915_gem_object *obj,
-			 struct intel_ring_buffer *to);
+			 struct intel_ring_buffer *to, bool add_request);
 void i915_gem_object_move_to_active(struct drm_i915_gem_object *obj,
 				    struct intel_ring_buffer *ring,
 				    u32 seqno);
@@ -1761,6 +1792,8 @@ int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
 			struct drm_file *file);
 int i915_disp_screen_control(struct drm_device *dev, void *data,
 			struct drm_file *file);
+int i915_set_plane_alpha(struct drm_device *dev, void *data,
+			  struct drm_file *file);
 
 /* overlay */
 #ifdef CONFIG_DEBUG_FS
@@ -1868,8 +1901,8 @@ int i915_rpm_deinit(struct drm_device *dev);
 int i915_rpm_get_ring(struct intel_ring_buffer *ring);
 int i915_rpm_put_ring(struct intel_ring_buffer *ring);
 
-int i915_rpm_get_reg(struct drm_device *dev);
-int i915_rpm_put_reg(struct drm_device *dev);
+int i915_rpm_get_callback(struct drm_device *dev);
+int i915_rpm_put_callback(struct drm_device *dev);
 
 int i915_rpm_get_ioctl(struct drm_device *dev);
 int i915_rpm_put_ioctl(struct drm_device *dev);

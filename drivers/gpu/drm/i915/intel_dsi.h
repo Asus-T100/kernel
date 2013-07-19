@@ -101,6 +101,8 @@ struct intel_dsi_dev_ops {
 
 	void (*prepare)(struct intel_dsi_device *dsi);
 
+	void (*enable)(struct intel_dsi_device *dsi);
+
 	void (*commit)(struct intel_dsi_device *dsi);
 
 	void (*mode_set)(struct intel_dsi_device *dsi,
@@ -148,22 +150,20 @@ static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 }
 
 /* the panel drivers */
-extern struct intel_dsi_dev_ops cmi_dsi_display_ops;
-extern struct intel_dsi_dev_ops auo_dsi_display_ops;
-extern struct intel_dsi_dev_ops panasonic_dsi_display_ops;
-extern struct intel_dsi_dev_ops b080xat_dsi_display_ops;
-
-/* internal functions */
-static void dsi_config(struct drm_encoder *encoder);
+extern struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops;
+extern struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops;
+extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
+extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
 
 /* external functions */
 void intel_dsi_enable(struct intel_encoder *encoder);
+void intel_dsi_disable(struct intel_encoder *encoder);
 bool intel_dsi_init(struct drm_device *dev);
 
-/* FIXME */
-#define	MIPI_DSI_CMI_PANEL_ID	0x01
-#define	MIPI_DSI_AUO_PANEL_ID	0x02
-#define	MIPI_DSI_PANASONIC_PANEL_ID		0x03
-#define	MIPI_DSI_B080XAT_PANEL_ID		0x04
+#define	MIPI_DSI_RESERVED_PANEL_ID			0x01
+#define	MIPI_DSI_AUO_B101UAN01_PANEL_ID			0x02
+#define	MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID	0x03
+#define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
+#define MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
 
 #endif /* _INTEL_DSI_H */

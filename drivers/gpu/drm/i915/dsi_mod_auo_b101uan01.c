@@ -36,10 +36,9 @@
 #include "intel_drv.h"
 #include "intel_dsi.h"
 #include "intel_dsi_cmd.h"
+#include "dsi_mod_auo_b101uan01.h"
 
-#include "auo_dsi_display.h"
-
-void  auo_vid_get_panel_info(int pipe, struct drm_connector *connector)
+void  b101uan01_vid_get_panel_info(int pipe, struct drm_connector *connector)
 {
 	if (!connector)
 		return;
@@ -52,7 +51,7 @@ void  auo_vid_get_panel_info(int pipe, struct drm_connector *connector)
 	return;
 }
 
-bool auo_init(struct intel_dsi_device *dsi)
+bool b101uan01_init(struct intel_dsi_device *dsi)
 {
 	/* create private data, slam to dsi->dev_priv. could support many panels
 	 * based on dsi->name. This panal supports both command and video mode,
@@ -86,16 +85,15 @@ bool auo_init(struct intel_dsi_device *dsi)
 	return true;
 }
 
-void auo_create_resources(struct intel_dsi_device *dsi) { }
+void b101uan01_create_resources(struct intel_dsi_device *dsi) { }
 
-void auo_dpms(struct intel_dsi_device *dsi, bool enable)
+void b101uan01_dpms(struct intel_dsi_device *dsi, bool enable)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
 
 	if (enable) {
-		int i;
 
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
 
@@ -110,28 +108,28 @@ void auo_dpms(struct intel_dsi_device *dsi, bool enable)
 	}
 }
 
-int auo_mode_valid(struct intel_dsi_device *dsi,
+int b101uan01_mode_valid(struct intel_dsi_device *dsi,
 		   struct drm_display_mode *mode)
 {
 	return MODE_OK;
 }
 
-bool auo_mode_fixup(struct intel_dsi_device *dsi,
+bool b101uan01_mode_fixup(struct intel_dsi_device *dsi,
 		    const struct drm_display_mode *mode,
 		    struct drm_display_mode *adjusted_mode)
 {
 	return true;
 }
 
-void auo_prepare(struct intel_dsi_device *dsi) { }
+void b101uan01_prepare(struct intel_dsi_device *dsi) { }
 
-void auo_commit(struct intel_dsi_device *dsi) { }
+void b101uan01_commit(struct intel_dsi_device *dsi) { }
 
-void auo_mode_set(struct intel_dsi_device *dsi,
+void b101uan01_mode_set(struct intel_dsi_device *dsi,
 		  struct drm_display_mode *mode,
 		  struct drm_display_mode *adjusted_mode) { }
 
-enum drm_connector_status auo_detect(struct intel_dsi_device *dsi)
+enum drm_connector_status b101uan01_detect(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
@@ -141,12 +139,12 @@ enum drm_connector_status auo_detect(struct intel_dsi_device *dsi)
 	return connector_status_connected;
 }
 
-bool auo_get_hw_state(struct intel_dsi_device *dev)
+bool b101uan01_get_hw_state(struct intel_dsi_device *dev)
 {
 	return true;
 }
 
-struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
+struct drm_display_mode *b101uan01_get_modes(struct intel_dsi_device *dsi)
 {
 	u32 hblank = 0x78;
 	u32 vblank = 0x0C;
@@ -155,17 +153,16 @@ struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
 	u32 vsync_offset = 0x4;
 	u32 vsync_width  = 0x4;
 	struct drm_display_mode *mode = NULL;
-	struct drm_i915_private *dev_priv = dsi->dev_priv;
 
 	/* Allocate */
 	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
 	if (!mode) {
-		DRM_DEBUG_KMS("AUO Panel: No memory\n");
+		DRM_DEBUG_KMS("AUO B101UAN01 Panel: No memory\n");
 		return NULL;
 	}
 
 	/* Hardcode 1920x1200*/
-	strcpy(mode->name, "1920x1200");
+	strncpy(mode->name, "1920x1200", sizeof(mode->name) - 1);
 	mode->hdisplay = 0x780;
 	mode->vdisplay = 0x4B0;
 	mode->vrefresh = 60;
@@ -189,24 +186,24 @@ struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
 	return mode;
 }
 
-void auo_dump_regs(struct intel_dsi_device *dsi) { }
+void b101uan01_dump_regs(struct intel_dsi_device *dsi) { }
 
-void auo_destroy(struct intel_dsi_device *dsi) { }
+void b101uan01_destroy(struct intel_dsi_device *dsi) { }
 
 /* Callbacks. We might not need them all. */
-struct intel_dsi_dev_ops auo_dsi_display_ops = {
-	.init = auo_init,
-	.get_info = auo_vid_get_panel_info,
-	.create_resources = auo_create_resources,
-	.dpms = auo_dpms,
-	.mode_valid = auo_mode_valid,
-	.mode_fixup = auo_mode_fixup,
-	.prepare = auo_prepare,
-	.commit = auo_commit,
-	.mode_set = auo_mode_set,
-	.detect = auo_detect,
-	.get_hw_state = auo_get_hw_state,
-	.get_modes = auo_get_modes,
-	.destroy = auo_destroy,
-	.dump_regs = auo_dump_regs,
+struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops = {
+	.init = b101uan01_init,
+	.get_info = b101uan01_vid_get_panel_info,
+	.create_resources = b101uan01_create_resources,
+	.dpms = b101uan01_dpms,
+	.mode_valid = b101uan01_mode_valid,
+	.mode_fixup = b101uan01_mode_fixup,
+	.prepare = b101uan01_prepare,
+	.commit = b101uan01_commit,
+	.mode_set = b101uan01_mode_set,
+	.detect = b101uan01_detect,
+	.get_hw_state = b101uan01_get_hw_state,
+	.get_modes = b101uan01_get_modes,
+	.destroy = b101uan01_destroy,
+	.dump_regs = b101uan01_dump_regs,
 };

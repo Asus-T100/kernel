@@ -257,12 +257,8 @@ static int __pmic_write_tt(u8 addr, u8 data)
 	ret = intel_scu_ipc_iowrite8(CHRTTADDR_ADDR, addr);
 	if (unlikely(ret))
 		return ret;
-	msleep(100);
 
-	ret = intel_scu_ipc_iowrite8(CHRTTDATA_ADDR, data);
-	msleep(100);
-
-	return ret;
+	return intel_scu_ipc_iowrite8(CHRTTDATA_ADDR, data);
 }
 
 static inline int pmic_write_tt(u8 addr, u8 data)
@@ -680,27 +676,9 @@ int pmic_enable_charging(bool enable)
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
-	int ret;
-	u8 rval;
 	u8 addr_cc = TT_CHRCCHOTVAL_ADDR - zone;
-
 	dev_dbg(chc.dev, "%s:%X=%X\n", __func__, addr_cc, reg_val);
-	ret = pmic_write_tt(addr_cc, reg_val);
-	if (unlikely(ret))
-		return ret;
-
-	ret = pmic_read_tt(addr_cc, &rval);
-	if (unlikely(ret))
-		return ret;
-
-	if (rval != reg_val) {
-		dev_err(chc.dev,
-			"%s:Error in writing to TT reg :%x Wrote=%X:Read=%X\n",
-			__func__, addr_cc, reg_val, rval);
-		return -EIO;
-	}
-
-	return 0;
+	return pmic_write_tt(addr_cc, reg_val);
 }
 
 static inline int update_zone_cv(int zone, u8 reg_val)
@@ -871,9 +849,6 @@ static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 	bool int_stat;
 	char *log_msg;
 
-	if (int_reg && stat_reg)
-		dump_pmic_regs();
-
 	for (i = 0; i < int_info_size; ++i) {
 
 		/*continue if interrupt register bit is not set */
@@ -1000,7 +975,7 @@ static irqreturn_t pmic_isr(int irq, void *data)
 	u16 pmic_intr;
 	u8 chgrirq0_int;
 	u8 chgrirq1_int;
-	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK | CHRGRIRQ1_SUSBIDDET_MASK);
+	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK);
 
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	chgrirq0_int = (u8)pmic_intr;
@@ -1305,7 +1280,7 @@ static int pmic_check_initial_events(void)
 {
 	struct pmic_event *evt;
 	int ret;
-	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK | CHRGRIRQ1_SUSBIDDET_MASK);
+	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK);
 
 	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
 	if (evt == NULL) {
@@ -1418,7 +1393,6 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 			return retval;
 		}
 
-		dump_pmic_tt_regs();
 		memcpy(chc.runtime_bcprof, chc.actual_bcprof,
 			sizeof(struct ps_pse_mod_prof));
 	}

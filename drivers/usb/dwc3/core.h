@@ -669,12 +669,14 @@ struct dwc3 {
 	struct usb_gadget	gadget;
 	struct usb_gadget_driver *gadget_driver;
 	int			soft_connected;
+#ifdef CONFIG_USB_DWC_OTG_XCEIV
+	struct mutex		mutex;
+#endif
 
 	void __iomem		*regs;
 	size_t			regs_size;
 
 	int			irq;
-	int         got_irq;
 
 	u32			num_event_buffers;
 	u32			u1u2;

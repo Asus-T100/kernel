@@ -263,6 +263,7 @@ static void xhci_byt_pm_check_work(struct work_struct *work)
 	struct pci_dev		*pdev;
 	u32			gpe_sts = 0;
 	u32			gpe_en = 0;
+	unsigned long		flags;
 
 	if (xhci_host)
 		hcd = xhci_to_hcd(xhci_host);
@@ -294,9 +295,9 @@ done:
 	gpe_en = gpe_en | 0x2000;
 	acpi_hw_register_write(0xf2, gpe_en);
 
-	spin_lock(&xhci_host->lock);
+	spin_lock_irqsave(&xhci_host->lock, flags);
 	xhci_host->pm_check_flag = 0;
-	spin_unlock(&xhci_host->lock);
+	spin_unlock_irqrestore(&xhci_host->lock, flags);
 }
 #endif
 

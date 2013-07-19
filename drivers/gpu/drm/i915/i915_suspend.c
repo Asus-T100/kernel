@@ -1001,6 +1001,18 @@ void i915_restore_gunit_regs(struct drm_i915_private *dev_priv)
 	I915_WRITE(DPIO_CTL, dev_priv->saveDPIO_CFG_DATA);
 }
 
+void i915_save_dpst_regs(struct drm_i915_private *dev_priv)
+{
+	dev_priv->saveDPST_VLV_BTGR_DATA =
+			I915_READ(VLV_DISPLAY_BASE + DPST_VLV_BTGR_REG);
+}
+
+void i915_restore_dpst_regs(struct drm_i915_private *dev_priv)
+{
+	I915_WRITE(VLV_DISPLAY_BASE + DPST_VLV_BTGR_REG,
+				dev_priv->saveDPST_VLV_BTGR_DATA);
+}
+
 int i915_write_withmask(struct drm_device *dev, u32 addr, u32 val, u32 mask)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -1095,6 +1107,7 @@ static int valleyview_freeze(struct drm_device *dev)
 	/* iii) Save state */
 	i915_save_gunit_regs(dev_priv);
 	i915_save_state(dev);
+	i915_save_dpst_regs(dev_priv);
 
 	intel_opregion_fini(dev);
 
@@ -1204,6 +1217,7 @@ static int valleyview_thaw(struct drm_device *dev)
 
 	/* vi)  Restore required registers and do the D0ix work */
 	i915_restore_state(dev);
+	i915_restore_dpst_regs(dev_priv);
 
 	intel_opregion_setup(dev);
 

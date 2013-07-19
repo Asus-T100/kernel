@@ -290,7 +290,7 @@ i915_gem_vmap_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 
 	ret = drm_gem_handle_create(file, &obj->gem.base, &handle);
 	if (ret) {
-		i915_gem_vmap_object_release(obj);
+		i915_gem_vmap_object_release((struct drm_i915_gem_object *)obj);
 		drm_gem_object_release(&obj->gem.base);
 		dev_priv->mm.object_count--;
 		dev_priv->mm.object_memory -= obj->gem.base.size;

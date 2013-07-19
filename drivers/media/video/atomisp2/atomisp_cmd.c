@@ -520,7 +520,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (isp->asd.streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+	if (isp->asd.streaming != ATOMISP_DEVICE_STREAMING_ENABLED &&
+		!isp->acc.pipeline)
 		goto out_nowake;
 
 	if (irq_infos & CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
@@ -1176,7 +1177,8 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	mutex_lock(&isp->mutex);
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED &&
+		!isp->acc.pipeline) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		goto out;
 	}
@@ -1617,8 +1619,8 @@ int atomisp_ctc(struct atomisp_sub_device *asd, int flag,
 			return -EINVAL;
 	} else {
 		/* Set ctc table to isp parameters */
-		memcpy(&asd->params.ctc_table.data, config,
-			sizeof(asd->params.ctc_table.data));
+		memcpy(&asd->params.ctc_table, config,
+			sizeof(asd->params.ctc_table));
 		atomisp_css_set_ctc_table(asd, &asd->params.ctc_table);
 	}
 
@@ -2074,9 +2076,9 @@ static int __atomisp_set_general_isp_parameters(
 	}
 
 	if (arg->ctc_table) {
-		if (copy_from_user(&asd->params.ctc_table.data,
+		if (copy_from_user(&asd->params.ctc_table,
 				   arg->ctc_table,
-				   sizeof(asd->params.ctc_table.data)))
+				   sizeof(asd->params.ctc_table)))
 			return -EFAULT;
 		atomisp_css_set_ctc_table(asd, &asd->params.ctc_table);
 	}

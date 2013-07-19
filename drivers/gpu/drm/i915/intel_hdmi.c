@@ -335,23 +335,22 @@ static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
 	int hdisp, vdisp, vref, htot, vtot, am_flag, em_flag;
 	int chk_hdisp, chk_vdisp, chk_vref, chk_flag;
 	for (uindex = 0; uindex < drm_num_cea_modes ; uindex++) {
-		hdisp = edid_cea_modes[uindex].hdisplay;
-		vdisp = edid_cea_modes[uindex].vdisplay;
-		htot = edid_cea_modes[uindex].htotal;
-		vtot = edid_cea_modes[uindex].vtotal;
-		vref = edid_cea_modes[uindex].clock*1000/htot/vtot;
-		em_flag = edid_cea_modes[uindex].flags&DRM_MODE_FLAG_INTERLACE;
+		hdisp = edid_cea_modes[uindex].mode.hdisplay;
+		vdisp = edid_cea_modes[uindex].mode.vdisplay;
+		htot = edid_cea_modes[uindex].mode.htotal;
+		vtot = edid_cea_modes[uindex].mode.vtotal;
+		vref = edid_cea_modes[uindex].mode.clock*1000/htot/vtot;
+		em_flag = edid_cea_modes[uindex].mode.flags &
+						DRM_MODE_FLAG_INTERLACE;
 		am_flag = adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE;
 		chk_hdisp = (adjusted_mode->hdisplay == hdisp);
 		chk_vdisp = (adjusted_mode->vdisplay == vdisp);
 		chk_vref = (adjusted_mode->vrefresh == vref);
 		chk_flag = am_flag == em_flag;
+
 		if (chk_hdisp && chk_vdisp && chk_vref && chk_flag) {
 			avi_if.body.avi.VIC = uindex+1;
-			if (!(vdisp % 3) && ((vdisp * 4 / 3) == hdisp))
-				avi_if.body.avi.C_M_R |= 0x10;
-			else if (!(vdisp % 9) && ((vdisp * 16 / 9) == hdisp))
-				avi_if.body.avi.C_M_R |= 0x20;
+			avi_if.body.avi.C_M_R |= edid_cea_modes[uindex].PAR<<4;
 			break;
 		}
 	}
@@ -605,7 +604,7 @@ static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
 	u32 sdvox;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	sdvox = SDVO_ENCODING_HDMI;
 	if (!HAS_PCH_SPLIT(dev))
 		sdvox |= intel_hdmi->color_range;
@@ -655,7 +654,7 @@ static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 	POSTING_READ(intel_hdmi->sdvox_reg);
 
 	intel_hdmi->set_infoframes(encoder, adjusted_mode);
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
@@ -667,7 +666,7 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	u32 temp;
 	u32 enable_bits = SDVO_ENABLE;
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	if (intel_hdmi->has_audio)
 		enable_bits |= SDVO_AUDIO_ENABLE;
 
@@ -735,6 +734,12 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	I915_WRITE(intel_hdmi->sdvox_reg, temp);
 	POSTING_READ(intel_hdmi->sdvox_reg);
 
+	if (mode == DRM_MODE_DPMS_ON) {
+		if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 40))
+			DRM_ERROR("DPLL %x failed to lock\n",
+					I915_READ(DPLL(0)));
+	}
+
 	/* HW workaround, need to write this twice for issue that may result
 	 * in first write getting masked.
 	 */
@@ -742,7 +747,7 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		I915_WRITE(intel_hdmi->sdvox_reg, temp);
 		POSTING_READ(intel_hdmi->sdvox_reg);
 	}
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 static int intel_hdmi_mode_valid(struct drm_connector *connector,
@@ -794,6 +799,7 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct edid *edid;
 	enum drm_connector_status status = connector_status_disconnected;
+	dev_priv->is_hdmi = false;
 
 	if (IS_G4X(connector->dev) && !g4x_hdmi_connected(intel_hdmi))
 		return status;
@@ -814,6 +820,7 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	if (edid) {
 		if (edid->input & DRM_EDID_INPUT_DIGITAL) {
 			status = connector_status_connected;
+			dev_priv->is_hdmi = true;
 			if (intel_hdmi->force_audio != HDMI_AUDIO_OFF_DVI)
 				intel_hdmi->has_hdmi_sink =
 						drm_detect_hdmi_monitor(edid);
@@ -904,6 +911,7 @@ intel_hdmi_set_property(struct drm_connector *connector,
 	if (ret)
 		return ret;
 
+	/*Check force audio */
 	if (property == dev_priv->force_audio_property) {
 		enum hdmi_force_audio i = val;
 		bool has_audio;
@@ -937,7 +945,7 @@ intel_hdmi_set_property(struct drm_connector *connector,
 		if (val == intel_hdmi->pfit)
 			return 0;
 
-		DRM_DEBUG_DRIVER("val = %d", val);
+		DRM_DEBUG_DRIVER("val = %d", (int)val);
 		intel_hdmi->pfit = val;
 		goto done;
 	}

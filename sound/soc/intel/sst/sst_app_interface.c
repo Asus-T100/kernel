@@ -34,7 +34,6 @@
 #include <linux/aio.h>
 #include <linux/uaccess.h>
 #include <linux/firmware.h>
-#include <linux/pm_runtime.h>
 #include <linux/ioctl.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
@@ -76,7 +75,7 @@ int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr)
 {
 	/* audio manager close */
 	mutex_lock(&sst_drv_ctx->stream_lock);
-	pm_runtime_put(sst_drv_ctx->dev);
+	sst_pm_runtime_put(sst_drv_ctx);
 	mutex_unlock(&sst_drv_ctx->stream_lock);
 	pr_debug("AM handle closed\n");
 	return 0;

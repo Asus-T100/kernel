@@ -128,7 +128,7 @@ enum {
  */
 #define SATT2_CTRL_REG                   0x1040
 #  define SATT2_CTRL_VALID_MSK            BIT(0)
-#  define SATT2_CTRL_BRIDGE_BASE_ADDR_REG 8
+#  define SATT2_CTRL_BR_BASE_ADDR_REG_SHIFT 8
 #  define SATT2_CTRL_BRIDGE_HOST_EN_MSK   BIT(12)
 
 /* SATT Table Entry 2 SAP Base Address Register */
@@ -276,6 +276,8 @@ enum {
 
 /*  MEI IPC Message payload size 64 bytes */
 #define PAYLOAD_SIZE        64
+/* MAX sizez for SATT range 32MB */
+#define SATT_RANGE_MAX	    (32 << 20)
 
 #endif /* _MEI_HW_TXE_REGS_H_ */
 

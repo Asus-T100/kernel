@@ -57,7 +57,7 @@ static int
 ov9724_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
 	struct i2c_msg msg[2];
-	u16 data[OV9724_SHORT_MAX];
+	u16 data[OV9724_SHORT_MAX] = {0};
 	int err, i;
 
 	if (len > OV9724_BYTE_MAX) {
@@ -633,7 +633,7 @@ static int get_resolution_index(int w, int h)
 /* alg from vendor to calculate reg value with gain value */
 static u16 get_gain_reg(u16 gain)
 {
-	u16 gain_r;
+	u16 gain_r = 0;
 
 	if (gain > 31) {
 		gain = gain / 2;

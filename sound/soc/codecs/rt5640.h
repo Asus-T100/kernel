@@ -2071,9 +2071,7 @@ enum {
 #define RT5640_HEADPHO_DET	BIT(2)
 
 int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert);
-int rt5640_button_detect(struct snd_soc_codec *codec);
 int rt5640_check_interrupt_event(struct snd_soc_codec *codec);
-bool get_jd_status(struct snd_soc_codec *codec);
 
 /* System Clock Source */
 enum {
@@ -2156,6 +2154,7 @@ struct rt5640_priv {
 
 	bool jd_status; /* true if jack inserted */
 	bool bp_status; /* true if butten pressed */
+	int jack_type;
 };
 
 #endif /* __RT5640_H__ */

@@ -645,7 +645,6 @@ i915_gem_execbuffer_wait_for_flips(struct intel_ring_buffer *ring, u32 flips)
 {
 	u32 plane, flip_mask;
 	int ret;
-	bool add_request = false;
 
 	/* Check for any pending flips. As we only maintain a flip queue depth
 	 * of 1, we can simply insert a WAIT for the next display flip prior
@@ -668,10 +667,7 @@ i915_gem_execbuffer_wait_for_flips(struct intel_ring_buffer *ring, u32 flips)
 		intel_ring_emit(ring, MI_WAIT_FOR_EVENT | flip_mask);
 		intel_ring_emit(ring, MI_NOOP);
 		intel_ring_advance(ring);
-		add_request = true;
 	}
-	if (add_request)
-		i915_add_request_noflush(ring);
 
 	return 0;
 }
@@ -686,7 +682,7 @@ i915_gem_execbuffer_move_to_gpu(struct intel_ring_buffer *ring,
 	int ret;
 
 	list_for_each_entry(obj, objects, exec_list) {
-		ret = i915_gem_object_sync(obj, ring);
+		ret = i915_gem_object_sync(obj, ring, false);
 		if (ret)
 			return ret;
 

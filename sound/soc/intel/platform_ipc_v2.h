@@ -95,6 +95,7 @@
 #define IPC_IA_START_STREAM_MRFLD 0X06
 #define IPC_IA_START_STREAM 0x30 /* Short msg with str_id */
 
+#define IPC_IA_SET_GAIN_MRFLD 0x21
 /* Debug msgs */
 #define IPC_IA_DBG_MEM_READ 0x40
 #define IPC_IA_DBG_MEM_WRITE 0x41
@@ -187,7 +188,8 @@ enum sst_algo_types {
 	SST_CODEC_SRC = 0x64,
 	SST_CODEC_MIXER = 0x65,
 	SST_CODEC_DOWN_MIXER = 0x66,
-	SST_CODEC_VOLUME_CONTROL = 0x67,
+	SST_CODEC_VOLUME_CONTROL = 0x92,
+	SST_CODEC_AUDCLASSIFIER = 0x0080,
 	SST_CODEC_OEM1 = 0xC8,
 	SST_CODEC_OEM2 = 0xC9,
 };
@@ -637,6 +639,19 @@ struct snd_sst_vol {
 	u32	ramp_type;		/* Ramp type, default=0 */
 };
 
+/* Gain library parameters for mrfld
+ * based on DSP command spec v0.82
+ */
+struct snd_sst_gain_v2 {
+	u16 gain_cell_num;  /* num of gain cells to modify*/
+	u8 cell_nbr_idx; /* instance index*/
+	u8 cell_path_idx; /* pipe-id */
+	u16 module_id; /*module id */
+	u16 left_cell_gain; /* left gain value in dB*/
+	u16 right_cell_gain; /* right gain value in dB*/
+	u16 gain_time_const; /* gain time constant*/
+} __packed;
+
 struct snd_sst_mute {
 	u32	stream_id;
 	u32	mute;
@@ -685,4 +700,20 @@ struct snd_sst_lpe_log_params {
 	u8 log_level;
 	u8 reserved;
 } __packed;
-#endif
+
+enum snd_sst_bytes_type {
+	SND_SST_BYTES_SET = 0x1,
+	SND_SST_BYTES_GET = 0x2,
+};
+
+struct snd_sst_bytes_v2 {
+	u8 type;
+	u8 ipc_msg;
+	u8 block;
+	u8 task_id;
+	u8 pipe_id;
+	u8 rsvd;
+	u16 len;
+	char bytes[0];
+};
+#endif /* __PLATFORMDRV_IPC_V2_H__ */

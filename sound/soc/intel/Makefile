@@ -2,7 +2,9 @@
 ccflags-y += -Werror
 
 # SST Platform Driver
-PLATFORM_LIBS =  platform-libs/controls_v1.o platform-libs/controls_v2.o
+PLATFORM_LIBS = platform-libs/controls_v1.o platform-libs/controls_v2.o \
+		platform-libs/ipc_lib_v2.o
+
 snd-soc-sst-platform-objs := pcm.o compress.o $(PLATFORM_LIBS)
 obj-$(CONFIG_SND_SST_PLATFORM) += snd-soc-sst-platform.o
 

@@ -206,7 +206,6 @@ intel_emit_post_sync_nonzero_flush(struct intel_ring_buffer *ring)
 	intel_ring_emit(ring, MI_NOOP);
 	intel_ring_advance(ring);
 
-	i915_add_request_noflush(ring);
 	return 0;
 }
 
@@ -267,7 +266,6 @@ gen6_render_ring_flush(struct intel_ring_buffer *ring,
 	}
 	intel_ring_advance(ring);
 
-	i915_add_request_noflush(ring);
 	return 0;
 }
 
@@ -608,7 +606,6 @@ gen6_ring_sync(struct intel_ring_buffer *waiter,
 	intel_ring_emit(waiter, MI_NOOP);
 	intel_ring_advance(waiter);
 
-	i915_add_request_noflush(waiter);
 	return 0;
 }
 
@@ -853,7 +850,6 @@ bsd_ring_flush(struct intel_ring_buffer *ring,
 	intel_ring_emit(ring, MI_FLUSH);
 	intel_ring_emit(ring, MI_NOOP);
 	intel_ring_advance(ring);
-	i915_add_request_noflush(ring);
 	return 0;
 }
 
@@ -951,7 +947,6 @@ i965_dispatch_execbuffer(struct intel_ring_buffer *ring, u32 offset, u32 length)
 			MI_BATCH_NON_SECURE_I965);
 	intel_ring_emit(ring, offset);
 	intel_ring_advance(ring);
-	i915_add_request_noflush(ring);
 
 	return 0;
 }
@@ -989,7 +984,6 @@ i915_dispatch_execbuffer(struct intel_ring_buffer *ring,
 	intel_ring_emit(ring, offset | MI_BATCH_NON_SECURE);
 	intel_ring_advance(ring);
 
-	i915_add_request_noflush(ring);
 	return 0;
 }
 
@@ -1395,7 +1389,6 @@ static int gen6_ring_flush(struct intel_ring_buffer *ring,
 	intel_ring_emit(ring, 0);
 	intel_ring_emit(ring, MI_NOOP);
 	intel_ring_advance(ring);
-	i915_add_request_noflush(ring);
 	return 0;
 }
 
@@ -1444,7 +1437,6 @@ static int blt_ring_flush(struct intel_ring_buffer *ring,
 	intel_ring_emit(ring, 0);
 	intel_ring_emit(ring, MI_NOOP);
 	intel_ring_advance(ring);
-	i915_add_request_noflush(ring);
 	return 0;
 }
 

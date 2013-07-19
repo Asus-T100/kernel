@@ -104,8 +104,18 @@ struct smb347_charger_platform_data {
 
 #ifdef CONFIG_CHARGER_SMB347
 extern int smb347_get_charging_status(void);
+extern int smb347_enable_charger(void);
+extern int smb347_disable_charger(void);
 #else
 static int smb347_get_charging_status(void)
+{
+	return 0;
+}
+static int smb347_enable_charger(void)
+{
+	return 0;
+}
+static int smb347_disable_charger(void)
 {
 	return 0;
 }

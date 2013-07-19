@@ -79,21 +79,29 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 	wake_up(&(pmic_dev->i2c_wait));
 	return IRQ_HANDLED;
 }
+
 /* PMIC i2c read msg */
 static inline int pmic_i2c_read_xfer(struct i2c_msg msg)
 {
 	int ret;
 	u16 i;
-	u8 addr = msg.buf[0];
 	u8 mask = (I2C_RD | I2C_NACK);
+	u16 regs[I2C_MSG_LEN] = {0};
+	u8 data[I2C_MSG_LEN] = {0};
 
-	for (i = 0; i < msg.len ; i++, addr++) {
+	for (i = 0; i < msg.len ; i++) {
 		pmic_dev->i2c_rw = 0;
-		ret = intel_scu_ipc_iowrite8(I2COVROFFSET_ADDR, addr);
-		if (unlikely(ret))
-			return ret;
-		ret = intel_scu_ipc_iowrite8(I2COVRCTRL_ADDR,
-						I2COVRCTRL_I2C_RD);
+		regs[0] = I2COVRDADDR_ADDR;
+		data[0] = msg.addr;
+		regs[1] = I2COVROFFSET_ADDR;
+		data[1] = msg.buf[0] + i;
+		/* intel_scu_ipc_function works fine for even number of bytes */
+		/* Hence adding a dummy byte transfer */
+		regs[2] = I2COVROFFSET_ADDR;
+		data[2] = msg.buf[0] + i;
+		regs[3] = I2COVRCTRL_ADDR;
+		data[3] = I2COVRCTRL_I2C_RD;
+		ret = intel_scu_ipc_writev(regs, data, I2C_MSG_LEN);
 		if (unlikely(ret))
 			return ret;
 
@@ -127,22 +135,21 @@ static inline int pmic_i2c_write_xfer(struct i2c_msg msg)
 {
 	int ret;
 	u16 i;
-	u8 addr = msg.buf[0];
 	u8 mask = (I2C_WR | I2C_NACK);
+	u16 regs[I2C_MSG_LEN] = {0};
+	u8 data[I2C_MSG_LEN] = {0};
 
-	for (i = 1; i <= msg.len ; i++, addr++) {
+	for (i = 1; i <= msg.len ; i++) {
 		pmic_dev->i2c_rw = 0;
-
-		ret = intel_scu_ipc_iowrite8(I2COVROFFSET_ADDR, addr);
-		if (unlikely(ret))
-			return ret;
-
-		ret = intel_scu_ipc_iowrite8(I2COVRWRDATA_ADDR, msg.buf[i]);
-		if (unlikely(ret))
-			return ret;
-
-		ret = intel_scu_ipc_iowrite8(I2COVRCTRL_ADDR,
-				I2COVRCTRL_I2C_WR);
+		regs[0] = I2COVRDADDR_ADDR;
+		data[0] = msg.addr;
+		regs[1] = I2COVRWRDATA_ADDR;
+		data[1] = msg.buf[i];
+		regs[2] = I2COVROFFSET_ADDR;
+		data[2] = msg.buf[0] + i - 1;
+		regs[3] = I2COVRCTRL_ADDR;
+		data[3] = I2COVRCTRL_I2C_WR;
+		ret = intel_scu_ipc_writev(regs, data, I2C_MSG_LEN);
 		if (unlikely(ret))
 			return ret;
 
@@ -175,13 +182,6 @@ static int pmic_master_xfer(struct i2c_adapter *adap,
 	wake_lock(&pmic_dev->i2c_wake_lock);
 	pm_runtime_get_sync(pmic_dev->dev);
 	for (i = 0 ; i < num ; i++) {
-		ret = intel_scu_ipc_iowrite8(I2COVRDADDR_ADDR,
-						msgs[i].addr);
-		if (unlikely(ret)) {
-			ret = -EIO;
-			goto transfer_err_exit;
-		}
-
 		index = msgs[i].flags & I2C_M_RD;
 		ret = (xfer_fn[index])(msgs[i]);
 
@@ -275,10 +275,14 @@ static int pmic_i2c_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_irq_request;
 
-	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+	ret = intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
 			IRQLVL1_CHRGR_MASK);
-	intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
+	if (unlikely(ret))
+		goto unmask_irq_failed;
+	ret = intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
 			PMIC_I2C_INTR_MASK);
+	if (unlikely(ret))
+		goto unmask_irq_failed;
 
 	/* Init runtime PM state*/
 	pm_runtime_put_noidle(pmic_dev->dev);

@@ -290,41 +290,46 @@ static int byt_ec_evt_batt_callback(struct notifier_block *nb,
 	struct ec_battery_info *chip = container_of(nb,
 					struct ec_battery_info, nb);
 	int ret = NOTIFY_DONE;
-	bool uevent = false;
+	bool chrg_uevent = false, batt_uevent = false;
 
 	switch (event) {
 	case BYT_EC_SCI_ACINSERTION:
 		dev_info(&chip->pdev->dev, "Charger plug event\n");
-		uevent = true;
+		chrg_uevent = true;
 		break;
 	case BYT_EC_SCI_ACREMOVAL:
 		dev_info(&chip->pdev->dev, "Charger unplug event\n");
-		uevent = true;
+		chrg_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY:
 		dev_info(&chip->pdev->dev, "Battery related event\n");
-		uevent = true;
+		batt_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY_PRSNT:
 		dev_info(&chip->pdev->dev, "Battery plug/unplug event\n");
-		uevent = true;
+		batt_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY_OTP:
 		dev_info(&chip->pdev->dev, "Battery over temp event\n");
-		uevent = true;
+		batt_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY_OTP_CLR:
 		dev_info(&chip->pdev->dev, "Battery over temp clear event\n");
-		uevent = true;
+		batt_uevent = true;
 		break;
 	default:
 		dev_dbg(&chip->pdev->dev, "not valid battery event\n");
 	}
 
-	if (uevent) {
-		power_supply_changed(&chip->bat);
+	if (chrg_uevent) {
 		power_supply_changed(&chip->chrg);
+		power_supply_changed(&chip->bat);
 		ret = NOTIFY_OK;
+	} else if (batt_uevent) {
+		power_supply_changed(&chip->bat);
+		ret = NOTIFY_OK;
+	} else {
+		ret = NOTIFY_DONE;
 	}
 
 	return ret;

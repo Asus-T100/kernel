@@ -28,6 +28,7 @@
 
 int watchdog_enabled = 1;
 int __read_mostly watchdog_thresh = 10;
+module_param(watchdog_thresh, int, S_IRUGO|S_IWUSR);
 
 static DEFINE_PER_CPU(unsigned long, watchdog_touch_ts);
 static DEFINE_PER_CPU(struct task_struct *, softlockup_watchdog);

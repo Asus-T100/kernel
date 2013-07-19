@@ -39,6 +39,9 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include "../../codecs/rt5640.h"
+
+#define BYT_PLAT_CLK_3_HZ	25000000
+
 static int debounce = 100;
 module_param(debounce, int, 0644);
 
@@ -55,7 +58,6 @@ static struct snd_soc_jack_gpio hs_gpio = {
 					  SND_JACK_BTN_0,
 		.debounce_time		= 100,
 		.jack_status_check	= byt_hp_detection,
-		.irq_flags		= IRQF_TRIGGER_RISING,
 };
 
 static inline void byt_jack_report(int status)
@@ -147,11 +149,70 @@ static int byt_hp_detection(void)
 	return jack_type;
 }
 
+static inline struct snd_soc_codec *byt_get_codec(struct snd_soc_card *card)
+{
+	bool found = false;
+	struct snd_soc_codec *codec;
+
+	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
+		if (!strstr(codec->name, "rt5640.2-001c")) {
+			pr_debug("codec was %s", codec->name);
+			continue;
+		} else {
+			found = true;
+			break;
+		}
+	}
+	if (found == false) {
+		pr_err("%s: cant find codec", __func__);
+		return NULL;
+	}
+	return codec;
+}
+
+#define VLV2_PLAT_CLK_AUDIO	3
+#define PLAT_CLK_FORCE_ON	1
+#define PLAT_CLK_FORCE_OFF	2
+static int platform_clock_control(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *k, int  event)
+{
+	struct snd_soc_dapm_context *dapm = w->dapm;
+	struct snd_soc_card *card = dapm->card;
+	struct snd_soc_codec *codec;
+
+	codec = byt_get_codec(card);
+	if (!codec) {
+		pr_err("Codec not found; Unable to set platform clock\n");
+		return -EIO;
+	}
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		vlv2_plat_configure_clock(VLV2_PLAT_CLK_AUDIO,
+				PLAT_CLK_FORCE_ON);
+		pr_debug("Platform clk turned ON\n");
+		snd_soc_codec_set_sysclk(codec, RT5640_SCLK_S_PLL1,
+				0, BYT_PLAT_CLK_3_HZ, SND_SOC_CLOCK_IN);
+	} else {
+		/* Set codec clock source to internal clock before
+		   turning off the platform clock. Codec needs clock
+		   for Jack detection and button press */
+		snd_soc_codec_set_sysclk(codec, RT5640_SCLK_S_RCCLK,
+				0, 0, SND_SOC_CLOCK_IN);
+		vlv2_plat_configure_clock(VLV2_PLAT_CLK_AUDIO,
+				PLAT_CLK_FORCE_OFF);
+		pr_debug("Platform clk turned OFF\n");
+	}
+
+	return 0;
+}
+
 static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
 	SND_SOC_DAPM_MIC("Int Mic", NULL),
 	SND_SOC_DAPM_SPK("Ext Spk", NULL),
+	SND_SOC_DAPM_SUPPLY("Platform Clock", SND_SOC_NOPM, 0, 0,
+			platform_clock_control, SND_SOC_DAPM_PRE_PMU|
+			SND_SOC_DAPM_POST_PMD),
 };
 
 static const struct snd_soc_dapm_route byt_audio_map[] = {
@@ -164,6 +225,11 @@ static const struct snd_soc_dapm_route byt_audio_map[] = {
 	{"Ext Spk", NULL, "SPOLN"},
 	{"Ext Spk", NULL, "SPORP"},
 	{"Ext Spk", NULL, "SPORN"},
+
+	{"Headphone", NULL, "Platform Clock"},
+	{"Headset Mic", NULL, "Platform Clock"},
+	{"Int Mic", NULL, "Platform Clock"},
+	{"Ext Spk", NULL, "Platform Clock"},
 };
 
 static const struct snd_kcontrol_new byt_mc_controls[] = {
@@ -173,7 +239,6 @@ static const struct snd_kcontrol_new byt_mc_controls[] = {
 	SOC_DAPM_PIN_SWITCH("Ext Spk"),
 };
 
-#define BYT_PLAT_CLK_3_HZ	25000000
 
 static int byt_aif1_hw_params(struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *params)
@@ -183,6 +248,7 @@ static int byt_aif1_hw_params(struct snd_pcm_substream *substream,
 	unsigned int fmt;
 	int ret;
 
+	pr_debug("Enter:%s", __func__);
 	/* I2S Slave Mode`*/
 	fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
 	      SND_SOC_DAIFMT_CBS_CFS;
@@ -200,14 +266,6 @@ static int byt_aif1_hw_params(struct snd_pcm_substream *substream,
 		pr_err("can't set codec pll: %d\n", ret);
 		return ret;
 	}
-
-	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
-				     params_rate(params) * 512,
-				     SND_SOC_CLOCK_IN);
-	if (ret < 0) {
-		pr_err("can't set codec clock %d\n", ret);
-		return ret;
-	}
 	return 0;
 }
 
@@ -219,6 +277,7 @@ static int byt_aif2_hw_params(struct snd_pcm_substream *substream,
 	unsigned int fmt;
 	int ret;
 
+	pr_debug("Enter:%s", __func__);
 	/* I2S  Slave Mode`*/
 	fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
 	      SND_SOC_DAIFMT_CBS_CFS;
@@ -236,20 +295,9 @@ static int byt_aif2_hw_params(struct snd_pcm_substream *substream,
 		pr_err("can't set codec pll: %d\n", ret);
 		return ret;
 	}
-
-	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
-				     params_rate(params) * 512,
-				     SND_SOC_CLOCK_IN);
-	if (ret < 0) {
-		pr_err("can't set codec clock %d\n", ret);
-		return ret;
-	}
 	return 0;
 }
 
-#define VLV2_PLAT_CLK_AUDIO	3
-#define PLAT_CLK_FORCE_ON	1
-#define PLAT_CLK_FORCE_OFF	2
 static int byt_set_bias_level(struct snd_soc_card *card,
 				struct snd_soc_dapm_context *dapm,
 				enum snd_soc_bias_level level)
@@ -258,14 +306,7 @@ static int byt_set_bias_level(struct snd_soc_card *card,
 	case SND_SOC_BIAS_ON:
 	case SND_SOC_BIAS_PREPARE:
 	case SND_SOC_BIAS_STANDBY:
-		if (card->dapm.bias_level == SND_SOC_BIAS_OFF)
-			vlv2_plat_configure_clock(VLV2_PLAT_CLK_AUDIO,
-						  PLAT_CLK_FORCE_ON);
-		break;
 	case SND_SOC_BIAS_OFF:
-		if (card->dapm.bias_level == SND_SOC_BIAS_STANDBY)
-			vlv2_plat_configure_clock(VLV2_PLAT_CLK_AUDIO,
-						  PLAT_CLK_FORCE_OFF);
 		break;
 	default:
 		pr_err("%s: Invalid bias level=%d\n", __func__, level);
@@ -285,6 +326,7 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 	struct snd_soc_card *card = runtime->card;
 	struct byt_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
 
+	pr_debug("Enter:%s", __func__);
 	/* Set codec bias level */
 	byt_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
 	card->dapm.idle_bias_off = true;

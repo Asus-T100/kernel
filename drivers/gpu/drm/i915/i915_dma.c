@@ -403,7 +403,6 @@ static int i915_emit_cmds(struct drm_device * dev, int *buffer, int dwords)
 		OUT_RING(0);
 
 	ADVANCE_LP_RING();
-	i915_add_request_noflush(LP_RING(dev_priv));
 
 	return 0;
 }
@@ -445,7 +444,6 @@ i915_emit_box(struct drm_device *dev,
 		OUT_RING(0);
 	}
 	ADVANCE_LP_RING();
-	i915_add_request_noflush(LP_RING(dev_priv));
 
 	return 0;
 }
@@ -471,7 +469,6 @@ static void i915_emit_breadcrumb(struct drm_device *dev)
 		OUT_RING(dev_priv->counter);
 		OUT_RING(0);
 		ADVANCE_LP_RING();
-		i915_add_request_noflush(LP_RING(dev_priv));
 	}
 }
 
@@ -480,6 +477,7 @@ static int i915_dispatch_cmdbuffer(struct drm_device * dev,
 				   struct drm_clip_rect *cliprects,
 				   void *cmdbuf)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	int nbox = cmd->num_cliprects;
 	int i = 0, count, ret;
 
@@ -506,6 +504,7 @@ static int i915_dispatch_cmdbuffer(struct drm_device * dev,
 	}
 
 	i915_emit_breadcrumb(dev);
+	i915_add_request_noflush(LP_RING(dev_priv));
 	return 0;
 }
 
@@ -1808,7 +1807,6 @@ int i915_driver_unload(struct drm_device *dev)
 int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct drm_i915_file_private *file_priv;
-	drm_i915_private_t *dev_priv = dev->dev_private;
 
 	DRM_DEBUG_DRIVER("\n");
 	file_priv = kmalloc(sizeof(*file_priv), GFP_KERNEL);
@@ -1823,6 +1821,8 @@ int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 	idr_init(&file_priv->context_idr);
 
 #ifdef CONFIG_DRM_VXD_BYT
+	drm_i915_private_t *dev_priv = dev->dev_private;
+
 	if (dev_priv->vxd_driver_open)
 		return dev_priv->vxd_driver_open(dev, file);
 	else
@@ -1947,6 +1947,10 @@ struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_SET_CSC, intel_enable_CSC, DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_GET_PSR_SUPPORT, intel_edp_get_psr_support,
 								DRM_AUTH),
+	DRM_IOCTL_DEF_DRV(I915_SET_PLANE_ALPHA, i915_set_plane_alpha, \
+							DRM_AUTH|DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_PERFMON, i915_perfmon_ioctl, DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_DPST_CONTEXT, i915_dpst_context, DRM_UNLOCKED),
 };
 
 int i915_max_ioctl = DRM_ARRAY_SIZE(i915_ioctls);

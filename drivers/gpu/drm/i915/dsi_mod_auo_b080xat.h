@@ -23,17 +23,15 @@
  * Authors:
  *	Shobhit Kumar <shobhit.kumar@intel.com>
  */
-#ifndef __ACER_B080XAT_H__
-#define __ACER_B080XAT_H__
+#ifndef __DSI_MOD_AUO_B080XAT_H__
+#define __DSI_MOD_AUO_B080XAT_H__
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include "intel_drv.h"
 
-/* FIXME: To get the AUO panel width/height inches. */
 #define B080XAT_10x7_PANEL_WIDTH         122
 #define B080XAT_10x7_PANEL_HEIGHT        162
 
-
-#endif /* __ACER_B080XAT_H__ */
+#endif /* __DSI_MOD_AUO_B080XAT_H__ */

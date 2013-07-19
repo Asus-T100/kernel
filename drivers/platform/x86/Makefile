@@ -45,7 +45,6 @@ obj-$(CONFIG_INTEL_PSH_IPC)	+= intel_psh_ipc.o
 obj-$(CONFIG_INTEL_SCU_FLIS)	+= intel_scu_flis.o
 obj-$(CONFIG_INTEL_MFLD_THERMAL) += intel_mid_thermal.o
 obj-$(CONFIG_INTEL_IPS)		+= intel_ips.o
-obj-$(CONFIG_GPIO_INTEL_MSIC)	+= intel_msic_gpio.o
 obj-$(CONFIG_GPIO_INTEL_PMIC)	+= intel_pmic_gpio.o
 obj-$(CONFIG_XO1_RFKILL)	+= xo1-rfkill.o
 obj-$(CONFIG_XO15_EBOOK)	+= xo15-ebook.o

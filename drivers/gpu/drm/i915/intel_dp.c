@@ -841,7 +841,7 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	struct drm_crtc *crtc = intel_dp->base.base.crtc;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
-	i915_rpm_get_reg(dev);
+	i915_rpm_get_callback(dev);
 	/* Turn on the eDP PLL if needed */
 	if (is_edp(intel_dp)) {
 		if (!is_pch_edp(intel_dp))
@@ -952,7 +952,7 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	} else {
 		intel_dp->DP |= DP_LINK_TRAIN_OFF_CPT;
 	}
-	i915_rpm_put_reg(dev);
+	i915_rpm_put_callback(dev);
 }
 
 #define IDLE_ON_MASK		(PP_ON | 0 	  | PP_SEQUENCE_MASK | 0                     | PP_SEQUENCE_STATE_MASK)
@@ -1325,7 +1325,9 @@ static void intel_dp_prepare(struct drm_encoder *encoder)
 	ironlake_edp_panel_vdd_on(intel_dp);
 	ironlake_edp_backlight_off(intel_dp);
 	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
-	ironlake_edp_panel_off(intel_dp);
+	/* Some of the FFRD10 PR1.1B boards doesnt like when edp panel power
+	 * is off */
+	/* ironlake_edp_panel_off(intel_dp); */
 	intel_dp_link_down(intel_dp);
 }
 
@@ -1333,6 +1335,7 @@ static void intel_dp_commit(struct drm_encoder *encoder)
 {
 	struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
 	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(intel_dp->base.base.crtc);
 
 	ironlake_edp_panel_vdd_on(intel_dp);
@@ -1342,6 +1345,9 @@ static void intel_dp_commit(struct drm_encoder *encoder)
 	ironlake_edp_panel_vdd_off(intel_dp, true);
 	intel_dp_complete_link_train(intel_dp);
 	ironlake_edp_backlight_on(intel_dp);
+
+	if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 40))
+		DRM_ERROR("DPLL %x failed to lock\n", I915_READ(DPLL(0)));
 
 	intel_dp->dpms_mode = DRM_MODE_DPMS_ON;
 
@@ -1614,7 +1620,9 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		ironlake_edp_panel_vdd_on(intel_dp);
 		ironlake_edp_backlight_off(intel_dp);
 		intel_dp_sink_dpms(intel_dp, mode);
-		ironlake_edp_panel_off(intel_dp);
+		/* Some of the FFRD10 PR1.1B boards doesnt like when edp
+		 * panel power is off */
+		/* ironlake_edp_panel_off(intel_dp); */
 		intel_dp_link_down(intel_dp);
 
 		if (is_cpu_edp(intel_dp))
@@ -1633,6 +1641,7 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		} else
 			ironlake_edp_panel_vdd_off(intel_dp, false);
 		ironlake_edp_backlight_on(intel_dp);
+
 	}
 	intel_dp->dpms_mode = mode;
 }
@@ -3114,6 +3123,7 @@ void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
 void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 						struct drm_file *file)
 {
+
 	if (i915_psr_support) {
 		struct drm_i915_private *dev_priv = device->dev_private;
 		struct drm_connector *connector;

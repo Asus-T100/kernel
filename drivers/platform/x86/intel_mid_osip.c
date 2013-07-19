@@ -34,7 +34,8 @@
 #include <asm/intel_mid_remoteproc.h>
 
 /* change to "loop0" and use losetup for safe testing */
-#define OSIP_BLKDEVICE "mmcblk0"
+#define EMMC_OSIP_BLKDEVICE "mmcblk0"
+#define HDD_OSIP_BLKDEVICE "sda"
 #include <asm/intel_scu_ipc.h>
 #include <linux/power_supply.h>
 
@@ -76,26 +77,37 @@ static int force_shutdown_occured;
    is present during shutdown. */
 static int shutdown_power_supply_supplied;
 
-int mmcblk0_match(struct device *dev, void *data)
+int emmc_match(struct device *dev, void *data)
 {
-	if (strcmp(dev_name(dev), OSIP_BLKDEVICE) == 0)
+	if (strcmp(dev_name(dev), EMMC_OSIP_BLKDEVICE) == 0)
 		return 1;
 	return 0;
 }
-static struct block_device *get_emmc_bdev(void)
+int hdd_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), HDD_OSIP_BLKDEVICE) == 0)
+		return 1;
+	return 0;
+}
+static struct block_device *get_bdev(void)
 {
 	struct block_device *bdev;
-	struct device *emmc_disk;
+	struct device *block_disk;
 
-	emmc_disk = class_find_device(&block_class, NULL, NULL, mmcblk0_match);
-	if (emmc_disk == 0) {
-		pr_err("emmc not found!\n");
-		return NULL;
+	block_disk = class_find_device(&block_class, NULL, NULL,
+						emmc_match);
+	if (block_disk == 0) {
+		block_disk = class_find_device(&block_class, NULL, NULL,
+						hdd_match);
+		if (block_disk == 0) {
+			pr_err("block disk not found!\n");
+			return NULL;
+		}
 	}
 	/* partition 0 means raw disk */
-	bdev = bdget_disk(dev_to_disk(emmc_disk), 0);
+	bdev = bdget_disk(dev_to_disk(block_disk), 0);
 	if (bdev == NULL) {
-		dev_err(emmc_disk, "unable to get disk\n");
+		dev_err(block_disk, "unable to get disk\n");
 		return NULL;
 	}
 	/* Note: this bdev ref will be freed after first
@@ -132,9 +144,9 @@ static int access_osip_record(osip_callback_t callback, void *cb_data)
 	int ret = 0;
 	int dirty = 0;
 
-	bdev = get_emmc_bdev();
+	bdev = get_bdev();
 	if (bdev == NULL) {
-		pr_err("%s: get_emmc failed!\n", __func__);
+		pr_err("%s: get_bdev failed!\n", __func__);
 		return -ENODEV;
 	}
 	/* make sure the block device is open rw */
@@ -408,7 +420,7 @@ int open_cmdline(struct inode *i, struct file *f)
 		goto free;
 	}
 	/* need to open it again */
-	p->bdev = get_emmc_bdev();
+	p->bdev = get_bdev();
 	if (!p->bdev) {
 		pr_err("%s: access_osip_record failed!\n", __func__);
 		ret = -ENODEV;

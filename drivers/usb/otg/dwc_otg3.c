@@ -11,6 +11,8 @@
 #include <linux/kthread.h>
 #include <linux/version.h>
 #include <linux/suspend.h>
+#include <linux/intel_mid_pm.h>
+#include <linux/gpio.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -22,7 +24,7 @@
 #define VERSION "2.10a"
 
 static void reset_hw(struct dwc_otg2 *otg);
-
+static void usb2phy_eye_optimization(struct dwc_otg2 *otg);
 static int otg_id = -1;
 static struct mutex lock;
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off);
@@ -30,7 +32,6 @@ static const char driver_name[] = "dwc_otg3";
 static void dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
 static struct dwc_otg2 *the_transceiver;
-static int use_s3_wa;
 
 static struct {
 
@@ -42,36 +43,6 @@ static struct {
 
 };
 
-static int d3hot_wa_enabled(struct dwc_otg2 *otg)
-{
-	if (!otg || !otg->otg_data)
-		return 0;
-
-	return otg->otg_data->d3hot_wa;
-}
-
-static int enable_d3hot_wa(struct dwc_otg2 *otg, bool on_off)
-{
-	void __iomem *addr;
-	unsigned int val = 0;
-
-	if (!d3hot_wa_enabled(otg))
-		return 0;
-
-	addr = ioremap_nocache(APBFB_OTG3_MISC1, 4);
-	if (!addr)
-		return -EFAULT;
-
-	val = readl(addr);
-	if (on_off)
-		val |= OTG3_MISC1_DO_D3COLD_RESUME;
-	else
-		val &= ~OTG3_MISC1_DO_D3COLD_RESUME;
-	writel(val, addr);
-	iounmap(addr);
-
-	return 0;
-}
 
 static int is_hybridvp(struct dwc_otg2 *otg)
 {
@@ -325,13 +296,8 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
-	/* Enable D0i3hot WA for host mode
-	 * If enable failed, then LS device will cause fabric error
-	 */
-	if (enable_d3hot_wa(otg, true)) {
-		printk(KERN_ERR "D3hot WA can't be enabled. Host start failed\n");
-		return -EFAULT;
-	}
+	usb2phy_eye_optimization(otg);
+
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -364,6 +330,7 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
+	usb2phy_eye_optimization(otg);
 	gadget->ops->start_device(gadget);
 }
 
@@ -685,9 +652,6 @@ static enum power_supply_charger_cable_type
 	enum power_supply_charger_cable_type type =
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
-	/* PHY Enable: */
-	enable_usb_phy(otg, true);
-
 	/* Wait 10ms (~5ms before PHY de-asserts DIR,
 	 * XXus for initial Link reg sync-up).*/
 	msleep(20);
@@ -869,29 +833,6 @@ cleanup:
 	return type;
 }
 
-static int dwc_sleep_pm_callback(struct notifier_block *nfb,
-			unsigned long action, void *ignored)
-{
-	struct dwc_otg2 *otg = the_transceiver;
-
-	switch (action) {
-	case PM_POST_SUSPEND:
-		use_s3_wa = 0;
-		return NOTIFY_OK;
-	case PM_SUSPEND_PREPARE:
-		if (otg->dev->power.runtime_status == RPM_SUSPENDED)
-			if (otg->state == DWC_STATE_A_HOST)
-				use_s3_wa = 1;
-		return NOTIFY_OK;
-	}
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block dwc_sleep_pm_notifier = {
-	.notifier_call = dwc_sleep_pm_callback,
-	.priority = 0
-};
-
 static int is_self_powered_b_device(struct dwc_otg2 *otg)
 {
 	return get_id(otg) == RID_GND;
@@ -926,8 +867,11 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 		 * Otherwise, notify 0mA.
 		*/
 		if (!cap.mA) {
-			if (otg->otg_data->charging_compliance)
+			if (otg->otg_data->charging_compliance) {
 				cap.mA = 500;
+				cap.chrg_evt =
+					POWER_SUPPLY_CHARGER_EVENT_CONNECT;
+			}
 		/* For standard SDP, if SMIP set, then ignore suspend */
 		} else if (otg->otg_data->charging_compliance)
 			return 0;
@@ -1078,6 +1022,17 @@ static enum dwc_otg_state do_charging(struct dwc_otg2 *otg)
 	return DWC_STATE_INVALID;
 }
 
+static void usb2phy_eye_optimization(struct dwc_otg2 *otg)
+{
+	if (otg->otg_data->is_byt)
+		/* for baytrail, optimization value is 0x4f for eye diagram */
+		ulpi_write(&otg->phy, 0x4f, TUSB1211_VENDOR_SPECIFIC1_SET);
+	else
+		/* Set 0x7f for better quality in eye diagram
+		 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
+		ulpi_write(&otg->phy, 0x7f, TUSB1211_VENDOR_SPECIFIC1_SET);
+}
+
 static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 {
 	enum dwc_otg_state state = DWC_STATE_INVALID;
@@ -1085,12 +1040,12 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 			POWER_SUPPLY_CHARGER_TYPE_NONE;
 	unsigned long flags, mA = 0;
 
+	/* PHY Enable: */
+	enable_usb_phy(otg, true);
+
 	/* FIXME: Skip charger detection flow for baytrail */
-	if (otg->otg_data->is_byt) {
-		/* for baytrail, optimization value is 0x4f for eye diagram */
-		ulpi_write(&otg->phy, TUSB1211_VENDOR_SPECIFIC1_SET, 0x4f);
+	if (otg->otg_data->is_byt)
 		return DWC_STATE_B_PERIPHERAL;
-	}
 
 	charger = get_charger_type(otg);
 	switch (charger) {
@@ -1166,7 +1121,6 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	unsigned long flags;
 	u32 events = 0, user_events = 0;
 	u32 otg_mask = 0, user_mask = 0, tmp;
-	enum dwc_otg_state state = DWC_STATE_INVALID;
 	u32 gctl;
 
 	otg_dbg(otg, "\n");
@@ -1178,17 +1132,9 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	dwc_otg_charger_hwdet(false);
 
-	/* Disable D0i3hot WA by default
-	 * If disable failed, then maybe cause device mode D0i3 can't work
-	 * after resumed. But only can be when host enter sleep/hibernation
-	 * state which is not easy to met by user. So just print one warning.
-	 */
-	if (enable_d3hot_wa(otg, false))
-		printk(KERN_ERR "dwc-otg: D3hot WA disable failed\n");
-
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
-	if (!is_hybridvp(otg))
+	if (!is_hybridvp(otg) || otg->otg_data->is_byt)
 		enable_usb_phy(otg, false);
 
 	/* Disable hibernation mode by default */
@@ -1322,7 +1268,7 @@ stay_host:
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_A_DEV_SESS_END_DET_EVNT;
-	user_mask = USER_A_BUS_DROP | USER_RESET_HOST;
+	user_mask = USER_A_BUS_DROP;
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	user_mask |= USER_ID_B_CHANGE_EVENT;
 #endif
@@ -1402,16 +1348,6 @@ stay_host:
 		return DWC_STATE_INIT;
 	}
 #endif
-
-	if (user_events & USER_RESET_HOST) {
-		otg_dbg(otg, "USER_RESET_HOST\n");
-		pm_runtime_get(otg->dev);
-		stop_host(otg);
-		reset_hw(otg);
-		start_host(otg);
-		pm_runtime_put_autosuspend(otg->dev);
-		goto stay_host;
-	}
 
 	/* Invalid state */
 	return DWC_STATE_INVALID;
@@ -1505,16 +1441,31 @@ static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 {
 	int ret;
 
+	if (otg->otg_data->is_byt && otg->otg_data->gpio_cs
+		&& otg->otg_data->gpio_reset) {
+		if (on_off) {
+			/* Turn ON phy via CS pin */
+			gpio_direction_output(otg->otg_data->gpio_cs, 1);
+			usleep_range(200, 300);
+
+			/* Do PHY reset after enable the PHY */
+			gpio_direction_output(otg->otg_data->gpio_reset, 0);
+			usleep_range(200, 500);
+			gpio_set_value(otg->otg_data->gpio_reset, 1);
+		} else {
+			/* Turn OFF phy via CS pin */
+			gpio_direction_output(otg->otg_data->gpio_cs, 0);
+		}
+		return 0;
+	}
+
 	if (on_off) {
 		ret = intel_scu_ipc_update_register(PMIC_VLDOCNT,
 				0xff, PMIC_VLDOCNT_VUSBPHYEN);
 		if (ret)
 			otg_err(otg, "Fail to enable VBUSPHY\n");
-		msleep(20);
 
-		/* Set 0x7f for better quality in eye diagram
-		 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
-		ulpi_write(&otg->phy, 0x7f, TUSB1211_VENDOR_SPECIFIC1_SET);
+		msleep(20);
 	} else {
 		ret = intel_scu_ipc_update_register(PMIC_VLDOCNT,
 				0x00, PMIC_VLDOCNT_VUSBPHYEN);
@@ -1635,23 +1586,6 @@ static inline struct dwc_otg2 *xceiv_to_dwc_otg2(struct usb_otg *x)
 static int dwc_otg2_set_suspend(struct usb_phy *x, int suspend)
 {
 	return 0;
-}
-
-static int dwc_otg2_whether_to_use_s3_wa(struct dwc_otg2 *otg)
-{
-	if (!d3hot_wa_enabled(otg))
-		return 0;
-
-	return use_s3_wa;
-}
-
-static void dwc_otg2_reset_host(struct dwc_otg2 *otg)
-{
-	unsigned long flags;
-	spin_lock_irqsave(&otg->lock, flags);
-	otg->user_events |= USER_RESET_HOST;
-	wakeup_main_thread(otg);
-	spin_unlock_irqrestore(&otg->lock, flags);
 }
 
 static int dwc_otg2_set_peripheral(struct usb_otg *x,
@@ -1911,9 +1845,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
-	if (d3hot_wa_enabled(otg))
-		otg->reset_host	= dwc_otg2_reset_host;
-	otg->whether_to_use_s3_wa = dwc_otg2_whether_to_use_s3_wa;
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
@@ -1927,6 +1858,26 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		otg_err(otg, "can't register transceiver, err: %d\n",
 			retval);
 		goto exit;
+	}
+
+	/* gpio request for BYT */
+	if (otg->otg_data->is_byt) {
+		retval = gpio_request(otg->otg_data->gpio_reset,
+					"tusb1211_reset");
+		if (retval < 0) {
+			otg_err(otg, "fail to request phy reset gpio(%d)\n",
+						otg->otg_data->gpio_reset);
+			retval = -ENODEV;
+			goto exit;
+		}
+		retval = gpio_request(otg->otg_data->gpio_cs,
+					"tusb1211_cs");
+		if (retval < 0) {
+			otg_err(otg, "fail to request phy cs gpio(%d)\n",
+						otg->otg_data->gpio_cs);
+			retval = -ENODEV;
+			goto exit;
+		}
 	}
 
 	if (!otg->otg_data->no_device_mode) {
@@ -2035,11 +1986,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 			otg_err(otg, "Fail to de-assert USBRST#\n");
 	}
 
-	if (register_pm_notifier(&dwc_sleep_pm_notifier)) {
-		printk(KERN_ERR "dwc-otg: Fail to register PM notifier\n");
-		goto exit;
-	}
-
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -2091,7 +2037,6 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	usb_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
 
-	unregister_pm_notifier(&dwc_sleep_pm_notifier);
 	kfree(otg);
 }
 
@@ -2158,12 +2103,18 @@ static int dwc_otg_runtime_resume(struct device *dev)
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
-	if (dwc_otg2_whether_to_use_s3_wa(otg)) {
-		otg_dbg(otg, "%s: for S3 WA, return directly\n", __func__);
-		return 0;
-	}
-
 	pci_set_power_state(pci_dev, PCI_D0);
+
+
+	/* This is one WA for silicon BUG.
+	 * Without this WA, the USB2 phy will enter low power
+	 * mode during hibernation resume flow. and met
+	 * fabric error
+	 */
+	if (otg->state == DWC_STATE_A_HOST) {
+		enable_usb_phy(otg, false);
+		enable_usb_phy(otg, true);
+	}
 
 	/* From synopsys spec 12.2.11.
 	 * Software cannot access memory-mapped I/O space
@@ -2200,11 +2151,6 @@ static int dwc_otg_suspend(struct device *dev)
 		return 0;
 	}
 
-	if (dwc_otg2_whether_to_use_s3_wa(otg)) {
-		otg_dbg(otg, "%s: for S3 WA, return directly\n", __func__);
-		return 0;
-	}
-
 	if (otg->state == DWC_STATE_B_PERIPHERAL ||
 			otg->state == DWC_STATE_A_HOST)
 		state = PCI_D3hot;
@@ -2229,6 +2175,16 @@ static int dwc_otg_resume(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
 	pci_set_power_state(pci_dev, PCI_D0);
+
+	/* This is one WA for silicon BUG.
+	 * Without this WA, the USB2 phy will enter low power
+	 * mode during hibernation resume flow. and met
+	 * fabric error
+	 */
+	if (otg->state == DWC_STATE_A_HOST) {
+		enable_usb_phy(otg, false);
+		enable_usb_phy(otg, true);
+	}
 
 	/* From synopsys spec 12.2.11.
 	 * Software cannot access memory-mapped I/O space

@@ -18,7 +18,6 @@ obj-$(CONFIG_SENSORS_W83793)	+= w83793.o
 obj-$(CONFIG_SENSORS_W83795)	+= w83795.o
 obj-$(CONFIG_SENSORS_W83781D)	+= w83781d.o
 obj-$(CONFIG_SENSORS_W83791D)	+= w83791d.o
-obj-$(CONFIG_SENSORS_MID_VDD)	+= intel_mid_vdd.o
 
 obj-$(CONFIG_SENSORS_ABITUGURU)	+= abituguru.o
 obj-$(CONFIG_SENSORS_ABITUGURU3)+= abituguru3.o
@@ -132,7 +131,6 @@ obj-$(CONFIG_SENSORS_HMC5883)           += hmc5883.o
 obj-$(CONFIG_SENSORS_MS5607)		+= ms5607.o
 obj-$(CONFIG_SENSORS_LTR502ALS)		+= ltr502als.o
 obj-$(CONFIG_SENSORS_MPU3050)		+= mpu3050.o
-obj-$(CONFIG_MSIC_GPADC)        += intel_mid_gpadc.o
 obj-$(CONFIG_SENSORS_PSH_MRLD)	+= psh_ia_common.o psh.o
 obj-$(CONFIG_SENSORS_PSH_BYT)	+= psh_ia_common.o psh_byt.o
 

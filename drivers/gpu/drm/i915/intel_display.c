@@ -51,6 +51,8 @@ static void intel_increase_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
 static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 			int x, int y);
+static int vlv_set_pixel_format(struct drm_i915_private *dev_priv, u32 pipe,
+			u32 pixel_format);
 
 typedef struct {
 	/* given values */
@@ -3442,8 +3444,8 @@ static struct intel_pch_pll *intel_get_pch_pll(struct intel_crtc *intel_crtc, u3
 		i = intel_crtc->pipe;
 		pll = &dev_priv->pch_plls[i];
 
-		DRM_DEBUG_KMS("CRTC:%d using pre-allocated PCH PLL %x\n",
-			      intel_crtc->base.base.id, pll->pll_reg);
+		DRM_DEBUG_KMS("CRTC:%d using pre-allocated PCH PLL %x\n"
+			      , intel_crtc->base.base.id, pll->pll_reg);
 
 		goto found;
 	}
@@ -3733,12 +3735,6 @@ static void vlv_pll_enable_reset(struct drm_crtc *crtc)
 		val |= (1<<20);
 		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
 
-		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
-		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8200, 0x10080);
-		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
-
 		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
 		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
 		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
@@ -3748,6 +3744,8 @@ static void vlv_pll_enable_reset(struct drm_crtc *crtc)
 		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
 		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
 
+		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
+		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
 	}
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
 	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
@@ -3760,9 +3758,6 @@ static void vlv_pll_enable_reset(struct drm_crtc *crtc)
 
 		intel_dpio_write(dev_priv, 0x8438, 0x00760018);
 		intel_dpio_write(dev_priv, 0x845c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8400, 0x10080);
-		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
 	}
 }
 
@@ -3774,7 +3769,6 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	struct intel_encoder *encoder;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
-	u32 temp;
 
 	if (intel_crtc->active)
 		return;
@@ -3787,8 +3781,6 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 		intel_enable_pll(dev_priv, pipe);
 
 	vlv_pll_enable_reset(crtc);
-	intel_enable_pipe(dev_priv, pipe, false);
-	intel_enable_plane(dev_priv, plane, pipe);
 
 	if (dev_priv->is_mipi) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
@@ -3798,6 +3790,9 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 			}
 		}
 	}
+
+	intel_enable_pipe(dev_priv, pipe, false);
+	intel_enable_plane(dev_priv, plane, pipe);
 
 	intel_crtc_load_lut(crtc);
 	intel_update_fbc(dev);
@@ -3815,9 +3810,19 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
+	struct intel_encoder *encoder;
 
 	if (!intel_crtc->active)
 		return;
+
+	if (dev_priv->is_mipi) {
+		for_each_encoder_on_crtc(dev, crtc, encoder) {
+			if (encoder->type == INTEL_OUTPUT_DSI) {
+				intel_dsi_disable(encoder);
+				break;
+			}
+		}
+	}
 
 	/* Give the overlay scaler a chance to disable if it's on this pipe */
 	intel_crtc_wait_for_pending_flips(crtc);
@@ -3828,8 +3833,9 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	if (dev_priv->cfb_plane == plane)
 		intel_disable_fbc(dev);
 
-	if ((pipe == 0) && (dev_priv->is_mipi)) {
+	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
 		/* XXX: Disable PPS */
+		/* temporary fix for the IA firwware issue */
 		I915_WRITE_BITS(VLV_PIPE_PP_CONTROL(pipe), 0, 0x00000001);
 		if (wait_for((I915_READ(VLV_PIPE_PP_STATUS(pipe)) &
 						0x80000000) == 0, 50))
@@ -3838,13 +3844,6 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	intel_disable_plane(dev_priv, plane, pipe);
 	intel_disable_pipe(dev_priv, pipe);
-	intel_disable_pll(dev_priv, pipe);
-
-	intel_crtc->active = false;
-	if (dev_priv->disp_pm_in_progress == true)
-		intel_crtc->disp_suspend_state = true;
-	intel_update_fbc(dev);
-	intel_update_watermarks(dev);
 
 	/*Reset lane for VLV platform*/
 	if (IS_VALLEYVIEW(dev)) {
@@ -3852,10 +3851,15 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 			intel_dpio_write(dev_priv, 0x8200, 0x00000000);
 			intel_dpio_write(dev_priv, 0x8204, 0x00e00060);
 		}
-
-		if (pipe)
-			vlv_init_dpio(dev);
 	}
+
+	intel_disable_pll(dev_priv, pipe);
+
+	intel_crtc->active = false;
+	if (dev_priv->disp_pm_in_progress == true)
+		intel_crtc->disp_suspend_state = true;
+	intel_update_fbc(dev);
+	intel_update_watermarks(dev);
 }
 
 static void i9xx_crtc_dpms(struct drm_crtc *crtc, int mode)
@@ -3958,10 +3962,11 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 	i9xx_crtc_disable(crtc);
 
-	if ((pipe == 0) && (dev_priv->is_mipi)) {
+	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
 		/* Ensure that port, plane, pipe, pf, pll are all disabled
 		 * XXX Fis the register constants
 		 */
+		/* temporary fix for the IA firwware issue */
 		I915_WRITE_BITS(0x64200, 0, 0x80000000);
 		I915_WRITE_BITS(0x70180, 0, 0x80000000);
 		I915_WRITE_BITS(0x70008, 0, 0x80000000);
@@ -3977,6 +3982,22 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 static void i9xx_crtc_commit(struct drm_crtc *crtc)
 {
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	/* Enable RefA clock enable bit (bit 29) of DPLL A) for LUT access */
+	if (dev_priv->is_mipi) {
+		if (I915_READ(_DPLL_A) & DPLL_VCO_ENABLE) {
+			I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) &
+					~DPLL_VCO_ENABLE);
+			POSTING_READ(_DPLL_A);
+			udelay(150);
+		}
+		I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) |
+			DPLL_REFA_CLK_ENABLE_VLV);
+		POSTING_READ(_DPLL_A);
+		udelay(150);
+	}
 	i9xx_crtc_enable(crtc);
 }
 
@@ -4452,13 +4473,14 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 
 	if (pipe) {
 		u32 reg_val;
-
 		reg_val = intel_dpio_read(dev_priv, 0x8064);
-		reg_val &= 0xffffff30;
+		reg_val &= 0xffffff00;
+		reg_val |= 0x30;
 		intel_dpio_write(dev_priv, 0x8064, reg_val);
 
 		reg_val = intel_dpio_read(dev_priv, 0x80ac);
-		reg_val &= 0x8cffffff;
+		reg_val &= 0x00ffffff;
+		reg_val |= 0x8c000000;
 		intel_dpio_write(dev_priv, 0x80ac, reg_val);
 
 		reg_val = intel_dpio_read(dev_priv, 0x8064);
@@ -4466,10 +4488,13 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		intel_dpio_write(dev_priv, 0x8064, reg_val);
 
 		reg_val = intel_dpio_read(dev_priv, 0x80ac);
-		reg_val &= 0xb0ffffff;
+		reg_val &= 0x00ffffff;
+		reg_val |= 0xb0000000;
 		intel_dpio_write(dev_priv, 0x80ac, reg_val);
 	}
+
 	intel_dpio_write(dev_priv, 0xc044, 0x0100000f);
+
 	if (pipe) {
 		u32 reg_val;
 		reg_val = intel_dpio_read(dev_priv, 0x8060);
@@ -4482,22 +4507,38 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		intel_dpio_write(dev_priv, 0x8040, reg_val);
 	}
 
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+		intel_dpio_write(dev_priv, 0x8200, 0x10080);
+		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
+
+		intel_dpio_write(dev_priv, 0x8230, 0x00750f00);
+		intel_dpio_write(dev_priv, 0x82AC, 0x00001500);
+		intel_dpio_write(dev_priv, 0x82B8, 0x40400000);
+	} else if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
+		|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		intel_dpio_write(dev_priv, 0x8400, 0x10080);
+		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
+
+		intel_dpio_write(dev_priv, 0x8430, 0x00750f00);
+		intel_dpio_write(dev_priv, 0x84AC, 0x00001500);
+		intel_dpio_write(dev_priv, 0x84B8, 0x40400000);
+	}
+
 	intel_dpio_write(dev_priv, DPIO_FASTCLK_DISABLE, 0x610);
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
-			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
 		if (adjusted_mode->clock == 162000)
 			intel_dpio_write(dev_priv,
 					DPIO_LFP_COEFF(pipe), 0x009f0003);
 		else
 			intel_dpio_write(dev_priv,
 					DPIO_LFP_COEFF(pipe), 0x00d0000f);
-
 	} else
-		intel_dpio_write(dev_priv, DPIO_LFP_COEFF(pipe), 0x009f0003);
+		intel_dpio_write(dev_priv, DPIO_LFP_COEFF(pipe), 0x005f0021);
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
-			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
 		if (!pipe)
 			intel_dpio_write(dev_priv,
 					DPIO_REFSFR(pipe), 0x0df40000);
@@ -4562,7 +4603,7 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 	vlv_pll_enable_reset(crtc);
 
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
-	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
+		intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 		intel_dp_set_m_n(crtc, mode, adjusted_mode);
 }
 
@@ -4921,7 +4962,7 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
-	int refclk, num_connectors = 0;
+	int refclk = 0, num_connectors = 0;
 	intel_clock_t clock, reduced_clock;
 	u32 dspcntr, pipeconf, vsyncshift;
 	bool ok, has_reduced_clock = false, is_sdvo = false;
@@ -4929,7 +4970,7 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 			is_dsi = false, is_edp = false;
 	struct intel_encoder *encoder;
 	struct intel_dsi *intel_dsi;
-	const intel_limit_t *limit;
+	const intel_limit_t *limit = NULL;
 	int ret;
 	struct intel_program_clock_bending clockbend;
 	bool dither = false;
@@ -5184,9 +5225,10 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 
 	I915_WRITE(PIPECONF(pipe), pipeconf);
 	POSTING_READ(PIPECONF(pipe));
-	intel_enable_pipe(dev_priv, pipe, false);
-
-	intel_wait_for_vblank(dev, pipe);
+	if (!is_dsi) {
+		intel_enable_pipe(dev_priv, pipe, false);
+		intel_wait_for_vblank(dev, pipe);
+	}
 
 	I915_WRITE(DSPCNTR(plane), dspcntr);
 	POSTING_READ(DSPCNTR(plane));
@@ -5198,29 +5240,10 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	if (IS_VALLEYVIEW(dev) && intel_pipe_has_type(crtc,
 		INTEL_OUTPUT_HDMI)) {
 		dev_priv->tmds_clock_speed = adjusted_mode->clock;
+		mid_hdmi_audio_signal_event(dev_priv->dev,
+			HAD_EVENT_MODE_CHANGING);
 	}
 
-/* Currently reducing the wait for DPLL since it adds 2 sec delay for
- * modeset in HDMI dual mode scenarios. There is no artifacts observed.
- * It can speed up the clone/extended mode modeset scenarios.
- * ToDo: Need further investigation and hw team feedbacks.
- */
-	/* Wait for Phy status bits to go low */
-	for_each_encoder_on_crtc(dev, crtc, encoder) {
-		if (encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
-			/* if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0),
-				2000)) */
-			if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 20))
-				DRM_ERROR("DPLL %x failed to lock\n",
-						I915_READ(DPLL(0)));
-		} else if (encoder->type == INTEL_OUTPUT_HDMI) {
-			/* if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0),
-				2000)) */
-			if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 20))
-				DRM_ERROR("DPLL %x failed to lock\n",
-						I915_READ(DPLL(0)));
-		}
-	}
 	return ret;
 }
 
@@ -5266,7 +5289,6 @@ int intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
 
 	return 0;
 }
-
 /*
  * Initialize reference clocks when the driver loads
  */
@@ -7209,8 +7231,9 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 	intel_ring_emit(ring, 0);
 	intel_ring_emit(ring, MI_NOOP);
 
-
 	intel_ring_advance(ring);
+
+	i915_add_request_noflush(ring);
 
 	return 0;
 
@@ -7243,8 +7266,14 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	int ret;
 
 	/* Can't change pixel format via MI display flips. */
-	if (fb->pixel_format != crtc->fb->pixel_format)
-		return -EINVAL;
+	if (fb->pixel_format != crtc->fb->pixel_format) {
+		if (IS_VALLEYVIEW(dev)) {
+			DRM_DEBUG("pixel format = %d", fb->pixel_format);
+			vlv_set_pixel_format(dev_priv, intel_crtc->pipe,
+				fb->pixel_format);
+		} else
+			return -EINVAL;
+	}
 
 	/*
 	 * TILEOFF/LINOFF registers can't be changed via MI display flips.
@@ -7252,8 +7281,16 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	 */
 	if (INTEL_INFO(dev)->gen > 3 &&
 	    (fb->offsets[0] != crtc->fb->offsets[0] ||
-	     fb->pitches[0] != crtc->fb->pitches[0]))
-		return -EINVAL;
+	     fb->pitches[0] != crtc->fb->pitches[0])) {
+		if (IS_VALLEYVIEW(dev)) {
+			DRM_DEBUG(" crtc fb: pitch = %d offset = %d", \
+			crtc->fb->pitches[0], crtc->fb->offsets[0]);
+			DRM_DEBUG(" input fb: pitch = %d offset = %d", \
+			fb->pitches[0], fb->offsets[0]);
+			i9xx_update_plane(crtc, fb, 0, 0);
+		} else
+			return -EINVAL;
+	}
 
 	work = kzalloc(sizeof *work, GFP_KERNEL);
 	if (work == NULL)
@@ -7481,11 +7518,14 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 	struct drm_crtc *crtc;
 	struct intel_encoder *intel_encoder;
+	int ret = 0;
 
 	drm_kms_helper_poll_disable(drm_dev);
 	display_save_restore_hotplug(drm_dev, SAVEHPD);
 	display_disable_wq(drm_dev);
 	mutex_lock(&drm_dev->mode_config.mutex);
+	if (dev_priv->is_dpst_enabled)
+		i915_dpst_enable_hist_interrupt(drm_dev, false);
 	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
@@ -7495,7 +7535,7 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 				intel_encoder_prepare(&intel_encoder->base);
 		}
 	}
-	int ret = mid_hdmi_audio_suspend(drm_dev);
+	ret = mid_hdmi_audio_suspend(drm_dev);
 	if (ret != true)
 		DRM_ERROR("Error suspending HDMI audio\n");
 	dev_priv->disp_pm_in_progress = false;
@@ -7527,6 +7567,8 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	}
 	mid_hdmi_audio_resume(drm_dev);
 	dev_priv->disp_pm_in_progress = false;
+	if (dev_priv->is_dpst_enabled)
+		i915_dpst_enable_hist_interrupt(drm_dev, true);
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	return 0;
 }
@@ -8407,3 +8449,51 @@ int i915_disp_screen_control(struct drm_device *dev, void *data,
 
 	return 0;
 }
+
+static int vlv_set_pixel_format(struct drm_i915_private *dev_priv, u32 pipe,
+		u32 pixel_format)
+{
+	u32 dspcntr;
+	u32 reg;
+	int ret = 0;
+	reg = DSPCNTR(pipe);
+	dspcntr = I915_READ(reg);
+
+	/* Mask out pixel format bits in case we change it */
+	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
+	switch (pixel_format) {
+	case DRM_FORMAT_C8:
+		dspcntr |= DISPPLANE_8BPP;
+		break;
+	case DRM_FORMAT_XRGB1555:
+	case DRM_FORMAT_ARGB1555:
+		dspcntr |= DISPPLANE_BGRX555;
+		break;
+	case DRM_FORMAT_RGB565:
+		dspcntr |= DISPPLANE_BGRX565;
+		break;
+	case DRM_FORMAT_XRGB8888:
+	case DRM_FORMAT_ARGB8888:
+		dspcntr |= DISPPLANE_BGRX888;
+		break;
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_ABGR8888:
+		dspcntr |= DISPPLANE_RGBX888;
+		break;
+	case DRM_FORMAT_XRGB2101010:
+	case DRM_FORMAT_ARGB2101010:
+		dspcntr |= DISPPLANE_BGRX101010;
+		break;
+	case DRM_FORMAT_XBGR2101010:
+	case DRM_FORMAT_ABGR2101010:
+		dspcntr |= DISPPLANE_RGBX101010;
+		break;
+	default:
+		DRM_ERROR("Unknown pixel format 0x%08x\n", pixel_format);
+		return -EINVAL;
+	}
+	DRM_DEBUG("dspcntr = %0x", dspcntr);
+	I915_WRITE(reg, dspcntr);
+	return ret;
+}
+
