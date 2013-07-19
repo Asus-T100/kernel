@@ -416,10 +416,15 @@ static int byt_sdio_setup(struct sdhci_pci_data *data)
 	ACPI_HANDLE_SET(&pdev->dev, handle);
 	vwlan.gpio = acpi_get_gpio_by_index(&pdev->dev, 0, NULL);
 #endif
-	if (vwlan.gpio < 0)
+	if (vwlan.gpio < 0) {
 		pr_err("%s: No wlan-enable GPIO in SDHB ACPI block\n",
 	       __func__);
-
+		if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
+		    INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG))
+			vwlan.gpio = acpi_get_gpio("\\_SB.GPO2", 21);
+		else
+			vwlan.gpio = acpi_get_gpio("\\_SB.GPO2", 20);
+	}
 	pr_info("vwlan gpio %d\n", vwlan.gpio);
 
 	/* add a regulator to control wlan enable gpio */
