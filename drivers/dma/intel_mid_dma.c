@@ -1683,11 +1683,6 @@ int mid_setup_dma(struct device *dev)
 		dma->mask_reg = NULL;
 	}
 
-	/* FIXME: hack to not enable IRQ for LPIO DMAC */
-	if (dma->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
-	    dma->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
-		return 0;
-
 	pr_debug("MDMA:Adding %d channel for this controller\n", dma->max_chan);
 	/*init CH structures*/
 	dma->intr_mask = 0;
