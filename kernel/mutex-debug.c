@@ -75,11 +75,7 @@ void debug_mutex_unlock(struct mutex *lock)
 		return;
 
 	DEBUG_LOCKS_WARN_ON(lock->magic != lock);
-	/*DEBUG_LOCKS_WARN_ON(lock->owner != current);*/
-	if (lock->owner != current) {
-	  panic("Trying to release a lock owned by %s(pid %d) from the task %s(pid %d)\n",
-	    lock->owner->comm, lock->owner->pid, current->comm, current->pid);
-	}
+	DEBUG_LOCKS_WARN_ON(lock->owner != current);
 	DEBUG_LOCKS_WARN_ON(!lock->wait_list.prev && !lock->wait_list.next);
 	mutex_clear_owner(lock);
 }

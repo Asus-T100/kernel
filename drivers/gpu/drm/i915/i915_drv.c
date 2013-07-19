@@ -1041,9 +1041,7 @@ static int i915_mmap(struct file *filp, struct vm_area_struct *vma)
 			return 0;
 	}
 }
-#endif
 
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 static int i915_release(struct inode *inode, struct file *filp)
 {
 	int ret = 0;
@@ -1051,11 +1049,9 @@ static int i915_release(struct inode *inode, struct file *filp)
 	struct drm_device *dev = file_priv->minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	i915_rpm_get_callback(dev);
 	if (dev_priv->vxd_release)
 		ret = dev_priv->vxd_release(inode, filp);
 	drm_release(inode, filp);
-	i915_rpm_put_callback(dev);
 
 	return ret;
 }
@@ -1209,7 +1205,7 @@ static const struct vm_operations_struct i915_gem_vm_ops = {
 static const struct file_operations i915_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
+#ifdef CONFIG_DRM_VXD_BYT
 	.release = i915_release,
 #else
 	.release = drm_release,

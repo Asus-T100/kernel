@@ -142,22 +142,6 @@ int i915_rpm_put(struct drm_device *drm_dev, u32 flags)
 	return ret;
 }
 
-/**
- * following is done to make sure Gfx is in D0i0 while
- * GPU accesses are being done
- * 1. For IOCTLS make sure we are in D0i0 by calling "get_ioctl".
- * 2. if IOCTL scheudles GPU commands using rings do the following
- *  a. For all ring accesses make sure we add a request in the request
- *     list and schedule a work item to track the "seq no". This
- *     is done by using "i915_add_request" or
- *     "i915_add_request_no_flush" functions.
- *  b. If request list was empty, we do a "get_ring". This will increment
- *     ref count to make sure GPU is kept on
- *  c. Once the list becomes empty call put_ring
- *
- * Note: All the ring accesses are covered with struct_mutex. So we
- * don't need any special synchronization here.
- */
 int i915_rpm_get_ring(struct intel_ring_buffer *ring)
 {
 	struct drm_device *drm_dev = ring->dev;
@@ -188,26 +172,18 @@ int i915_rpm_put_ring(struct intel_ring_buffer *ring)
 	return 0;
 }
 
-/**
- * To cover the function pointers that are assigned to drm structures
- * and can be called from drm
- */
-int i915_rpm_get_callback(struct drm_device *drm_dev)
+int i915_rpm_get_reg(struct drm_device *drm_dev)
 {
 	i915_rpm_get(drm_dev, RPM_SYNC);
 	return 0;
 }
 
-int i915_rpm_put_callback(struct drm_device *drm_dev)
+int i915_rpm_put_reg(struct drm_device *drm_dev)
 {
 	i915_rpm_put(drm_dev, RPM_AUTOSUSPEND);
 	return 0;
 }
 
-/**
- * early_suspend/DSR should call this function to notify PM Core about
- * display idleness
- */
 int i915_rpm_get_disp(struct drm_device *drm_dev)
 {
 	i915_rpm_get(drm_dev, RPM_SYNC);
@@ -220,7 +196,6 @@ int i915_rpm_put_disp(struct drm_device *drm_dev)
 	return 0;
 }
 
-/** to cover the ioctls with get/put*/
 int i915_rpm_get_ioctl(struct drm_device *drm_dev)
 {
 	/* Don't do anything if device is not ready */
@@ -241,10 +216,6 @@ int i915_rpm_put_ioctl(struct drm_device *drm_dev)
 	return 0;
 }
 
-/**
- * VXD driver need to call this to make sure Gfx is in D0i0
- * while VXD is on
- */
 #ifdef CONFIG_DRM_VXD_BYT
 int i915_rpm_get_vxd(struct drm_device *drm_dev)
 {
@@ -253,10 +224,6 @@ int i915_rpm_get_vxd(struct drm_device *drm_dev)
 }
 EXPORT_SYMBOL(i915_rpm_get_vxd);
 
-/**
- * VXD driver need to call this to notify Gfx that it is
- * done with HW accesses
- */
 int i915_rpm_put_vxd(struct drm_device *drm_dev)
 {
 	i915_rpm_put(drm_dev, RPM_AUTOSUSPEND);
@@ -305,8 +272,8 @@ int i915_rpm_get(struct drm_device *dev, u32 flags) {return 0; }
 int i915_rpm_put(struct drm_device *dev, u32 flags) {return 0; }
 int i915_rpm_get_ring(struct intel_ring_buffer *ring) {return 0; }
 int i915_rpm_put_ring(struct intel_ring_buffer *ring) {return 0; }
-int i915_rpm_get_callback(struct drm_device *dev) {return 0; }
-int i915_rpm_put_callback(struct drm_device *dev) {return 0; }
+int i915_rpm_get_reg(struct drm_device *dev) {return 0; }
+int i915_rpm_put_reg(struct drm_device *dev) {return 0; }
 int i915_rpm_get_ioctl(struct drm_device *dev) {return 0; }
 int i915_rpm_put_ioctl(struct drm_device *dev) {return 0; }
 int i915_rpm_get_disp(struct drm_device *dev) {return 0; }

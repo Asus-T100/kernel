@@ -7209,9 +7209,8 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 	intel_ring_emit(ring, 0);
 	intel_ring_emit(ring, MI_NOOP);
 
-	intel_ring_advance(ring);
 
-	i915_add_request_noflush(ring);
+	intel_ring_advance(ring);
 
 	return 0;
 

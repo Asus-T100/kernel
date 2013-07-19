@@ -112,7 +112,7 @@ static void intel_dvo_dpms(struct drm_encoder *encoder, int mode)
 	u32 dvo_reg = intel_dvo->dev.dvo_reg;
 	u32 temp;
 
-	i915_rpm_get_callback(encoder->dev);
+	i915_rpm_get_reg(encoder->dev);
 	temp = I915_READ(dvo_reg);
 	if (mode == DRM_MODE_DPMS_ON) {
 		I915_WRITE(dvo_reg, temp | DVO_ENABLE);
@@ -123,7 +123,7 @@ static void intel_dvo_dpms(struct drm_encoder *encoder, int mode)
 		I915_WRITE(dvo_reg, temp & ~DVO_ENABLE);
 		I915_READ(dvo_reg);
 	}
-	i915_rpm_put_callback(encoder->dev);
+	i915_rpm_put_reg(encoder->dev);
 }
 
 static int intel_dvo_mode_valid(struct drm_connector *connector,
@@ -190,7 +190,7 @@ static void intel_dvo_mode_set(struct drm_encoder *encoder,
 	u32 dvo_reg = intel_dvo->dev.dvo_reg, dvo_srcdim_reg;
 	int dpll_reg = DPLL(pipe);
 
-	i915_rpm_get_callback(dev);
+	i915_rpm_get_reg(dev);
 	switch (dvo_reg) {
 	case DVOA:
 	default:
@@ -230,7 +230,7 @@ static void intel_dvo_mode_set(struct drm_encoder *encoder,
 		   (adjusted_mode->vdisplay << DVO_SRCDIM_VERTICAL_SHIFT));
 	/*I915_WRITE(DVOB, dvo_val);*/
 	I915_WRITE(dvo_reg, dvo_val);
-	i915_rpm_put_callback(dev);
+	i915_rpm_put_reg(dev);
 }
 
 /**
