@@ -776,6 +776,19 @@ static bool g4x_hdmi_connected(struct intel_hdmi *intel_hdmi)
 	return I915_READ(PORT_HOTPLUG_STAT) & bit;
 }
 
+void intel_hdmi_reset(struct drm_connector *connector)
+{
+	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
+	struct drm_i915_private *dev_priv = connector->dev->dev_private;
+
+	/* Clean previous detects and modes */
+	dev_priv->is_hdmi = false;
+	intel_hdmi->edid_mode_count = 0;
+	intel_cleanup_modes(connector);
+	kfree(intel_hdmi->edid);
+	intel_hdmi->edid = NULL;
+}
+
 static enum drm_connector_status
 intel_hdmi_detect(struct drm_connector *connector, bool force)
 {
@@ -783,10 +796,10 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct edid *edid;
 	enum drm_connector_status status = connector_status_disconnected;
-	dev_priv->is_hdmi = false;
 
 	if (IS_G4X(connector->dev) && !g4x_hdmi_connected(intel_hdmi))
 		return status;
+
 #if 0
         /* HOTPLUG Detect is not working in some of VLV A0
          * boards. For those boards enable this WA
@@ -795,8 +808,19 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 		return connector_status_connected;
 #endif
 
+	/* If its force detection, dont read EDID again */
+	if (force && dev_priv->is_hdmi)
+		return connector->status;
+
+	/* Suppress spurious IRQ, if current status is same as live status*/
+	if ((connector->status == connector_status_connected)
+		&& g4x_hdmi_connected(intel_hdmi))
+		return connector->status;
+
+	dev_priv->is_hdmi = false;
 	intel_hdmi->has_hdmi_sink = false;
 	intel_hdmi->has_audio = false;
+
 	edid = drm_get_edid(connector,
 			    intel_gmbus_get_adapter(dev_priv,
 						    intel_hdmi->ddc_bus));
@@ -810,8 +834,16 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 						drm_detect_hdmi_monitor(edid);
 			intel_hdmi->has_audio = drm_detect_monitor_audio(edid);
 		}
+
+		/* Free previously saved EDID and save new one */
+		kfree(intel_hdmi->edid);
+		intel_hdmi->edid = edid;
+		connector->display_info.raw_edid = (char *)edid;
+	} else {
+		/* Connector is disconneted, so remove old EDID */
+		kfree(intel_hdmi->edid);
+		intel_hdmi->edid = NULL;
 		connector->display_info.raw_edid = NULL;
-		kfree(edid);
 	}
 
 	/* Work around to enable Max Fifo back on HDMI hot un-plug */
@@ -845,28 +877,46 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 
 static int intel_hdmi_get_modes(struct drm_connector *connector)
 {
+	int count = 0;
+	struct drm_display_mode *mode = NULL;
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
+	struct edid *edid = intel_hdmi->edid;
 	/* Added for HDMI Audio */
 	int ret;
 
-	/* We should parse the EDID data and find out if it's an HDMI sink so
-	 * we can send audio to it.
-	 */
-	/* Added for HDMI Audio */
-#if 0
+	/* No need to read modes if no connection */
+	if (connector->status != connector_status_connected)
+		return 0;
 
-	return intel_ddc_get_modes(connector,
-				   intel_gmbus_get_adapter(dev_priv,
-							   intel_hdmi->ddc_bus));
-#else
-	ret = intel_ddc_get_modes(connector,
+	/* Need not to read modes again if previously read modes are
+	available and display is connected */
+	if (dev_priv->is_hdmi) {
+		list_for_each_entry(mode, &connector->modes, head) {
+			if (mode) {
+				mode->status = MODE_OK;
+				count++;
+			}
+		}
+		/* If modes are availlable, no need to read again */
+		if (count)
+			return count;
+	}
+
+	/* If EDID is available from detect, re-use that, else read now */
+	if (edid) {
+		drm_mode_connector_update_edid_property(connector, edid);
+		ret = drm_add_edid_modes(connector, edid);
+		drm_edid_to_eld(connector, edid);
+	} else {
+		ret = intel_ddc_get_modes(connector,
 		intel_gmbus_get_adapter(dev_priv,
 			intel_hdmi->ddc_bus));
-	hdmi_get_eld(connector->eld);
+	}
 
+	intel_hdmi->edid_mode_count = ret;
+	hdmi_get_eld(connector->eld);
 	return ret;
-#endif
 }
 
 static bool
@@ -985,6 +1035,7 @@ static const struct drm_connector_funcs intel_hdmi_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.set_property = intel_hdmi_set_property,
 	.destroy = intel_hdmi_destroy,
+	.reset = intel_hdmi_reset,
 };
 
 static const struct drm_connector_helper_funcs intel_hdmi_connector_helper_funcs = {

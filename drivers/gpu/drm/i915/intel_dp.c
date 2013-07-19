@@ -2660,6 +2660,11 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 
 	intel_dp->has_audio = false;
 
+	/* Fix panel, No need to detect again If force on */
+	if (force && dev_priv->is_edp)
+		return connector->status;
+
+
 	if (HAS_PCH_SPLIT(dev))
 		status = ironlake_dp_detect(intel_dp);
 	else
@@ -2685,7 +2690,10 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		if (edid) {
 			intel_dp->has_audio = drm_detect_monitor_audio(edid);
 			connector->display_info.raw_edid = NULL;
-			kfree(edid);
+
+			/* Free the previously saved EDID if any */
+			kfree(intel_dp->edid);
+			intel_dp->edid = edid;
 		}
 	}
 
@@ -2694,13 +2702,25 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 
 static int intel_dp_get_modes(struct drm_connector *connector)
 {
+	u32 count = 0;
+	struct drm_display_mode *mode = NULL;
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 
-	/* We should parse the EDID data and find out if it has an audio sink
-	 */
+	/* Fix panel, No need to read modes again If we already
+	have modes with connector */
+	list_for_each_entry(mode, &connector->modes, head) {
+		if (mode) {
+			mode->status = MODE_OK;
+			count++;
+		}
+	}
+
+	/* If we have modes, just return */
+	if (count)
+		return intel_dp->edid_mode_count;
 
 	ret = intel_dp_get_edid_modes(connector, &intel_dp->adapter);
 	if (ret) {
@@ -2715,6 +2735,7 @@ static int intel_dp_get_modes(struct drm_connector *connector)
 				}
 			}
 		}
+		intel_dp->edid_mode_count = ret;
 		return ret;
 	}
 
@@ -2733,9 +2754,12 @@ static int intel_dp_get_modes(struct drm_connector *connector)
 			struct drm_display_mode *mode;
 			mode = drm_mode_duplicate(dev, intel_dp->panel_fixed_mode);
 			drm_mode_probed_add(connector, mode);
+			intel_dp->edid_mode_count = 1;
 			return 1;
 		}
 	}
+
+	intel_dp->edid_mode_count = 0;
 	return 0;
 }
 
@@ -2979,8 +3003,6 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	connector = &intel_connector->base;
 	drm_connector_init(dev, connector, &intel_dp_connector_funcs, type);
 	drm_connector_helper_add(connector, &intel_dp_connector_helper_funcs);
-
-	connector->polled = DRM_CONNECTOR_POLL_HPD;
 
 	intel_encoder->cloneable = false;
 

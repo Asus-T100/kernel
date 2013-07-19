@@ -598,10 +598,7 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 		return connector_status_disconnected;
 	}
 
-	/* Don't call detect again and again. Once detected as connected
-	 * it will always be connected as this is supposed to be internal
-	 * panel
-	 */
+	/* Fix panel, No need to detect again If force on */
 	if (dev_priv->is_mipi)
 		return connector_status_connected;
 
@@ -617,8 +614,21 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 
 static int intel_dsi_get_modes(struct drm_connector *connector)
 {
+	u32 count = 0;
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 	struct drm_display_mode *mode = NULL;
+
+	/* Fix panel, No need to read modes again If we already
+	have modes with connector */
+	list_for_each_entry(mode, &connector->modes, head) {
+		if (mode) {
+			mode->status = MODE_OK;
+			count++;
+		}
+	}
+
+	if (count)
+		return count;
 
 	/* Get the mode info from panel specific callback */
 	intel_dsi->panel_fixed_mode =
@@ -631,6 +641,8 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 	mode = drm_mode_duplicate(connector->dev, intel_dsi->panel_fixed_mode);
 	if (!mode)
 		return 0;
+	else
+		intel_dsi->mode_count = 1;
 
 	mode->status = MODE_OK;
 
@@ -640,10 +652,8 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 
 	/* Fill the panel info here */
 	intel_dsi->dev.dev_ops->get_info(0, connector);
-
-	return 1;
+	return intel_dsi->mode_count;
 }
-
 static void intel_dsi_destroy(struct drm_connector *connector)
 {
 	DRM_DEBUG_KMS("\n");
@@ -826,8 +836,6 @@ bool intel_dsi_init(struct drm_device *dev)
 			DRM_MODE_CONNECTOR_MIPI);
 
 	drm_connector_helper_add(connector, &intel_dsi_connector_helper_funcs);
-
-	connector->polled = DRM_CONNECTOR_POLL_HPD;
 
 	connector->display_info.subpixel_order = SubPixelHorizontalRGB; /*XXX*/
 	connector->interlace_allowed = false;

@@ -302,6 +302,7 @@ struct dip_infoframe {
 
 struct intel_hdmi {
 	struct intel_encoder base;
+	struct edid *edid;
 	u32 sdvox_reg;
 	int ddc_bus;
 	int ddi_port;
@@ -314,6 +315,7 @@ struct intel_hdmi {
 				struct dip_infoframe *frame);
 	void (*set_infoframes)(struct drm_encoder *encoder,
 			       struct drm_display_mode *adjusted_mode);
+	uint32_t edid_mode_count;
 };
 
 /*VLV clock bending*/
@@ -399,6 +401,8 @@ struct intel_fbc_work {
 };
 
 int intel_ddc_get_modes(struct drm_connector *c, struct i2c_adapter *adapter);
+void intel_cleanup_modes(struct drm_connector *connector);
+
 
 extern void intel_attach_force_audio_property(struct drm_connector *connector);
 extern void intel_attach_broadcast_rgb_property(struct drm_connector *connector);
