@@ -52,7 +52,7 @@
 #define CAMFLASH_STATE_OFF	0
 
 /* 'enum' of BCU events */
-enum bcu_events { WARN1, WARN2, CRIT, GSMPULSE, TXPWRTH, UNKNOWN, __COUNT };
+enum bcu_events { VWARN1, VWARN2, VCRIT, GSMPULSE, TXPWRTH, UNKNOWN, __COUNT };
 
 static DEFINE_MUTEX(ocd_update_lock);
 
@@ -563,10 +563,14 @@ static void handle_VW1_event(int event, void *dev_data)
 	uint8_t irq_status, beh_data;
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
+	char *bcu_envp[2];
 
 	dev_info(cinfo->dev, "EM_BCU: VW1 Event %d has occured\n", event);
-	/* Notify using UEvent */
-	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	/* Notify using UEvent along with env info */
+	bcu_envp[0] = get_envp(VWARN1);
+	bcu_envp[1] = NULL;
+	kobject_uevent_env(&cinfo->dev->kobj, KOBJ_CHANGE, bcu_envp);
 
 	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
 	if (ret)
@@ -599,10 +603,14 @@ static void handle_VW2_event(int event, void *dev_data)
 	uint8_t irq_status, beh_data;
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
+	char *bcu_envp[2];
 
 	dev_info(cinfo->dev, "EM_BCU: VW2 Event %d has occured\n", event);
-	/* Notify using UEvent */
-	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	/* Notify using UEvent along with env info */
+	bcu_envp[0] = get_envp(VWARN2);
+	bcu_envp[1] = NULL;
+	kobject_uevent_env(&cinfo->dev->kobj, KOBJ_CHANGE, bcu_envp);
 
 	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
 	if (ret)
@@ -644,10 +652,14 @@ ipc_fail:
 static void handle_VC_event(int event, void *dev_data)
 {
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
+	char *bcu_envp[2];
 
 	dev_info(cinfo->dev, "EM_BCU: VC Event %d has occured\n", event);
-	/* Notify using UEvent */
-	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	/* Notify using UEvent along with env info */
+	bcu_envp[0] = get_envp(VCRIT);
+	bcu_envp[1] = NULL;
+	kobject_uevent_env(&cinfo->dev->kobj, KOBJ_CHANGE, bcu_envp);
 
 	return;
 }
@@ -669,15 +681,15 @@ static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 						TXPWRTH_IRQ event */
 
 	if (irq_data & VCRIT_IRQ) {
-		event = CRIT;
+		event = VCRIT;
 		handle_VC_event(event, dev_data);
 	}
 	if (irq_data & VWARN2_IRQ) {
-		event = WARN2;
+		event = VWARN2;
 		handle_VW2_event(event, dev_data);
 	}
 	if (irq_data & VWARN1_IRQ) {
-		event = WARN1;
+		event = VWARN1;
 		handle_VW1_event(event, dev_data);
 	}
 	if (irq_data & GSMPULSE_IRQ) {

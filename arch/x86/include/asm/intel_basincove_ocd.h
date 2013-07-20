@@ -116,12 +116,18 @@
 /* Max length of the register name string */
 #define MAX_REGNAME_LEN		15
 
+/* String to send the uevent along with env info to user space */
+#define EVT_STR	"BCUEVT="
+
 /* Macro to get the mode of acess for the BCU registers	*/
 #define MODE(m)	(((m != S_BCUINT) && (m != BCUIRQ) && (m != IRQLVL1))	\
 			? (S_IRUGO | S_IWUSR) : S_IRUGO)
 
 /* Generic macro to assign the parameters (reg name and address) */
 #define reg_info(x)	{ .name = #x, .addr = x, .mode = MODE(x) }
+
+/* Generic macro to fill the environmental data for bcu uevent */
+#define get_envp(evt)	(EVT_STR#evt)
 
 /*
 * These values are read from SMIP.
