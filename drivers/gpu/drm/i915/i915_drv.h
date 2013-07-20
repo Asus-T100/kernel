@@ -605,6 +605,8 @@ typedef struct drm_i915_private {
 	wait_queue_head_t error_queue;
 	struct workqueue_struct *wq;
 
+	struct workqueue_struct *vmap_mn_unregister_wq;
+
 	/* Display functions */
 	struct drm_i915_display_funcs display;
 	bool early_suspended;
@@ -1232,7 +1234,7 @@ struct i915_gem_vmap_object {
 	int read_only;
 	struct mm_struct *mm;
 #if defined(CONFIG_MMU_NOTIFIER)
-	struct mmu_notifier mn;
+	struct mmu_notifier *mn;
 #endif
 };
 

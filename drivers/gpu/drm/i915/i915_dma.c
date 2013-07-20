@@ -1582,6 +1582,27 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		goto out_mtrrfree;
 	}
 
+	/* Creating our own private workqueue for the unregistration of
+	   MMU notfifiers used with vmap objects. The notfifier
+	   unregistration is done when vmap objects are freed,
+	   but this has a considerable overhead (> 140 ms) causing
+	   the CTS tests with RenderScript/OCL driver to fail. So
+	   offloading the step of notifier unregistration to a separate
+	   worker thread (as a part of workqueue), this will relieve the
+	   main execution path of this overhead.
+	   Also we need serialized execution of notifier unregistration
+	   functions, hence using max_active = 1 and NON_REENTRANT.
+	 */
+	dev_priv->vmap_mn_unregister_wq = alloc_workqueue(
+					   "i915_vmap_mn_unregister_wq",
+				       WQ_UNBOUND | WQ_NON_REENTRANT,
+				       1);
+	if (dev_priv->vmap_mn_unregister_wq == NULL) {
+		DRM_ERROR("Failed to create mn_unregister workqueue.\n");
+		ret = -ENOMEM;
+		goto out_mtrrfree;
+	}
+
 	/* This must be called before any calls to HAS_PCH_* */
 	intel_detect_pch(dev);
 
@@ -1799,6 +1820,10 @@ int i915_driver_unload(struct drm_device *dev)
 	intel_teardown_mchbar(dev);
 
 	destroy_workqueue(dev_priv->wq);
+
+	/* No need to explicitly flush the pending work items
+	   will be taken care by the destroy wq function itself */
+	destroy_workqueue(dev_priv->vmap_mn_unregister_wq);
 
 	pci_dev_put(dev_priv->bridge_dev);
 	kfree(dev->dev_private);
