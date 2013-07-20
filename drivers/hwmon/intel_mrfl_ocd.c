@@ -166,6 +166,43 @@ static int program_bcu(void *ocd_smip_addr)
 	}
 	/* MBCUIRQ register address not consecutive with other BCU registers */
 	ret = intel_scu_ipc_iowrite8(MBCUIRQ, *smip_data);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in writing addr 0x%02x\n",
+				__func__, ret, MBCUIRQ);
+		goto ipc_fail;
+	}
+
+	/***
+	 * Programming the Exit Debounce Time for VWARN1, VWARN2 and VCRIT
+	 * trip points
+	 */
+	ret = intel_scu_ipc_update_register(VWARN1_CFG,
+						VW_EXIT_DB_CLK160,
+						VW_EXIT_DB_MASK);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in updating addr 0x%02x\n",
+				__func__, ret, VWARN1_CFG);
+		goto ipc_fail;
+	}
+
+	ret = intel_scu_ipc_update_register(VWARN2_CFG,
+						VW_EXIT_DB_CLK160,
+						VW_EXIT_DB_MASK);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in updating addr 0x%02x\n",
+				__func__, ret, VWARN2_CFG);
+		goto ipc_fail;
+	}
+
+	ret = intel_scu_ipc_update_register(VCRIT_CFG,
+						VCRIT_EXIT_DB_CLK160,
+						VCRIT_EXIT_DB_MASK);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in updating addr 0x%02x\n",
+				__func__, ret, VCRIT_CFG);
+		goto ipc_fail;
+	}
+	pr_debug("EM_BCU: Registers are programmed successfully.\n");
 
 ipc_fail:
 	mutex_unlock(&ocd_update_lock);
