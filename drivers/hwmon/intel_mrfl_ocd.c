@@ -383,8 +383,6 @@ static ssize_t show_camflash_ctrl(struct device *dev,
 
 struct dentry *bcbcu_dbgfs_root;
 
-#define MAX_RONLY_REG	3
-
 static struct bcu_reg_info bcbcu_reg[] = {
 	reg_info(S_BCUINT),
 	reg_info(BCUIRQ),
@@ -738,7 +736,6 @@ static struct attribute *mrfl_ocd_attrs[] = {
 };
 
 static struct attribute_group mrfl_ocd_gr = {
-	.name = "mrfl_current",
 	.attrs = mrfl_ocd_attrs
 };
 
