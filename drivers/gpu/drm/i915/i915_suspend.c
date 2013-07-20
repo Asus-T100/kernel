@@ -1365,6 +1365,7 @@ void i915_pm_init(struct drm_device *dev)
 		dev_priv->pm.drm_freeze = i915_drm_freeze;
 		dev_priv->pm.drm_thaw = i915_drm_thaw;
 	}
+	dev_priv->shut_down_state = 0;
 	i915_rpm_init(dev);
 }
 

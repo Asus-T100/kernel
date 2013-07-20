@@ -1014,6 +1014,8 @@ typedef struct drm_i915_private {
 	bool is_dpst_enabled;
 
 	uint32_t watchdog_threshold[I915_NUM_RINGS];
+
+	int shut_down_state;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */

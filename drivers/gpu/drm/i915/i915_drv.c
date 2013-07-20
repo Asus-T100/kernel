@@ -1139,6 +1139,11 @@ static int i915_pm_suspend(struct device *dev)
 static void i915_pm_shutdown(struct pci_dev *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	struct drm_i915_private *dev_priv;
+	dev_priv = drm_dev->dev_private;
+
+	dev_priv->shut_down_state = 1;
 	i915_pm_suspend(dev);
 }
 
