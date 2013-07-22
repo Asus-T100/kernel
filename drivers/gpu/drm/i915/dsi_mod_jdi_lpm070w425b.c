@@ -59,8 +59,6 @@ static void lpm070w425b_get_panel_info(int pipe,
 
 bool lpm070w425b_init(struct intel_dsi_device *dsi)
 {
-	struct intel_dsi_dev_priv *dev_priv = dsi->dev_priv;
-
 	DRM_DEBUG_KMS("\n");
 
 	dsi->eotp_pkt = 1;

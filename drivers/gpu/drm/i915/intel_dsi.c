@@ -194,16 +194,14 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 {
 	struct drm_encoder *drm_encoder = &encoder->base;
 	struct drm_device *dev = drm_encoder->dev;
-	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
-	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-	int pipe = intel_crtc->pipe;
-	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
 	intel_panel_disable_backlight(dev);
 
 #if 0
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
+	int pipe = intel_crtc->pipe;
 	/* Shut down packet */
 	I915_WRITE(0xB004, 0x40000000);
 	I915_WRITE(0xB048, 0x00000001);
