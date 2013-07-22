@@ -937,7 +937,11 @@ int atomisp_css_get_grid_info(struct atomisp_sub_device *asd,
 	memset(&p_info, 0, sizeof(struct ia_css_pipe_info));
 	memset(&old_info, 0, sizeof(struct ia_css_grid_info));
 
-	ia_css_pipe_get_info(asd->stream_env.pipes[pipe_id], &p_info);
+	if (ia_css_pipe_get_info(asd->stream_env.pipes[pipe_id], &p_info) !=
+		IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "ia_css_pipe_get_info failed\n");
+		return -EINVAL;
+	}
 
 	memcpy(&old_info, &asd->params.curr_grid_info,
 					sizeof(struct ia_css_grid_info));
@@ -953,16 +957,12 @@ int atomisp_css_get_grid_info(struct atomisp_sub_device *asd,
 	    || asd->params.curr_grid_info.s3a_grid.height == 0) {
 		dev_dbg(isp->dev,
 			"grid info change escape. memcmp=%d, s3a_user_stat=%d,"
-			"dvs_stat=%d, s3a.width=%d, s3a.height=%d,"
-			"dvs_stat hor coef addr=0x%x,"
-			"dvs_stat ver coef addr=0x%x\n", !memcmp(&old_info,
-				 &asd->params.curr_grid_info,
+			"dvs_stat=%d, s3a.width=%d, s3a.height=%d\n",
+			!memcmp(&old_info, &asd->params.curr_grid_info,
 				 sizeof(old_info)),
 			 !!asd->params.s3a_user_stat, !!asd->params.dvs_stat,
 			 asd->params.curr_grid_info.s3a_grid.width,
-			 asd->params.curr_grid_info.s3a_grid.height,
-			 (unsigned int)asd->params.dvs_coeff->hor_coefs,
-			 (unsigned int)asd->params.dvs_coeff->ver_coefs);
+			 asd->params.curr_grid_info.s3a_grid.height);
 		return -EINVAL;
 	}
 
