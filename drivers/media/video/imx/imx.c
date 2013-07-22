@@ -1390,7 +1390,7 @@ static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 	if ((fmt->width > imx_max_res[dev->sensor_id].res_max_width)
 		|| (fmt->height > imx_max_res[dev->sensor_id].res_max_height)) {
 		fmt->width =  imx_max_res[dev->sensor_id].res_max_width;
-		fmt->height = imx_max_res[dev->sensor_id].res_max_width;
+		fmt->height = imx_max_res[dev->sensor_id].res_max_height;
 	} else {
 		idx = nearest_resolution_index(sd, fmt->width, fmt->height);
 
