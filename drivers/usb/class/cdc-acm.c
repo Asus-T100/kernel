@@ -222,6 +222,7 @@ static int acm_write_start(struct acm *acm, int wbn)
 {
 	unsigned long flags;
 	struct acm_wb *wb = &acm->wb[wbn];
+	struct delayed_wb *d_wb;
 	int rc;
 
 	spin_lock_irqsave(&acm->write_lock, flags);
@@ -235,12 +236,17 @@ static int acm_write_start(struct acm *acm, int wbn)
 							acm->susp_count);
 	usb_autopm_get_interface_async(acm->control);
 	if (acm->susp_count) {
-		if (!acm->delayed_wb)
-			acm->delayed_wb = wb;
-		else
+		d_wb = kmalloc(sizeof(struct delayed_wb), GFP_ATOMIC);
+		if (d_wb == NULL) {
+			rc = -ENOMEM;
 			usb_autopm_put_interface_async(acm->control);
+		} else {
+			d_wb->wb = wb;
+			list_add_tail(&d_wb->list, &acm->delayed_wb_list);
+			rc = 0;		/* A white lie */
+		}
 		spin_unlock_irqrestore(&acm->write_lock, flags);
-		return 0;	/* A white lie */
+		return rc;
 	}
 	usb_mark_last_busy(acm->dev);
 
@@ -1320,6 +1326,7 @@ made_compressed_probe:
 		snd->urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 		snd->instance = acm;
 	}
+	INIT_LIST_HEAD(&acm->delayed_wb_list);
 
 	usb_set_intfdata(intf, acm);
 
@@ -1512,6 +1519,7 @@ static int acm_resume(struct usb_interface *intf)
 {
 	struct acm *acm = usb_get_intfdata(intf);
 	struct acm_wb *wb;
+	struct delayed_wb *d_wb, *nd_wb;
 	int rv = 0;
 	int cnt;
 
@@ -1527,14 +1535,16 @@ static int acm_resume(struct usb_interface *intf)
 		rv = usb_submit_urb(acm->ctrlurb, GFP_NOIO);
 
 		spin_lock_irq(&acm->write_lock);
-		if (acm->delayed_wb) {
-			wb = acm->delayed_wb;
-			acm->delayed_wb = NULL;
+		list_for_each_entry_safe(d_wb, nd_wb,
+				&acm->delayed_wb_list, list) {
+			wb = d_wb->wb;
+			list_del(&d_wb->list);
+			kfree(d_wb);
 			spin_unlock_irq(&acm->write_lock);
 			acm_start_wb(acm, wb);
-		} else {
-			spin_unlock_irq(&acm->write_lock);
+			spin_lock_irq(&acm->write_lock);
 		}
+		spin_unlock_irq(&acm->write_lock);
 
 		/*
 		 * delayed error checking because we must

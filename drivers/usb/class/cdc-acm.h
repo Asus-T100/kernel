@@ -79,6 +79,11 @@ struct acm_rb {
 	struct acm		*instance;
 };
 
+struct delayed_wb {
+	struct list_head        list;
+	struct acm_wb		*wb;
+};
+
 struct acm {
 	struct usb_device *dev;				/* the corresponding usb device */
 	struct usb_interface *control;			/* control interface */
@@ -117,7 +122,7 @@ struct acm {
 	unsigned int throttled:1;			/* actually throttled */
 	unsigned int throttle_req:1;			/* throttle requested */
 	u8 bInterval;
-	struct acm_wb *delayed_wb;			/* write queued for a device about to be woken */
+	struct list_head delayed_wb_list;		/* delayed wb list */
 };
 
 #define CDC_DATA_INTERFACE_TYPE	0x0a
