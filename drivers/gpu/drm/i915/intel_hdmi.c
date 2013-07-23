@@ -664,6 +664,8 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
 	u32 temp;
 	u32 enable_bits = SDVO_ENABLE;
+	if (dev_priv->is_hdmi == false)
+		return;
 
 	i915_rpm_get_callback(dev);
 	if (intel_hdmi->has_audio)
