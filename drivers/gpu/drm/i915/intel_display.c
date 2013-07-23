@@ -7549,8 +7549,11 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	display_save_restore_hotplug(drm_dev, SAVEHPD);
 	display_disable_wq(drm_dev);
 	mutex_lock(&drm_dev->mode_config.mutex);
-	if (dev_priv->is_dpst_enabled)
+	if (dev_priv->is_dpst_enabled) {
+		dev_priv->saveDPSTState = true;
 		i915_dpst_enable_hist_interrupt(drm_dev, false);
+	} else
+		dev_priv->saveDPSTState = false;
 	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
@@ -7590,7 +7593,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	}
 	mid_hdmi_audio_resume(drm_dev);
 	dev_priv->disp_pm_in_progress = false;
-	if (dev_priv->is_dpst_enabled)
+	if (dev_priv->saveDPSTState)
 		i915_dpst_enable_hist_interrupt(drm_dev, true);
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	display_save_restore_hotplug(drm_dev, RESTOREHPD);

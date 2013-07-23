@@ -770,6 +770,7 @@ typedef struct drm_i915_private {
 	u32 saveGUNIT_CZClockGatingDisable2;
 	u32 saveDPIO_CFG_DATA;
 	u32 saveDPST_VLV_BTGR_DATA;
+	bool saveDPSTState;
 
 	struct {
 		/** Bridge to intel-gtt-ko */
