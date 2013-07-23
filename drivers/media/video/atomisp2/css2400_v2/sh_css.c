@@ -2241,20 +2241,19 @@ static uint8_t
 generate_pipe_number(void)
 {
 	uint8_t i;
-	uint8_t pipe_num = 0xFF;
 	/*Assign a new pipe_num .... search for empty place */
 	for (i = 0; i < MAX_NUM_PIPES; i++)
 	{
 		if (pipe_num_list[i] == PIPE_NUM_EMPTY_TOKEN){
 			pipe_num_list[i] = PIPE_NUM_RESERVED_TOKEN; /*position is reserved */
-			pipe_num = i;
 			break;
 		}
 	}
-	assert(pipe_num != 0xFF);
-	pipe_num_counter++;
-	map_pipe_num_to_sp_thread(pipe_num);
-	return pipe_num;
+	if (i < MAX_NUM_PIPES) {
+		pipe_num_counter++;
+		map_pipe_num_to_sp_thread(i);
+	}
+	return i;
 }
 
 static void
@@ -2331,6 +2330,9 @@ create_pipe(enum ia_css_pipe_mode mode,
 	}
 
 	me->pipe_num = generate_pipe_number();
+	if (me->pipe_num >= MAX_NUM_PIPES)
+		return IA_CSS_ERR_INTERNAL_ERROR;
+
 	my_css.active_pipes[me->pipe_num] = me;
 	me->old_pipe->new_pipe = me;
 	me->old_pipe->pipe_num = me->pipe_num;
