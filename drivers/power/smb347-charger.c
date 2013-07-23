@@ -197,7 +197,6 @@ struct smb347_charger {
 	bool			otg_battery_uv;
 	bool			is_disabled;
 	const struct smb347_charger_platform_data	*pdata;
-	struct delayed_work	smb347_statmon_worker;
 	struct extcon_dev	*edev;
 	struct notifier_block	ext_nb;
 };
@@ -354,33 +353,6 @@ static int smb347_update_status(struct smb347_charger *smb)
 	mutex_unlock(&smb->lock);
 
 	return ret;
-}
-
-/**
- * smb347_status_monitor - worker function to monitor status
- * @work: delayed work handler structure
- * Context: Can sleep
- *
- * Monitors status of the charger and updates the charging status.
- * Note: This worker is manily added to notify the user space about
- * capacity, health and status chnages.
- */
-static void smb347_status_monitor(struct work_struct *work)
-{
-	struct smb347_charger *smb = container_of(work,
-			struct smb347_charger, smb347_statmon_worker.work);
-	int ret;
-
-	ret = smb347_update_status(smb);
-	if (ret < 0)
-		dev_err(&smb->client->dev, "error in updating smb347 status\n");
-
-	if (smb->pdata->use_mains)
-		power_supply_changed(&smb->mains);
-	if (smb->pdata->use_usb)
-		power_supply_changed(&smb->usb);
-	schedule_delayed_work(&smb->smb347_statmon_worker,
-						STATUS_UPDATE_INTERVAL);
 }
 
 /*
@@ -1515,9 +1487,6 @@ static int smb347_probe(struct i2c_client *client,
 		}
 	}
 
-	INIT_DELAYED_WORK_DEFERRABLE(&smb->smb347_statmon_worker,
-						smb347_status_monitor);
-
 	smb->running = true;
 	smb->dentry = debugfs_create_file("smb347-regs", S_IRUSR, NULL, smb,
 					  &smb347_debugfs_fops);
@@ -1539,8 +1508,6 @@ static int smb347_probe(struct i2c_client *client,
 
 	if (smb->edev)
 		smb_handle_extcon_events(smb);
-	/* Start the status monitoring worker */
-	schedule_delayed_work(&smb->smb347_statmon_worker, 0);
 
 	smb347_dev = smb;
 

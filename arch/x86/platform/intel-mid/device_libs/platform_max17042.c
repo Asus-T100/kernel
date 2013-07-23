@@ -500,7 +500,7 @@ void *max17042_platform_data(void *info)
 	if (intel_mid_identify_cpu() ==
 				INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
 		intr = acpi_get_gpio("\\_SB.GPO2", 0x12);
-		intr =  149; /* GPIO_S5_18  = SUS0_18. SUS0_0 = 130 */
+		intr =  148; /* GPIO_S5_18  = SUS0_18. SUS0_0 = 130 */
 		i2c_info->irq = gpio_to_irq(intr);
 	}
 
