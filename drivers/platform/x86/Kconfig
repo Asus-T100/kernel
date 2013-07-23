@@ -723,16 +723,6 @@ config INTEL_MID_OSIP_DEBUG_FS
 
 	  If unsure, say N.
 
-config INTEL_MID_OSNIB_ILB
-        tristate "cmos osnib driver for Intel BYT platforms"
-        default n
-        ---help---
-			This driver adds OSNIB support using CMOS.
-			OSNIB is used to share flags between firmware and kernel.
-			This is only valid when no SCU is present.
-
-			If unsure, say N.
-
 config INTEL_MODEM_NVRAM
 	tristate "modem NVRAM driver for Intel CTP/MERR platforms"
 	default n
