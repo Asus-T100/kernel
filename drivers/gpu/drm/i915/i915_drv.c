@@ -1053,7 +1053,6 @@ static int i915_mmap(struct file *filp, struct vm_area_struct *vma)
 }
 #endif
 
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 static int i915_release(struct inode *inode, struct file *filp)
 {
 	int ret = 0;
@@ -1062,14 +1061,15 @@ static int i915_release(struct inode *inode, struct file *filp)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	i915_rpm_get_callback(dev);
+#ifdef CONFIG_DRM_VXD_BYT
 	if (dev_priv->vxd_release)
 		ret = dev_priv->vxd_release(inode, filp);
+#endif
 	drm_release(inode, filp);
 	i915_rpm_put_callback(dev);
 
 	return ret;
 }
-#endif
 
 static long i915_ioctl(struct file *filp,
 	      unsigned int cmd, unsigned long arg)
