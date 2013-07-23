@@ -443,7 +443,7 @@ static int dwc3_gadget_set_ep_config(struct dwc3 *dwc, struct dwc3_ep *dep,
 		dep->stream_capable = true;
 	}
 
-	if (usb_endpoint_xfer_isoc(desc))
+	if (usb_endpoint_xfer_isoc(desc) || usb_endpoint_is_bulk_out(desc))
 		params.param1 |= DWC3_DEPCFG_XFER_IN_PROGRESS_EN;
 
 	/*
@@ -734,7 +734,8 @@ static void dwc3_gadget_ep_free_request(struct usb_ep *ep,
  */
 static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
 		struct dwc3_request *req, dma_addr_t dma,
-		unsigned length, unsigned last, unsigned chain)
+		unsigned length, unsigned last, unsigned chain,
+		unsigned csp)
 {
 	struct dwc3		*dwc = dep->dwc;
 	struct dwc3_trb		*trb;
@@ -792,6 +793,11 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
 	} else {
 		if (chain)
 			trb->ctrl |= DWC3_TRB_CTRL_CHN;
+
+		if (csp) {
+			trb->ctrl |= DWC3_TRB_CTRL_CSP;
+			trb->ctrl |= DWC3_TRB_CTRL_IOC;
+		}
 
 		if (last)
 			trb->ctrl |= DWC3_TRB_CTRL_LST;
@@ -895,12 +901,14 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 					chain = false;
 
 				dwc3_prepare_one_trb(dep, req, dma, length,
-						last_one, chain);
+						last_one, chain, false);
 
 				if (last_one)
 					break;
 			}
 		} else {
+			unsigned csp = false;
+
 			dma = req->request.dma;
 			length = req->request.length;
 			trbs_left--;
@@ -912,8 +920,13 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 			if (list_is_last(&req->list, &dep->request_list))
 				last_one = 1;
 
+			/* For bulk-out ep, if req is the short packet and
+			 * not the last one, enable CSP. */
+			if (req->short_packet && !last_one)
+				csp = true;
+
 			dwc3_prepare_one_trb(dep, req, dma, length,
-					last_one, false);
+					last_one, false, csp);
 
 			if (last_one)
 				break;
@@ -1130,10 +1143,15 @@ static int dwc3_gadget_ep_queue(struct usb_ep *ep, struct usb_request *request,
 			request, ep->name, request->length);
 
 	/* pad bulk-OUT buffer to MaxPacketSize per databook requirement*/
+	req->short_packet = false;
 	if (!(dep->number & 1)) {
 		int size = dep->desc->wMaxPacketSize;
-		if (request->length % size)
+		if (request->length % size) {
 			request->length = (request->length / size + 1) * size;
+			/* set flag for bulk-out short request */
+			if (usb_endpoint_is_bulk_out(dep->desc))
+				req->short_packet = true;
+		}
 	}
 
 	spin_lock_irqsave(&dwc->lock, flags);
@@ -2218,8 +2236,9 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 		dwc3_endpoint_transfer_complete(dwc, dep, event, 1);
 		break;
 	case DWC3_DEPEVT_XFERINPROGRESS:
-		if (!usb_endpoint_xfer_isoc(dep->desc)) {
-			dev_dbg(dwc->dev, "%s is not an Isochronous endpoint\n",
+		if ((!usb_endpoint_xfer_isoc(dep->desc)) &&
+			(!usb_endpoint_xfer_bulk(dep->desc))) {
+			dev_dbg(dwc->dev, "%s is not an Isochronous/bulk endpoint\n",
 					dep->name);
 			return;
 		}
