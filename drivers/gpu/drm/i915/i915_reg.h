@@ -363,6 +363,7 @@
 #define IOSF_PORT_CCU			0xA9
 #define IOSF_PORT_GPS_CORE		0x48
 #define IOSF_PORT_PMC			0x52
+#define IOSF_PORT_FLISDSI		0x1B
 
 
 /*
