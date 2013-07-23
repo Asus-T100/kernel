@@ -208,7 +208,6 @@ free_dvs_6axis_table(struct ia_css_dvs_6axis_config  **dvs_6axis_config)
 		sh_css_free(*dvs_6axis_config);
 		*dvs_6axis_config = NULL;
 	}
-	sh_css_dtrace(SH_DBG_TRACE, "<- free_dvs_6axis_table dvs_6axis_config %p\n",(*dvs_6axis_config));
 }
 
 void copy_dvs_6axis_table(struct ia_css_dvs_6axis_config *dvs_config_dst,

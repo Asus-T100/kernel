@@ -925,7 +925,8 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 #ifdef __KERNEL__
 	printk(KERN_ERR "load binary: %s\n", binary_name);
 #endif
-
+	if (!binary)
+		return IA_CSS_ERR_INTERNAL_ERROR;
 	sh_css_sp_init_stage(binary,
 			     (const char *)binary_name,
 			     blob_info,
@@ -1274,22 +1275,24 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 	unsigned int HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
 	unsigned int offset;
 	struct sh_css_event_irq_mask event_irq_mask;
-
+	unsigned int pipe_num;
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_set_irq_mask("
 				"or_mask=%x, and_mask=%x)\n",
 				or_mask, and_mask);
-
+	assert_exit_code(pipe, IA_CSS_ERR_INTERNAL_ERROR);
 	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
 	assert(or_mask <= ~0);
 	assert(and_mask <= ~0);
-
+	pipe_num = ia_css_pipe_get_pipe_num(pipe);
+	if (pipe_num >= NR_OF_PIPELINES)
+		return IA_CSS_ERR_INTERNAL_ERROR;
 	event_irq_mask.or_mask  = (uint16_t)or_mask;
 	event_irq_mask.and_mask = (uint16_t)and_mask;
 
 	offset = offsetof(struct host_sp_communication,
-					host2sp_event_irq_mask[ia_css_pipe_get_pipe_num(pipe)]);
+					host2sp_event_irq_mask[pipe_num]);
 	assert(offset % HRT_BUS_BYTES == 0);
 	sp_dmem_store(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_com) + offset,
@@ -1307,16 +1310,19 @@ ia_css_event_get_irq_mask(const struct ia_css_pipe *pipe,
 	unsigned int HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
 	unsigned int offset;
 	struct sh_css_event_irq_mask event_irq_mask;
-
+	unsigned int pipe_num;
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_event_get_irq_mask()\n");
 
-	assert(pipe);
+	assert_exit_code(pipe, IA_CSS_ERR_INTERNAL_ERROR);
 	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
+	pipe_num = ia_css_pipe_get_pipe_num(pipe);
+	if (pipe_num >= NR_OF_PIPELINES)
+		return IA_CSS_ERR_INTERNAL_ERROR;
 
 	offset = offsetof(struct host_sp_communication,
-					host2sp_event_irq_mask[ia_css_pipe_get_pipe_num(pipe)]);
+					host2sp_event_irq_mask[pipe_num]);
 	assert(offset % HRT_BUS_BYTES == 0);
 	sp_dmem_load(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_com) + offset,

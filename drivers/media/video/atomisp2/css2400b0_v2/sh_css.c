@@ -1841,7 +1841,7 @@ void sh_css_frame_info_init(
 	enum ia_css_frame_format format,
 	unsigned int aligned)
 {
-assert(info != NULL);
+	assert_exit(info);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_init() enter: "
 		"width=%d, "
@@ -1860,7 +1860,7 @@ assert(info != NULL);
 static void invalidate_video_binaries(
 	struct sh_css_pipe *pipe)
 {
-assert(pipe != NULL);
+	assert_exit(pipe);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"invalidate_video_binaries() enter:\n");
 	pipe->pipeline.reload   = true;
