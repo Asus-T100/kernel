@@ -2669,7 +2669,7 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		break;
 	case MID_OTG_NOTIFY_CRESET:
 		dev_dbg(pnw->dev, "PNW OTG Notify Client Bus reset Event\n");
-		penwell_otg_set_power(&pnw->iotg.otg, CHRG_CURR_SDP_UNCONFIG);
+		penwell_otg_set_power(&pnw->iotg.otg, CHRG_CURR_SDP_SUSP);
 		flag = 0;
 		break;
 	case MID_OTG_NOTIFY_HOSTADD:
