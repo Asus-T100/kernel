@@ -33,7 +33,6 @@
 
 #include "dmaengine.h"
 
-#define MAX_CHAN	8 /*max ch across controllers*/
 #include "intel_mid_dma_regs.h"
 
 #define INTEL_MID_DMAC1_ID		0x0814
@@ -78,7 +77,7 @@ Utility Functions*/
 static int get_ch_index(int status, unsigned int base)
 {
 	int i;
-	for (i = 0; i < MAX_CHAN; i++) {
+	for (i = 0; i < MID_MAX_CHAN; i++) {
 		if (status & (1 << (i + base)))
 			return i;
 	}
@@ -2025,7 +2024,7 @@ struct intel_mid_dma_probe_info dma_byt_info = {
 	.ch_base = 4,
 	.block_size = 131071,
 	.pimr_mask = 0x00FF0000,
-	.pimr_base = 0xDF540018,
+	.pimr_base = 0, /* get base addr from device table */
 	.dword_trf = 0,
 	.pimr_offset = 0x10,
 	.pci_id = INTEL_BYT_DMAC0_ID,
