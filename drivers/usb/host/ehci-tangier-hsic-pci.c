@@ -356,16 +356,10 @@ static void hsic_notify(struct usb_device *udev, unsigned action)
 					(&hsic.rh_dev->dev, 0);
 			}
 
-			if (hsic.autosuspend_enable) {
-				pr_debug("%s----> enable autosuspend\n",
+			pr_debug("%s Modem dev autosuspend disable\n",
 					 __func__);
-				usb_enable_autosuspend(udev->parent);
-				hsic_wakeup_irq_init();
-			} else {
-				pr_debug("%s Modem dev autosuspend disable\n",
-						 __func__);
-				usb_disable_autosuspend(hsic.modem_dev);
-			}
+			usb_disable_autosuspend(hsic.modem_dev);
+			hsic.autosuspend_enable = 0;
 
 			pr_debug("%s----> Enable AUX irq\n", __func__);
 			retval = hsic_aux_irq_init();
@@ -594,9 +588,12 @@ static ssize_t hsic_autosuspend_enable_store(struct device *dev,
 		if (hsic.autosuspend_enable == 0) {
 			dev_dbg(dev, "Modem dev autosuspend disable\n");
 			usb_disable_autosuspend(hsic.modem_dev);
+			usb_disable_autosuspend(hsic.rh_dev);
 		} else {
 			dev_dbg(dev, "Enable auto suspend\n");
 			usb_enable_autosuspend(hsic.modem_dev);
+			usb_enable_autosuspend(hsic.rh_dev);
+			hsic_wakeup_irq_init();
 		}
 	}
 
