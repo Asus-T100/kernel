@@ -55,41 +55,6 @@ static void  vvx09f006a00_get_panel_info(int pipe,
 	return;
 }
 
-static void vvx09f006a00_msgbus_reset()
-{
-#ifdef CONFIG_X86_INTEL_MID
-	u32 msg_bus_port;
-	u32 msg_bus_reg;
-	u32 val;
-
-	DRM_DEBUG_KMS("\n");
-
-	/* MIPI Escape control register */
-	msg_bus_port = 0x14;
-	msg_bus_reg = 0x6d;
-	val = intel_mid_msgbus_read32(msg_bus_port, msg_bus_reg);
-	val  &= 0xFFFCFFFF;
-	val  |= 0x00010000;
-	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
-
-	/* dsi0 control register */
-	msg_bus_port = 0x14;
-	msg_bus_reg = 0x6f;
-	val = intel_mid_msgbus_read32(msg_bus_port, msg_bus_reg);
-	val  &= 0xFFFCFFFF;
-	val  |= 0x00010000;
-	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
-
-	/* dsi0 control register */
-	msg_bus_port = 0x14;
-	msg_bus_reg = 0x6f;
-	val = intel_mid_msgbus_read32(msg_bus_port, msg_bus_reg);
-	val  &= 0xFFFCFFFF;
-	val  |= 0x00010000;
-	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
-#endif
-}
-
 static void vvx09f006a00_destroy(struct intel_dsi_device *dsi)
 {
 }
@@ -236,9 +201,6 @@ bool vvx09f006a00_init(struct intel_dsi_device *dsi)
 	dsi->clk_hs_to_lp_count = 0x14;
 	dsi->video_frmt_cfg_bits = 0;
 	dsi->dphy_reg = 0x3c1fc51f;
-
-	/* Program MIPI reset */
-	vvx09f006a00_msgbus_reset();
 
 	return true;
 }

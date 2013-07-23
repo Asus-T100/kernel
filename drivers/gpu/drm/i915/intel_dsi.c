@@ -490,33 +490,13 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 		intel_dsi->dev.dev_ops->mode_set(&intel_dsi->dev,
 						mode, adjusted_mode);
 
-	/* Enable bandgap fix */
-	intel_cck_write32_bits(dev_priv, 0x6D, 0x00010000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6E, 0x00010000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6F, 0x00010000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x00, 0x00008000, 0x00008000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x00, 0x00000000, 0x00008000);
-	msleep(20);
-
-	/* Turn Display Trunk on */
-	intel_cck_write32_bits(dev_priv, 0x6B, 0x00020000, 0x00030000);
-	msleep(20);
-
-	intel_cck_write32_bits(dev_priv, 0x6C, 0x00020000, 0x00030000);
-	msleep(20);
-
-	intel_cck_write32_bits(dev_priv, 0x6D, 0x00020000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6E, 0x00020000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6F, 0x00020000, 0x00030000);
-
-	/* Need huge delay, otherwise clock is not stable */
-	msleep(100);
+	/* bandgap reset */
+	intel_flisdsi_write32(dev_priv, 0x08, 0x0001);
+	intel_flisdsi_write32(dev_priv, 0x0F, 0x0005);
+	intel_flisdsi_write32(dev_priv, 0x0F, 0x0025);
+	udelay(150);
+	intel_flisdsi_write32(dev_priv, 0x0F, 0x0000);
+	intel_flisdsi_write32(dev_priv, 0x08, 0x0000);
 
 	/* MIPI PORT Control register */
 	I915_WRITE(0x61190, 0x80010000);
