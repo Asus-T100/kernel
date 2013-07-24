@@ -1861,7 +1861,8 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	}
 
 	/* gpio request for BYT */
-	if (otg->otg_data->is_byt) {
+	if (otg->otg_data->is_byt && otg->otg_data->gpio_cs
+		&& otg->otg_data->gpio_reset) {
 		retval = gpio_request(otg->otg_data->gpio_reset,
 					"tusb1211_reset");
 		if (retval < 0) {
