@@ -399,6 +399,9 @@ static void intel_panel_init_backlight(struct drm_device *dev)
 
 	dev_priv->backlight_level = intel_panel_get_backlight(dev);
 	dev_priv->backlight_enabled = dev_priv->backlight_level != 0;
+	/* Initiliazing DPST default values */
+	dev_priv->is_dpst_enabled = false;
+	dev_priv->dpst_backlight_factor = DPST_MAX_FACTOR;
 }
 
 enum drm_connector_status
