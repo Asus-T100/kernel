@@ -301,7 +301,7 @@ static int psh_probe(struct i2c_client *client,
 
 	pm_runtime_set_active(&client->dev);
 	pm_runtime_use_autosuspend(&client->dev);
-	pm_runtime_set_autosuspend_delay(&client->dev, 10);
+	pm_runtime_set_autosuspend_delay(&client->dev, 0);
 	pm_runtime_enable(&client->dev);
 
 	return 0;
