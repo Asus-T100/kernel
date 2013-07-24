@@ -577,7 +577,7 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 	return 0;
 }
 
-int i915_resume(struct drm_device *dev)
+int i915_resume_common(struct drm_device *dev, bool is_hibernate_restore)
 {
 	int ret;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -596,7 +596,7 @@ int i915_resume(struct drm_device *dev)
 
 	pci_set_master(dev->pdev);
 
-	ret = dev_priv->pm.drm_thaw(dev);
+	ret = dev_priv->pm.drm_thaw(dev, is_hibernate_restore);
 	if (ret)
 		return ret;
 
@@ -605,6 +605,11 @@ int i915_resume(struct drm_device *dev)
 	mid_hdmi_audio_resume(dev);
 	DRM_DEBUG_DRIVER("Gfx Resumed\n");
 	return 0;
+}
+
+int i915_resume(struct drm_device *dev)
+{
+	return i915_resume_common(dev, false);
 }
 
 static int i8xx_do_reset(struct drm_device *dev)
@@ -1107,8 +1112,7 @@ static int i915_pm_suspend(struct device *dev)
 	dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_freeze) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting suspend.\n");
+		dev_err(dev, "PM not initialized, aborting suspend.\n");
 		return -ENODEV;
 	}
 
@@ -1146,7 +1150,15 @@ static int i915_pm_resume(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
 
-	return i915_resume(drm_dev);
+	return i915_resume_common(drm_dev, false);
+}
+
+static int i915_pm_restore(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+
+	return i915_resume_common(drm_dev, true);
 }
 
 static int i915_pm_freeze(struct device *dev)
@@ -1162,8 +1174,7 @@ static int i915_pm_freeze(struct device *dev)
 	dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_freeze) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting suspend.\n");
+		dev_err(dev, "PM not initialized, aborting suspend.\n");
 		return -ENODEV;
 	}
 
@@ -1177,11 +1188,10 @@ static int i915_pm_thaw(struct device *dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_thaw) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting resume.\n");
+		dev_err(dev, "PM not initialized, aborting resume.\n");
 		return -ENODEV;
 	}
-	return dev_priv->pm.drm_thaw(drm_dev);
+	return dev_priv->pm.drm_thaw(drm_dev, false);
 }
 
 static int i915_pm_poweroff(struct device *dev)
@@ -1191,8 +1201,7 @@ static int i915_pm_poweroff(struct device *dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_freeze) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting suspend.\n");
+		dev_err(dev, "PM not initialized, aborting suspend.\n");
 		return -ENODEV;
 	}
 
@@ -1205,7 +1214,7 @@ static const struct dev_pm_ops i915_pm_ops = {
 	.freeze = i915_pm_freeze,
 	.thaw = i915_pm_thaw,
 	.poweroff = i915_pm_poweroff,
-	.restore = i915_pm_resume,
+	.restore = i915_pm_restore,
 #ifdef CONFIG_PM_RUNTIME
 	.runtime_suspend = i915_pm_suspend,
 	.runtime_resume = i915_pm_resume,

@@ -289,7 +289,7 @@ struct drm_i915_gt_funcs {
 
 struct drm_i915_pm_funcs {
 	int (*drm_freeze)(struct drm_device *dev);
-	int (*drm_thaw)(struct drm_device *dev);
+	int (*drm_thaw)(struct drm_device *dev, bool is_hibernate_restore);
 };
 
 #define DEV_INFO_FLAGS \

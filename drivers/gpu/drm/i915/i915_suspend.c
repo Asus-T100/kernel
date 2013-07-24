@@ -966,7 +966,7 @@ static int i915_drm_freeze(struct drm_device *dev)
 	return 0;
 }
 
-static int i915_drm_thaw(struct drm_device *dev)
+static int i915_drm_thaw(struct drm_device *dev, bool is_hibernate_restore)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int error = 0;
@@ -1296,16 +1296,19 @@ static int valleyview_freeze(struct drm_device *dev)
  * viii)Clear Global Force Wake set in Step v and allow the wells to go down
  * ix)  Release Graphics Clocks
 */
-static int valleyview_thaw(struct drm_device *dev)
+static int valleyview_thaw(struct drm_device *dev, bool is_hibernate_restore)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int error = 0;
 	u32 reg;
 
-	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
-		mutex_lock(&dev->struct_mutex);
-		i915_gem_restore_gtt_mappings(dev);
-		mutex_unlock(&dev->struct_mutex);
+	/* Only restore if it is resuming from hibernate */
+	if (is_hibernate_restore) {
+		if (drm_core_check_feature(dev, DRIVER_MODESET)) {
+			mutex_lock(&dev->struct_mutex);
+			i915_gem_restore_gtt_mappings(dev);
+			mutex_unlock(&dev->struct_mutex);
+		}
 	}
 
 	/* i) Set Graphics Clocks to Forced ON */
