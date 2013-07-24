@@ -1810,10 +1810,28 @@ void atomisp_css_set_fc_config(struct atomisp_sub_device *asd,
 	asd->params.config.fc_config = fc_config;
 }
 
+void atomisp_css_set_ctc_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_ctc_config *ctc_config)
+{
+	asd->params.config.ctc_config = ctc_config;
+}
+
+void atomisp_css_set_cnr_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_cnr_config *cnr_config)
+{
+	asd->params.config.cnr_config = cnr_config;
+}
+
 void atomisp_css_set_aa_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_aa_config *aa_config)
 {
 	asd->params.config.aa_config = aa_config;
+}
+
+void atomisp_css_set_baa_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_baa_config *baa_config)
+{
+	asd->params.config.baa_config = baa_config;
 }
 
 void atomisp_css_set_anr_config(struct atomisp_sub_device *asd,

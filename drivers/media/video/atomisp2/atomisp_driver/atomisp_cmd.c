@@ -2085,7 +2085,8 @@ static int __atomisp_set_general_isp_parameters(
 					struct atomisp_sub_device *asd,
 					struct atomisp_parameters *arg)
 {
-	/* TODO: add cnr_config and ctc_config when they're ready */
+
+	/* TODO: add cnr_config when it's ready */
 	if (arg->wb_config) {
 		if (copy_from_user(&asd->params.wb_config, arg->wb_config,
 				   sizeof(struct atomisp_css_wb_config)))
@@ -2188,6 +2189,13 @@ static int __atomisp_set_general_isp_parameters(
 	}
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (arg->ctc_config) {
+		if (copy_from_user(&asd->params.ctc_config, arg->ctc_config,
+					sizeof(struct atomisp_css_ctc_config)))
+			return -EFAULT;
+		atomisp_css_set_ctc_config(asd, &asd->params.ctc_config);
+	}
+
 	if (arg->ecd_config) {
 		if (copy_from_user(&asd->params.ecd_config, arg->ecd_config,
 				   sizeof(struct atomisp_css_ecd_config)))

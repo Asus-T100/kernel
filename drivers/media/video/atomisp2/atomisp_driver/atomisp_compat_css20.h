@@ -54,11 +54,14 @@
 #define atomisp_css_ce_config	ia_css_ce_config
 #define atomisp_css_gc_config	ia_css_gc_config
 #define atomisp_css_tnr_config	ia_css_tnr_config
+#define atomisp_css_cnr_config	ia_css_cnr_config
+#define atomisp_css_ctc_config	ia_css_ctc_config
 #define atomisp_css_3a_config	ia_css_3a_config
 #define atomisp_css_ecd_config	ia_css_ecd_config
 #define atomisp_css_ynr_config	ia_css_ynr_config
 #define atomisp_css_fc_config	ia_css_fc_config
 #define atomisp_css_aa_config	ia_css_aa_config
+#define atomisp_css_baa_config	ia_css_aa_config
 #define atomisp_css_anr_config	ia_css_anr_config
 #define atomisp_css_xnr_config	ia_css_xnr_config
 #define atomisp_css_macc_config	ia_css_macc_config
@@ -184,11 +187,20 @@ void atomisp_css_set_fc_config(struct atomisp_sub_device *asd,
 void atomisp_css_set_aa_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_aa_config *aa_config);
 
+void atomisp_css_set_baa_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_baa_config *baa_config);
+
 void atomisp_css_set_anr_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_anr_config *anr_config);
 
 void atomisp_css_set_xnr_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_xnr_config *xnr_config);
+
+void atomisp_css_set_cnr_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_cnr_config *cnr_config);
+
+void atomisp_css_set_ctc_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_ctc_config *ctc_config);
 
 void atomisp_css_set_yuv2rgb_cc_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_cc_config *yuv2rgb_cc_config);

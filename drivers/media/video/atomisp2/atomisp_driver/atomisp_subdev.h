@@ -155,6 +155,8 @@ struct atomisp_css_params {
 	struct atomisp_css_macc_table  macc_table;
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_css_ctc_config	ctc_config;
+	struct atomisp_css_cnr_config	cnr_config;
 	struct atomisp_css_macc_config	macc_config;
 	/* Eigen Color Demosaicing */
 	struct atomisp_css_ecd_config	ecd_config;
@@ -164,6 +166,8 @@ struct atomisp_css_params {
 	struct atomisp_css_fc_config	fc_config;
 	/* Anti-Aliasing */
 	struct atomisp_css_aa_config	aa_config;
+	/* Bayer Anti-Aliasing */
+	struct atomisp_css_aa_config	baa_config;
 	/* Advanced Noise Reduction */
 	struct atomisp_css_anr_config	anr_config;
 	/* eXtra Noise Reduction */

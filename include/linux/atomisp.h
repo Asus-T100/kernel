@@ -267,8 +267,8 @@ struct atomisp_de_config {
 
 /* Chroma enhancement */
 struct atomisp_ce_config {
-	unsigned int uv_level_min;
-	unsigned int uv_level_max;
+	unsigned char uv_level_min;
+	unsigned char uv_level_max;
 };
 
 /* Defect pixel correction configuration */
@@ -315,6 +315,7 @@ struct atomisp_parameters {
 	struct atomisp_macc_config *macc_config;  /* MACC */
 	struct atomisp_ctc_config  *ctc_config; /* Chroma Tone Control */
 	struct atomisp_aa_config   *aa_config;  /* Anti-Aliasing */
+	struct atomisp_aa_config   *baa_config;  /* Anti-Aliasing */
 	struct atomisp_ce_config   *ce_config;
 	struct atomisp_dvs_6axis_config *dvs_6axis_config;
 	struct atomisp_ob_config   *ob_config;  /* Objective Black config */
