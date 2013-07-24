@@ -36,6 +36,7 @@ enum cmd_id {
 	CMD_COUNTER,
 	CMD_GET_VERSION,
 	CMD_ID_MAX,
+	CMD_FW_UPDATE = 255,
 };
 
 enum resp_type {
