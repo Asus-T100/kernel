@@ -3738,6 +3738,10 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_del_timer(TA_WAIT_VRISE_TMR);
 
 			if (!hsm->a_vbus_vld) {
+				/* vbus can't rise to vbus vld, overcurrent */
+				penwell_otg_notify_warning(
+					USB_WARNING_VBUS_INVALID);
+
 				/* Turn off VBUS */
 				otg_set_vbus(iotg->otg.otg, false);
 
