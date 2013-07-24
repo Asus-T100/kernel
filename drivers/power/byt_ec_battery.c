@@ -50,6 +50,7 @@
 #define BAT0_STAT_DISCHARGING		(1 << 0)
 #define BAT0_STAT_CHARGING		(1 << 1)
 #define BAT0_STAT_LOW_BATT		(1 << 2)
+#define BAT0_STAT_BATT_PRESENT		(1 << 3)
 #define EC_BAT0_CUR_RATE_REG		51
 #define EC_BAT0_CUR_CAP_REG		52
 #define EC_BAT0_VOLT_REG		53
@@ -64,11 +65,27 @@
 #define EC_BAT0_BATTSBS_STATUS		202
 #define BAT0_BATTSBS_STATUS_OTP		(1 << 12)
 #define BAT0_BATTSBS_STATUS_FC		(1 << 5)
+#define BAT0_BATTSBS_STATUS_INIT	(1 << 7)
 #define EC_BAT0_TEMP_REG		206
 #define EC_BAT0_AVG_CUR_REG		208
 
 /* 6% is minimun threshold  for platform shutdown*/
 #define EC_BAT_SAFE_MIN_CAPACITY	6
+#define EC_BAT_DEAD_VOLTAGE		6550  /* Dead = 6.55V */
+
+/* Battery temperature related macros*/
+#define EC_BAT_TEMP_CONV_FACTOR		27315 /* K = C + 273.15*/
+/* Battery operating temperature range is 0C to 40C while
+ * charging and -20 C to 60C while Discharging/Full/Not Chraging.
+ */
+/* Treat 50C as over temperature threshold while charging/discharging
+ * till EC implements above  thresholds.
+ */
+#define EC_BAT_CHRG_OVER_TEMP		3231  /* 323.1K ~ 50 C */
+#define EC_BAT_DISCHRG_OVER_TEMP	3231  /* 323.1K ~ 50 C */
+#define EC_BAT_CHRG_UNDER_TEMP		2731  /* 273.1K ~ 0 C  */
+#define EC_BAT_DISCHRG_UNDER_TEMP	2531  /* 253.1K ~ -20 C */
+
 
 struct ec_battery_info {
 	struct platform_device *pdev;
@@ -153,6 +170,53 @@ static int ec_get_battery_property(struct power_supply *psy,
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
+		ret = byt_ec_read_byte(EC_BAT0_STAT_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+		/* If battery is not connected
+		 * return POWER_SUPPLY_HEALTH_UNKNOWN
+		 */
+		if (!(val8 & BAT0_STAT_BATT_PRESENT)) {
+			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
+			break;
+		}
+
+		/* Battery operational temperature range is
+		 * 0C to 40C while charging and -20 C to 60C
+		 * while Discharging/Full/Not Charging.
+		 */
+		ret = byt_ec_read_word(EC_BAT0_TEMP_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+
+		/* Android framwork don't differentiate b/w hot and cold.
+		 *Both are treated as  overheat cases.
+		 *So report overheat in both high and low temp cases.
+		 */
+		if (val8 & BAT0_STAT_DISCHARGING) {
+			if ((val16 >= EC_BAT_DISCHRG_OVER_TEMP)
+				| (val16 <= EC_BAT_DISCHRG_UNDER_TEMP)) {
+				val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
+				break;
+			}
+		} else {
+			if ((val16 >= EC_BAT_CHRG_OVER_TEMP)
+				| (val16 <= EC_BAT_CHRG_UNDER_TEMP)) {
+				val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
+				break;
+			}
+		}
+		ret = byt_ec_read_word(EC_BAT0_VBATT_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+		/* The battery is treated as DEAD if the battery voltage is
+		 *bellow <= 6.55V in BYT-M
+		 */
+		if (val16 <= EC_BAT_DEAD_VOLTAGE) {
+			val->intval = POWER_SUPPLY_HEALTH_DEAD;
+			break;
+		}
+
 		val->intval = POWER_SUPPLY_HEALTH_GOOD;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
@@ -208,7 +272,7 @@ static int ec_get_battery_property(struct power_supply *psy,
 		 * Compensated capacity = cap - ((100 - cap)*6)/100 + 0.5
 		 */
 		comp_cap = val8;
-		comp_cap = comp_cap*100 - ((100 - comp_cap) \
+		comp_cap = comp_cap*100 - ((100 - comp_cap)
 				*EC_BAT_SAFE_MIN_CAPACITY) + 50 ;
 		comp_cap /= 100;
 		if (comp_cap < 0)
@@ -220,20 +284,24 @@ static int ec_get_battery_property(struct power_supply *psy,
 		if (ret < 0)
 			goto ec_read_err;
 		/*
-		 * WA: report 25 Degrees untill
-		 * EC FW is available.
-		 */
-		val16 = (273 + 25) * 10;
-
-		/*
 		 * convert temperature from degree kelvin
 		 * to degree celsius: T(C) = T(K) - 273.15
 		 * also 1 LSB of Temp register = 0.1 Kelvin.
 		 */
-		val->intval = ((val16 / 10) - 273) * 10;
+		val->intval = (((int)val16 * 10) -
+			EC_BAT_TEMP_CONV_FACTOR) / 10;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
-		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		ret = byt_ec_read_byte(EC_BAT0_STAT_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+		/*If battery is not connected
+		 *return POWER_SUPPLY_TECHNOLOGY_UNKNOWN
+		 */
+		if (val8 & BAT0_STAT_BATT_PRESENT)
+			val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		else
+			val->intval =   POWER_SUPPLY_HEALTH_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
 		ret = byt_ec_read_word(EC_BAT0_REM_CAP_REG, &val16);
