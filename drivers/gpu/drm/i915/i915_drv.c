@@ -1575,7 +1575,7 @@ void i915_write_bits##x(struct drm_i915_private *dev_priv,\
 		val = val & mask;		\
 		tmp = val | tmp;		\
 		write##y(tmp, dev_priv->regs + reg + 0x180000);		\
-		if (/*0 &&*/ (reg != 0x70040) && (reg != 0x71040)) {	\
+		if (0 && (reg != 0x70040) && (reg != 0x71040)) {	\
 			DRM_ERROR("Writing 0x%x val 0x%x\n", reg, val); \
 		}	\
 	} else {							\
