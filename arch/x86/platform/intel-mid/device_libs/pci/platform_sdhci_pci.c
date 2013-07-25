@@ -383,6 +383,43 @@ static int mrfl_sd_setup(struct sdhci_pci_data *data)
 	return 0;
 }
 
+/* Moorefield platform data */
+static struct sdhci_pci_data moor_sdhci_pci_data[] = {
+	[EMMC0_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = panic_mode_emmc0_power_up,
+	},
+	[SD_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+	[SDIO_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+};
+
 static int byt_sd_setup(struct sdhci_pci_data *data)
 {
 	u32 stepping;
@@ -580,6 +617,23 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 		pdata = &byt_sdhci_pci_data[SDIO_INDEX];
 		pdata->quirks = sdhci_pdata_quirks;
 		pdata->register_embedded_control = sdhci_embedded_control;
+		break;
+	case PCI_DEVICE_ID_INTEL_MOOR_EMMC:
+		pdata = &moor_sdhci_pci_data[EMMC0_INDEX];
+		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)
+			pdata->platform_quirks |= PLFM_QUIRK_NO_HIGH_SPEED;
+		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_VP)
+			pdata->platform_quirks |= PLFM_QUIRK_NO_EMMC_BOOT_PART;
+		break;
+	case PCI_DEVICE_ID_INTEL_MOOR_SD:
+		pdata = &moor_sdhci_pci_data[SD_INDEX];
+		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)
+			pdata->platform_quirks |= PLFM_QUIRK_NO_HOST_CTRL_HW;
+		break;
+	case PCI_DEVICE_ID_INTEL_MOOR_SDIO:
+		pdata = &moor_sdhci_pci_data[SDIO_INDEX];
+		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)
+			pdata->platform_quirks |= PLFM_QUIRK_NO_HOST_CTRL_HW;
 		break;
 	default:
 		break;
