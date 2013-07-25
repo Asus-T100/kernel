@@ -1430,16 +1430,8 @@ static void atomisp_update_capture_mode(struct atomisp_sub_device *asd)
 {
 	if (asd->params.gdc_cac_en)
 		atomisp_css_capture_set_mode(asd, CSS_CAPTURE_MODE_ADVANCED);
-/*
- * WORKAROUND:
- * low_light binary can't be found when set LOW_LIGHT capture mode in css2.0,
- * which will cause camera hang. This is css2.0 bug, should be assigned to
- * firmware team. Once it is fixed, we can remove this workaround.
- */
-#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	else if (asd->params.low_light)
 		atomisp_css_capture_set_mode(asd, CSS_CAPTURE_MODE_LOW_LIGHT);
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	else
 		atomisp_css_capture_set_mode(asd, CSS_CAPTURE_MODE_PRIMARY);
 }
