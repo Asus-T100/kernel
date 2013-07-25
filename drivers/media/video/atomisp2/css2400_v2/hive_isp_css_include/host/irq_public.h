@@ -23,7 +23,13 @@
 #define __IRQ_PUBLIC_H_INCLUDED__
 
 #include "system_types.h"
-#include "stdbool.h"
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
+#include <stdint.h>
+#include "stddef.h"			/* size_t */
+#include <stdbool.h>		/* bool */
+#endif
 
 /*! Read the control registers of IRQ[ID]
 

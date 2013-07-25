@@ -71,4 +71,18 @@
 #define assert(cnd) ((void)0)
 #endif
 
+#define assert_exit(exp)						\
+	do {								\
+		assert(exp);						\
+		if (!(exp))						\
+			return;						\
+	} while (0)
+
+#define assert_exit_code(exp, code)					\
+	do {								\
+		assert(exp);						\
+		if (!(exp))						\
+			return code;					\
+	} while (0)
+
 #endif /* __ASSERT_SUPPORT_H_INCLUDED__ */

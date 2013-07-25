@@ -24,7 +24,9 @@
 
 #include "sp.h"
 
+#ifndef __KERNEL__
 #include <stdbool.h>	/* bool				*/
+#endif
 
 /* MW: The queue should be application agnostic */
 #include "sh_css_internal.h"
@@ -479,7 +481,7 @@ static void init_sp_queue(
 	unsigned int step  = sizeof(offset->elems[0]);
 	unsigned int start = 0;
 	unsigned int end   = 0;
-	size = min(size, SH_CSS_CIRCULAR_BUF_NUM_ELEMS);
+	size = min(size, (unsigned int)SH_CSS_CIRCULAR_BUF_NUM_ELEMS);
 	store_sp_queue (offset, &size, &step, &start, &end);
 }
 

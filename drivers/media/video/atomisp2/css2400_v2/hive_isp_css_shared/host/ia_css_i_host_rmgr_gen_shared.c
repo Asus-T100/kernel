@@ -20,8 +20,9 @@
  */
 
 #include "ia_css_i_host_rmgr_gen_shared.h"
-
+#ifndef __KERNEL__
 #include <stdbool.h>
+#endif
 #include <assert_support.h>
 #include <ia_css.h>
 

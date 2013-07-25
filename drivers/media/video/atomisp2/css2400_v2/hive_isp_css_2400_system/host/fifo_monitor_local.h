@@ -22,7 +22,9 @@
 #ifndef __FIFO_MONITOR_LOCAL_H_INCLUDED__
 #define __FIFO_MONITOR_LOCAL_H_INCLUDED__
 
+#ifndef __KERNEL__
 #include <stdbool.h>
+#endif
 
 #include "fifo_monitor_global.h"
 

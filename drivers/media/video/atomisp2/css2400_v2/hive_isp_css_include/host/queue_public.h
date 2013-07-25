@@ -22,8 +22,13 @@
 #ifndef __QUEUE_PUBLIC_H_INCLUDED__
 #define __QUEUE_PUBLIC_H_INCLUDED__
 
+
+#ifdef __KERNEL__
+#include <linux/kernel.h>
+#else
+#include <stdint.h>
 #include <stdbool.h>	/* bool */
-#include <stdint.h>		/* uint32_t */
+#endif
 
 #include "sh_css_internal.h"	/* enum sh_css_frame_id */
 

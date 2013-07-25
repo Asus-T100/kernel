@@ -42,6 +42,12 @@ hrt_sleep(void)
 #include "hrt/host.h"
 
 #elif defined(__KERNEL__)
+#include "storage_class.h"
+#include <linux/delay.h>
+STORAGE_CLASS_INLINE void hrt_sleep(void)
+{
+       udelay(1);
+}
 /*
  * Put here everything __KERNEL__ specific not covered in
  * "assert_support.h", "math_support.h", etc

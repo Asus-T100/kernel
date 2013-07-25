@@ -60,6 +60,9 @@ sh_css_encode_tag_descr(struct sh_css_tag_descr *tag)
 
 	unsigned int encoded_tag;
 
+	if(!tag)
+		return 0;
+
 	if (tag->num_captures < 0) {
 		num_captures = -tag->num_captures;
 		num_captures_sign = 1;
