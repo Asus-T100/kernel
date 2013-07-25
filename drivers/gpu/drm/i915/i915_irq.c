@@ -311,6 +311,12 @@ static void i915_hotplug_work_func(struct work_struct *work)
 	struct drm_mode_config *mode_config = &dev->mode_config;
 	struct intel_encoder *encoder;
 
+	/* Should not be here during suspend state */
+	if (i915_is_device_suspended(dev)) {
+		DRM_ERROR("FIXME: No hotplugs during suspend\n");
+		return;
+	}
+
 	pm_runtime_get_sync(&dev->pdev->dev);
 	mutex_lock(&mode_config->mutex);
 	DRM_DEBUG_KMS("running encoder hotplug functions\n");

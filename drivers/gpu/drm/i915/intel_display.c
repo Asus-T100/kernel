@@ -7577,8 +7577,6 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
 	i915_rpm_get_disp(drm_dev);
-	drm_kms_helper_poll_enable(drm_dev);
-	display_save_restore_hotplug(drm_dev, RESTOREHPD);
 	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
@@ -7595,6 +7593,8 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	if (dev_priv->is_dpst_enabled)
 		i915_dpst_enable_hist_interrupt(drm_dev, true);
 	mutex_unlock(&drm_dev->mode_config.mutex);
+	display_save_restore_hotplug(drm_dev, RESTOREHPD);
+	drm_kms_helper_poll_enable(drm_dev);
 	return 0;
 }
 

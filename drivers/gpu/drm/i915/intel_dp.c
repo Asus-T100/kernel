@@ -841,7 +841,10 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	struct drm_crtc *crtc = intel_dp->base.base.crtc;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
+	/* FIXME - Just in case this function */
+	/* gets called when device is in D0i3? */
 	i915_rpm_get_callback(dev);
+
 	/* Turn on the eDP PLL if needed */
 	if (is_edp(intel_dp)) {
 		if (!is_pch_edp(intel_dp))
@@ -1632,6 +1635,10 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t dp_reg = I915_READ(intel_dp->output_reg);
 
+	/* FIXME - Just in case this function */
+	/* gets called when device is in D0i3? */
+	i915_rpm_get_callback(dev);
+
 	if (mode != DRM_MODE_DPMS_ON) {
 		/* Switching the panel off requires vdd. */
 		ironlake_edp_panel_vdd_on(intel_dp);
@@ -1661,6 +1668,8 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		ironlake_edp_backlight_on(intel_dp);
 	}
 	intel_dp->dpms_mode = mode;
+
+	i915_rpm_put_callback(dev);
 }
 
 /*

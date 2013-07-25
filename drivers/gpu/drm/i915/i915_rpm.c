@@ -210,7 +210,7 @@ int i915_rpm_put_callback(struct drm_device *drm_dev)
  */
 int i915_rpm_get_disp(struct drm_device *drm_dev)
 {
-	i915_rpm_get(drm_dev, RPM_SYNC);
+	i915_rpm_get(drm_dev, RPM_SYNC_STRICT);
 	return 0;
 }
 
