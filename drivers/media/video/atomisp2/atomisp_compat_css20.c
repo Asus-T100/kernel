@@ -1389,6 +1389,20 @@ static void __configure_output(struct atomisp_sub_device *asd,
 		asd->stream_env.stream_config.effective_res.height
 							= height;
 	}
+
+	/*
+	 * [WORKAROUND]Currently, when doing low_light mode capture for >8MP
+	 * still capture, CSS2.0 will fail to load binary. Thus disable
+	 * low_light mode when capture resolution >8MP as workaround.
+	 */
+	if (pipe_id == IA_CSS_PIPE_ID_CAPTURE &&
+		(width > 3264 || height > 2448) &&
+		asd->stream_env.pipe_configs[pipe_id]
+		.default_capture_config.mode == CSS_CAPTURE_MODE_LOW_LIGHT) {
+		asd->stream_env.pipe_configs[pipe_id]
+		.default_capture_config.mode = CSS_CAPTURE_MODE_PRIMARY;
+	}
+
 	dev_dbg(isp->dev, "configuring pipe[%d] output info w=%d.h=%d.f=%d.\n",
 		pipe_id, width, height, format);
 }
