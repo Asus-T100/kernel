@@ -609,24 +609,46 @@ static int get_battery_status(struct power_supply *psy)
 	return status;
 }
 
-static void update_battery_status(struct power_supply *psy)
+static void update_charger_online(struct power_supply *psy)
 {
-	int i;
+	if (IS_CHARGER_ENABLED(psy))
+		set_charger_online(psy, 1);
+	else
+		set_charger_online(psy, 0);
+}
+
+static void update_sysfs(struct power_supply *psy)
+{
+	int i, cnt;
 	struct power_supply *psb;
+	struct power_supply *chrgr_lst[MAX_CHARGER_COUNT];
 
 	if (IS_BATTERY(psy)) {
+		/* set battery status */
+		set_battery_status(psy, get_battery_status(psy));
 
-		set_status(psy, get_battery_status(psy));
+		/* set charger online */
+		cnt = get_supplied_by_list(psy, chrgr_lst);
+		while (cnt--) {
+			if (!IS_PRESENT(chrgr_lst[cnt]))
+				continue;
 
+			update_charger_online(psy);
+		}
 	} else {
+		/*set battery status */
 		for (i = 0; i < psy->num_supplicants; i++) {
 			psb =
 			    power_supply_get_by_name(psy->
 						     supplied_to[i]);
-			if (psb && IS_BATTERY(psb) && IS_PRESENT(psb)) {
-				set_status(psb, get_battery_status(psb));
-			}
+			if (psb && IS_BATTERY(psb) && IS_PRESENT(psb))
+				set_battery_status(psb,
+					get_battery_status(psb));
 		}
+
+		/*set charger online */
+		update_charger_online(psy);
+
 	}
 }
 
@@ -773,7 +795,7 @@ static void __power_supply_trigger_charging_handler(struct power_supply *psy)
 				}
 			}
 		}
-		update_battery_status(psy);
+		update_sysfs(psy);
 		power_supply_changed(psy);
 	}
 	mutex_unlock(&psy_chrgr.evt_lock);
@@ -893,6 +915,11 @@ static int select_chrgr_cable(struct device *dev, void *data)
 		set_cc(psy, 0);
 		set_cv(psy, 0);
 		set_inlmt(psy, 0);
+
+		/* set present and online as 0 */
+		set_present(psy, 0);
+		update_charger_online(psy);
+
 		switch_cable(psy, POWER_SUPPLY_CHARGER_TYPE_NONE);
 
 		mutex_unlock(&psy_chrgr.evt_lock);
@@ -903,6 +930,7 @@ static int select_chrgr_cable(struct device *dev, void *data)
 	/* cable type changed.New cable connected or existing cable
 	 * capabilities changed.switch cable and enable charger and charging
 	 */
+	set_present(psy, 1);
 
 	if (CABLE_TYPE(psy) != max_mA_cable->psy_cable_type)
 		switch_cable(psy, max_mA_cable->psy_cable_type);
@@ -911,6 +939,9 @@ static int select_chrgr_cable(struct device *dev, void *data)
 		struct psy_batt_thresholds bat_thresh;
 		memset(&bat_thresh, 0, sizeof(bat_thresh));
 		enable_charger(psy);
+
+		update_charger_online(psy);
+
 		set_inlmt(psy, max_mA_cable->cable_props.mA);
 		if (!get_battery_thresholds(psy, &bat_thresh)) {
 			SET_ITERM(psy, bat_thresh.iterm);
@@ -921,6 +952,7 @@ static int select_chrgr_cable(struct device *dev, void *data)
 	} else {
 
 		disable_charger(psy);
+		update_charger_online(psy);
 	}
 
 
