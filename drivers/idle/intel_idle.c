@@ -205,16 +205,22 @@ static struct cpuidle_state mrfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.name = "S0i1-ATM",
 		.desc = "MWAIT 0x60",
 		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
-		.exit_latency = 800,
-		.target_residency = 1335,
+		.exit_latency = 1200,
+		.target_residency = 4000,
 		.enter = &intel_idle },
-	{ /* MWAIT C8-S0i2 */ }, /* S0i2 is depcreated on Merrifield */
+	{ /* MWAIT C8-S0i2 */
+		.name = "S0i2-ATM",
+		.desc = "MWAIT 0x62",
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 2000,
+		.target_residency = 8000,
+		.enter = &intel_idle },
 	{ /* MWAIT C9-S0i3 */
 		.name = "S0i3-ATM",
 		.desc = "MWAIT 0x64",
 		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = 10000,
-		.target_residency = 370000,
+		.target_residency = 20000,
 		.enter = &intel_idle },
 };
 #endif
