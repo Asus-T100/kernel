@@ -603,8 +603,10 @@ static void pmic_bat_zone_changed(void)
 	int cur_zone;
 	u8 data = 0;
 	struct power_supply *psy_bat;
+	int vendor_id;
 
-	retval = intel_scu_ipc_ioread8(THRMBATZONE_ADDR, &data);
+	vendor_id = chc.pmic_id & PMIC_VENDOR_ID_MASK;
+	retval = intel_scu_ipc_ioread8(GET_THRMBATZONE_ADDR(vendor_id), &data);
 	if (retval) {
 		dev_err(chc.dev, "Error in reading battery zone\n");
 		return;
@@ -645,13 +647,33 @@ int pmic_get_health(void)
 
 int pmic_enable_vbus(bool enable)
 {
+	int ret;
+	int vendor_id;
+
+	vendor_id = chc.pmic_id & PMIC_VENDOR_ID_MASK;
+
 	if (enable) {
-		return intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
+		ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
 				WDT_NOKICK_ENABLE, CHGRCTRL0_WDT_NOKICK_MASK);
+		if (ret)
+			return ret;
+
+		if (vendor_id == SHADYCOVE_VENDORID)
+			ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+					CHGRCTRL1_OTGMODE_MASK,
+					CHGRCTRL1_OTGMODE_MASK);
+	} else {
+		ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
+				WDT_NOKICK_DISABLE, CHGRCTRL0_WDT_NOKICK_MASK);
+		if (ret)
+			return ret;
+
+		if (vendor_id == SHADYCOVE_VENDORID)
+			ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+					0x0, CHGRCTRL1_OTGMODE_MASK);
 	}
 
-	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
-			WDT_NOKICK_DISABLE, CHGRCTRL0_WDT_NOKICK_MASK);
+	return ret;
 }
 
 int pmic_enable_charging(bool enable)
@@ -840,6 +862,60 @@ int pmic_get_battery_pack_temp(int *temp)
 	return pmic_read_adc_val(GPADC_BATTEMP0, temp, &chc);
 }
 
+static int get_charger_type()
+{
+	int ret;
+	u8 val;
+	int chgr_type;
+
+	ret = pmic_read_reg(USBSRCDETSTATUS_ADDR, &val);
+	if (ret != 0) {
+		dev_err(chc.dev,
+			"Error reading USBSRCDETSTAT-register 0x%2x\n",
+			USBSRCDETSTATUS_ADDR);
+		return 0;
+	}
+
+	chgr_type = (val & USBSRCDET_USBSRCRSLT_MASK) >> 2;
+
+	switch (chgr_type) {
+	case PMIC_CHARGER_TYPE_SDP:
+		return POWER_SUPPLY_CHARGER_TYPE_USB_SDP;
+	case PMIC_CHARGER_TYPE_DCP:
+		return POWER_SUPPLY_CHARGER_TYPE_USB_DCP;
+	case PMIC_CHARGER_TYPE_CDP:
+		return POWER_SUPPLY_CHARGER_TYPE_USB_CDP;
+	case PMIC_CHARGER_TYPE_ACA:
+		return POWER_SUPPLY_CHARGER_TYPE_USB_ACA;
+	case PMIC_CHARGER_TYPE_SE1:
+		return POWER_SUPPLY_CHARGER_TYPE_SE1;
+	case PMIC_CHARGER_TYPE_MHL:
+		return POWER_SUPPLY_CHARGER_TYPE_MHL;
+	default:
+		return POWER_SUPPLY_CHARGER_TYPE_NONE;
+	}
+}
+
+static void handle_internal_usbphy_notifications(int mask)
+{
+	struct power_supply_cable_props cap;
+
+	cap.chrg_evt = mask ?
+		POWER_SUPPLY_CHARGER_EVENT_CONNECT :
+		POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
+	cap.chrg_type = get_charger_type();
+
+	if (cap.chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_SDP)
+		cap.mA = 0;
+	else if ((cap.chrg_type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP)
+			|| (cap.chrg_type == POWER_SUPPLY_TYPE_USB_CDP)
+			|| (cap.chrg_type == POWER_SUPPLY_CHARGER_TYPE_SE1))
+		cap.mA = 1500;
+
+	atomic_notifier_call_chain(&chc.otg->notifier,
+			USB_EVENT_CHARGER, &cap);
+}
+
 static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 				struct interrupt_info int_info[],
 				int int_info_size)
@@ -937,8 +1013,12 @@ static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 				wake_unlock(&chc.wakelock);
 			}
 		}
-		atomic_notifier_call_chain(&chc.otg->notifier,
-				USB_EVENT_VBUS, &mask);
+
+		if (chc.is_internal_usb_phy)
+			handle_internal_usbphy_notifications(mask);
+		else
+			atomic_notifier_call_chain(&chc.otg->notifier,
+					USB_EVENT_VBUS, &mask);
 	}
 
 	return;
@@ -1322,6 +1402,8 @@ static int pmic_check_initial_events(void)
 static int pmic_chrgr_probe(struct platform_device *pdev)
 {
 	int retval = 0;
+	u8 val;
+	int reg_index;
 
 	if (!pdev)
 		return -ENODEV;
@@ -1342,6 +1424,29 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 		dev_err(chc.dev,
 			"Error reading PMIC ID register\n");
 		return retval;
+	}
+
+	dev_info(chc.dev, "PMIC-ID: %x\n", chc.pmic_id);
+	if ((chc.pmic_id & PMIC_VENDOR_ID_MASK) != BASINCOVE_VENDORID) {
+		retval = pmic_read_reg(CHGRSTATUS_ADDR, &val);
+		if (retval) {
+			dev_err(chc.dev,
+				"Error reading CHGRSTATUS-register 0x%2x\n",
+				CHGRSTATUS_ADDR);
+			return retval;
+		}
+
+		if (val & CHGRSTATUS_USBSEL_MASK) {
+			dev_info(chc.dev, "SOC-Internal-USBPHY used\n");
+			chc.is_internal_usb_phy = true;
+		}
+	}
+
+	for (reg_index = 0; reg_index < ARRAY_SIZE(pmic_regs); reg_index++) {
+		int vendor_id = chc.pmic_id & PMIC_VENDOR_ID_MASK;
+		if (!strcmp(pmic_regs[reg_index].reg_name, "THRMBATZONE_ADDR"))
+			pmic_regs[reg_index].addr
+				= GET_THRMBATZONE_ADDR(vendor_id);
 	}
 
 	chc.sfi_bcprof = kzalloc(sizeof(struct ps_batt_chg_prof),
