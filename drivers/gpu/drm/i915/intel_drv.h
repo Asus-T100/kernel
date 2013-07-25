@@ -606,4 +606,5 @@ bool is_sprite_enabled(struct drm_i915_private *dev_priv,
 			enum pipe pipe, enum plane plane);
 bool is_cursor_enabled(struct drm_i915_private *dev_priv,
 			enum pipe pipe);
+bool is_maxfifo_needed(struct drm_i915_private *dev_priv);
 #endif /* __INTEL_DRV_H__ */

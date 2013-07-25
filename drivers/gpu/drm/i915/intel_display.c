@@ -1310,6 +1310,19 @@ bool is_cursor_enabled(struct drm_i915_private *dev_priv,
 	return ret;
 }
 
+bool is_maxfifo_needed(struct drm_i915_private *dev_priv)
+{
+	if (!(is_plane_enabled(dev_priv, PLANE_A) &&
+		is_plane_enabled(dev_priv, PLANE_B)) &&
+		!(is_sprite_enabled(dev_priv, PIPE_A, PLANE_A) ||
+		is_sprite_enabled(dev_priv, PIPE_A, PLANE_B) ||
+		is_sprite_enabled(dev_priv, PIPE_B, PLANE_A) ||
+		is_sprite_enabled(dev_priv, PIPE_B, PLANE_B)))
+		return true;
+	else
+		return false;
+}
+
 static void assert_planes_disabled(struct drm_i915_private *dev_priv,
 				   enum pipe pipe)
 {
