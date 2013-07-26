@@ -348,8 +348,6 @@ struct intel_dwc_otg_pdata {
 	int no_host_mode;
 	int no_device_mode;
 	int charging_compliance;
-	int gpio_cs;
-	int gpio_reset;
 };
 
 /** The main structure to keep track of OTG driver state. */

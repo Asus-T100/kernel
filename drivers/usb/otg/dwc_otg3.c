@@ -12,7 +12,6 @@
 #include <linux/version.h>
 #include <linux/suspend.h>
 #include <linux/intel_mid_pm.h>
-#include <linux/gpio.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -652,6 +651,9 @@ static enum power_supply_charger_cable_type
 	enum power_supply_charger_cable_type type =
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
+	/* PHY Enable: */
+	enable_usb_phy(otg, true);
+
 	/* Wait 10ms (~5ms before PHY de-asserts DIR,
 	 * XXus for initial Link reg sync-up).*/
 	msleep(20);
@@ -1040,9 +1042,6 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 			POWER_SUPPLY_CHARGER_TYPE_NONE;
 	unsigned long flags, mA = 0;
 
-	/* PHY Enable: */
-	enable_usb_phy(otg, true);
-
 	/* FIXME: Skip charger detection flow for baytrail */
 	if (otg->otg_data->is_byt)
 		return DWC_STATE_B_PERIPHERAL;
@@ -1134,7 +1133,7 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
-	if (!is_hybridvp(otg) || otg->otg_data->is_byt)
+	if (!is_hybridvp(otg))
 		enable_usb_phy(otg, false);
 
 	/* Disable hibernation mode by default */
@@ -1440,24 +1439,6 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 {
 	int ret;
-
-	if (otg->otg_data->is_byt && otg->otg_data->gpio_cs
-		&& otg->otg_data->gpio_reset) {
-		if (on_off) {
-			/* Turn ON phy via CS pin */
-			gpio_direction_output(otg->otg_data->gpio_cs, 1);
-			usleep_range(200, 300);
-
-			/* Do PHY reset after enable the PHY */
-			gpio_direction_output(otg->otg_data->gpio_reset, 0);
-			usleep_range(200, 500);
-			gpio_set_value(otg->otg_data->gpio_reset, 1);
-		} else {
-			/* Turn OFF phy via CS pin */
-			gpio_direction_output(otg->otg_data->gpio_cs, 0);
-		}
-		return 0;
-	}
 
 	if (on_off) {
 		ret = intel_scu_ipc_update_register(PMIC_VLDOCNT,
@@ -1858,26 +1839,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		otg_err(otg, "can't register transceiver, err: %d\n",
 			retval);
 		goto exit;
-	}
-
-	/* gpio request for BYT */
-	if (otg->otg_data->is_byt) {
-		retval = gpio_request(otg->otg_data->gpio_reset,
-					"tusb1211_reset");
-		if (retval < 0) {
-			otg_err(otg, "fail to request phy reset gpio(%d)\n",
-						otg->otg_data->gpio_reset);
-			retval = -ENODEV;
-			goto exit;
-		}
-		retval = gpio_request(otg->otg_data->gpio_cs,
-					"tusb1211_cs");
-		if (retval < 0) {
-			otg_err(otg, "fail to request phy cs gpio(%d)\n",
-						otg->otg_data->gpio_cs);
-			retval = -ENODEV;
-			goto exit;
-		}
 	}
 
 	if (!otg->otg_data->no_device_mode) {

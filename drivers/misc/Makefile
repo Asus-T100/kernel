@@ -54,5 +54,4 @@ obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
 obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
 obj-$(CONFIG_MID_I2S_DEV)       += mid_i2s_dev/
 obj-$(CONFIG_EMMC_IPANIC)	+= emmc_ipanic.o
-obj-$(CONFIG_VLV2_PLAT_CLK)	+= vlv2_plat_clock.o
 obj-$(CONFIG_INTEL_MEI)		+= mei/

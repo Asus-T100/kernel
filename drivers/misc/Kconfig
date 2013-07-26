@@ -548,11 +548,6 @@ config EMMC_IPANIC
 	 Driver which handles kernel panics and attempts to write
 	 critical debugging data to EMMC.
 
-config VLV2_PLAT_CLK
-	tristate "Vlv2 platform clock control driver"
-	---help---
-	 Driver to enable the platform clock control for valleyview2
-
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
