@@ -911,15 +911,36 @@ load_firmware(struct atomisp_device *isp)
 {
 	const struct firmware *fw;
 	int rc;
-	char *fw_path = IS_ISP2400(isp) ? ISP2400_FW_PATH : MFLD_FW_PATH;
+	char *fw_path = NULL;
 
-	/*
-	 * FIXME: BYT uses css2400B0 firmware
-	 */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		fw_path = ISP2400B0_FW_PATH;
-	else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
-		fw_path = ISP2400_FW_PATH;
+	if (isp->media_dev.driver_version == ATOMISP_CSS_VERSION_20) {
+		if (isp->media_dev.hw_revision ==
+		    ((ATOMISP_HW_REVISION_ISP2400 << ATOMISP_HW_REVISION_SHIFT)
+		     | ATOMISP_HW_STEPPING_A0))
+			fw_path = "shisp_2400_cssv2.bin";
+
+		if (isp->media_dev.hw_revision ==
+		    ((ATOMISP_HW_REVISION_ISP2400 << ATOMISP_HW_REVISION_SHIFT)
+		     | ATOMISP_HW_STEPPING_B0))
+			fw_path = "shisp_2400b0_cssv2.bin";
+	} else if (isp->media_dev.driver_version == ATOMISP_CSS_VERSION_15) {
+		if (isp->media_dev.hw_revision ==
+		    ((ATOMISP_HW_REVISION_ISP2400 << ATOMISP_HW_REVISION_SHIFT)
+		     | ATOMISP_HW_STEPPING_A0))
+			fw_path = "shisp_2400.bin";
+
+		if ((isp->media_dev.hw_revision >> ATOMISP_HW_REVISION_SHIFT)
+			== ATOMISP_HW_REVISION_ISP2300)
+			fw_path = "shisp_css15.bin";
+	}
+
+	if (!fw_path) {
+		dev_err(isp->dev,
+			"Unsupported driver_version 0x%x, hw_revision 0x%x\n",
+			isp->media_dev.driver_version,
+			isp->media_dev.hw_revision);
+		return NULL;
+	}
 
 	rc = request_firmware(&fw, fw_path, isp->dev);
 	if (rc) {

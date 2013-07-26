@@ -282,14 +282,4 @@ extern void *atomisp_kernel_malloc(size_t bytes);
 
 extern void atomisp_kernel_free(void *ptr);
 
-#define MFLD_FW_PATH	"shisp_css15.bin"
-
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-#define ISP2400_FW_PATH   "shisp_2400_cssv2.bin"
-#define ISP2400B0_FW_PATH   "shisp_2400b0_cssv2.bin"
-#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
-#define ISP2400_FW_PATH   "shisp_2400.bin"
-#define ISP2400B0_FW_PATH   "shisp_2400b0.bin"
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-
 #endif /* __ATOMISP_INTERNAL_H__ */
