@@ -1632,7 +1632,10 @@ static void intel_disable_pll(struct drm_i915_private *dev_priv, enum pipe pipe)
 
 	reg = DPLL(pipe);
 	val = I915_READ(reg);
-	val &= ~DPLL_VCO_ENABLE;
+	val &= ~(DPLL_VCO_ENABLE | DPLL_EXT_BUFFER_ENABLE_VLV |
+		DPLL_VGA_MODE_DIS | DPLL_INTEGRATED_CLOCK_VLV);
+	if (pipe)
+		val &= ~DPLL_REFA_CLK_ENABLE_VLV;
 	I915_WRITE(reg, val);
 	POSTING_READ(reg);
 }
