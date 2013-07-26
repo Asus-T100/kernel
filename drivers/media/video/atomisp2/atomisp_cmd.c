@@ -933,6 +933,16 @@ static void atomisp_buf_done(struct atomisp_sub_device *asd, int error,
 			asd->params.last_frame_status =
 				asd->frame_status[vb->i];
 
+			if (isp->asd.continuous_mode->val) {
+				unsigned int exp_id = frame->exp_id;
+
+				if (css_pipe_id == CSS_PIPE_ID_PREVIEW)
+					isp->latest_preview_exp_id = exp_id;
+				else if (css_pipe_id == CSS_PIPE_ID_CAPTURE)
+					dev_dbg(isp->dev,
+						"ZSL raw buffer id %d\n",
+						exp_id);
+			}
 			break;
 		default:
 			break;

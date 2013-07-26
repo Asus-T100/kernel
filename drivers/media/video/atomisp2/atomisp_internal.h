@@ -271,6 +271,8 @@ struct atomisp_device {
 	struct workqueue_struct *delayed_init_workq;
 	unsigned int delayed_init;
 	struct work_struct delayed_init_work;
+
+	unsigned int latest_preview_exp_id; /* CSS ZSL raw buffer id */
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \
