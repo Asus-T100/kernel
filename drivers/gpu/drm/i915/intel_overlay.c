@@ -245,7 +245,7 @@ i830_activate_pipe_a(struct drm_device *dev)
 	struct drm_display_mode vesa_640x480 = {
 		DRM_MODE("640x480", DRM_MODE_TYPE_DRIVER, 25175, 640, 656,
 			 752, 800, 0, 480, 489, 492, 525, 0,
-			 DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC)
+			 DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC, 0)
 	}, *mode;
 
 	crtc = to_intel_crtc(dev_priv->pipe_to_crtc_mapping[0]);

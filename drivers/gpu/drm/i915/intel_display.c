@@ -6398,7 +6398,8 @@ static void intel_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
 /* VESA 640x480x72Hz mode to set on the pipe */
 static struct drm_display_mode load_detect_mode = {
 	DRM_MODE("640x480", DRM_MODE_TYPE_DEFAULT, 31500, 640, 664,
-		 704, 832, 0, 480, 489, 491, 520, 0, DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC),
+		704, 832, 0, 480, 489, 491, 520, 0,
+		DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC, 0),
 };
 
 static struct drm_framebuffer *

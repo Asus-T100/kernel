@@ -335,12 +335,12 @@ static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
 	int hdisp, vdisp, vref, htot, vtot, am_flag, em_flag;
 	int chk_hdisp, chk_vdisp, chk_vref, chk_flag;
 	for (uindex = 0; uindex < drm_num_cea_modes ; uindex++) {
-		hdisp = edid_cea_modes[uindex].mode.hdisplay;
-		vdisp = edid_cea_modes[uindex].mode.vdisplay;
-		htot = edid_cea_modes[uindex].mode.htotal;
-		vtot = edid_cea_modes[uindex].mode.vtotal;
-		vref = edid_cea_modes[uindex].mode.clock*1000/htot/vtot;
-		em_flag = edid_cea_modes[uindex].mode.flags &
+		hdisp = edid_cea_modes[uindex].hdisplay;
+		vdisp = edid_cea_modes[uindex].vdisplay;
+		htot = edid_cea_modes[uindex].htotal;
+		vtot = edid_cea_modes[uindex].vtotal;
+		vref = edid_cea_modes[uindex].clock*1000/htot/vtot;
+		em_flag = edid_cea_modes[uindex].flags &
 						DRM_MODE_FLAG_INTERLACE;
 		am_flag = adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE;
 		chk_hdisp = (adjusted_mode->hdisplay == hdisp);
@@ -350,7 +350,10 @@ static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
 
 		if (chk_hdisp && chk_vdisp && chk_vref && chk_flag) {
 			avi_if.body.avi.VIC = uindex+1;
-			avi_if.body.avi.C_M_R |= edid_cea_modes[uindex].PAR<<4;
+			if (!(vdisp % 3) && ((vdisp * 4 / 3) == hdisp))
+				avi_if.body.avi.C_M_R |= 0x10;
+			else if (!(vdisp % 9) && ((vdisp * 16 / 9) == hdisp))
+				avi_if.body.avi.C_M_R |= 0x20;
 			break;
 		}
 	}

@@ -1533,7 +1533,7 @@ do_cea_modes (struct drm_connector *connector, u8 *db, u8 len)
 		if (cea_mode < drm_num_cea_modes) {
 			struct drm_display_mode *newmode;
 			newmode = drm_mode_duplicate(dev,
-					&(edid_cea_modes[cea_mode].mode));
+					&(edid_cea_modes[cea_mode]));
 			if (newmode) {
 				drm_mode_probed_add(connector, newmode);
 				modes++;
