@@ -1401,7 +1401,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1414,7 +1413,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1427,7 +1425,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x0D70, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1440,7 +1437,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x0548, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1453,7 +1449,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1466,7 +1461,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x07D0, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1479,7 +1473,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1492,7 +1485,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1505,7 +1497,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1518,7 +1509,6 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 };
@@ -1534,7 +1524,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1547,7 +1536,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x079E, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1560,7 +1548,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x08CA, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1573,7 +1560,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1586,7 +1572,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x09A6, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1599,7 +1584,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1612,7 +1596,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1625,7 +1608,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1638,7 +1620,6 @@ struct imx_resolution imx175_res_still[] = {
 		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 };
@@ -1654,7 +1635,6 @@ struct imx_resolution imx175_res_video[] = {
 		.lines_per_frame = 0x0548, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1667,7 +1647,6 @@ struct imx_resolution imx175_res_video[] = {
 		.lines_per_frame = 0x0548, /* consistent with regs arrays */
 		.bin_factor_x =	4,
 		.bin_factor_y =	4,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1680,7 +1659,6 @@ struct imx_resolution imx175_res_video[] = {
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1693,7 +1671,6 @@ struct imx_resolution imx175_res_video[] = {
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1706,7 +1683,6 @@ struct imx_resolution imx175_res_video[] = {
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.skip_frames = 3,
 		.used = 0,
 	},
 	{
@@ -1719,7 +1695,6 @@ struct imx_resolution imx175_res_video[] = {
 		.lines_per_frame = 0x06A4, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 3,
 		.used = 0,
 	},
 };

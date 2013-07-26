@@ -13,7 +13,6 @@
 #ifndef __KERNEL__
 #include <stdbool.h>
 #endif
-
 #include "system_types.h"
 
 /**

@@ -31,7 +31,6 @@
 #include <linux/pm_runtime.h>
 #include <acpi/acpi_bus.h>
 
-#define MAX_CHAN	4 /*max ch across controllers*/
 #include "intel_mid_dma_regs.h"
 
 static struct device *acpi_dma_dev;
@@ -64,6 +63,8 @@ static int mid_platform_get_resources(struct middma_device *mid_device,
 				      struct platform_device *pdev)
 {
 	int ret;
+	struct resource *rsrc;
+
 	pr_debug("%s", __func__);
 
 	/* All ACPI resource request here */
@@ -73,12 +74,16 @@ static int mid_platform_get_resources(struct middma_device *mid_device,
 		return ret;
 	pr_debug("dma_base:%p", mid_device->dma_base);
 
-	ret = mid_get_and_map_rsrc(&mid_device->mask_reg, pdev, 1);
-	if (ret)
-		return ret;
-	/* mask_reg should point to ISRX register */
-	mid_device->mask_reg += 0x18;
-	pr_debug("pimr_base:%p", mid_device->mask_reg);
+	/* only get the resource from device table
+		mapping is performed in common code */
+	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!rsrc) {
+		pr_err("%s: Invalid resource", __func__);
+		return -EIO;
+	}
+	/* add offset for ISRX register */
+	mid_device->pimr_base = rsrc->start + SHIM_ISRX_OFFSET;
+	pr_debug("pimr_base:%#x", mid_device->pimr_base);
 
 	mid_device->irq = platform_get_irq(pdev, 0);
 	if (mid_device->irq < 0) {

@@ -57,6 +57,7 @@ static void  vvx09f006a00_get_panel_info(int pipe,
 
 static void vvx09f006a00_msgbus_reset()
 {
+#ifdef CONFIG_X86_INTEL_MID
 	u32 msg_bus_port;
 	u32 msg_bus_reg;
 	u32 val;
@@ -86,6 +87,7 @@ static void vvx09f006a00_msgbus_reset()
 	val  &= 0xFFFCFFFF;
 	val  |= 0x00010000;
 	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
+#endif
 }
 
 static void vvx09f006a00_destroy(struct intel_dsi_device *dsi)

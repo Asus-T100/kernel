@@ -50,6 +50,10 @@ struct ipc_registers {
 	u32		res3[2];/* padding */
 	struct psh_msg	psh2ia[NUM_PSH2IA_IPC];/* 60h ~ 7Ch + 3 */
 	struct psh_msg	psh2cry;/* 80h ~ 84h + 3 */
+	struct psh_msg  psh2scu;/* 88h */
+	u32		msi_dir;/* 90h */
+	u32		res4[3];
+	u32		scratchpad[2];/* A0 */
 } __packed;
 
 static struct ipc_controller_t {
@@ -73,6 +77,7 @@ static struct ipc_controller_t {
  * @ch: psh channel
  * @timeout: timeout for polling busy bit, in us
  */
+#define PSH_CSR_WORKAROUND 1
 int intel_ia2psh_command(struct psh_msg *in, struct psh_msg *out,
 			 int ch, int timeout)
 {
@@ -95,13 +100,34 @@ int intel_ia2psh_command(struct psh_msg *in, struct psh_msg *out,
 	down(&ipc_ctrl.ch_lock[ch]);
 
 	in->msg |= CHANNEL_BUSY;
-
 	/* Check if channel is ready for IA sending command */
+#if PSH_CSR_WORKAROUND
+	{
+		int tm = 10000;
+
+		/* wait either D0i0 got ack'ed by PSH, or scratchpad set */
+		usleep_range(1000, 2000);
+		while (readl(&PSH_REG(scratchpad)[0]) && --tm)
+			usleep_range(100, 101);
+		if (!tm)
+			PSH_ERR("psh wait for scratchpad timeout\n");
+
+		tm = 10000;
+		while ((readl(&PSH_REG(ia2psh)[ch].msg) & CHANNEL_BUSY)
+				&& --tm)
+			usleep_range(100, 101);
+		if (!tm) {
+			PSH_ERR("psh ch[%d] wait for busy timeout\n", ch);
+			ret = -EBUSY;
+			goto end;
+		}
+	}
+#else
 	if (readl(&PSH_REG(ia2psh)[ch].msg) & CHANNEL_BUSY) {
 		ret = -EBUSY;
 		goto end;
 	}
-
+#endif
 	writel(in->param, &PSH_REG(ia2psh)[ch].param);
 	writel(in->msg, &PSH_REG(ia2psh)[ch].msg);
 
@@ -217,9 +243,6 @@ static void psh_recv_handle(int i)
 	unsigned long flags;
 
 	down(&ipc_ctrl.ch_lock[i + PSH_RECV_CH0]);
-	spin_lock_irqsave(&ipc_ctrl.lock, flags);
-	writel(readl(&PIMR(1)) & (~(1 << i)), &PIMR(1));
-	spin_unlock_irqrestore(&ipc_ctrl.lock, flags);
 
 	msg = readl(&PSH_REG(psh2ia)[i].msg) & (~CHANNEL_BUSY);
 	param = readl(&PSH_REG(psh2ia)[i].param);
@@ -234,11 +257,6 @@ static void psh_recv_handle(int i)
 	PSH_CH_HANDLE(i)(msg, param, PSH_CH_DATA(i));
 end:
 	up(&ipc_ctrl.ch_lock[i+PSH_RECV_CH0]);
-
-	spin_lock_irqsave(&ipc_ctrl.lock, flags);
-	if (PSH_CH_FLAG(i+PSH_RECV_CH0) & FLAG_BIND)
-		writel(readl(&PIMR(1)) | (1 << i), &PIMR(1));
-	spin_unlock_irqrestore(&ipc_ctrl.lock, flags);
 }
 
 static irqreturn_t psh_ipc_irq(int irq, void *data)
@@ -465,8 +483,6 @@ static int psh_ipc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	int i, ret;
 	unsigned long start, len;
 
-	if (enable_s0ix || enable_s3)
-		return -1;
 	ipc_ctrl.pdev = pci_dev_get(pdev);
 	ret = pci_enable_device(pdev);
 	if (ret)
@@ -510,10 +526,8 @@ static int psh_ipc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	ipc_ctrl.initialized = 1;
 
-#if 0
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
-#endif
 	return 0;
 
 err3:

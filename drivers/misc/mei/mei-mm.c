@@ -250,7 +250,7 @@ static long mei_mm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = -ENOTTY;
 		goto out;
 	}
-	if (!access_ok(VERIFY_WRITE, (void *)arg, _IOC_SIZE(cmd))) {
+	if (!access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd))) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -319,8 +319,10 @@ static ssize_t mei_mm_dbgfs_pool_read(struct file *file,
 			char __user *user_buf,
 			size_t count, loff_t *ppos)
 {
-
 	struct mei_mm_device *mdev = file->private_data;
+	/* if the buffer is not mapped into kernel space */
+	if (!mdev->pool.vaddr)
+		return 0;
 	return simple_read_from_buffer(user_buf, count, ppos,
 				mdev->pool.vaddr, 256);
 }
@@ -371,6 +373,9 @@ struct mei_mm_device *mei_mm_init(struct device *dev, void *vaddr,
 	struct mei_mm_device *mdev;
 	int ret;
 
+	if (!dev || !paddr || size == 0)
+		return ERR_PTR(-EINVAL);
+
 	mdev = kzalloc(sizeof(struct mei_mm_device), GFP_KERNEL);
 	if (!mdev)
 		return ERR_PTR(-ENOMEM);
@@ -420,6 +425,9 @@ out:
  */
 void mei_mm_deinit(struct mei_mm_device *mdev)
 {
+
+	if (!mdev)
+		return;
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	if (mdev->dbgfs)

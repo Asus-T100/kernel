@@ -1,7 +1,8 @@
-
-//#include "stddef.h"		/* NULL */
-//#include <stdbool.h>
-
+#ifndef __KERNEL__
+#include <stddef.h>		/* NULL */
+#include <stdbool.h>
+#include <stdint.h>
+#endif
 #include "input_formatter.h"
 #include "gp_device.h"
 

@@ -108,19 +108,9 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 /* Bits of output of CCM,  = 12, RGB[0,4095] */
 #define SH_CSS_YUV2RGB_CCM_OUTPUT_BITS    SH_CSS_RGB_GAMMA_INPUT_BITS
 
-/* Bits of fractional part of coefficient of CCM, =12, [-1,1]=[-4096,4096] */
-#define SH_CSS_YUV2RGB_CCM_COEF_SHIFT     12
-
-/* Bits of shift in calculation of CCM, =13 */
-#define SH_CSS_YUV2RGB_CCM_CALC_SHIFT     (SH_CSS_YUV2RGB_CCM_COEF_SHIFT \
-	+ (SH_CSS_YUV2RGB_CCM_INPUT_BITS - SH_CSS_YUV2RGB_CCM_OUTPUT_BITS))
-
 /* Maximum value of output of CCM */
 #define SH_CSS_YUV2RGB_CCM_MAX_OUTPUT     \
 	((1 << SH_CSS_YUV2RGB_CCM_OUTPUT_BITS) - 1)
-
-/* Bits of fractional part of coefficient of CSC */
-#define SH_CSS_RGB2YUV_CSC_COEF_SHIFT     13
 
 #define SH_CSS_NUM_INPUT_BUF_LINES        4
 

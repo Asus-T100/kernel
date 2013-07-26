@@ -909,6 +909,7 @@ typedef struct drm_i915_private {
 	/* gen6+ rps state */
 	struct {
 		struct work_struct work;
+		struct delayed_work rps_timer_work;
 		u32 pm_iir;
 		/* lock - irqsave spinlock that protectects the work_struct and
 		 * pm_iir. */
@@ -919,6 +920,7 @@ typedef struct drm_i915_private {
 		u8 cur_delay;
 		u8 min_delay;
 		u8 max_delay;
+		u8 rpe_delay;
 		u8 requested_delay; /* To track the actual requested delay */
 		u8 lowest_delay; /* lowest possible delay on the platform */
 
@@ -1023,7 +1025,7 @@ enum hdmi_force_audio {
 	HDMI_AUDIO_ON,			/* force turn on HDMI audio */
 };
 
-enum hdmi_panel_fitter {
+enum panel_fitter {
 	PFIT_OFF,
 	AUTOSCALE,
 	PILLARBOX,
@@ -1308,8 +1310,7 @@ struct drm_i915_file_private {
 #define HAS_LLC(dev)            (INTEL_INFO(dev)->has_llc)
 #define I915_NEED_GFX_HWS(dev)	(INTEL_INFO(dev)->need_gfx_hws)
 
-/* Now Hw context enabled for VLV also */
-#define HAS_HW_CONTEXTS(dev)	(INTEL_INFO(dev)->gen >= 6)
+#define HAS_HW_CONTEXTS(dev)	(INTEL_INFO(dev)->gen >= 6 && !IS_VALLEYVIEW(dev))
 #define HAS_ALIASING_PPGTT(dev)	(INTEL_INFO(dev)->gen >=6 && !IS_VALLEYVIEW(dev))
 
 #define HAS_OVERLAY(dev)		(INTEL_INFO(dev)->has_overlay)
@@ -1388,6 +1389,7 @@ extern unsigned int i915_gpu_reset_min_alive_period __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
 extern int i915_enable_turbo __read_mostly;
 extern int i915_psr_support __read_mostly;
+extern int i915_bytffrd_support __read_mostly;
 extern struct drm_display_mode rot_mode;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
@@ -1775,7 +1777,7 @@ extern bool ironlake_set_drps(struct drm_device *dev, u8 val);
 extern void ironlake_init_pch_refclk(struct drm_device *dev);
 extern void gen6_set_rps(struct drm_device *dev, u8 val);
 extern void valleyview_set_rps(struct drm_device *dev, u8 val);
-extern void valleyview_update_cur_delay(struct drm_device *dev);
+extern bool valleyview_update_cur_delay(struct drm_device *dev);
 extern void intel_detect_pch(struct drm_device *dev);
 extern int intel_trans_dp_port_sel(struct drm_crtc *crtc);
 extern int intel_enable_rc6(const struct drm_device *dev);
@@ -1814,12 +1816,9 @@ extern void intel_display_print_error_state(struct seq_file *m,
 void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv, int fw_engine);
 void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv, int fw_engine);
 int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
-int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val);
-int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val);
-int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
-				u8 addr, u32 *val);
 void gen6_gt_force_wake_restore(struct drm_i915_private *dev_priv);
 
+int intel_fuse_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val);
 u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
 void intel_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);
 

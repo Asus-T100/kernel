@@ -40,6 +40,7 @@
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
 #include <linux/rpmsg.h>
+#include <linux/debugfs.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel_basincove_ocd.h>
@@ -74,35 +75,39 @@ static uint8_t cam_flash_state;
 
 static void enable_volt_trip_points(void)
 {
-	int i, ret;
-	uint8_t data;
+	int i;
+	int ret;
 
 	/*
 	 * Enable the Voltage comparator logic, so that the output
 	 * signals are asserted when a voltage drop occurs.
 	 */
 	for (i = 0; i < NUM_VOLT_LEVELS; i++) {
-		ret = intel_scu_ipc_ioread8(VWARN1_CFG + i, &data);
-		if (!ret)
-			intel_scu_ipc_iowrite8(VWARN1_CFG + i,
-						(data | VWARN_EN));
+		ret = intel_scu_ipc_update_register(VWARN1_CFG + i,
+						VWARN_EN,
+						VWARN_EN_MASK);
+		if (ret)
+			pr_err("EM_BCU: Error in %s updating register 0x%x\n",
+					__func__, (VWARN1_CFG + i));
 	}
 }
 
 static void enable_current_trip_points(void)
 {
-	int i, ret;
-	uint8_t data;
+	int i;
+	int ret;
 
 	/*
 	 * Enable the Current comparator logic, so that the output
 	 * signals are asserted when the platform current surges.
 	 */
 	for (i = 0; i < NUM_CURR_LEVELS; i++) {
-		ret = intel_scu_ipc_ioread8(MAXVCC_CFG + i, &data);
-		if (!ret)
-			intel_scu_ipc_iowrite8(MAXVCC_CFG + i,
-						(data | ICCMAX_EN));
+		ret = intel_scu_ipc_update_register(ICCMAXVCC_CFG + i,
+						ICCMAXVCC_EN,
+						ICCMAXVCC_EN_MASK);
+		if (ret)
+			pr_err("EM_BCU: Error in %s updating reg 0x%0x\n",
+					__func__, (ICCMAXVCC_CFG + i));
 	}
 }
 
@@ -186,7 +191,7 @@ static ssize_t store_curr_thres(struct device *dev,
 	 * Since VCC_CFG and VNN_CFG are consecutive registers, calculate the
 	 * required register address using s_attr->nr.
 	 */
-	ret = set_threshold(MAXVCC_CFG + s_attr->nr, pos);
+	ret = set_threshold(ICCMAXVCC_CFG + s_attr->nr, pos);
 
 	return ret ? ret : count;
 }
@@ -201,7 +206,7 @@ static ssize_t show_curr_thres(struct device *dev,
 
 	mutex_lock(&ocd_update_lock);
 
-	ret = intel_scu_ipc_ioread8(MAXVCC_CFG + s_attr->nr, &data);
+	ret = intel_scu_ipc_ioread8(ICCMAXVCC_CFG + s_attr->nr, &data);
 
 	mutex_unlock(&ocd_update_lock);
 
@@ -337,28 +342,208 @@ static ssize_t show_camflash_ctrl(struct device *dev,
 	return sprintf(buf, "%d\n", cam_flash_state);
 }
 
+#ifdef CONFIG_DEBUG_FS
+
+struct dentry *bcbcu_dbgfs_root;
+
+#define MAX_RONLY_REG	3
+
+static struct bcu_reg_info bcbcu_reg[] = {
+	reg_info(S_BCUINT),
+	reg_info(BCUIRQ),
+	reg_info(IRQLVL1),
+	reg_info(VWARN1_CFG),
+	reg_info(VWARN2_CFG),
+	reg_info(VCRIT_CFG),
+	reg_info(ICCMAXVSYS_CFG),
+	reg_info(ICCMAXVCC_CFG),
+	reg_info(ICCMAXVNN_CFG),
+	reg_info(VFLEXSRC_BEH),
+	reg_info(VFLEXDIS_BEH),
+	reg_info(VIBDIS_BEH),
+	reg_info(CAMFLTORCH_BEH),
+	reg_info(CAMFLDIS_BEH),
+	reg_info(BCUDISW2_BEH),
+	reg_info(BCUDISCRIT_BEH),
+	reg_info(S_BCUCTRL),
+	reg_info(MBCUIRQ),
+	reg_info(MIRQLVL1)
+};
+
+/**
+ * bcbcu_dbgfs_write - debugfs: write the new state to an endpoint.
+ * @file: The seq_file to write data to.
+ * @user_buf: the user data which is need to write to an endpoint
+ * @count: the size of the user data
+ * @pos: loff_t" is a "long offset", which is the current reading or writing
+ *       position.
+ *
+ * Send data to the device. If NULL,-EINVAL/-EFAULT return to the write call to
+ * the calling program if it is non-negative return value represents the number
+ * of bytes successfully written.
+ */
+static ssize_t bcbcu_dbgfs_write(struct file *file,
+			const char __user *user_buf, size_t count, loff_t *pos)
+{
+	char buf[count];
+	u8 data;
+	u16 addr;
+	int ret;
+	struct seq_file *s = file->private_data;
+
+	if (!s) {
+		ret = -EINVAL;
+		goto error;
+	}
+
+	addr = *((u16 *)s->private);
+	if ((addr == BCUIRQ) || (addr == S_BCUINT) || (addr == IRQLVL1)) {
+		pr_err("EM_BCU: DEBUGFS no permission to write Addr(0x%04x)\n",
+				addr);
+		ret = -EIO;
+		goto error;
+	}
+
+	if (copy_from_user(buf, user_buf, count)) {
+		pr_err("EM_BCU: DEBUGFS unable to copy the user data.\n");
+		ret = -EFAULT;
+		goto error;
+	}
+
+	buf[count-1] = '\0';
+	if (kstrtou8(buf, 16, &data)) {
+		pr_err("EM_BCU: DEBUGFS invalid user data.\n");
+		ret = -EINVAL;
+		goto error;
+	}
+
+	ret = intel_scu_ipc_iowrite8(addr, data);
+	if (ret < 0) {
+		pr_err("EM_BCU: Dbgfs write error Addr: 0x%04x Data: 0x%02x\n",
+				addr, data);
+		goto error;
+	}
+	pr_debug("EM_BCU: DEBUGFS written Data: 0x%02x Addr: 0x%04x\n",
+			data, addr);
+	return count;
+
+error:
+	return ret;
+}
+
+/**
+ * bcbcu_reg_show - debugfs: show the state of an endpoint.
+ * @s: The seq_file to read data from.
+ * @unused: not used
+ *
+ * This debugfs entry shows the content of the register
+ * given in the data parameter.
+ */
+static int bcbcu_reg_show(struct seq_file *s, void *unused)
+{
+	u16 addr = 0;
+	u8 data = 0;
+	int ret;
+
+	addr = *((u16 *)s->private);
+	ret = intel_scu_ipc_ioread8(addr, &data);
+	if (ret) {
+		pr_err("EM_BCU: Error in reading 0x%04x register!!\n", addr);
+		return ret;
+	}
+	seq_printf(s, "0x%02x\n", data);
+
+	return 0;
+}
+
+/**
+ * bcbcu_dbgfs_open - debugfs: to open the endpoint for read/write operation.
+ * @inode: inode structure is used by the kernel internally to represent files.
+ * @file: It is created by the kernel on open and is passed to any function
+ *        that operates on the file, until the last close. After all instances
+ *        of the file are closed, the kernel releases the data structure.
+ *
+ * This is the first operation of the files on the device, does not require the
+ * driver to declare a corresponding method. If this is NULL, the device is
+ * turned on has been successful, but the driver will not be notified
+ */
+static int bcbcu_dbgfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, bcbcu_reg_show, inode->i_private);
+}
+
+static const struct file_operations bcbcu_dbgfs_fops = {
+	.owner		= THIS_MODULE,
+	.open		= bcbcu_dbgfs_open,
+	.release	= single_release,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.write		= bcbcu_dbgfs_write,
+};
+
+static void bcbcu_create_debugfs(struct ocd_info *info)
+{
+	char reg_name[MAX_REGNAME_LEN] = {0};
+	u32 idx;
+	u32 max_dbgfs_num = ARRAY_SIZE(bcbcu_reg);
+	struct dentry *entry;
+
+	bcbcu_dbgfs_root = debugfs_create_dir(DRIVER_NAME, NULL);
+	if (IS_ERR(bcbcu_dbgfs_root)) {
+		dev_warn(info->dev, "DEBUGFS directory(%s) create failed!\n",
+				DRIVER_NAME);
+		return;
+	}
+
+	for (idx = 0; idx < max_dbgfs_num; idx++) {
+		snprintf(reg_name, MAX_REGNAME_LEN, "%s", bcbcu_reg[idx].name);
+		entry = debugfs_create_file(reg_name,
+						bcbcu_reg[idx].mode,
+						bcbcu_dbgfs_root,
+						&bcbcu_reg[idx].addr,
+						&bcbcu_dbgfs_fops);
+		if (IS_ERR(entry)) {
+			debugfs_remove_recursive(bcbcu_dbgfs_root);
+			bcbcu_dbgfs_root = NULL;
+			dev_warn(info->dev, "DEBUGFS %s creation failed!!\n",
+					reg_name);
+			return;
+		}
+	}
+	dev_info(info->dev, "DEBUGFS %s created successfully.\n", DRIVER_NAME);
+}
+
+static inline void bcbcu_remove_debugfs(struct ocd_info *info)
+{
+	if (bcbcu_dbgfs_root)
+		debugfs_remove_recursive(bcbcu_dbgfs_root);
+}
+#else
+static inline void bcbcu_create_debugfs(struct ocd_info *info) { }
+static inline void bcbcu_remove_debugfs(struct ocd_info *info) { }
+#endif /* CONFIG_DEBUG_FS */
+
 static void handle_VW1_event(int event, void *dev_data)
 {
 	uint8_t irq_status, beh_data;
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
 
-	dev_info(cinfo->dev, "EM:BCU: VW1 Event %d has occured\n", event);
+	dev_info(cinfo->dev, "EM_BCU: VW1 Event %d has occured\n", event);
 	/* Notify using UEvent */
 	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
 
 	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
 	if (ret)
 		goto ipc_fail;
-	dev_dbg(cinfo->dev, "EM:BCU: S_BCUINT: %x\n", irq_status);
+	dev_dbg(cinfo->dev, "EM_BCU: S_BCUINT: %x\n", irq_status);
 
 	/* If Vsys is below WARN1 level-No action required from driver */
 	if (!(irq_status & SVWARN1)) {
 		/* Vsys is above WARN1 level */
-		ret = intel_scu_ipc_ioread8(CAMTORCH_BEH, &beh_data);
+		ret = intel_scu_ipc_ioread8(CAMFLTORCH_BEH, &beh_data);
 		if (ret)
 			goto ipc_fail;
-
 		if (IS_ASSRT_ON_VW1(beh_data) && IS_STICKY(beh_data)) {
 			ret = intel_scu_ipc_update_register(S_BCUCTRL,
 				0xFF, SBCUCTRL_CAMTORCH);
@@ -369,7 +554,7 @@ static void handle_VW1_event(int event, void *dev_data)
 	return;
 
 ipc_fail:
-	dev_err(cinfo->dev, "EM:BCU: ipc read/write failed:func:%s()\n",
+	dev_err(cinfo->dev, "EM_BCU: ipc read/write failed:func:%s()\n",
 								__func__);
 	return;
 }
@@ -380,14 +565,14 @@ static void handle_VW2_event(int event, void *dev_data)
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
 
-	dev_info(cinfo->dev, "EM:BCU: VW2 Event %d has occured\n", event);
+	dev_info(cinfo->dev, "EM_BCU: VW2 Event %d has occured\n", event);
 	/* Notify using UEvent */
 	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
 
 	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
 	if (ret)
 		goto ipc_fail;
-	dev_dbg(cinfo->dev, "EM:BCU: S_BCUINT: %x\n", irq_status);
+	dev_dbg(cinfo->dev, "EM_BCU: S_BCUINT: %x\n", irq_status);
 
 	/* If Vsys is below WARN2 level-No action required from driver */
 	if (!(irq_status & SVWARN2)) {
@@ -395,7 +580,6 @@ static void handle_VW2_event(int event, void *dev_data)
 		ret = intel_scu_ipc_ioread8(CAMFLDIS_BEH, &beh_data);
 		if (ret)
 			goto ipc_fail;
-
 		if (IS_ASSRT_ON_VW2(beh_data) && IS_STICKY(beh_data)) {
 			ret = intel_scu_ipc_update_register(S_BCUCTRL,
 						0xFF, SBCUCTRL_CAMFLDIS);
@@ -417,7 +601,7 @@ static void handle_VW2_event(int event, void *dev_data)
 	return;
 
 ipc_fail:
-	dev_err(cinfo->dev, "EM:BCU: ipc read/write failed:func:%s()\n",
+	dev_err(cinfo->dev, "EM_BCU: ipc read/write failed:func:%s()\n",
 								__func__);
 	return;
 }
@@ -426,14 +610,12 @@ static void handle_VC_event(int event, void *dev_data)
 {
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 
-	dev_info(cinfo->dev, "EM:BCU: VC Event %d has occured\n", event);
+	dev_info(cinfo->dev, "EM_BCU: VC Event %d has occured\n", event);
 	/* Notify using UEvent */
 	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
 
 	return;
 }
-
-
 
 static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 {
@@ -465,12 +647,12 @@ static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 	}
 	if (irq_data & GSMPULSE_IRQ) {
 		event = GSMPULSE;
-		dev_info(cinfo->dev, "EM:BCU: GSMPULSE Event %d has occured\n",
+		dev_info(cinfo->dev, "EM_BCU: GSMPULSE Event %d has occured\n",
 									event);
 	}
 	if (irq_data & TXPWRTH_IRQ) {
 		event = TXPWRTH;
-		dev_info(cinfo->dev, "EM:BCU: TXPWRTH Event %d has occured\n",
+		dev_info(cinfo->dev, "EM_BCU: TXPWRTH Event %d has occured\n",
 									event);
 	}
 
@@ -478,7 +660,7 @@ static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 	ret = intel_scu_ipc_update_register(MIRQLVL1, 0x00, BCU_ALERT);
 	if (ret) {
 		dev_err(cinfo->dev,
-			"EM:BCU: Unmasking of BCU failed:%d\n", ret);
+			"EM_BCU: Unmasking of BCU failed:%d\n", ret);
 		goto ipc_fail;
 	}
 
@@ -565,7 +747,7 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 	ret = intel_scu_ipc_update_register(MIRQLVL1, 0x00, BCU_ALERT);
 	if (ret) {
 		dev_err(&pdev->dev,
-			"EM:BCU: Unmasking of BCU failed:%d\n", ret);
+			"EM_BCU: Unmasking of BCU failed:%d\n", ret);
 		goto exit_ioremap;
 	}
 
@@ -576,7 +758,7 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 						DRIVER_NAME, cinfo);
 	if (ret) {
 		dev_err(&pdev->dev,
-			"EM:BCU: request_threaded_irq failed:%d\n", ret);
+			"EM_BCU: request_threaded_irq failed:%d\n", ret);
 		goto exit_ioremap;
 	}
 
@@ -585,20 +767,23 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 
 	ret = ocd_plat_data->bcu_config_data(&ocd_config_data);
 	if (ret) {
-		dev_err(&pdev->dev, "EM:BCU: Read SMIP failed:%d\n", ret);
+		dev_err(&pdev->dev, "EM_BCU: Read SMIP failed:%d\n", ret);
 		goto exit_freeirq;
 	}
 
 	/* Program the BCU with default values read from the smip*/
 	ret = program_bcu(&ocd_config_data);
 	if (ret) {
-		dev_err(&pdev->dev, "EM:BCU: program_bcu() failed:%d\n", ret);
+		dev_err(&pdev->dev, "EM_BCU: program_bcu() failed:%d\n", ret);
 		goto exit_freeirq;
 	}
 
 	enable_volt_trip_points();
 	enable_current_trip_points();
 	cam_flash_state = CAMFLASH_STATE_ON;
+
+	/* Create debufs for the basincove bcu registers */
+	bcbcu_create_debugfs(cinfo);
 
 	return 0;
 
@@ -634,6 +819,7 @@ static int mrfl_ocd_remove(struct platform_device *pdev)
 	if (cinfo) {
 		free_irq(cinfo->irq, cinfo);
 		iounmap(cinfo->bcu_intr_addr);
+		bcbcu_remove_debugfs(cinfo);
 		hwmon_device_unregister(cinfo->dev);
 		sysfs_remove_group(&pdev->dev.kobj, &mrfl_ocd_gr);
 		kfree(cinfo);
@@ -676,7 +862,6 @@ static void mrfl_ocd_module_exit(void)
 }
 
 /* RPMSG related functionality */
-
 static int mrfl_ocd_rpmsg_probe(struct rpmsg_channel *rpdev)
 {
 	int ret = 0;

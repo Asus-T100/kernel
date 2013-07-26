@@ -87,7 +87,7 @@ int process_send_cmd(struct psh_ia_priv *psh_ia_data,
 			pcmd++;
 		}
 
-		ret = intel_ia2psh_command(&in, NULL, ch, 100000);
+		ret = intel_ia2psh_command(&in, NULL, ch, 1000000);
 		if (ret) {
 			pr_err("sendcmd through IPC channel fail!\n");
 			return -1;
@@ -172,8 +172,6 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto pci_err;
 	}
 	*/
-	if (enable_s0ix || enable_s3)
-		return -1;
 	plt_priv = kzalloc(sizeof(*plt_priv), GFP_KERNEL);
 	if (!plt_priv) {
 		dev_err(&pdev->dev, "can not allocate plt_priv\n");
@@ -207,11 +205,9 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto irq_err;
 	}
 
-#if 0
 	/* just put this dev into suspend status always, since this is fake */
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
-#endif
 	return 0;
 
 irq_err:

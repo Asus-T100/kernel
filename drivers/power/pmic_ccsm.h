@@ -251,6 +251,9 @@
 #define BATT_TEMP_WARM			45	/* 45 degrees */
 #define MIN_BATT_PROF			4
 
+#define PMIC_REG_NAME_LEN		28
+#define PMIC_REG_DEF(x) { .reg_name = #x, .addr = x }
+
 struct interrupt_info {
 	/* Interrupt register mask*/
 	u8 int_reg_mask;
@@ -301,4 +304,8 @@ struct temp_lookup {
 	int temp_err;
 };
 
+struct pmic_regs_def {
+	char reg_name[PMIC_REG_NAME_LEN];
+	u8 addr;
+};
 #endif

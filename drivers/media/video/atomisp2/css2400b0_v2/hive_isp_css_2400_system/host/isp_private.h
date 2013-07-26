@@ -99,6 +99,7 @@ STORAGE_CLASS_ISP_C void isp_dmem_store_uint32(
 {
 assert(ID < N_ISP_ID);
 assert(ISP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	device_store_uint32(ISP_DMEM_BASE[ISP0_ID] + addr, data);
 #else
@@ -113,6 +114,7 @@ STORAGE_CLASS_ISP_C uint32_t isp_dmem_load_uint32(
 {
 assert(ID < N_ISP_ID);
 assert(ISP_DMEM_BASE[ID] != (hrt_address)-1);
+	(void)ID;
 #ifndef C_RUN
 	return device_load_uint32(ISP_DMEM_BASE[ISP0_ID] + addr);
 #else

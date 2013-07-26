@@ -2837,6 +2837,13 @@ serial8250_console_write(struct console *co, const char *s, unsigned int count)
 		/* serial8250_handle_irq() already took the lock */
 		locked = 0;
 	} else if (oops_in_progress) {
+#ifdef CONFIG_EMMC_IPANIC
+static int oops_char_len;
+		if (oops_in_progress && oops_char_len++ > 2048)
+			return;
+		if (!oops_in_progress)
+			oops_char_len = 0;
+#endif
 		locked = spin_trylock(&port->lock);
 	} else
 		spin_lock(&port->lock);

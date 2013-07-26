@@ -67,6 +67,9 @@
 #define EC_BAT0_TEMP_REG		206
 #define EC_BAT0_AVG_CUR_REG		208
 
+/* 6% is minimun threshold  for platform shutdown*/
+#define EC_BAT_SAFE_MIN_CAPACITY	6
+
 struct ec_battery_info {
 	struct platform_device *pdev;
 	struct power_supply	bat;
@@ -117,6 +120,7 @@ static int ec_get_battery_property(struct power_supply *psy,
 	struct ec_battery_info *chip = container_of(psy,
 				struct ec_battery_info, bat);
 	int ret = 0, cur_sign = -1;
+	int comp_cap = 0;
 	u8 val8, cap;
 	u16 val16;
 
@@ -198,7 +202,18 @@ static int ec_get_battery_property(struct power_supply *psy,
 		ret = byt_ec_read_byte(EC_BAT0_CUR_CAP_REG, &val8);
 		if (ret < 0)
 			goto ec_read_err;
-		val->intval = val8;
+		/* 6% of battery capacity is minimun treshold for BYT-M
+		 *So, the 6% is mapped to 0% in android.
+		 * 6% to 100% is compensated with 0% to 100% to OS.
+		 * Compensated capacity = cap - ((100 - cap)*6)/100 + 0.5
+		 */
+		comp_cap = val8;
+		comp_cap = comp_cap*100 - ((100 - comp_cap) \
+				*EC_BAT_SAFE_MIN_CAPACITY) + 50 ;
+		comp_cap /= 100;
+		if (comp_cap < 0)
+			comp_cap = 0;
+		val->intval = comp_cap;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		ret = byt_ec_read_word(EC_BAT0_TEMP_REG, &val16);

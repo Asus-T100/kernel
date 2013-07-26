@@ -404,7 +404,7 @@ static u32 vlv_calc_delay_from_C0_counters(struct drm_i915_private *dev_priv)
 	/* read the CZ clock time stamp from P-unint &
 	 * render/media C0 counters from MMIO reg
 	 */
-	valleyview_punit_read(dev_priv, PUNIT_REG_CZ_TIMESTAMP, &cz_ts);
+	intel_punit_read32(dev_priv, PUNIT_REG_CZ_TIMESTAMP, &cz_ts);
 
 	render_count = I915_READ(VLV_RENDER_C0_COUNT_REG);
 	media_count = I915_READ(VLV_MEDIA_C0_COUNT_REG);
@@ -492,9 +492,11 @@ static u32 vlv_calc_delay_from_C0_counters(struct drm_i915_private *dev_priv)
 
 		atomic_inc(&dev_priv->turbodebug.up_threshold);
 
-	} else if (residency_C0_down &&
+	} else if (!dev_priv->rps.ei_interrupt_count &&
 			(residency_C0_down < VLV_RP_DOWN_EI_THRESHOLD)) {
-
+		/* This means, C0 residency is less than down threshold over
+		 * a period of VLV_INT_COUNT_FOR_DOWN_EI. So, reduce the freq
+		 */
 		if (dev_priv->rps.cur_delay > dev_priv->rps.min_delay)
 			new_delay = dev_priv->rps.cur_delay - 1;
 
@@ -564,8 +566,22 @@ static void gen6_pm_rps_work(struct work_struct *work)
 		atomic_inc(&dev_priv->turbodebug.down_threshold);
 	}
 
-	if (IS_VALLEYVIEW(dev_priv->dev))
+	if (IS_VALLEYVIEW(dev_priv->dev)) {
 		valleyview_set_rps(dev_priv->dev, new_delay);
+
+		if (new_delay > dev_priv->rps.rpe_delay) {
+			/* Freq is more than Rpe. Trigger the timer to take
+			 * care of the cases where RC6 is entered at this freq
+			 * Cancel the previous one first. No need to cancel sync
+			 * as struct_mutex will provide required synchronization
+			 */
+			cancel_delayed_work(&dev_priv->rps.rps_timer_work);
+
+			queue_delayed_work(dev_priv->wq,
+					&dev_priv->rps.rps_timer_work,
+					msecs_to_jiffies(VLV_RPS_TIMER_VALUE));
+		}
+	}
 	else
 		gen6_set_rps(dev_priv->dev, new_delay);
 

@@ -53,6 +53,20 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 		dwc_otg_pdata.no_device_mode = 0;
 		dwc_otg_pdata.no_host_mode = 1;
 		dwc_otg_pdata.is_byt = 1;
+
+		/* FIXME: Hardcode now, but need to use ACPI table for GPIO */
+		if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, RVP3) ||
+			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, RVP3)) {
+			pr_info("This is BYT RVP\n");
+			dwc_otg_pdata.gpio_cs = 156;
+			dwc_otg_pdata.gpio_reset = 144;
+		} else if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 10PR11) ||
+			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, 10PR11)) {
+			pr_info("This is BYT FFRD10 PRx\n");
+			dwc_otg_pdata.gpio_cs = 54;
+			dwc_otg_pdata.gpio_reset = 144;
+		}
+
 		return &dwc_otg_pdata;
 	default:
 		break;

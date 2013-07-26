@@ -118,6 +118,12 @@ struct fuse_file {
 	/** Kernel file handle guaranteed to be unique */
 	u64 kh;
 
+	/** Ring3 file handle for fast path*/
+	int fh_backing;
+	/** Kernel file structure points to underlying FS
+	for fast path operations */
+	struct file *kfile;
+
 	/** File handle used by userspace */
 	u64 fh;
 
@@ -403,6 +409,15 @@ struct fuse_conn {
 
 	/** The next unique request id */
 	u64 reqctr;
+
+	/** Enable fast path for this filesystem? */
+	unsigned enable_fast_path:1;
+
+	/** ring3 process ID, used to get pointer to task_struct/struct file */
+	int ring3_pid;
+
+	/** ring3 fs task pointer*/
+	struct task_struct *ring3_task;
 
 	/** Connection established, cleared on umount, connection
 	    abort and device release */

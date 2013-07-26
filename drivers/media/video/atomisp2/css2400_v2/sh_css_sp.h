@@ -47,12 +47,6 @@ sh_css_sp_init_group(bool two_ppc, enum ia_css_stream_format input_format,
 void
 store_sp_group_data(void);
 
-enum ia_css_err
-sh_css_sp_init(void);
-
-void
-sh_css_sp_uninit(void);
-
 /* Start binary (jpeg) copy on the SP */
 void
 sh_css_sp_start_binary_copy(unsigned int pipe_num, struct ia_css_frame *out_frame,
@@ -163,8 +157,8 @@ sh_css_sp_get_debug_state(struct sh_css_sp_debug_state *state);
 #endif
 
 extern void sh_css_sp_set_if_configs(
-	const input_formatter_cfg_t const		*config_a,
-	const input_formatter_cfg_t	const		*config_b,
+	const input_formatter_cfg_t	*config_a,
+	const input_formatter_cfg_t	*config_b,
 	const uint8_t		if_config_index);
 
 void

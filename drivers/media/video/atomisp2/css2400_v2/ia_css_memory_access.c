@@ -3,6 +3,7 @@
 #include "assert_support.h"
 
 const hrt_vaddress mmgr_NULL = (hrt_vaddress)0;
+const hrt_vaddress mmgr_EXCEPTION = (hrt_vaddress)-1;
 
 static struct ia_css_css_mem_env my_env;
 

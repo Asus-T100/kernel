@@ -36,7 +36,7 @@
 #include "i915_drm.h"
 #include "i915_drv.h"
 
-u32*
+void
 __alpha_setting_noncursor(u32 pixformat, int plane, u32 *dspcntr, int alpha)
 {
 	/* For readability, can split to individual cases */
@@ -85,7 +85,7 @@ __alpha_setting_noncursor(u32 pixformat, int plane, u32 *dspcntr, int alpha)
 	}
 }
 
-u32*
+void
 __alpha_setting_cursor(u32 pixformat, int plane, u32 *dspcntr, int alpha)
 {
 	/* For readability, can split to individual cases */
@@ -130,7 +130,7 @@ i915_set_plane_alpha(struct drm_device *dev, void *data, struct drm_file *file)
 	bool alpha = alphadata->alpha;
 	bool IsCursor = false;
 	u32 dspcntr;
-	u32 reg;
+	u32 reg = 0;
 	u32 pixformat;
 	u32 mask = DISPPLANE_PIXFORMAT_MASK;
 

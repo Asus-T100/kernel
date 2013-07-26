@@ -33,7 +33,6 @@
 
 #include "dmaengine.h"
 
-#define MAX_CHAN	8 /*max ch across controllers*/
 #include "intel_mid_dma_regs.h"
 
 #define INTEL_MID_DMAC1_ID		0x0814
@@ -78,7 +77,7 @@ Utility Functions*/
 static int get_ch_index(int status, unsigned int base)
 {
 	int i;
-	for (i = 0; i < MAX_CHAN; i++) {
+	for (i = 0; i < MID_MAX_CHAN; i++) {
 		if (status & (1 << (i + base)))
 			return i;
 	}
@@ -1549,15 +1548,15 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 	u32 tfr_status, err_status, block_status;
 	u32 isr;
 
-	/* On Baytrail, the DMAC is sharing IRQ with other devices */
-	if (is_byt_lpio_dmac(mid) && mid->state == SUSPENDED)
-		return IRQ_NONE;
-
 	/*DMA Interrupt*/
 	pr_debug("MDMA:Got an interrupt on irq %d\n", irq);
 	if (!mid) {
 		pr_err("ERR_MDMA:null pointer mid\n");
 		return -EINVAL;
+	} else {
+	/* On Baytrail, the DMAC is sharing IRQ with other devices */
+	if (is_byt_lpio_dmac(mid) && mid->state == SUSPENDED)
+		return IRQ_NONE;
 	}
 
 	/* Read the interrupt status registers */
@@ -1682,11 +1681,6 @@ int mid_setup_dma(struct device *dev)
 	} else {
 		dma->mask_reg = NULL;
 	}
-
-	/* FIXME: hack to not enable IRQ for LPIO DMAC */
-	if (dma->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
-	    dma->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
-		return 0;
 
 	pr_debug("MDMA:Adding %d channel for this controller\n", dma->max_chan);
 	/*init CH structures*/
@@ -2030,7 +2024,7 @@ struct intel_mid_dma_probe_info dma_byt_info = {
 	.ch_base = 4,
 	.block_size = 131071,
 	.pimr_mask = 0x00FF0000,
-	.pimr_base = 0xDF540018,
+	.pimr_base = 0, /* get base addr from device table */
 	.dword_trf = 0,
 	.pimr_offset = 0x10,
 	.pci_id = INTEL_BYT_DMAC0_ID,

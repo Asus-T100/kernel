@@ -306,6 +306,7 @@
 #define GFX_OP_PIPE_CONTROL(len)	((0x3<<29)|(0x3<<27)|(0x2<<24)|(len-2))
 #define   PIPE_CONTROL_CS_STALL				(1<<20)
 #define   PIPE_CONTROL_TLB_INVALIDATE			(1<<18)
+#define   PIPE_CONTROL_GENERIC_MEDIA_STATE_CLEAR	(1<<16)
 #define   PIPE_CONTROL_QW_WRITE				(1<<14)
 #define   PIPE_CONTROL_DEPTH_STALL			(1<<13)
 #define   PIPE_CONTROL_WRITE_FLUSH			(1<<12)
@@ -314,6 +315,7 @@
 #define   PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE		(1<<10) /* GM45+ only */
 #define   PIPE_CONTROL_INDIRECT_STATE_DISABLE		(1<<9)
 #define   PIPE_CONTROL_NOTIFY				(1<<8)
+#define   PIPE_CONTROL_DC_FLUSH				(1<<5)
 #define   PIPE_CONTROL_VF_CACHE_INVALIDATE		(1<<4)
 #define   PIPE_CONTROL_CONST_CACHE_INVALIDATE		(1<<3)
 #define   PIPE_CONTROL_STATE_CACHE_INVALIDATE		(1<<2)
@@ -321,6 +323,9 @@
 #define   PIPE_CONTROL_DEPTH_CACHE_FLUSH		(1<<0)
 #define   PIPE_CONTROL_GLOBAL_GTT (1<<2) /* in addr dword */
 
+#define GFX_OP_3DPRIMITIVE()              \
+	((0x3<<29)|(0x3<<27)|(0x3<<24)|       \
+	 (0x0<<16)|(0x0<<10)|(0x0<<8)|(7-2))
 
 /*
  * Reset registers
@@ -451,6 +456,7 @@
 
 #define FENCE_REG_SANDYBRIDGE_0		0x100000
 #define   SANDYBRIDGE_FENCE_PITCH_SHIFT	32
+#define   GEN7_FENCE_MAX_PITCH_VAL	0x0800
 
 /* control register for cpu gtt access */
 #define TILECTL				0x101000
@@ -572,6 +578,10 @@
 # define MI_FLUSH_ENABLE				(1 << 12)
 # define MODE_STOP					(1 << 8)
 # define MODE_IDLE					(1 << 9)
+# define DIS_AYSNC_FLIP_PERF_MODE			(1 << 14)
+
+/* FF_SLICE_CS_CHICKEN3 - Chicken Bit for CS FF_SLICE */
+#define FF_SLICE_CS_CHICKEN3	0x020E8
 
 #define GFX_MODE	0x02520
 #define GFX_MODE_GEN7	0x0229c
@@ -743,6 +753,7 @@
 
 #define CACHE_MODE_0	0x02120 /* 915+ only Pre-IVB */
 #define GEN7_CACHE_MODE_0	0x07000 /* IVB+ */
+#define   GEN7_RC_OP_FLUSH_ENABLE (1<<0)
 /* CACHE_MODE_0 offset is different for per-IVB and IVB+ systems */
 #define CACHE_MODE_0_OFFSET(d) ((INTEL_INFO(d)->gen >= 7) ? \
 					GEN7_CACHE_MODE_0 : CACHE_MODE_0)
@@ -1998,8 +2009,9 @@ EDP_PSR_SW_TIMER
 #define PP_DIVISOR	0x61210
 
 /* Panel fitting */
-#define PFIT_CONTROL	0x61230
+#define PFIT_CONTROL   0x61230
 #define   PFIT_ENABLE		(1 << 31)
+#define   PFIT_DISABLE		(0 << 31)
 #define   PFIT_PIPE_MASK	(3 << 29)
 #define   PFIT_PIPE_SHIFT	29
 #define   VERT_INTERP_DISABLE	(0 << 10)
@@ -2019,6 +2031,7 @@ EDP_PSR_SW_TIMER
 #define PFIT_PGM_RATIOS	0x61234
 #define   PFIT_VERT_SCALE_MASK			0xfff00000
 #define   PFIT_HORIZ_SCALE_MASK			0x0000fff0
+#define	PFIT_SIZE_LIMIT	2000
 /* Pre-965 */
 #define		PFIT_VERT_SCALE_SHIFT		20
 #define		PFIT_VERT_SCALE_MASK		0xfff00000
@@ -4550,7 +4563,7 @@ EDP_PSR_SW_TIMER
 #define VLV_RP_UP_EI_THRESHOLD			90
 #define VLV_RP_DOWN_EI_THRESHOLD		70
 #define VLV_INT_COUNT_FOR_DOWN_EI		5
-
+#define VLV_RPS_TIMER_VALUE			100
 
 #define GEN6_PMISR				0x44020
 #define GEN6_PMIMR				0x44024 /* rps_lock */
@@ -5322,5 +5335,10 @@ EDP_PSR_SW_TIMER
 #define _MIPIC_READ_DATA_VALID			(0xb938)
 #define MIPI_READ_DATA_VALID(pipe)	_MIPI(pipe, _MIPIA_READ_DATA_VALID)
 #define  READ_DATA_VALID(n)				(1 << (n))
+
+#define VLV_IOSFSB_PWRGT_STATUS			0x61
+#define VLV_PWRGT_DPIO_TX_LANES_MASK	0x000FF000
+#define VLV_PWRGT_DPIO_CMN_LANES_MASK	0x00000C00
+#define VLV_PWRGT_DPIO_RX_TX_LANES_MASK	0x00FFF000
 
 #endif /* _I915_REG_H_ */

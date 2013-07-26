@@ -2503,13 +2503,15 @@ void gen6_set_rps(struct drm_device *dev, u8 val)
 	dev_priv->rps.cur_delay = val;
 }
 
-void valleyview_update_cur_delay(struct drm_device *dev)
+bool valleyview_update_cur_delay(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 val = 0;
 
-	valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
+	intel_punit_read32(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
 	dev_priv->rps.cur_delay = val >> 8;
+
+	return true;
 }
 
 void valleyview_set_rps(struct drm_device *dev, u8 val)
@@ -2525,7 +2527,7 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 	if (val < dev_priv->rps.min_delay)
 		val = dev_priv->rps.min_delay;
 
-	valleyview_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
+	intel_punit_write32(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
 	dev_priv->rps.requested_delay = val;
 }
 
@@ -2802,8 +2804,8 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 
 	/* Write 0 to 7th bit to P-Unit offset 0x6 to enable Turbo */
 	u32 bios_punit_val;
-	valleyview_punit_read(dev_priv, 0x6, &bios_punit_val);
-	valleyview_punit_write(dev_priv, 0x6, bios_punit_val & ~(1<<7));
+	intel_punit_read32(dev_priv, 0x6, &bios_punit_val);
+	intel_punit_write32(dev_priv, 0x6, bios_punit_val & ~(1<<7));
 
 	I915_WRITE(0xA000, 0x71388);
 	I915_WRITE(0xA080, 0x4);
@@ -2875,7 +2877,74 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 	I915_WRITE(0xaa84, 0x00000000);
 	I915_WRITE(0x1300a4, 0x00000000);
 	I915_WRITE(0xa248, 0x00000058);
-	valleyview_punit_write(dev_priv, 0xd2, 0x1EF53);
+	intel_punit_write32(dev_priv, 0xd2, 0x1EF53);
+}
+
+/* vlv_rps_timer_work: Set the frequency to Rpe if Gfx clocks are down
+ * @work: work_struct
+ *
+ * If Gfx clock is UP, then reset the timer as there is a possibility
+ * that normal Turbo logic can bring down the freq to Rpe.
+ * If Gfx clock is Down, then
+ * 1. Mask Turbo interrupts
+ * 2. Bring up Gfx clock
+ * 3. Change the freq to Rpe and wait till P-Unit updates freq
+ * 4. Clear the Force GFX CLK ON bit so that Gfx can down
+ * 5. Unmask Turbo interrupts
+*/
+static void vlv_rps_timer_work(struct work_struct *work)
+{
+	drm_i915_private_t *dev_priv = container_of(work, drm_i915_private_t,
+							rps.rps_timer_work);
+
+	mutex_lock(&dev_priv->dev->struct_mutex);
+
+	if (I915_READ(VLV_GTLC_SURVIVABILITY_REG) & VLV_GFX_CLK_STATUS_BIT) {
+		/* GT is not power gated. Cancel any pending ones
+		 * and reschedule again
+		 */
+		cancel_delayed_work(&dev_priv->rps.rps_timer_work);
+
+		queue_delayed_work(dev_priv->wq, &dev_priv->rps.rps_timer_work,
+				msecs_to_jiffies(VLV_RPS_TIMER_VALUE));
+	} else {
+		/* Mask turbo interrupt so that they will not come in between */
+		I915_WRITE(GEN6_PMINTRMSK, 0xffffffff);
+
+		/* Bring up the Gfx clock */
+		I915_WRITE(VLV_GTLC_SURVIVABILITY_REG,
+			 I915_READ(VLV_GTLC_SURVIVABILITY_REG) |
+				VLV_GFX_CLK_FORCE_ON_BIT);
+
+		if (wait_for(((VLV_GFX_CLK_STATUS_BIT &
+		     I915_READ(VLV_GTLC_SURVIVABILITY_REG)) != 0), 500)) {
+			DRM_ERROR("GFX_CLK_ON request timed out\n");
+			mutex_unlock(&dev_priv->dev->struct_mutex);
+			return;
+		}
+
+		/* Set Rpe */
+		valleyview_set_rps(dev_priv->dev, dev_priv->rps.rpe_delay);
+
+		/* Make sure Rpe is set by P-Unit*/
+		if (wait_for((valleyview_update_cur_delay(dev_priv->dev) &&
+		   (dev_priv->rps.cur_delay == dev_priv->rps.rpe_delay)),
+		   100))
+			DRM_DEBUG_DRIVER("Not able to set Rpe\n");
+
+		/* Release the Gfx clock */
+		I915_WRITE(VLV_GTLC_SURVIVABILITY_REG,
+			I915_READ(VLV_GTLC_SURVIVABILITY_REG) &
+				~VLV_GFX_CLK_FORCE_ON_BIT);
+
+		/* Unmask Turbo interrupts */
+		if (dev_priv->use_RC0_residency_for_turbo)
+			I915_WRITE(GEN6_PMINTRMSK, ~VLV_PM_DEFERRED_EVENTS);
+		else
+			I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
+	}
+
+	mutex_unlock(&dev_priv->dev->struct_mutex);
 }
 
 bool vlv_turbo_initialize(struct drm_device *dev)
@@ -2904,22 +2973,25 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 		   GEN6_RP_UP_BUSY_AVG |
 		   GEN7_RP_DOWN_IDLE_AVG);
 
-	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE6, &val);
+	intel_fuse_read32(dev_priv, VLV_PUNIT_RPS_FUSE6, &val);
 	/* Bits [10:3] */
 	dev_priv->rps.max_delay = (val >> 3) & 0xFF;
 	DRM_DEBUG_DRIVER("max GPU freq: %d\n", dev_priv->rps.max_delay);
 
 	/* Rpe is min freq */
-	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE11, &val);
+	intel_fuse_read32(dev_priv, VLV_PUNIT_RPS_FUSE11, &val);
 	dev_priv->rps.min_delay = (val >> 27);
-	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE12, &val);
+	intel_fuse_read32(dev_priv, VLV_PUNIT_RPS_FUSE12, &val);
 	dev_priv->rps.min_delay = dev_priv->rps.min_delay | ((val & 0x7) << 5);
 	DRM_DEBUG_DRIVER("min GPU freq: %d\n", dev_priv->rps.min_delay);
 
-	valleyview_punit_read(dev_priv, PUNIT_FUSE_BUS2, &val);
+	/* This min_delay is rpe. Cache it seperately for tracking*/
+	dev_priv->rps.rpe_delay = dev_priv->rps.min_delay;
+
+	intel_punit_read32(dev_priv, PUNIT_FUSE_BUS2, &val);
 	DRM_DEBUG_DRIVER("max GPLL freq: %d\n", val);
 
-	valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
+	intel_punit_read32(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
 	DRM_DEBUG_DRIVER("DDR speed: ");
 	switch (((val >> 6) & 3)) {
 	case 0:
@@ -2953,7 +3025,7 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	val = VLV_OVERRIDE_MSR_REG
 		| VLV_ENABLE_TDP_SHARE_WITH_SOC
 		| VLV_CPU_GPU_BIAS_VAL_87_12; /* 6 => CPU:12.5% GPU:87.5% */
-	valleyview_punit_write(dev_priv, VLV_IOSFB_RPS_OVERRIDE, val);
+	intel_punit_write32(dev_priv, VLV_IOSFB_RPS_OVERRIDE, val);
 
 	dev_priv->rps.rp_up_masked = 0;
 	dev_priv->rps.rp_down_masked = 0;
@@ -2984,10 +3056,18 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	I915_WRITE(GEN6_PMIMR, 0);
 	spin_unlock_irqrestore(&dev_priv->rps.lock, flags);
 
+	/* Upon RC6 entry, VLV_DEFRRED_EVENTS will not be generated
+	 * and if freq is more than Rpe, it will consume more power
+	 * Have a delayed work item to track this and bring freq to Rpe
+	 */
+	INIT_DELAYED_WORK(&dev_priv->rps.rps_timer_work,
+		vlv_rps_timer_work);
+
 	/* Use RC0 residency method for rps control as WA */
 	if (dev_priv->use_RC0_residency_for_turbo) {
 		I915_WRITE(GEN6_PMIER, VLV_PM_DEFERRED_EVENTS);
 		I915_WRITE(GEN6_PMINTRMSK, ~VLV_PM_DEFERRED_EVENTS);
+
 	} else {
 		I915_WRITE(GEN6_PMIER, GEN6_PM_DEFERRED_EVENTS);
 		I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
@@ -3000,6 +3080,9 @@ void vlv_turbo_disable(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
+
+	/* Cancel the timer work item first */
+	cancel_delayed_work_sync(&dev_priv->rps.rps_timer_work);
 
 	I915_WRITE(GEN6_PMINTRMSK, 0xffffffff);
 	I915_WRITE(GEN6_PMIER, 0);
@@ -3994,9 +4077,8 @@ static void ivybridge_init_clock_gating(struct drm_device *dev)
 
 	I915_WRITE(ILK_DSPCLK_GATE, IVB_VRHUNIT_CLK_GATE);
 
-	/* WaDisableEarlyCull */
-	I915_WRITE(_3D_CHICKEN3,
-		   _MASKED_BIT_ENABLE(_3D_CHICKEN_SF_DISABLE_OBJEND_CULL));
+	/* Reset the 0th bit to disable the stats from FMD/GNE/ACE regs */
+	I915_WRITE(FF_SLICE_CS_CHICKEN3, 0);
 
 	I915_WRITE(IVB_CHICKEN3,
 		   CHICKEN3_DGMG_REQ_OUT_FIX_DISABLE |
@@ -4099,10 +4181,6 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		   _MASKED_BIT_ENABLE(GEN7_MAX_PS_THREAD_DEP |
 				      GEN7_PSD_SINGLE_PORT_DISPATCH_ENABLE));
 
-	/* Apply the WaDisableRHWOOptimizationForRenderHang workaround. */
-	I915_WRITE(GEN7_COMMON_SLICE_CHICKEN1,
-		   GEN7_CSC1_RHWO_OPT_DISABLE_IN_RCC);
-
 	/* WaApplyL3ControlAndL3ChickenMode requires those two on Ivy Bridge */
 	if (IS_VALLEYVIEWP_M(dev)) {
 		I915_WRITE(GEN7_L3CNTLREG1,
@@ -4114,9 +4192,28 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 
 	I915_WRITE(GEN7_L3_CHICKEN_MODE_REGISTER, GEN7_WA_L3_CHICKEN_MODE);
 
+	/* WaDisable_RenderCache_OperationalFlush
+	 * Clear bit 0, so we do a AND with the mask
+	 * to keep other bits the same */
+	I915_WRITE(GEN7_CACHE_MODE_0,
+		I915_READ(GEN7_CACHE_MODE_0) & (~GEN7_RC_OP_FLUSH_ENABLE));
+
 	/* WaDisableDopClockGating */
-	I915_WRITE(GEN7_ROW_CHICKEN2,
-		   _MASKED_BIT_ENABLE(DOP_CLOCK_GATING_DISABLE));
+	if (IS_VALLEYVIEWP_M(dev)) {
+		/* Not needed for VLV+ */
+	} else {
+		/* Set bit 0, Disable Drop of Point Gating for EUs */
+		I915_WRITE(GEN7_ROW_CHICKEN2,
+			I915_READ(GEN7_ROW_CHICKEN2) |
+			_MASKED_BIT_ENABLE(DOP_CLOCK_GATING_DISABLE));
+	}
+
+	/* WaDisableAsyncFlipPerfMode
+	 * Disabling async flip performance mode
+	 * (used to fix multiple issues) */
+	I915_WRITE(MI_MODE,
+		I915_READ(MI_MODE) |
+		_MASKED_BIT_ENABLE(DIS_AYSNC_FLIP_PERF_MODE));
 
 	/* WaForceL3Serialization */
 	I915_WRITE(GEN7_L3SQCREG4, I915_READ(GEN7_L3SQCREG4) &
@@ -4154,7 +4251,11 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		   GEN6_RCPBUNIT_CLOCK_GATE_DISABLE |
 		   GEN6_RCCUNIT_CLOCK_GATE_DISABLE);
 
-	I915_WRITE(GEN7_UCGCTL4, GEN7_L3BANK2X_CLOCK_GATE_DISABLE);
+	/* WaDisableL3Bank2xClockGate
+	 * Disabling L3 clock gating- MMIO 940c[25] = 1
+	 * Set bit 25, to disable L3_BANK_2x_CLK_GATING */
+	I915_WRITE(GEN7_UCGCTL4,
+		I915_READ(GEN7_UCGCTL4) | GEN7_L3BANK2X_CLOCK_GATE_DISABLE);
 
 	for_each_pipe(pipe) {
 		I915_WRITE(DSPCNTR(pipe),
@@ -4163,9 +4264,18 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		intel_flush_display_plane(dev_priv, pipe);
 	}
 
-	I915_WRITE(CACHE_MODE_1,
-		   _MASKED_BIT_ENABLE(PIXEL_SUBSPAN_COLLECT_OPT_DISABLE));
+	/* WaVSThreadDispatchOverride
+	 * Hw will decide which half slice the thread will dispatch.
+	 * May not be needed for VLV, as its a single slice */
+	I915_WRITE(GEN7_CACHE_MODE_0,
+		I915_READ(GEN7_FF_THREAD_MODE) &
+		(~GEN7_FF_VS_SCHED_LOAD_BALANCE));
 
+	/* WaDisable4x2SubspanOptimization,
+	 * Disable combining of two 2x2 subspans into a 4x2 subspan
+	 * Set chicken bit to disable subspan optimization */
+	I915_WRITE(CACHE_MODE_1,
+		   _MASKED_BIT_DISABLE(PIXEL_SUBSPAN_COLLECT_OPT_DISABLE));
 	/*
 	 * WaDisableVLVClockGating_VBIIssue
 	 * Disable clock gating on th GCFG unit to prevent a delay
@@ -5086,137 +5196,3 @@ void vlv_rs_setstate(struct drm_device *dev,
 	}
 }
 
-/* Ideally we would have liked to use a mutex to lock the critical
- * sections below. However, the sideband interface is being used by
- * DPIO display section as well and a spinlock is being used to
- * safeguard against that because it is being called from an interrupt
- * context. We therefore need to use the same  mechanism as well in
- * order to avoid conflicts there. Hence, until a cleaned up sideband
- * routine enters, we will use the following routines and this spinlock
- * to gate access. */
-
-int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
-				u8 addr, u32 *val)
-{
-	u32 cmd, devfn, opcode, port, be, bar;
-	unsigned long flags;
-
-	bar = 0;
-	be = 0xf;
-	port = IOSF_PORT_FUSE;
-	opcode = PUNIT_OPCODE_REG_READ;
-	devfn = 0;
-
-	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
-		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
-		(bar << IOSF_BAR_SHIFT);
-
-	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
-
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			   addr);
-		return -ETIMEDOUT;
-	}
-
-	I915_WRITE(VLV_IOSF_ADDR, addr);
-	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
-
-	/* Make sure that the SB is not busy since we need to be synchronous */
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	*val = I915_READ(VLV_IOSF_DATA);
-	I915_WRITE(VLV_IOSF_DATA, 0);
-
-	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-
-	return 0;
-}
-
-int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val)
-{
-	u32 cmd, devfn, opcode, port, be, bar;
-	unsigned long flags;
-
-	bar = 0;
-	be = 0xf;
-	port = IOSF_PORT_PUNIT;
-	opcode = PUNIT_OPCODE_REG_READ;
-	devfn = 16;
-
-	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
-		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
-		(bar << IOSF_BAR_SHIFT);
-
-	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
-
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	I915_WRITE(VLV_IOSF_ADDR, addr);
-	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
-
-	/* Make sure that the SB is not busy since we need to be synchronous */
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	*val = I915_READ(VLV_IOSF_DATA);
-	I915_WRITE(VLV_IOSF_DATA, 0);
-
-	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-
-	return 0;
-}
-
-int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val)
-{
-	u32 cmd, devfn, opcode, port, be, bar;
-	unsigned long flags;
-
-	bar = 0;
-	be = 0xf;
-	port = IOSF_PORT_PUNIT;
-	opcode = PUNIT_OPCODE_REG_WRITE;
-	devfn = 16;
-
-	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
-		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
-		(bar << IOSF_BAR_SHIFT);
-
-	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
-
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		     500)) {
-		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
-			  addr);
-		return -ETIMEDOUT;
-	}
-
-	I915_WRITE(VLV_IOSF_ADDR, addr);
-	I915_WRITE(VLV_IOSF_DATA, val);
-	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
-	I915_WRITE(VLV_IOSF_DATA, 0);
-
-	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
-
-	return 0;
-}

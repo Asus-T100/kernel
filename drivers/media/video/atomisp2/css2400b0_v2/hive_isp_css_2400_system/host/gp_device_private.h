@@ -21,7 +21,7 @@ return;
 
 STORAGE_CLASS_GP_DEVICE_C hrt_data gp_device_reg_load(
 	const gp_device_ID_t	ID,
-	const unsigned int		reg_addr)
+	const hrt_address	reg_addr)
 {
 assert(ID < N_GP_DEVICE_ID);
 assert(GP_DEVICE_BASE[ID] != (hrt_address)-1);

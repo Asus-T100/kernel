@@ -371,7 +371,6 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 		pdata->battery_pack_temp = pmic_get_battery_pack_temp;
 		pdata->get_vmin_threshold = mrfl_get_vsys_min;
 		pdata->get_vmax_threshold = mrfl_get_volt_max;
-		pdata->reset_chip = true;
 	} else if (intel_mid_identify_cpu() ==
 				INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
 		pdata->battery_status = smb347_get_charging_status;

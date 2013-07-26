@@ -159,20 +159,28 @@ uint32_t atomisp_css2_hw_load_32(hrt_address addr)
 static void atomisp_css2_hw_store(hrt_address addr,
 				  const void *from, uint32_t n)
 {
+	unsigned long flags;
 	unsigned i;
 	unsigned int _to = (unsigned int)addr;
 	const char *_from = (const char *)from;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	for (i = 0; i < n; i++, _to++, _from++)
 		_hrt_master_port_store_8(_to , *_from);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
 static void atomisp_css2_hw_load(hrt_address addr, void *to, uint32_t n)
 {
+	unsigned long flags;
 	unsigned i;
 	char *_to = (char *)to;
 	unsigned int _from = (unsigned int)addr;
+
+	spin_lock_irqsave(&mmio_lock, flags);
 	for (i = 0; i < n; i++, _to++, _from++)
 		*_to = _hrt_master_port_load_8(_from);
+	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
 static int atomisp_css2_dbg_print(const char *fmt, va_list args)
@@ -208,8 +216,6 @@ static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
 static void atomisp_isp_parameters_clean_up(
 				struct atomisp_css_isp_config *config)
 {
-	if (config->shading_table)
-		ia_css_shading_table_free(config->shading_table);
 	if (config->morph_table)
 		ia_css_morph_table_free(config->morph_table);
 
@@ -220,71 +226,116 @@ static void atomisp_isp_parameters_clean_up(
 	memset(config, 0, sizeof(*config));
 }
 
-static void __dump_stream_pipe_config(struct atomisp_sub_device *asd)
+static void __dump_stream_config(struct atomisp_sub_device *asd)
 {
-	struct ia_css_pipe_config *p_config;
-	struct ia_css_pipe_extra_config *pe_config;
-	struct ia_css_stream_config *s_config;
 	struct atomisp_device *isp = asd->isp;
-	int i;
-
-	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
-		if (!asd->stream_env.pipes[i])
-			continue;
-		p_config = &asd->stream_env.pipe_configs[i];
-		pe_config = &asd->stream_env.pipe_extra_configs[i];
-		dev_dbg(isp->dev, "dumping pipe[%d] config:\n", i);
-		dev_dbg(isp->dev, "pipe_config.pipe_id:%d.\n", p_config->mode);
-		dev_dbg(isp->dev, "pipe_config.output_info w=%d, h=%d.\n",
-			p_config->output_info.res.width,
-			p_config->output_info.res.height);
-		dev_dbg(isp->dev, "pipe_config.vf_output_info w=%d, h=%d.\n",
-			p_config->vf_output_info.res.width,
-			p_config->vf_output_info.res.height);
-		dev_dbg(isp->dev, "pipe_config.bayer_ds_out_res w=%d, h=%d.\n",
-			p_config->bayer_ds_out_res.width,
-			p_config->bayer_ds_out_res.height);
-		dev_dbg(isp->dev, "pipe_config.envelope w=%d, h=%d.\n",
-			p_config->dvs_envelope.width,
-			p_config->dvs_envelope.height);
-		dev_dbg(isp->dev,
-			"pipe_config.default_capture_config.capture_mode=%d.\n",
-			p_config->default_capture_config.mode);
-		dev_dbg(isp->dev, "dumping pipe[%d] extra config:\n", i);
-		dev_dbg(isp->dev, "pipe_extra_config.enable_raw_binning:%d.\n",
-			pe_config->enable_raw_binning);
-		dev_dbg(isp->dev, "pipe_extra_config.enable_yuv_ds:%d.\n",
-			pe_config->enable_yuv_ds);
-		dev_dbg(isp->dev, "pipe_extra_config.enable_high_speed:%d.\n",
-			pe_config->enable_high_speed);
-		dev_dbg(isp->dev, "pipe_extra_config.enable_dvs_6axis:%d.\n",
-			pe_config->enable_dvs_6axis);
-		dev_dbg(isp->dev, "pipe_extra_config.enable_reduced_pipe:%d.\n",
-			pe_config->enable_reduced_pipe);
-		dev_dbg(isp->dev, "pipe_extra_config.enable_dz:%d.\n",
-			pe_config->enable_dz);
-		dev_dbg(isp->dev, "pipe_extra_config.disable_vf_pp:%d.\n",
-			pe_config->disable_vf_pp);
-		dev_dbg(isp->dev, "pipe_extra_config.disable_capture_pp:%d.\n",
-			pe_config->disable_capture_pp);
-	}
+	struct ia_css_stream_config *s_config;
 
 	s_config = &asd->stream_env.stream_config;
-	dev_dbg(isp->dev, "dumping stream config:\n");
-	dev_dbg(isp->dev, "stream_config.mode=%d.\n", s_config->mode);
-	dev_dbg(isp->dev, "stream_config.input_res w=%d, h=%d.\n",
-		s_config->input_res.width, s_config->input_res.height);
-	dev_dbg(isp->dev, "stream_config.effective_res w=%d, h=%d.\n",
-		s_config->effective_res.width,
-		s_config->effective_res.height);
-	dev_dbg(isp->dev, "stream_config.format=%d.\n", s_config->format);
-	dev_dbg(isp->dev, "stream_config.bayer_order=%d.\n",
-		s_config->bayer_order);
-	dev_dbg(isp->dev, "stream_config.2ppc=%d.\n",
-		s_config->two_pixels_per_clock);
-	dev_dbg(isp->dev, "stream_config.online=%d.\n", s_config->online);
-	dev_dbg(isp->dev, "stream_config.continuous=%d.\n",
-		s_config->continuous);
+	dev_dbg(isp->dev, "sh_css_init success\n");
+	dev_dbg(isp->dev,
+		 "dumping stream config:\n");
+	dev_dbg(isp->dev,
+		 "stream_config.mode=%d.\n",
+		 s_config->mode);
+	dev_dbg(isp->dev,
+		 "stream_config.input_res w=%d, h=%d.\n",
+		 s_config->input_res.width,
+		 s_config->input_res.height);
+	dev_dbg(isp->dev,
+		 "stream_config.effective_res w=%d, h=%d.\n",
+		 s_config->effective_res.width,
+		 s_config->effective_res.height);
+	dev_dbg(isp->dev,
+		 "stream_config.format=%d.\n",
+		 s_config->format);
+	dev_dbg(isp->dev,
+		 "stream_config.bayer_order=%d.\n",
+		 s_config->bayer_order);
+	dev_dbg(isp->dev,
+		 "stream_config.2ppc=%d.\n",
+		 s_config->two_pixels_per_clock);
+	dev_dbg(isp->dev,
+		 "stream_config.online=%d.\n",
+		 s_config->online);
+	dev_dbg(isp->dev,
+		 "stream_config.continuous=%d.\n",
+		 s_config->continuous);
+}
+static void __dump_pipe_config(struct atomisp_sub_device *asd,
+			       unsigned int pipe_id)
+{
+	struct atomisp_device *isp = asd->isp;
+
+	if (asd->stream_env.pipes[pipe_id]) {
+		struct ia_css_pipe_config *p_config;
+		struct ia_css_pipe_extra_config *pe_config;
+		p_config = &asd->stream_env.pipe_configs[pipe_id];
+		pe_config = &asd->stream_env.
+		    pipe_extra_configs[pipe_id];
+		dev_dbg(isp->dev,
+			 "dumping pipe[%d] config:\n", pipe_id);
+		dev_dbg(isp->dev,
+			 "pipe_config.pipe_id:%d.\n", p_config->mode);
+		dev_dbg(isp->dev,
+			 "pipe_config.output_info w=%d, h=%d.\n",
+			 p_config->output_info.res.width,
+			 p_config->output_info.res.height);
+		dev_dbg(isp->dev,
+			 "pipe_config.bin_out w=%d, h=%d.\n",
+			 p_config->bin_out_res.width,
+			 p_config->bin_out_res.height);
+		dev_dbg(isp->dev,
+			 "pipe_config.output.padded w=%d.\n",
+			 p_config->output_info.padded_width);
+		dev_dbg(isp->dev,
+			 "pipe_config.vf_output_info w=%d, h=%d.\n",
+			 p_config->vf_output_info.res.width,
+			 p_config->vf_output_info.res.height);
+		dev_dbg(isp->dev,
+			 "pipe_config.bayer_ds_out_res w=%d, h=%d.\n",
+			 p_config->bayer_ds_out_res.width,
+			 p_config->bayer_ds_out_res.height);
+		dev_dbg(isp->dev,
+			 "pipe_config.envelope w=%d, h=%d.\n",
+			 p_config->dvs_envelope.width,
+			 p_config->dvs_envelope.height);
+		dev_dbg(isp->dev,
+			 "pipe_config.isp_pipe_version:%d.\n",
+			p_config->isp_pipe_version);
+		dev_dbg(isp->dev,
+			 "pipe_config.default_capture_config.capture_mode=%d.\n",
+			 p_config->default_capture_config.mode);
+		dev_dbg(isp->dev,
+			 "pipe_config.default_capture_config.enable_capture_pp=%d.\n",
+			 p_config->default_capture_config.enable_capture_pp);
+		dev_dbg(isp->dev,
+			 "dumping pipe[%d] extra config:\n", pipe_id);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.enable_raw_binning:%d.\n",
+			 pe_config->enable_raw_binning);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.enable_yuv_ds:%d.\n",
+			 pe_config->enable_yuv_ds);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.enable_high_speed:%d.\n",
+			 pe_config->enable_high_speed);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.enable_dvs_6axis:%d.\n",
+			 pe_config->enable_dvs_6axis);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.enable_reduced_pipe:%d.\n",
+			 pe_config->enable_reduced_pipe);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.enable_dz:%d.\n",
+			 pe_config->enable_dz);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.disable_vf_pp:%d.\n",
+			 pe_config->disable_vf_pp);
+		dev_dbg(isp->dev,
+			 "pipe_extra_config.disable_capture_pp:%d.\n",
+			 pe_config->disable_capture_pp);
+	}
 }
 
 static int __destroy_stream(struct atomisp_sub_device *asd, bool force)
@@ -293,7 +344,7 @@ static int __destroy_stream(struct atomisp_sub_device *asd, bool force)
 	int i;
 
 	if (!asd->stream_env.stream)
-		return -EINVAL;
+		return 0;
 
 	if (!force) {
 		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
@@ -324,7 +375,7 @@ static int __create_stream(struct atomisp_sub_device *asd)
 	int pipe_index = 0, i;
 	struct ia_css_pipe *multi_pipes[IA_CSS_PIPE_ID_NUM];
 
-	__dump_stream_pipe_config(asd);
+	__dump_stream_config(asd);
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		if (asd->stream_env.pipes[i])
 			multi_pipes[pipe_index++] = asd->stream_env.pipes[i];
@@ -368,6 +419,53 @@ static int __destroy_pipes(struct atomisp_sub_device *asd, bool force)
 	return ret;
 }
 
+static void __apply_additional_pipe_config(
+				struct atomisp_sub_device *asd,
+				enum ia_css_pipe_id pipe_id)
+{
+	struct atomisp_device *isp = asd->isp;
+
+	if (pipe_id < 0 || pipe_id >= IA_CSS_PIPE_ID_NUM) {
+		dev_err(isp->dev,
+			 "wrong pipe_id for additional pipe config.\n");
+		return;
+	}
+
+	/*
+	 * Current ISP2.2 Firmware has issues with online still capture.
+	 * So still uses ISP1.5 firmware for online still capture cases
+	 */
+	if (asd->run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE)
+		asd->stream_env.pipe_configs[pipe_id].
+		    isp_pipe_version = 1;
+	else
+		asd->stream_env.pipe_configs[pipe_id].
+		    isp_pipe_version = 2;
+
+	/* apply isp 2.2 specific config for baytrail*/
+	switch (pipe_id) {
+	case IA_CSS_PIPE_ID_CAPTURE:
+		/* enable capture pp manually or digital zoom would
+		 * fail*/
+		asd->stream_env.pipe_configs[pipe_id]
+		    .default_capture_config.enable_capture_pp = true;
+		break;
+	case IA_CSS_PIPE_ID_VIDEO:
+		/* enable reduced pipe to have binary
+		 * video_dz_2_min selected*/
+		asd->stream_env.pipe_extra_configs[pipe_id]
+		    .enable_reduced_pipe = true;
+		asd->stream_env.pipe_extra_configs[pipe_id]
+		    .enable_dz = false;
+		break;
+	case IA_CSS_PIPE_ID_PREVIEW:
+	case IA_CSS_PIPE_ID_COPY:
+	case IA_CSS_PIPE_ID_ACC:
+		break;
+	default:
+		break;
+	}
+}
 static int __create_pipe(struct atomisp_sub_device *asd)
 {
 	struct ia_css_pipe_extra_config extra_config;
@@ -380,6 +478,7 @@ static int __create_pipe(struct atomisp_sub_device *asd)
 		if (!asd->stream_env.pipe_configs[i].output_info.res.width)
 			continue;
 
+		__apply_additional_pipe_config(asd, i);
 		if (!memcmp(
 			    &extra_config,
 			    &asd->stream_env.pipe_extra_configs[i],
@@ -396,14 +495,7 @@ static int __create_pipe(struct atomisp_sub_device *asd)
 			dev_err(isp->dev, "create pipe[%d] error.\n", i);
 			goto pipe_err;
 		}
-		dev_dbg(isp->dev, "dump pipe[%d] info w=%d, h=%d,f=%d vf_w=%d"
-			"vf_h=%d vf_f=%d.\n", i,
-		asd->stream_env.pipe_configs[i].output_info.res.width,
-		asd->stream_env.pipe_configs[i].output_info.res.height,
-		asd->stream_env.pipe_configs[i].output_info.format,
-		asd->stream_env.pipe_configs[i].vf_output_info.res.width,
-		asd->stream_env.pipe_configs[i].vf_output_info.res.height,
-		asd->stream_env.pipe_configs[i].vf_output_info.format);
+		__dump_pipe_config(asd, i);
 	}
 
 	return 0;
@@ -843,7 +935,11 @@ int atomisp_css_get_grid_info(struct atomisp_sub_device *asd,
 	memset(&p_info, 0, sizeof(struct ia_css_pipe_info));
 	memset(&old_info, 0, sizeof(struct ia_css_grid_info));
 
-	ia_css_pipe_get_info(asd->stream_env.pipes[pipe_id], &p_info);
+	if (ia_css_pipe_get_info(asd->stream_env.pipes[pipe_id], &p_info) !=
+		IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "ia_css_pipe_get_info failed\n");
+		return -EINVAL;
+	}
 
 	memcpy(&old_info, &asd->params.curr_grid_info,
 					sizeof(struct ia_css_grid_info));
@@ -859,16 +955,12 @@ int atomisp_css_get_grid_info(struct atomisp_sub_device *asd,
 	    || asd->params.curr_grid_info.s3a_grid.height == 0) {
 		dev_dbg(isp->dev,
 			"grid info change escape. memcmp=%d, s3a_user_stat=%d,"
-			"dvs_stat=%d, s3a.width=%d, s3a.height=%d,"
-			"dvs_stat hor coef addr=0x%x,"
-			"dvs_stat ver coef addr=0x%x\n", !memcmp(&old_info,
-				 &asd->params.curr_grid_info,
+			"dvs_stat=%d, s3a.width=%d, s3a.height=%d\n",
+			!memcmp(&old_info, &asd->params.curr_grid_info,
 				 sizeof(old_info)),
 			 !!asd->params.s3a_user_stat, !!asd->params.dvs_stat,
 			 asd->params.curr_grid_info.s3a_grid.width,
-			 asd->params.curr_grid_info.s3a_grid.height,
-			 (unsigned int)asd->params.dvs_coeff->hor_coefs,
-			 (unsigned int)asd->params.dvs_coeff->ver_coefs);
+			 asd->params.curr_grid_info.s3a_grid.height);
 		return -EINVAL;
 	}
 
@@ -1029,16 +1121,25 @@ void atomisp_css_input_set_two_pixels_per_clock(
 void atomisp_css_enable_raw_binning(struct atomisp_sub_device *asd,
 					bool enable)
 {
-	int i;
-
-	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
-		if (asd->stream_env.pipe_extra_configs[i].
-		    enable_raw_binning == !!enable)
-			continue;
-
-		asd->stream_env.pipe_extra_configs[i].enable_raw_binning
-							= !!enable;
-		asd->stream_env.update_pipe[i] = true;
+	asd->stream_env.pipe_extra_configs[IA_CSS_PIPE_ID_PREVIEW].
+	    enable_raw_binning = !!enable;
+	asd->stream_env.update_pipe[IA_CSS_PIPE_ID_PREVIEW] = true;
+	if (enable) {
+		asd->stream_env.
+		    pipe_configs[IA_CSS_PIPE_ID_PREVIEW].
+		    bin_out_res.width =
+		    asd->stream_env.stream_config.
+		    effective_res.width;
+		asd->stream_env.
+		    pipe_configs[IA_CSS_PIPE_ID_PREVIEW].
+		    bin_out_res.height =
+		    asd->stream_env.stream_config.
+		    effective_res.height;
+		asd->stream_env.
+		    pipe_configs[IA_CSS_PIPE_ID_PREVIEW].
+		    output_info.padded_width =
+		    asd->stream_env.stream_config.
+		    effective_res.width;
 	}
 }
 
@@ -1268,9 +1369,23 @@ static void __configure_output(struct atomisp_sub_device *asd,
 				__pipe_id_to_pipe_mode(pipe_id);
 	asd->stream_env.update_pipe[pipe_id] = true;
 
-	asd->stream_env.pipe_configs[pipe_id].output_info.res.width = width;
-	asd->stream_env.pipe_configs[pipe_id].output_info.res.height = height;
-	asd->stream_env.pipe_configs[pipe_id].output_info.format = format;
+	asd->stream_env.pipe_configs[pipe_id].output_info.res.width =
+		width;
+	asd->stream_env.pipe_configs[pipe_id].output_info.res.height =
+		height;
+	asd->stream_env.pipe_configs[pipe_id].output_info.format =
+		format;
+
+	/* isp binary 2.2 specific setting*/
+	if (width  >
+	    asd->stream_env.stream_config.effective_res.width ||
+		height >
+	    asd->stream_env.stream_config.effective_res.height) {
+		asd->stream_env.stream_config.effective_res.width
+							= width;
+		asd->stream_env.stream_config.effective_res.height
+							= height;
+	}
 	dev_dbg(isp->dev, "configuring pipe[%d] output info w=%d.h=%d.f=%d.\n",
 		pipe_id, width, height, format);
 }
@@ -1283,14 +1398,23 @@ static void __configure_pp_input(struct atomisp_sub_device *asd,
 	if (width == 0 && height == 0)
 		return;
 
+	if (width * 9 / 10 <
+	    asd->stream_env.pipe_configs[pipe_id].
+	    output_info.res.width ||
+	    height * 9 / 10 <
+	    asd->stream_env.pipe_configs[pipe_id].
+	    output_info.res.height
+	   )
+		return;
 	asd->stream_env.pipe_configs[pipe_id].mode =
 					__pipe_id_to_pipe_mode(pipe_id);
 	asd->stream_env.update_pipe[pipe_id] = true;
 
 	asd->stream_env.pipe_extra_configs[pipe_id].enable_yuv_ds = true;
-	asd->stream_env.pipe_configs[pipe_id].bayer_ds_out_res.width = width;
+	asd->stream_env.pipe_configs[pipe_id].bayer_ds_out_res.width =
+	    asd->stream_env.stream_config.effective_res.width;
 	asd->stream_env.pipe_configs[pipe_id].bayer_ds_out_res.height =
-		height;
+	    asd->stream_env.stream_config.effective_res.height;
 	dev_dbg(isp->dev, "configuring pipe[%d]capture pp input w=%d.h=%d.\n",
 		pipe_id, width, height);
 }
@@ -1517,7 +1641,16 @@ int atomisp_css_preview_configure_pp_input(
 				struct atomisp_sub_device *asd,
 				unsigned int width, unsigned int height)
 {
-	__configure_pp_input(asd, width, height, IA_CSS_PIPE_ID_PREVIEW);
+	if (asd->stream_env.pipe_extra_configs[IA_CSS_PIPE_ID_PREVIEW].
+					enable_raw_binning == false)
+		__configure_pp_input(asd, width, height,
+					IA_CSS_PIPE_ID_PREVIEW);
+
+	if (width > asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_CAPTURE].
+					bayer_ds_out_res.width)
+		__configure_pp_input(asd,
+				     width, height, IA_CSS_PIPE_ID_CAPTURE);
+
 	return 0;
 }
 
@@ -1992,10 +2125,13 @@ int atomisp_css_get_ctc_table(struct atomisp_sub_device *asd,
 	}
 
 	tab = vzalloc(sizeof(struct atomisp_css_ctc_table));
+	if (!tab)
+		return -ENOMEM;
+
 	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 	isp_config.ctc_table = tab;
 	ia_css_stream_get_isp_config(asd->stream_env.stream, &isp_config);
-	memcpy(config, &tab->data, sizeof(tab->data));
+	memcpy(config, tab, sizeof(*tab));
 	vfree(tab);
 
 	return 0;
@@ -2015,10 +2151,13 @@ int atomisp_css_get_gamma_table(struct atomisp_sub_device *asd,
 	}
 
 	tab = vzalloc(sizeof(struct atomisp_css_gamma_table));
+	if (!tab)
+		return -ENOMEM;
+
 	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
 	isp_config.gamma_table = tab;
 	ia_css_stream_get_isp_config(asd->stream_env.stream, &isp_config);
-	memcpy(config, &tab->data, sizeof(tab->data));
+	memcpy(config, tab, sizeof(*tab));
 	vfree(tab);
 
 	return 0;

@@ -285,8 +285,6 @@ static void mei_txe_remove(struct pci_dev *pdev)
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);
 
-	mei_free_dma(dev);
-
 	mei_mm_deinit(hw->mdev);
 
 	mei_free_dma(dev);

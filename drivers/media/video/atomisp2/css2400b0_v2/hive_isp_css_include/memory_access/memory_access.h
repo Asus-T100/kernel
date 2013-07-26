@@ -34,7 +34,7 @@
 #else
 #include <stdint.h>
 #endif
-#include "stddef.h"
+#include <stddef.h>
 
 /*
  * User provided file that defines the (sub)system address types:
@@ -74,6 +74,7 @@
 #define MMGR_ATTRIBUTE_DEFAULT	0
 
 extern const hrt_vaddress	mmgr_NULL;
+extern const hrt_vaddress	mmgr_EXCEPTION;
 
 /*! Set the (sub)system virtual memory page table base address
 

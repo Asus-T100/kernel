@@ -135,6 +135,7 @@ struct intel_dsi {
 	uint32_t reg_base;
 	enum pipe pipe;
 	u8 dsi_packet_format;
+	enum panel_fitter pfit;
 };
 
 struct panel_info {

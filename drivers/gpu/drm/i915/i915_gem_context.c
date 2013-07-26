@@ -321,6 +321,8 @@ mi_set_context(struct intel_ring_buffer *ring,
 	       u32 hw_flags)
 {
 	int ret;
+	u32 flags = 0;
+	u32 scratch_addr = get_pipe_control_scratch_addr(ring) + 128;
 
 	/* w/a: If Flush TLB Invalidation Mode is enabled, driver must do a TLB
 	 * invalidation prior to MI_SET_CONTEXT. On GEN6 we don't set the value
@@ -333,7 +335,10 @@ mi_set_context(struct intel_ring_buffer *ring,
 			return ret;
 	}
 
-	ret = intel_ring_begin(ring, 6);
+	if (IS_GEN7(ring->dev))
+		ret = intel_ring_begin(ring, 6+4+7);
+	else
+		ret = intel_ring_begin(ring, 6);
 	if (ret)
 		return ret;
 
@@ -352,12 +357,42 @@ mi_set_context(struct intel_ring_buffer *ring,
 	/* w/a: MI_SET_CONTEXT must always be followed by MI_NOOP */
 	intel_ring_emit(ring, MI_NOOP);
 
+	if (IS_GEN7(ring->dev)) {
+		/* WaSendDummy3dPrimitveAfterSetContext */
+		/* Software must send a pipe_control with a CS stall
+		   and a post sync operation and then a dummy DRAW after
+		   every MI_SET_CONTEXT and after any PIPELINE_SELECT that
+		   is enabling 3D mode. A dummy draw is a 3DPRIMITIVE command
+		   with Indirect Parameter Enable set to 0, UAV Coherency
+		   Required set to 0, Predicate Enable set to 0,
+		   End Offset Enable set to 0, and Vertex Count Per Instance
+		   set to 0, All other parameters are a don't care  */
+
+		/* Send pipe control with CS Stall and postsync op
+		   before 3D_PRIMITIVE */
+		flags |= PIPE_CONTROL_QW_WRITE | PIPE_CONTROL_CS_STALL;
+		intel_ring_emit(ring, GFX_OP_PIPE_CONTROL(4));
+		intel_ring_emit(ring, flags);
+		intel_ring_emit(ring, scratch_addr | PIPE_CONTROL_GLOBAL_GTT);
+		intel_ring_emit(ring, 0);
+
+		/* Send a dummy 3D_PRIMITVE */
+		intel_ring_emit(ring, GFX_OP_3DPRIMITIVE());
+		intel_ring_emit(ring, 4); /* PrimTopoType*/
+		intel_ring_emit(ring, 0); /* VertexCountPerInstance */
+		intel_ring_emit(ring, 0); /* StartVertexLocation */
+		intel_ring_emit(ring, 0); /* InstanceCount */
+		intel_ring_emit(ring, 0); /* StartInstanceLocation */
+		intel_ring_emit(ring, 0); /* BaseVertexLocation  */
+	}
+
 	if (IS_GEN7(ring->dev))
 		intel_ring_emit(ring, MI_ARB_ON_OFF | MI_ARB_ENABLE);
 	else
 		intel_ring_emit(ring, MI_NOOP);
 
 	intel_ring_advance(ring);
+	i915_add_request_noflush(ring);
 
 	return ret;
 }

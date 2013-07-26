@@ -583,8 +583,11 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 }
 
 #define BYT_SD_WP	7
+#define BYT_SD_1P8_EN	40
+#define BYT_SD_PWR_EN	41
 static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
+	int err;
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	/*
 	 * change GPIOC_7 to alternate function 2
@@ -592,7 +595,42 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 	 * Do this in driver as a temporal solution
 	 */
 	lnw_gpio_set_alt(BYT_SD_WP, 2);
+	/* change the GPIO pin to GPIO mode */
+	if (slot->host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE) {
+		/* change to GPIO mode */
+		lnw_gpio_set_alt(BYT_SD_PWR_EN, 0);
+		err = gpio_request(BYT_SD_PWR_EN, "sd_pwr_en");
+		if (err)
+			return -ENODEV;
+		slot->host->gpio_pwr_en = BYT_SD_PWR_EN;
+		/* disable the power by default */
+		gpio_direction_output(slot->host->gpio_pwr_en, 0);
+		gpio_set_value(slot->host->gpio_pwr_en, 1);
+
+		/* change to GPIO mode */
+		lnw_gpio_set_alt(BYT_SD_1P8_EN, 0);
+		err = gpio_request(BYT_SD_1P8_EN, "sd_1p8_en");
+		if (err) {
+			gpio_free(slot->host->gpio_pwr_en);
+			return -ENODEV;
+		}
+		slot->host->gpio_1p8_en = BYT_SD_1P8_EN;
+		/* 3.3v signaling by default */
+		gpio_direction_output(slot->host->gpio_1p8_en, 0);
+		gpio_set_value(slot->host->gpio_1p8_en, 0);
+	}
+
 	return 0;
+}
+
+static void byt_sd_remove_slot(struct sdhci_pci_slot *slot, int dead)
+{
+	if (slot->host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE) {
+		if (gpio_is_valid(slot->host->gpio_1p8_en))
+			gpio_free(slot->host->gpio_1p8_en);
+		if (gpio_is_valid(slot->host->gpio_pwr_en))
+			gpio_free(slot->host->gpio_pwr_en);
+	}
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
@@ -623,6 +661,7 @@ static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
+	.quirks2	= SDHCI_QUIRK2_POWER_PIN_GPIO_MODE,
 	.allow_runtime_pm = true,
 	.probe_slot	= byt_sd_probe_slot,
 };
@@ -1584,6 +1623,18 @@ static int sdhci_pci_get_tuning_count(struct sdhci_host *host)
 	return tuning_count;
 }
 
+static void  sdhci_platform_reset_exit(struct sdhci_host *host, u8 mask)
+{
+	if (host->quirks2 & SDHCI_QUIRK2_POWER_PIN_GPIO_MODE) {
+		if (mask & SDHCI_RESET_ALL) {
+			/* reset back to 3.3v signaling */
+			gpio_set_value(host->gpio_1p8_en, 0);
+			/* disable the VDD power */
+			gpio_set_value(host->gpio_pwr_en, 1);
+		}
+	}
+}
+
 static struct sdhci_ops sdhci_pci_ops = {
 	.enable_dma	= sdhci_pci_enable_dma,
 	.platform_8bit_width	= sdhci_pci_8bit_width,
@@ -1591,6 +1642,7 @@ static struct sdhci_ops sdhci_pci_ops = {
 	.power_up_host	= sdhci_pci_power_up_host,
 	.get_cd		= sdhci_pci_get_cd,
 	.get_tuning_count = sdhci_pci_get_tuning_count,
+	.platform_reset_exit = sdhci_platform_reset_exit,
 };
 
 /*****************************************************************************\

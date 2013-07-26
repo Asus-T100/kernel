@@ -47,7 +47,7 @@ static struct fixed_voltage_config vwm89941_config = {
 
 static struct platform_device vwm89941_device = {
 	.name = "reg-fixed-voltage",
-	.id = 0,
+	.id = PLATFORM_DEVID_AUTO,
 	.dev = {
 		.platform_data = &vwm89941_config,
 	},
@@ -76,7 +76,7 @@ static struct fixed_voltage_config vwm89942_config = {
 
 static struct platform_device vwm89942_device = {
 	.name = "reg-fixed-voltage",
-	.id = 1,
+	.id = PLATFORM_DEVID_AUTO,
 	.dev = {
 		.platform_data = &vwm89942_config,
 	},
@@ -115,7 +115,7 @@ static struct fixed_voltage_config wm8994_ldo1_config = {
 
 static struct platform_device wm8994_ldo1_device = {
 	.name = "reg-fixed-voltage",
-	.id = 2,
+	.id = PLATFORM_DEVID_AUTO,
 	.dev = {
 		.platform_data = &wm8994_ldo1_config,
 	},
@@ -139,7 +139,7 @@ static struct fixed_voltage_config wm8994_ldo2_config = {
 
 static struct platform_device wm8994_ldo2_device = {
 	.name = "reg-fixed-voltage",
-	.id = 3,
+	.id = PLATFORM_DEVID_AUTO,
 	.dev = {
 		.platform_data = &wm8994_ldo2_config,
 	},

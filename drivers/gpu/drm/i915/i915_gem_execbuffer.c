@@ -826,6 +826,8 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	struct drm_i915_gem_object *batch_obj;
 	struct drm_clip_rect *cliprects = NULL;
 	struct intel_ring_buffer *ring;
+	void *priv_data = NULL;
+	u32 priv_length = 0;
 	u32 ctx_id = i915_execbuffer2_get_context_id(*args);
 	u32 exec_start, exec_len;
 	u32 seqno;
@@ -904,35 +906,54 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	}
 
 	if (args->num_cliprects != 0) {
-		if (ring != &dev_priv->ring[RCS]) {
-			DRM_DEBUG("clip rectangles are only valid with the render ring\n");
-			return -EINVAL;
-		}
+		if (INTEL_INFO(dev)->gen <= 4) {
+			/* Pre-Gen5 definition of cliprects */
+			if (ring != &dev_priv->ring[RCS]) {
+				DRM_DEBUG("clip only valid in render ring\n");
+				return -EINVAL;
+			}
 
-		if (INTEL_INFO(dev)->gen >= 5) {
-			DRM_DEBUG("clip rectangles are only valid on pre-gen5\n");
-			return -EINVAL;
-		}
+			if (args->num_cliprects > UINT_MAX /
+							sizeof(*cliprects)) {
+				DRM_DEBUG("execbuf with %u cliprects\n",
+					  args->num_cliprects);
+				return -EINVAL;
+			}
 
-		if (args->num_cliprects > UINT_MAX / sizeof(*cliprects)) {
-			DRM_DEBUG("execbuf with %u cliprects\n",
-				  args->num_cliprects);
-			return -EINVAL;
-		}
+			cliprects = kmalloc(args->num_cliprects *
+						sizeof(*cliprects),
+					    GFP_KERNEL);
+			if (cliprects == NULL) {
+				ret = -ENOMEM;
+				goto pre_mutex_err;
+			}
 
-		cliprects = kmalloc(args->num_cliprects * sizeof(*cliprects),
-				    GFP_KERNEL);
-		if (cliprects == NULL) {
-			ret = -ENOMEM;
-			goto pre_mutex_err;
-		}
+			if (copy_from_user(
+				cliprects,
+				(struct drm_clip_rect __user *)(uintptr_t)
+					args->cliprects_ptr,
+				sizeof(*cliprects)*args->num_cliprects)) {
+					ret = -EFAULT;
+					goto pre_mutex_err;
+			}
+		} else {
+			/* Gen5 and later definition of cliprects */
+			priv_data = kmalloc(args->num_cliprects,
+					GFP_KERNEL);
+			if (priv_data == NULL) {
+				ret = -ENOMEM;
+				goto pre_mutex_err;
+			}
 
-		if (copy_from_user(cliprects,
-				     (struct drm_clip_rect __user *)(uintptr_t)
-				     args->cliprects_ptr,
-				     sizeof(*cliprects)*args->num_cliprects)) {
-			ret = -EFAULT;
-			goto pre_mutex_err;
+			priv_length = args->num_cliprects;
+			if (copy_from_user(
+				priv_data,
+				(void __user *)(uintptr_t)
+					args->cliprects_ptr,
+				priv_length)) {
+					ret = -EFAULT;
+					goto pre_mutex_err;
+			}
 		}
 	}
 
@@ -1071,19 +1092,23 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	exec_start = batch_obj->gtt_offset + args->batch_start_offset;
 	exec_len = args->batch_len;
 	if (cliprects) {
+		/* Non-NULL cliprects only possible for Gen <= 4 */
 		for (i = 0; i < args->num_cliprects; i++) {
 			ret = i915_emit_box(dev, &cliprects[i],
-					    args->DR1, args->DR4);
+						args->DR1, args->DR4);
 			if (ret)
 				goto err;
 
 			ret = ring->dispatch_execbuffer(ring,
-							exec_start, exec_len);
+							exec_start, exec_len,
+							NULL, 0);
 			if (ret)
 				goto err;
 		}
 	} else {
-		ret = ring->dispatch_execbuffer(ring, exec_start, exec_len);
+		/* Execution path for all Gen >= 5 */
+		ret = ring->dispatch_execbuffer(ring, exec_start, exec_len,
+						priv_data, priv_length);
 		if (ret)
 			goto err;
 	}
@@ -1107,6 +1132,7 @@ err:
 
 pre_mutex_err:
 	kfree(cliprects);
+	kfree(priv_data);
 	return ret;
 }
 

@@ -34,7 +34,9 @@ enum cmd_id {
 	CMD_GET_STATUS,
 	CMD_SET_PROPERTY,
 	CMD_COUNTER,
+	CMD_GET_VERSION,
 	CMD_ID_MAX,
+	CMD_FW_UPDATE = 255,
 };
 
 enum resp_type {
@@ -52,6 +54,7 @@ enum resp_type {
 	RESP_GET_STATUS,
 	RESP_COMP_CAL_RESULT,
 	RESP_COUNTER,
+	RESP_GET_VERSION,
 };
 
 #define CMD_PARAM_MAX_SIZE ((u16)60)
@@ -98,6 +101,12 @@ struct resp_counter {
 	u32 dma_counter;
 	u32 i2c_counter;
 	u32 print_counter;
+} __packed;
+
+#define VERSION_STR_MAX_SIZE ((u16)256)
+struct resp_version {
+	u8 str_len;
+	char str[0];
 } __packed;
 
 #define LINK_AS_CLIENT		(0)
@@ -194,12 +203,14 @@ struct psh_ia_priv {
 	struct circ_buf circ, circ_dbg;	/* circ buf for sysfs data node */
 	struct resp_debug_get_mask dbg_mask;
 	struct resp_counter counter;
+	char *version_str;
 	struct mutex cmd_mutex;
 	struct completion cmpl;
 	struct completion get_status_comp;
 	struct completion cmd_reset_comp;
 	struct completion cmd_load_comp;
 	struct completion cmd_counter_comp;
+	struct completion cmd_version_comp;
 	u32 reset_in_progress;
 	u32 load_in_progress;
 	u32 status_bitmask;

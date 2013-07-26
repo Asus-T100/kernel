@@ -63,6 +63,10 @@ static struct charger_cable cable_list[] = {
 	 .extcon_cable_type = EXTCON_ACA,
 	 },
 	{
+	 .psy_cable_type = POWER_SUPPLY_CHARGER_TYPE_SE1,
+	 .extcon_cable_type = EXTCON_TA,
+	 },
+	{
 	 .psy_cable_type = POWER_SUPPLY_CHARGER_TYPE_AC,
 	 .extcon_cable_type = EXTCON_AC,
 	 },
@@ -100,6 +104,9 @@ struct charger_cable *get_cable(unsigned long usb_chrgr_type)
 		return &cable_list[4];
 	case POWER_SUPPLY_CHARGER_TYPE_AC:
 		pr_info("%s:%d AC\n", __FILE__, __LINE__);
+		return &cable_list[6];
+	case POWER_SUPPLY_CHARGER_TYPE_SE1:
+		pr_info("%s:%d SE1\n", __FILE__, __LINE__);
 		return &cable_list[5];
 	}
 

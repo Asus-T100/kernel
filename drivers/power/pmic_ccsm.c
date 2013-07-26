@@ -316,8 +316,8 @@ exit:
 #ifdef CONFIG_DEBUG_FS
 static int pmic_chrgr_reg_show(struct seq_file *seq, void *unused)
 {
-	long addr;
 	int ret;
+	u16 addr;
 	u16 val1;
 	u8 val;
 
@@ -346,7 +346,7 @@ static int pmic_chrgr_reg_show(struct seq_file *seq, void *unused)
 static int pmic_chrgr_tt_reg_show(struct seq_file *seq, void *unused)
 {
 	int ret;
-	long addr;
+	u8 addr;
 	u8 val;
 
 	addr = *((u8 *)seq->private);
@@ -374,89 +374,89 @@ static int pmic_chrgr_reg_open(struct inode *inode, struct file *file)
 }
 
 static struct dentry *charger_debug_dir;
-static u8 pmic_regs[] = {
-	IRQLVL1_ADDR,
-	IRQLVL1_MASK_ADDR,
-	CHGRIRQ0_ADDR,
-	SCHGRIRQ0_ADDR,
-	MCHGRIRQ0_ADDR,
-	LOWBATTDET0_ADDR,
-	LOWBATTDET1_ADDR,
-	BATTDETCTRL_ADDR,
-	VBUSDETCTRL_ADDR,
-	VDCINDETCTRL_ADDR,
-	CHRGRIRQ1_ADDR,
-	SCHGRIRQ1_ADDR,
-	MCHGRIRQ1_ADDR,
-	CHGRCTRL0_ADDR,
-	CHGRCTRL1_ADDR,
-	CHGRSTATUS_ADDR,
-	USBIDCTRL_ADDR,
-	USBIDSTAT_ADDR,
-	WAKESRC_ADDR,
-	THRMBATZONE_ADDR,
-	THRMZN0L_ADDR,
-	THRMZN0H_ADDR,
-	THRMZN1L_ADDR,
-	THRMZN1H_ADDR,
-	THRMZN2L_ADDR,
-	THRMZN2H_ADDR,
-	THRMZN3L_ADDR,
-	THRMZN3H_ADDR,
-	THRMZN4L_ADDR,
-	THRMZN4H_ADDR,
+static struct pmic_regs_def pmic_regs[] = {
+	PMIC_REG_DEF(IRQLVL1_ADDR),
+	PMIC_REG_DEF(IRQLVL1_MASK_ADDR),
+	PMIC_REG_DEF(CHGRIRQ0_ADDR),
+	PMIC_REG_DEF(SCHGRIRQ0_ADDR),
+	PMIC_REG_DEF(MCHGRIRQ0_ADDR),
+	PMIC_REG_DEF(LOWBATTDET0_ADDR),
+	PMIC_REG_DEF(LOWBATTDET1_ADDR),
+	PMIC_REG_DEF(BATTDETCTRL_ADDR),
+	PMIC_REG_DEF(VBUSDETCTRL_ADDR),
+	PMIC_REG_DEF(VDCINDETCTRL_ADDR),
+	PMIC_REG_DEF(CHRGRIRQ1_ADDR),
+	PMIC_REG_DEF(SCHGRIRQ1_ADDR),
+	PMIC_REG_DEF(MCHGRIRQ1_ADDR),
+	PMIC_REG_DEF(CHGRCTRL0_ADDR),
+	PMIC_REG_DEF(CHGRCTRL1_ADDR),
+	PMIC_REG_DEF(CHGRSTATUS_ADDR),
+	PMIC_REG_DEF(USBIDCTRL_ADDR),
+	PMIC_REG_DEF(USBIDSTAT_ADDR),
+	PMIC_REG_DEF(WAKESRC_ADDR),
+	PMIC_REG_DEF(THRMBATZONE_ADDR),
+	PMIC_REG_DEF(THRMZN0L_ADDR),
+	PMIC_REG_DEF(THRMZN0H_ADDR),
+	PMIC_REG_DEF(THRMZN1L_ADDR),
+	PMIC_REG_DEF(THRMZN1H_ADDR),
+	PMIC_REG_DEF(THRMZN2L_ADDR),
+	PMIC_REG_DEF(THRMZN2H_ADDR),
+	PMIC_REG_DEF(THRMZN3L_ADDR),
+	PMIC_REG_DEF(THRMZN3H_ADDR),
+	PMIC_REG_DEF(THRMZN4L_ADDR),
+	PMIC_REG_DEF(THRMZN4H_ADDR),
 };
 
-static u8 pmic_tt_regs[] = {
-	TT_I2CDADDR_ADDR,
-	TT_CHGRINIT0OS_ADDR,
-	TT_CHGRINIT1OS_ADDR,
-	TT_CHGRINIT2OS_ADDR,
-	TT_CHGRINIT3OS_ADDR,
-	TT_CHGRINIT4OS_ADDR,
-	TT_CHGRINIT5OS_ADDR,
-	TT_CHGRINIT6OS_ADDR,
-	TT_CHGRINIT7OS_ADDR,
-	TT_USBINPUTICCOS_ADDR,
-	TT_USBINPUTICCMASK_ADDR,
-	TT_CHRCVOS_ADDR,
-	TT_CHRCVMASK_ADDR,
-	TT_CHRCCOS_ADDR,
-	TT_CHRCCMASK_ADDR,
-	TT_LOWCHROS_ADDR,
-	TT_LOWCHRMASK_ADDR,
-	TT_WDOGRSTOS_ADDR,
-	TT_WDOGRSTMASK_ADDR,
-	TT_CHGRENOS_ADDR,
-	TT_CHGRENMASK_ADDR,
-	TT_CUSTOMFIELDEN_ADDR,
-	TT_CHGRINIT0VAL_ADDR,
-	TT_CHGRINIT1VAL_ADDR,
-	TT_CHGRINIT2VAL_ADDR,
-	TT_CHGRINIT3VAL_ADDR,
-	TT_CHGRINIT4VAL_ADDR,
-	TT_CHGRINIT5VAL_ADDR,
-	TT_CHGRINIT6VAL_ADDR,
-	TT_CHGRINIT7VAL_ADDR,
-	TT_USBINPUTICC100VAL_ADDR,
-	TT_USBINPUTICC150VAL_ADDR,
-	TT_USBINPUTICC500VAL_ADDR,
-	TT_USBINPUTICC900VAL_ADDR,
-	TT_USBINPUTICC1500VAL_ADDR,
-	TT_CHRCVEMRGLOWVAL_ADDR,
-	TT_CHRCVCOLDVAL_ADDR,
-	TT_CHRCVCOOLVAL_ADDR,
-	TT_CHRCVWARMVAL_ADDR,
-	TT_CHRCVHOTVAL_ADDR,
-	TT_CHRCVEMRGHIVAL_ADDR,
-	TT_CHRCCEMRGLOWVAL_ADDR,
-	TT_CHRCCCOLDVAL_ADDR,
-	TT_CHRCCCOOLVAL_ADDR,
-	TT_CHRCCWARMVAL_ADDR,
-	TT_CHRCCHOTVAL_ADDR,
-	TT_CHRCCEMRGHIVAL_ADDR,
-	TT_LOWCHRENVAL_ADDR,
-	TT_LOWCHRDISVAL_ADDR,
+static struct pmic_regs_def pmic_tt_regs[] = {
+	PMIC_REG_DEF(TT_I2CDADDR_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT0OS_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT1OS_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT2OS_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT3OS_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT4OS_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT5OS_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT6OS_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT7OS_ADDR),
+	PMIC_REG_DEF(TT_USBINPUTICCOS_ADDR),
+	PMIC_REG_DEF(TT_USBINPUTICCMASK_ADDR),
+	PMIC_REG_DEF(TT_CHRCVOS_ADDR),
+	PMIC_REG_DEF(TT_CHRCVMASK_ADDR),
+	PMIC_REG_DEF(TT_CHRCCOS_ADDR),
+	PMIC_REG_DEF(TT_CHRCCMASK_ADDR),
+	PMIC_REG_DEF(TT_LOWCHROS_ADDR),
+	PMIC_REG_DEF(TT_LOWCHRMASK_ADDR),
+	PMIC_REG_DEF(TT_WDOGRSTOS_ADDR),
+	PMIC_REG_DEF(TT_WDOGRSTMASK_ADDR),
+	PMIC_REG_DEF(TT_CHGRENOS_ADDR),
+	PMIC_REG_DEF(TT_CHGRENMASK_ADDR),
+	PMIC_REG_DEF(TT_CUSTOMFIELDEN_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT0VAL_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT1VAL_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT2VAL_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT3VAL_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT4VAL_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT5VAL_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT6VAL_ADDR),
+	PMIC_REG_DEF(TT_CHGRINIT7VAL_ADDR),
+	PMIC_REG_DEF(TT_USBINPUTICC100VAL_ADDR),
+	PMIC_REG_DEF(TT_USBINPUTICC150VAL_ADDR),
+	PMIC_REG_DEF(TT_USBINPUTICC500VAL_ADDR),
+	PMIC_REG_DEF(TT_USBINPUTICC900VAL_ADDR),
+	PMIC_REG_DEF(TT_USBINPUTICC1500VAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCVEMRGLOWVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCVCOLDVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCVCOOLVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCVWARMVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCVHOTVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCVEMRGHIVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCCEMRGLOWVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCCCOLDVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCCCOOLVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCCWARMVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCCHOTVAL_ADDR),
+	PMIC_REG_DEF(TT_CHRCCEMRGHIVAL_ADDR),
+	PMIC_REG_DEF(TT_LOWCHRENVAL_ADDR),
+	PMIC_REG_DEF(TT_LOWCHRDISVAL_ADDR),
 };
 
 void dump_pmic_regs(void)
@@ -472,13 +472,14 @@ void dump_pmic_regs(void)
 
 	for (reg_index = 0; reg_index < pmic_reg_cnt; reg_index++) {
 
-		retval = intel_scu_ipc_ioread8(pmic_regs[reg_index], &data);
+		retval = intel_scu_ipc_ioread8(pmic_regs[reg_index].addr,
+						&data);
 		if (retval)
 			dev_err(chc.dev, "Error in reading %x\n",
-				pmic_regs[reg_index]);
+				pmic_regs[reg_index].addr);
 		else
 			dev_info(chc.dev, "0x%x=0x%x\n",
-				pmic_regs[reg_index], data);
+				pmic_regs[reg_index].addr, data);
 	}
 	dev_info(chc.dev, "====================\n");
 }
@@ -495,13 +496,13 @@ void dump_pmic_tt_regs(void)
 
 	for (reg_index = 0; reg_index < pmic_tt_reg_cnt; reg_index++) {
 
-		retval = pmic_read_tt(pmic_tt_regs[reg_index], &data);
+		retval = pmic_read_tt(pmic_tt_regs[reg_index].addr, &data);
 		if (retval)
 			dev_err(chc.dev, "Error in reading %x\n",
-				pmic_tt_regs[reg_index]);
+				pmic_tt_regs[reg_index].addr);
 		else
 			dev_info(chc.dev, "0x%x=0x%x\n",
-				pmic_tt_regs[reg_index], data);
+				pmic_tt_regs[reg_index].addr, data);
 	}
 
 	dev_info(chc.dev, "====================\n");
@@ -529,7 +530,7 @@ static void pmic_debugfs_init(void)
 	u32 reg_index;
 	u32 pmic_reg_cnt = ARRAY_SIZE(pmic_regs);
 	u32 pmic_tt_reg_cnt = ARRAY_SIZE(pmic_tt_regs);
-	char name[6] = {0};
+	char name[PMIC_REG_NAME_LEN] = {0};
 
 	/* Creating a directory under debug fs for charger */
 	charger_debug_dir = debugfs_create_dir(DRIVER_NAME , NULL) ;
@@ -545,13 +546,13 @@ static void pmic_debugfs_init(void)
 
 	for (reg_index = 0; reg_index < pmic_reg_cnt; reg_index++) {
 
-		sprintf(name, "%.2x",
-				pmic_regs[reg_index]);
+		sprintf(name, "%s",
+				pmic_regs[reg_index].reg_name);
 
 		fentry = debugfs_create_file(name,
 				S_IRUGO,
 				pmic_regs_dir,
-				&pmic_regs[reg_index],
+				&pmic_regs[reg_index].addr,
 				&pmic_chrgr_reg_fops);
 
 		if (fentry == NULL)
@@ -567,12 +568,12 @@ static void pmic_debugfs_init(void)
 
 	for (reg_index = 0; reg_index < pmic_tt_reg_cnt; reg_index++) {
 
-		sprintf(name, "%.2x", pmic_tt_regs[reg_index]);
+		sprintf(name, "%s", pmic_tt_regs[reg_index].reg_name);
 
 		fentry = debugfs_create_file(name,
 				S_IRUGO,
 				pmic_tt_regs_dir,
-				&pmic_tt_regs[reg_index],
+				&pmic_tt_regs[reg_index].addr,
 				&pmic_chrgr_tt_reg_fops);
 
 		if (fentry == NULL)
@@ -644,8 +645,6 @@ int pmic_get_health(void)
 
 int pmic_enable_vbus(bool enable)
 {
-	int ret;
-
 	if (enable) {
 		return intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
 				WDT_NOKICK_ENABLE, CHGRCTRL0_WDT_NOKICK_MASK);
@@ -918,8 +917,10 @@ static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 				"USB VBUS Detected. Notifying OTG driver\n");
 			ret = intel_scu_ipc_ioread8(USBIDSTAT_ADDR,
 							&usb_id_sts);
-			if (unlikely(ret))
-				return ret;
+			if (unlikely(ret)) {
+				dev_err(chc.dev, "Error reading USBIDSTAT reg\n");
+				return;
+			}
 			if ((stat_reg & CHRGRIRQ1_SUSBIDDET_MASK) &&
 				(!(is_aca(usb_id_sts)))) {
 				dev_dbg(chc.dev, "VBUS drive for device!!\n");
@@ -945,7 +946,6 @@ static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 static void pmic_event_worker(struct work_struct *work)
 {
 	struct pmic_event *evt, *tmp;
-	unsigned long flags;
 
 	dev_dbg(chc.dev, "%s\n", __func__);
 
@@ -999,7 +999,7 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 
 	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
 	if (evt == NULL) {
-		dev_dbg(chc.dev, "Error allocating evt structure in fn:\n",
+		dev_dbg(chc.dev, "Error allocating evt structure in fn:%s\n",
 			__func__);
 		return IRQ_NONE;
 	}
@@ -1284,7 +1284,7 @@ static int pmic_check_initial_events(void)
 
 	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
 	if (evt == NULL) {
-		dev_dbg(chc.dev, "Error allocating evt structure in fn:\n",
+		dev_dbg(chc.dev, "Error allocating evt structure in fn:%s\n",
 			__func__);
 		return -1;
 	}
@@ -1424,7 +1424,7 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"Error in request_threaded_irq(irq(%d)!!\n",
 			chc.irq);
-		goto req_irq_failed;
+		goto otg_req_failed;
 	}
 
 	retval = pmic_check_initial_events();
@@ -1462,8 +1462,8 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	return 0;
 
 unmask_irq_failed:
-	free_irq(chc.irq, &chc);
 req_irq_failed:
+	free_irq(chc.irq, &chc);
 otg_req_failed:
 	iounmap(chc.pmic_intr_iomap);
 ioremap_failed:

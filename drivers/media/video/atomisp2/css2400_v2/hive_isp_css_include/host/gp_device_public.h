@@ -39,6 +39,6 @@ STORAGE_CLASS_GP_DEVICE_H void gp_device_reg_store(
  */
 STORAGE_CLASS_GP_DEVICE_H hrt_data gp_device_reg_load(
 	const gp_device_ID_t	ID,
-	const unsigned int		reg_addr);
+	const hrt_address	reg_addr);
 
 #endif /* __GP_DEVICE_PUBLIC_H_INCLUDED__ */

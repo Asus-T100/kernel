@@ -8,8 +8,8 @@
 #include "assert_support.h"
 
 STORAGE_CLASS_INPUT_SYSTEM_C void input_system_reg_store(
-	const input_system_ID_t		ID,
-	const unsigned int			reg,
+	const input_system_ID_t			ID,
+	const hrt_address			reg,
 	const hrt_data				value)
 {
 assert(ID < N_INPUT_SYSTEM_ID);
@@ -19,8 +19,8 @@ return;
 }
 
 STORAGE_CLASS_INPUT_SYSTEM_C hrt_data input_system_reg_load(
-	const input_system_ID_t		ID,
-	const unsigned int			reg)
+	const input_system_ID_t			ID,
+	const hrt_address			reg)
 {
 assert(ID < N_INPUT_SYSTEM_ID);
 assert(INPUT_SYSTEM_BASE[ID] != (hrt_address)-1);
@@ -29,7 +29,7 @@ return device_load_uint32(INPUT_SYSTEM_BASE[ID] + reg*sizeof(hrt_data));
 
 STORAGE_CLASS_INPUT_SYSTEM_C void receiver_reg_store(
 	const rx_ID_t				ID,
-	const unsigned int			reg,
+	const hrt_address			reg,
 	const hrt_data				value)
 {
 assert(ID < N_RX_ID);
@@ -40,7 +40,7 @@ return;
 
 STORAGE_CLASS_INPUT_SYSTEM_C hrt_data receiver_reg_load(
 	const rx_ID_t				ID,
-	const unsigned int			reg)
+	const hrt_address			reg)
 {
 assert(ID < N_RX_ID);
 assert(RX_BASE[ID] != (hrt_address)-1);
@@ -49,8 +49,8 @@ return device_load_uint32(RX_BASE[ID] + reg*sizeof(hrt_data));
 
 STORAGE_CLASS_INPUT_SYSTEM_C void receiver_port_reg_store(
 	const rx_ID_t				ID,
-	const mipi_port_ID_t		port_ID,
-	const unsigned int			reg,
+	const mipi_port_ID_t			port_ID,
+	const hrt_address			reg,
 	const hrt_data				value)
 {
 assert(ID < N_RX_ID);
@@ -63,8 +63,8 @@ return;
 
 STORAGE_CLASS_INPUT_SYSTEM_C hrt_data receiver_port_reg_load(
 	const rx_ID_t				ID,
-	const mipi_port_ID_t		port_ID,
-	const unsigned int			reg)
+	const mipi_port_ID_t			port_ID,
+	const hrt_address			reg)
 {
 assert(ID < N_RX_ID);
 assert(port_ID < N_MIPI_PORT_ID);
@@ -74,9 +74,9 @@ return device_load_uint32(RX_BASE[ID] + MIPI_PORT_OFFSET[port_ID] + reg*sizeof(h
 }
 
 STORAGE_CLASS_INPUT_SYSTEM_C void input_system_sub_system_reg_store(
-	const input_system_ID_t		ID,
-	const sub_system_ID_t		sub_ID,
-	const unsigned int			reg,
+	const input_system_ID_t			ID,
+	const sub_system_ID_t			sub_ID,
+	const hrt_address			reg,
 	const hrt_data				value)
 {
 assert(ID < N_INPUT_SYSTEM_ID);
@@ -88,9 +88,9 @@ return;
 }
 
 STORAGE_CLASS_INPUT_SYSTEM_C hrt_data input_system_sub_system_reg_load(
-	const input_system_ID_t		ID,
-	const sub_system_ID_t		sub_ID,
-	const unsigned int			reg)
+	const input_system_ID_t			ID,
+	const sub_system_ID_t			sub_ID,
+	const hrt_address			reg)
 {
 assert(ID < N_INPUT_SYSTEM_ID);
 assert(sub_ID < N_SUB_SYSTEM_ID);

@@ -64,16 +64,19 @@
 #define SH_CSS_MAX_SP_THREADS	4 /* raw_copy, preview, capture, acceleration */
 #endif
 
-#define NUM_REF_FRAMES		2
+#define NUM_REF_FRAMES		(3)
 
 /* keep next up to date with the definition for MAX_CB_ELEMS_FOR_TAGGER in tagger.sp.c */
+#if defined(HAS_SP_2400)
 #define NUM_CONTINUOUS_FRAMES	15
-
+#else
+#define NUM_CONTINUOUS_FRAMES	10
+#endif
 #define NUM_MIPI_FRAMES		8
 
 #define NUM_TNR_FRAMES		2
 
-#define NUM_VIDEO_REF_FRAMES	2
+#define NUM_VIDEO_REF_FRAMES	(3)  /* SN: Should this not always match NUM_REF_FRAMES ?*/
 #define NUM_VIDEO_TNR_FRAMES	2
 #define NR_OF_PIPELINES			5 /* Must match with IA_CSS_PIPE_ID_NUM */
 
@@ -82,24 +85,6 @@
 
 /* MW: This has to be moved to the "pipeline" file set */
 /*#define SH_CSS_MAX_STAGES 6 *//* copy, preisp, anr, postisp, capture_pp, vf_pp */
-
-/* ISP parameter versions
- * If ISP_PIPE_VERSION is defined as 2 in isp_defs_for_hive.h,
- * SH_CSS_ISP_PARAMS_VERSION should be 2.
- * If ISP_PIPE_VERSION is defined as 1,
- * SH_CSS_ISP_PARAMS_VERSION can be either 1 or 2.
- * ISP_PIPE_VERSION is always defined as 1 for ISP2300,
- * so SH_CSS_ISP_PARAMS_VERSION can be defined as 1 for ISP2300
- * to avoid sched error by increase of the number of paramaters.
- *
-#if defined(IS_ISP_2400_SYSTEM)
-#define SH_CSS_ISP_PARAMS_VERSION	2
-#define SH_CSS_ISP_SUPPORT_DPC_BEFORE_WB	1
-#else
-#define SH_CSS_ISP_PARAMS_VERSION	1
-#define SH_CSS_ISP_SUPPORT_DPC_BEFORE_WB	0
-#endif
- */
 
 /*
  * JB: keep next enum in sync with thread id's
@@ -135,6 +120,7 @@ enum sh_css_sp_event_type {
 	SH_CSS_SP_EVENT_3A_STATISTICS_DONE,
 	SH_CSS_SP_EVENT_DIS_STATISTICS_DONE,
 	SH_CSS_SP_EVENT_PIPELINE_DONE,
+	SH_CSS_SP_EVENT_FRAME_TAGGED,
 	SH_CSS_SP_EVENT_PORT_EOF,
 	SH_CSS_SP_EVENT_NR_OF_TYPES,		/* must be last */
 };
@@ -216,6 +202,7 @@ struct sh_css_binary_args {
 	struct ia_css_frame *out_tnr_frame;  /* tnr output frame */
 	struct ia_css_frame *extra_frame;    /* intermediate frame */
 	struct ia_css_frame *out_vf_frame;   /* viewfinder output frame */
+	struct ia_css_frame *extra_ref_frame;    /* reference extra frame */
 	bool                 copy_vf;
 	bool                 copy_output;
 	unsigned             vf_downscale_log2;
@@ -256,6 +243,7 @@ struct sh_css_pipeline {
 	struct ia_css_frame in_frame;
 	struct ia_css_frame out_frame;
 	struct ia_css_frame vf_frame;
+	enum ia_css_frame_delay dvs_frame_delay;
 };
 
 
@@ -387,6 +375,7 @@ struct sh_css_sp_pipeline {
 	mipi_port_ID_t	port_id;	/* port_id for input system */
 	uint32_t	num_stages;		/* the pipe config */
 	uint32_t	running;	/* needed for pipe termination */
+	uint32_t	dvs_frame_delay;
 	hrt_vaddress	sp_stage_addr[SH_CSS_MAX_STAGES];
 	struct sh_css_sp_stage *stage; /* Current stage for this pipeline */
 	union {
@@ -453,6 +442,7 @@ enum sh_css_frame_id {
 	sh_css_frame_dis,		/* Dynamic */
 	sh_css_frame_ref_in,
 	sh_css_frame_ref_out,
+	sh_css_frame_ref_extra,
 	sh_css_frame_tnr_in,
 	sh_css_frame_tnr_out,
 	sh_css_frame_extra,
@@ -469,7 +459,7 @@ enum sh_css_frame_id {
  *
  * s3a and dis are now also dynamic but (stil) handled seperately
  */
-#define SH_CSS_NUM_FRAME_IDS (13)
+#define SH_CSS_NUM_FRAME_IDS (14)
 #define SH_CSS_NUM_DYNAMIC_BUFFER_IDS (5)
 #define SH_CSS_NUM_DYNAMIC_FRAME_IDS (3)
 #define SH_CSS_INVALID_FRAME_ID (-1)
@@ -629,7 +619,11 @@ struct sh_css_sp_output {
  * The circular buffer is empty if "start == end". The
  * circular buffer is full if "(end + 1) % size == start".
  */
-#define  SH_CSS_CIRCULAR_BUF_NUM_ELEMS	6
+#if defined(HAS_SP_2400)
+#define  SH_CSS_CIRCULAR_BUF_NUM_ELEMS             13
+#else
+#define  SH_CSS_CIRCULAR_BUF_NUM_ELEMS              6
+#endif
 struct sh_css_circular_buf {
 	/*
 	 * WARNING: Do NOT change the memeber orders below,

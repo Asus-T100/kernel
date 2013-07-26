@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/compat.h>
 #include <linux/swap.h>
+#include <linux/fdtable.h>
 
 static const struct file_operations fuse_direct_io_file_operations;
 
@@ -144,6 +145,12 @@ int fuse_do_open(struct fuse_conn *fc, u64 nodeid, struct file *file,
 	struct fuse_file *ff;
 	int err;
 	int opcode = isdir ? FUSE_OPENDIR : FUSE_OPEN;
+	char *tmp;
+	char *pathname;
+	struct files_struct *ring3_files;
+	struct path path;
+	struct file *filp = NULL;
+	mm_segment_t oldfs;
 
 	ff = fuse_file_alloc(fc);
 	if (!ff)
@@ -162,6 +169,80 @@ int fuse_do_open(struct fuse_conn *fc, u64 nodeid, struct file *file,
 	ff->nodeid = nodeid;
 	ff->open_flags = outarg.open_flags;
 	file->private_data = fuse_file_get(ff);
+
+	/* first check if fast path was enabled in process_init_reply() */
+	if (!fc->enable_fast_path) {
+		ff->kfile = NULL;
+		return 0;
+	}
+
+	/* next check if fast path is requested for this specific file */
+	if (!(outarg.open_flags & FOPEN_FAST_PATH)) {
+		ff->kfile = NULL;
+		return 0;
+	}
+
+	/* Get ring 3 file handle (from ring3 open call) */
+	ff->fh_backing = outarg.fh_backing;
+	if (ff->fh_backing >= sysctl_nr_open) {
+		ff->fh_backing = 0;
+		ff->kfile = NULL;
+		/* fast path not possible */
+		return 0;
+	}
+
+	/* Get struct file for backing store */
+	ring3_files = get_files_struct(fc->ring3_task);
+	if (!ring3_files) {
+		/* fast path not possible */
+		return 0;
+	}
+
+	/* Not taking a ref to the files structure, so must take file_lock */
+	spin_lock(&ring3_files->file_lock);
+	ff->kfile = fcheck_files(ring3_files, ff->fh_backing);
+	if (!ff->kfile) {
+		spin_unlock(&ring3_files->file_lock);
+		put_files_struct(ring3_files);
+		/* fast path not possible */
+		return 0;
+	}
+
+	/* Get path of backing store */
+	path = ff->kfile->f_path;
+	path_get(&ff->kfile->f_path);
+	spin_unlock(&ring3_files->file_lock);
+	put_files_struct(ring3_files);
+
+	tmp = (char *)__get_free_page(GFP_TEMPORARY);
+
+	if (!tmp) {
+		path_put(&path);
+		return -ENOMEM;
+	}
+
+	pathname = d_path(&path, tmp, PAGE_SIZE);
+	path_put(&path);
+
+	if (IS_ERR(pathname)) {
+		free_page((unsigned long)tmp);
+	} else {
+		/* Open file in kernel */
+		oldfs = get_fs();
+		set_fs(get_ds());
+		/* Use flags/mode from ring3 file */
+		filp = filp_open(pathname, ff->kfile->f_flags,
+				ff->kfile->f_mode);
+		set_fs(oldfs);
+		if (IS_ERR(filp)) {
+			err = PTR_ERR(filp);
+			goto o_out;
+		}
+		ff->kfile = filp;
+
+o_out:
+		free_page((unsigned long)tmp);
+	}
 
 	return 0;
 }
@@ -217,6 +298,13 @@ static void fuse_prepare_release(struct fuse_file *ff, int flags, int opcode)
 	list_del(&ff->write_entry);
 	if (!RB_EMPTY_NODE(&ff->polled_node))
 		rb_erase(&ff->polled_node, &fc->polled_files);
+
+	if (fc->enable_fast_path && (NULL != ff->kfile)) {
+		filp_close(ff->kfile, NULL);
+		ff->kfile = NULL;
+		ff->fh_backing = 0;
+	}
+
 	spin_unlock(&fc->lock);
 
 	wake_up_interruptible_all(&ff->poll_wait);
@@ -360,13 +448,31 @@ static int fuse_flush(struct file *file, fl_owner_t id)
 	struct fuse_file *ff = file->private_data;
 	struct fuse_req *req;
 	struct fuse_flush_in inarg;
-	int err;
+	int err = 1;
 
 	if (is_bad_inode(inode))
 		return -EIO;
 
 	if (fc->no_flush)
 		return 0;
+
+	/* first check if fast path was enabled in process_init_reply() */
+	if (!fc->enable_fast_path)
+		goto out_fp;
+
+	/* next check if fast path is requested for this specific file */
+	if (!ff->kfile)
+		goto out_fp;
+
+	if (ff->kfile->f_op->flush)
+		err = ff->kfile->f_op->flush(ff->kfile, id);
+
+	if (!err)
+		return 0;
+
+	fc->no_flush = 1;
+	return 0;
+out_fp:
 
 	req = fuse_get_req_nofail(fc, file);
 	memset(&inarg, 0, sizeof(inarg));
@@ -441,6 +547,27 @@ int fuse_fsync_common(struct file *file, loff_t start, loff_t end,
 		err = PTR_ERR(req);
 		goto out;
 	}
+
+	/* first check if fast path was enabled in process_init_reply() */
+	if (!fc->enable_fast_path)
+		goto out_fp;
+
+	/* next check if fast path is requested for this specific file */
+	if (!ff->kfile)
+		goto out_fp;
+
+	if (ff->kfile->f_op->fsync)
+		err = ff->kfile->f_op->fsync(ff->kfile, start, end, datasync);
+
+	if (!err)
+		return 0;
+
+	if (isdir)
+		fc->no_fsyncdir = 1;
+	else
+		fc->no_fsync = 1;
+	return 0;
+out_fp:
 
 	memset(&inarg, 0, sizeof(inarg));
 	inarg.fh = ff->fh;
@@ -703,6 +830,10 @@ static ssize_t fuse_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 				  unsigned long nr_segs, loff_t pos)
 {
 	struct inode *inode = iocb->ki_filp->f_mapping->host;
+	struct fuse_file *ff = iocb->ki_filp->private_data;
+	struct fuse_conn *fc = ff->fc;
+	mm_segment_t oldfs;
+	int ret;
 
 	if (pos + iov_length(iov, nr_segs) > i_size_read(inode)) {
 		int err;
@@ -714,6 +845,28 @@ static ssize_t fuse_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 		if (err)
 			return err;
 	}
+
+	/* first check if fast path was enabled in process_init_reply() */
+	if (!fc->enable_fast_path)
+		goto out;
+
+	/* next check if fast path is requested for this specific file */
+	if (!ff->kfile)
+		goto out;
+
+	if (!ff->kfile->f_path.dentry)
+		return -ERESTART_RESTARTBLOCK;
+
+	/* do read directly */
+	oldfs = get_fs();
+	set_fs(get_ds());
+
+	ret = vfs_read(ff->kfile, iov->iov_base, iocb->ki_left, &iocb->ki_pos);
+
+	set_fs(oldfs);
+
+	return ret;
+out:
 
 	return generic_file_aio_read(iocb, iov, nr_segs, pos);
 }
@@ -935,6 +1088,29 @@ static ssize_t fuse_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	ssize_t err;
 	struct iov_iter i;
 	loff_t endbyte = 0;
+
+	struct fuse_file *ff = file->private_data;
+	struct fuse_conn *fc = ff->fc;
+	mm_segment_t oldfs;
+
+	/* first check if fast path was enabled in process_init_reply() */
+	if (!fc->enable_fast_path)
+		goto out_fp;
+
+	/* next check if fast path is requested for this specific file */
+	if (!ff->kfile)
+		goto out_fp;
+
+	/* issue write directly */
+	oldfs = get_fs();
+	set_fs(get_ds());
+
+	err = vfs_write(ff->kfile, iov->iov_base, iocb->ki_left, &iocb->ki_pos);
+
+	set_fs(oldfs);
+
+	return err;
+out_fp:
 
 	WARN_ON(iocb->ki_pos != pos);
 

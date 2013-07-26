@@ -4,6 +4,16 @@
 #define DRIVER_NAME "bcove_bcu"
 #define DEVICE_NAME "mrfl_pmic_bcu"
 
+/* Generic bit representaion macros */
+#define B0	(1 << 0)
+#define B1	(1 << 1)
+#define B2	(1 << 2)
+#define B3	(1 << 3)
+#define B4	(1 << 4)
+#define B5	(1 << 5)
+#define B6	(1 << 6)
+#define B7	(1 << 7)
+
 /* IRQ registers */
 #define BCUIRQ                  0x05
 #define IRQLVL1                 0x01
@@ -20,9 +30,13 @@
 #define NUM_VOLT_LEVELS         3
 #define NUM_CURR_LEVELS         2
 
-#define ICCMAX_EN               (1 << 6)
-#define VWARN_EN                (1 << 3)
-#define VCRIT_SHUTDOWN          (1 << 4)
+
+#define VWARN_EN_MASK		B3
+#define ICCMAXVCC_EN_MASK	B6
+
+#define ICCMAXVCC_EN		(1 << 6)
+#define VWARN_EN		(1 << 3)
+#define VCRIT_SHUTDOWN		(1 << 4)
 
 #define BCU_ALERT               (1 << 3)
 #define VWARN1_IRQ              (1 << 0)
@@ -56,15 +70,15 @@
 #define VWARN1_CFG              0x3C
 #define VWARN2_CFG              0x3D
 #define VCRIT_CFG               0x3E
-#define MAXVSYS_CFG             0x3F
-#define MAXVCC_CFG              0x40
-#define MAXVNN_CFG              0x41
+#define ICCMAXVSYS_CFG          0x3F
+#define ICCMAXVCC_CFG           0x40
+#define ICCMAXVNN_CFG           0x41
 
 /* Behaviour registers */
 #define VFLEXSRC_BEH            0x42
 #define VFLEXDIS_BEH            0x43
 #define VIBDIS_BEH              0x44
-#define CAMTORCH_BEH            0x45
+#define CAMFLTORCH_BEH          0x45
 #define CAMFLDIS_BEH            0x46
 #define BCUDISW2_BEH            0x47
 #define BCUDISCRIT_BEH          0x48
@@ -79,6 +93,16 @@
 
 /* No of Bytes we have to read from SMIP from BCU_SMIP_BASE*/
 #define NUM_SMIP_BYTES          14
+
+/* Max length of the register name string */
+#define MAX_REGNAME_LEN		15
+
+/* Macro to get the mode of acess for the BCU registers	*/
+#define MODE(m)	(((m != S_BCUINT) && (m != BCUIRQ) && (m != IRQLVL1))	\
+			? (S_IRUGO | S_IWUSR) : S_IRUGO)
+
+/* Generic macro to assign the parameters (reg name and address) */
+#define reg_info(x)	{ .name = #x, .addr = x, .mode = MODE(x) }
 
 /*
 * These values are read from SMIP.
@@ -105,6 +129,12 @@ struct ocd_bcove_config_data {
 
 struct ocd_platform_data {
 	int (*bcu_config_data) (struct ocd_bcove_config_data *);
+};
+
+struct bcu_reg_info {
+	char	name[MAX_REGNAME_LEN];	/* register name   */
+	u16	addr;			/* offset address  */
+	u16	mode;			/* permission mode */
 };
 
 #endif

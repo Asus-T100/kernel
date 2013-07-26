@@ -894,6 +894,22 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 		intel_dp->DP |= DP_AUDIO_OUTPUT_ENABLE;
 		intel_write_eld(encoder, adjusted_mode);
 	}
+
+	if (intel_dp->pfit && (adjusted_mode->hdisplay < PFIT_SIZE_LIMIT)) {
+		u32 val = 0;
+		if (intel_dp->pfit == AUTOSCALE)
+			val =  PFIT_ENABLE | (intel_crtc->pipe <<
+				PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
+		if (intel_dp->pfit == PILLARBOX)
+			val =  PFIT_ENABLE | (intel_crtc->pipe <<
+				PFIT_PIPE_SHIFT) | PFIT_SCALING_PILLAR;
+		else if (intel_dp->pfit == LETTERBOX)
+			val =  PFIT_ENABLE | (intel_crtc->pipe <<
+				PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
+		DRM_DEBUG_DRIVER("pfit val = %x", val);
+		I915_WRITE(PFIT_CONTROL, val);
+	}
+
 	memset(intel_dp->link_configuration, 0, DP_LINK_CONFIGURATION_SIZE);
 	intel_dp->link_configuration[0] = intel_dp->link_bw;
 	intel_dp->link_configuration[1] = intel_dp->lane_count;
@@ -1327,7 +1343,8 @@ static void intel_dp_prepare(struct drm_encoder *encoder)
 	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
 	/* Some of the FFRD10 PR1.1B boards doesnt like when edp panel power
 	 * is off */
-	/* ironlake_edp_panel_off(intel_dp); */
+	if (!i915_bytffrd_support)
+		ironlake_edp_panel_off(intel_dp);
 	intel_dp_link_down(intel_dp);
 }
 
@@ -1622,7 +1639,8 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		intel_dp_sink_dpms(intel_dp, mode);
 		/* Some of the FFRD10 PR1.1B boards doesnt like when edp
 		 * panel power is off */
-		/* ironlake_edp_panel_off(intel_dp); */
+		if (!i915_bytffrd_support)
+			ironlake_edp_panel_off(intel_dp);
 		intel_dp_link_down(intel_dp);
 
 		if (is_cpu_edp(intel_dp))
@@ -1641,7 +1659,6 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		} else
 			ironlake_edp_panel_vdd_off(intel_dp, false);
 		ironlake_edp_backlight_on(intel_dp);
-
 	}
 	intel_dp->dpms_mode = mode;
 }
@@ -2773,6 +2790,17 @@ intel_dp_set_property(struct drm_connector *connector,
 		goto done;
 	}
 
+	if (property == dev_priv->force_pfit_property) {
+		if (val == intel_dp->pfit)
+			return 0;
+
+		DRM_DEBUG_DRIVER("val = %d", (int)val);
+		intel_dp->pfit = val;
+		if (is_edp(intel_dp))
+			return 0;
+		goto done;
+	}
+
 	return -EINVAL;
 
 done:
@@ -2890,6 +2918,7 @@ intel_dp_add_properties(struct intel_dp *intel_dp, struct drm_connector *connect
 {
 	intel_attach_force_audio_property(connector);
 	intel_attach_broadcast_rgb_property(connector);
+	intel_attach_force_pfit_property(connector);
 }
 
 void
@@ -2911,6 +2940,7 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	intel_dp->port = port;
 	intel_dp->dpms_mode = -1;
 	intel_dp->psr_setup = 0;
+	intel_dp->pfit = 0;
 
 	intel_connector = kzalloc(sizeof(struct intel_connector), GFP_KERNEL);
 	if (!intel_connector) {

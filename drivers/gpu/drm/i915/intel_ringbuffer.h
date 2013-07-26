@@ -106,7 +106,8 @@ struct  intel_ring_buffer {
 	u32		(*get_seqno)(struct intel_ring_buffer *ring,
 				     bool lazy_coherency);
 	int		(*dispatch_execbuffer)(struct intel_ring_buffer *ring,
-					       u32 offset, u32 length);
+					u32 offset, u32 length,
+					void *priv_data, u32 priv_length);
 	void		(*cleanup)(struct intel_ring_buffer *ring);
 	int		(*sync_to)(struct intel_ring_buffer *ring,
 				   struct intel_ring_buffer *to,
@@ -284,8 +285,7 @@ int intel_ring_save(struct intel_ring_buffer *ring,
 			u32 flags);
 int intel_ring_restore(struct intel_ring_buffer *ring);
 
-
-
+u32 get_pipe_control_scratch_addr(struct intel_ring_buffer *ring);
 
 
 #endif /* _INTEL_RINGBUFFER_H_ */

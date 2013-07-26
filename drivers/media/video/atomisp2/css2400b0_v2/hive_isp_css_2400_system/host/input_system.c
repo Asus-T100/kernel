@@ -273,6 +273,9 @@ assert(pred < N_MIPI_PREDICTOR_TYPES);
 		break;
 	case 3: addr = ((field_id<6)?_HRT_CSS_RECEIVER_2400_COMP_SCHEME_VC3_REG0_IDX:_HRT_CSS_RECEIVER_2400_COMP_SCHEME_VC3_REG1_IDX);
 		break;
+	default:
+		/* should not happen */
+		return;
 	}
 
 	reg = ((field_id < 6)?(val << (field_id * 5)):(val << ((field_id - 6) * 5)));
@@ -546,9 +549,9 @@ STORAGE_CLASS_INLINE void mipi_port_get_state(
 	state->device_ready = receiver_port_reg_load(ID,
 		port_ID, _HRT_CSS_RECEIVER_DEVICE_READY_REG_IDX);
 	state->irq_status = receiver_port_reg_load(ID,
-		port_ID, _HRT_CSS_RECEIVER_IRQ_ENABLE_REG_IDX);
-	state->irq_enable = receiver_port_reg_load(ID,
 		port_ID, _HRT_CSS_RECEIVER_IRQ_STATUS_REG_IDX);
+	state->irq_enable = receiver_port_reg_load(ID,
+		port_ID, _HRT_CSS_RECEIVER_IRQ_ENABLE_REG_IDX);
 	state->timeout_count = receiver_port_reg_load(ID,
 		port_ID, _HRT_CSS_RECEIVER_TIMEOUT_COUNT_REG_IDX);
 	state->init_count = (uint16_t)receiver_port_reg_load(ID,
@@ -1509,8 +1512,9 @@ input_system_error_t	input_system_prbs_channel_cfg(
 {
 	channel_cfg_t channel;
 
+	(void)nof_frames;
+
 	channel.ch_id 	= ch_id;
-	//channel.backend_ch 	= backend_ch;
 	channel.source_type= INPUT_SYSTEM_SOURCE_PRBS;
 
 	channel.source_cfg.prbs_cfg.seed = seed;
@@ -1521,8 +1525,6 @@ input_system_error_t	input_system_prbs_channel_cfg(
 	
 	channel.target_cfg	= target;
 
-	assert(nof_frames);
-	
 	return input_system_configure_channel(channel);
 }
 
@@ -1544,7 +1546,8 @@ input_system_error_t	input_system_tpg_channel_cfg(
 )
 {
 	channel_cfg_t channel;
-	//channel.backend_ch 	= backend_ch;
+
+	(void)nof_frames;
 
 	channel.ch_id 	= ch_id;
 	channel.source_type		= INPUT_SYSTEM_SOURCE_TPG;
@@ -1560,7 +1563,6 @@ input_system_error_t	input_system_tpg_channel_cfg(
 	channel.source_cfg.tpg_cfg.sync_gen_cfg.vblank_cycles 	= sync_gen_vblank_cycles;
 	
 	channel.target_cfg	= target;
-	assert(nof_frames);
 	return input_system_configure_channel(channel);
 }
 
@@ -1572,13 +1574,12 @@ input_system_error_t	input_system_gpfifo_channel_cfg(
 {
 	channel_cfg_t channel;
 
+	(void)nof_frames;
+
 	channel.ch_id 	= ch_id;
-	//channel.backend_ch 	= 0;
 	channel.source_type	= INPUT_SYSTEM_SOURCE_FIFO;
-	// channel.source_cfg.gpfifo	= ?;
 	
 	channel.target_cfg	= target;
-	assert(nof_frames);
 	return input_system_configure_channel(channel);
 }
 

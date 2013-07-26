@@ -56,6 +56,7 @@ static void b080xat_get_panel_info(int pipe, struct drm_connector *connector)
 
 void b080xat_msgbus_reset()
 {
+#ifdef CONFIG_X86_INTEL_MID
 	u32 msg_bus_port;
 	u32 msg_bus_reg;
 	u32 val;
@@ -85,6 +86,7 @@ void b080xat_msgbus_reset()
 	val  &= 0xFFFCFFFF;
 	val  |= 0x00010000;
 	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
+#endif
 }
 
 bool b080xat_init(struct intel_dsi_device *dsi)
