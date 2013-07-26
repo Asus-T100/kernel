@@ -940,7 +940,7 @@ static void atomisp_buf_done(struct atomisp_sub_device *asd, int error,
 					isp->latest_preview_exp_id = exp_id;
 				else if (css_pipe_id == CSS_PIPE_ID_CAPTURE)
 					dev_dbg(isp->dev,
-						"ZSL raw buffer id %d\n",
+						"ZSL capture raw buffer id: %u\n",
 						exp_id);
 			}
 			break;

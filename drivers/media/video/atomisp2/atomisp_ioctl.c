@@ -1303,7 +1303,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 		    atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
-			dev_dbg(isp->dev, "ZSL raw buffer id %d\n",
+			dev_dbg(isp->dev,
+				"ZSL last preview raw buffer id: %u\n",
 				isp->latest_preview_exp_id);
 
 			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE) {
