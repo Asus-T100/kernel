@@ -1521,6 +1521,35 @@ u8 *drm_find_cea_extension(struct edid *edid)
 }
 EXPORT_SYMBOL(drm_find_cea_extension);
 
+/**
+ * drm_match_cea_mode - look for a CEA mode matching given mode
+ * @to_match: display mode
+ *
+ * Returns the CEA Video ID (VIC) of the mode or 0 if it isn't a CEA-861
+ * mode.
+ */
+u8 drm_match_cea_mode(struct drm_display_mode *to_match)
+{
+	struct drm_display_mode *cea_mode;
+	u8 mode;
+
+	for (mode = 0; mode < ARRAY_SIZE(edid_cea_modes); mode++) {
+		cea_mode = (struct drm_display_mode *)&edid_cea_modes[mode];
+
+		if (drm_mode_equal(to_match, cea_mode))
+			return mode + 1;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(drm_match_cea_mode);
+
+enum hdmi_picture_aspect drm_get_cea_aspect_ratio(u8 vic)
+{
+	/*return Aspect Ratio for VIC-1 to access the right array element*/
+	return edid_cea_modes[vic-1].picture_aspect_ratio;
+}
+EXPORT_SYMBOL(drm_get_cea_aspect_ratio);
+
 static int
 do_cea_modes (struct drm_connector *connector, u8 *db, u8 len)
 {
