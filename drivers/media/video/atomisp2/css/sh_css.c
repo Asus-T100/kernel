@@ -4027,6 +4027,9 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 			if (ddr_buffer.payload.frame.exp_id)
 				((struct sh_css_frame *)(*buffer))->exp_id
 					= ddr_buffer.payload.frame.exp_id;
+			if (ddr_buffer.payload.frame.flashed == 0)
+				((struct sh_css_frame *)(*buffer))->flash_state
+					 = SH_CSS_FRAME_NO_FLASH;
 			if (ddr_buffer.payload.frame.flashed == 1)
 				((struct sh_css_frame *)(*buffer))->flash_state
 					= SH_CSS_FRAME_PARTIAL_FLASH;
@@ -4040,6 +4043,9 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 			if (ddr_buffer.payload.frame.exp_id)
 				((struct sh_css_frame *)(*buffer))->exp_id
 					= ddr_buffer.payload.frame.exp_id;
+			if (ddr_buffer.payload.frame.flashed == 0)
+				((struct sh_css_frame *)(*buffer))->flash_state
+					 = SH_CSS_FRAME_NO_FLASH;
 			if (ddr_buffer.payload.frame.flashed == 1)
 				((struct sh_css_frame *)(*buffer))->flash_state
 					= SH_CSS_FRAME_PARTIAL_FLASH;
