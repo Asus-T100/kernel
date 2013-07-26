@@ -398,12 +398,6 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 	int frame_length;
 	int ret;
 
-	/* group hold start */
-	ret = ov2722_write_reg(client, OV2722_8BIT,
-					OV2722_GROUP_ACCESS, 0);
-	if (ret)
-		return ret;
-
 	ret = ov2722_read_reg(client, OV2722_16BIT,
 					OV2722_VTS_DIFF_H, &vts);
 	if (ret)
@@ -413,7 +407,13 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 		frame_length = (coarse_itg + 6) - vts;
 	else
 		frame_length = 0;
-	coarse_itg = coarse_itg << 4;
+	coarse_itg <<= 4;
+	digitgain <<= 2;
+
+	/* group hold start */
+	ret = ov2722_write_reg(client, OV2722_8BIT, OV2722_GROUP_ACCESS, 0);
+	if (ret)
+		return ret;
 
 	ret = ov2722_write_reg(client, OV2722_16BIT,
 				OV2722_VTS_DIFF_H, frame_length >> 8);
@@ -440,10 +440,6 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 		return ret;
 
 	/* set digital gain */
-
-	digitgain = 0x400 * (digitgain >> 8) +
-		((0x400 * (digitgain & 0xff)) >> 8);
-
 	ret = ov2722_write_reg(client, OV2722_16BIT,
 				OV2722_MWB_GAIN_R_H, digitgain);
 	if (ret)
