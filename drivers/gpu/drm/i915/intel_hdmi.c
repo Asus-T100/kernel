@@ -317,6 +317,7 @@ static void intel_set_infoframe(struct drm_encoder *encoder,
 static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
 					 struct drm_display_mode *adjusted_mode)
 {
+	enum hdmi_picture_aspect PAR;
 	struct dip_infoframe avi_if = {
 		.type = DIP_TYPE_AVI,
 		.ver = DIP_VERSION_AVI,
@@ -331,35 +332,58 @@ static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
 		.body.avi.left_bar_end = 0,
 		.body.avi.right_bar_start = 0,
 	};
-	u32 uindex = 0;
-	int hdisp, vdisp, vref, htot, vtot, am_flag, em_flag;
-	int chk_hdisp, chk_vdisp, chk_vref, chk_flag;
-	for (uindex = 0; uindex < drm_num_cea_modes ; uindex++) {
-		hdisp = edid_cea_modes[uindex].hdisplay;
-		vdisp = edid_cea_modes[uindex].vdisplay;
-		htot = edid_cea_modes[uindex].htotal;
-		vtot = edid_cea_modes[uindex].vtotal;
-		vref = edid_cea_modes[uindex].clock*1000/htot/vtot;
-		em_flag = edid_cea_modes[uindex].flags &
-						DRM_MODE_FLAG_INTERLACE;
-		am_flag = adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE;
-		chk_hdisp = (adjusted_mode->hdisplay == hdisp);
-		chk_vdisp = (adjusted_mode->vdisplay == vdisp);
-		chk_vref = (adjusted_mode->vrefresh == vref);
-		chk_flag = am_flag == em_flag;
 
-		if (chk_hdisp && chk_vdisp && chk_vref && chk_flag) {
-			avi_if.body.avi.VIC = uindex+1;
-			if (!(vdisp % 3) && ((vdisp * 4 / 3) == hdisp))
-				avi_if.body.avi.C_M_R |= 0x10;
-			else if (!(vdisp % 9) && ((vdisp * 16 / 9) == hdisp))
-				avi_if.body.avi.C_M_R |= 0x20;
+	/* Bar information */
+	avi_if.body.avi.Y_A_B_S |= DIP_AVI_BAR_BOTH;
+
+	avi_if.body.avi.VIC = drm_match_cea_mode(adjusted_mode);
+
+	/* Set full range quantization for non-CEA modes
+		and 640x480 */
+	if (avi_if.body.avi.VIC > 1)
+		avi_if.body.avi.ITC_EC_Q_SC |= DIP_AVI_RGB_QUANT_RANGE_LIMITED;
+	else
+		avi_if.body.avi.ITC_EC_Q_SC |= DIP_AVI_RGB_QUANT_RANGE_FULL;
+
+	if (avi_if.body.avi.VIC) {
+		/* colorimetry */
+		if ((adjusted_mode->vdisplay == 480) ||
+			(adjusted_mode->vdisplay == 576) ||
+			(adjusted_mode->vdisplay == 240) ||
+			(adjusted_mode->vdisplay == 288)) {
+			avi_if.body.avi.C_M_R |= DIP_AVI_COLOR_ITU601;
+		} else if ((adjusted_mode->vdisplay == 720) ||
+			(adjusted_mode->vdisplay == 1080)) {
+			avi_if.body.avi.C_M_R |= DIP_AVI_COLOR_ITU709;
+		}
+
+		/* picture aspect ratio */
+		PAR = drm_get_cea_aspect_ratio(avi_if.body.avi.VIC);
+		switch (PAR) {
+		case HDMI_PICTURE_ASPECT_4_3:
+			avi_if.body.avi.C_M_R |= 0x10;
+			break;
+		case HDMI_PICTURE_ASPECT_16_9:
+			avi_if.body.avi.C_M_R |= 0x20;
+			break;
+		default:
 			break;
 		}
+	} else {
+		if (!(adjusted_mode->vdisplay % 3) &&
+			((adjusted_mode->vdisplay * 4 / 3) ==
+			adjusted_mode->hdisplay))
+			avi_if.body.avi.C_M_R |= 0x10;
+		else if (!(adjusted_mode->vdisplay % 9) &&
+			((adjusted_mode->vdisplay * 16 / 9) ==
+			adjusted_mode->hdisplay))
+			avi_if.body.avi.C_M_R |= 0x20;
 	}
 
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK)
 		avi_if.body.avi.YQ_CN_PR |= DIP_AVI_PR_2;
+
+	avi_if.body.avi.ITC_EC_Q_SC |= DIP_AVI_IT_CONTENT;
 
 	intel_set_infoframe(encoder, &avi_if);
 }
