@@ -84,6 +84,7 @@ config SND_CTP_MACHINE
 	select SND_SOC_WM5102
 	select SND_SOC_WM8994
 	select MFD_CORE
+	select MFD_WM8994
 	select SND_SST_PLATFORM
 	select SND_SST_MACHINE
 	select SND_INTEL_SST
