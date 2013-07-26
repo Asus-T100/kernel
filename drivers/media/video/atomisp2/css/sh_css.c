@@ -760,6 +760,17 @@ sh_css_vf_downscale_log2(const struct sh_css_frame_info *out_info,
 	/* TODO: use actual max input resolution of vf_pp binary */
 	if ((out_info->width >> ds_log2) >= 2*sh_css_max_vf_width())
 		return sh_css_err_viewfinder_resolution_too_wide;
+
+	/* currently the actual supported maximum input width for vf_pp is
+	   2*1280=2560 pixel, when the resolution is larger than this, we let
+	   previous stage do extra downscaling and vf_pp do upscaling to get the
+	   desired vf output resolution. In this case, the image quality is a
+	   bit worse, but the customer requests a 1080p postview for 6M capture.
+	   The image quality of postview is not that important, so we go for
+	   this easiest solution */
+	while ((out_info->width >> ds_log2) > (2*SH_CSS_MAX_VF_WIDTH))
+		ds_log2++;
+
 	*downscale_log2 = ds_log2;
 	return sh_css_success;
 }
@@ -1021,8 +1032,10 @@ program_input_formatter(struct sh_css_pipe *pipe,
 			vmem_increment = 2;
 			deinterleaving = 1;
 			width_a = width_b = cropped_width / 2;
+			/*
 			start_column /= 2;
 			start_column_b = start_column;
+			*/
 			buf_offset_b = 1;
 		} else {
 			vmem_increment = 1;
@@ -1115,7 +1128,7 @@ program_input_formatter(struct sh_css_pipe *pipe,
          * Instead, IF_A and IF_B output (VMEM) addresses should be
          * swapped for this purpose (@Gokturk).
          */
-        if (two_ppc && input_is_raw) {
+	if (two_ppc && input_is_raw) {
 		if (start_column%2 == 1) {
 			/* Still correct for center of image. Just subtract 
 			 * the part (which used to be correcting bayer order,
@@ -1126,13 +1139,16 @@ program_input_formatter(struct sh_css_pipe *pipe,
 			 * (buf_offset_b, 0) */
 			buf_offset_a = buf_offset_b;
 			buf_offset_b = 0;
+			/* Since each IF gets every two pixel in twoppc case,
+			* we need to halve the start_column per IF. */
+			start_column /= 2;
+			start_column_b = start_column;
+			start_column += 1;
+		} else {
+			start_column /= 2;
+			start_column_b = start_column;
 		}
-
-		/* Since each IF gets every two pixel in twoppc case, 
-		 * we need to halve the start_column per IF. */
-		start_column /= 2;
-		start_column_b = start_column;
-        }
+	}
 	
 	if_a_config.start_line = start_line;
 	if_a_config.start_column = start_column;
