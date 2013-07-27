@@ -7278,7 +7278,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_framebuffer *intel_fb;
+	struct intel_framebuffer *intel_fb, *intel_new_fb;
 	struct drm_i915_gem_object *obj;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	struct intel_unpin_work *work;
@@ -7300,13 +7300,16 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 			return -EINVAL;
 	}
 
+	intel_fb = to_intel_framebuffer(crtc->fb);
+	intel_new_fb = to_intel_framebuffer(fb);
 	/*
 	 * TILEOFF/LINOFF registers can't be changed via MI display flips.
 	 * Note that pitch changes could also affect these register.
 	 */
 	if (INTEL_INFO(dev)->gen > 3 &&
 	    (fb->offsets[0] != crtc->fb->offsets[0] ||
-	     fb->pitches[0] != crtc->fb->pitches[0])) {
+	     fb->pitches[0] != crtc->fb->pitches[0] ||
+	     intel_new_fb->obj->tiling_mode != intel_fb->obj->tiling_mode)) {
 		if (IS_VALLEYVIEW(dev)) {
 			DRM_DEBUG(" crtc fb: pitch = %d offset = %d", \
 			crtc->fb->pitches[0], crtc->fb->offsets[0]);
@@ -7323,7 +7326,6 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 
 	work->event = event;
 	work->dev = crtc->dev;
-	intel_fb = to_intel_framebuffer(crtc->fb);
 	work->old_fb_obj = intel_fb->obj;
 	INIT_WORK(&work->work, intel_unpin_work_fn);
 
