@@ -196,12 +196,6 @@ MODULE_PARM_DESC(psr_support,
 		"Specify PSR support parameter "
 		"1 = supported [default], 0 = not supported");
 
-int i915_bytffrd_support __read_mostly;
-module_param_named(bytffrd_support, i915_bytffrd_support, int, 0400);
-MODULE_PARM_DESC(bytffrd_support,
-		"Specify BYT FFRD support parameter "
-		"1 = supported, 0 = not supported [default]");
-
 static struct drm_driver driver;
 extern int intel_agp_enabled;
 

@@ -1396,7 +1396,6 @@ extern int i915_enable_watchdog __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
 extern int i915_enable_turbo __read_mostly;
 extern int i915_psr_support __read_mostly;
-extern int i915_bytffrd_support __read_mostly;
 extern struct drm_display_mode rot_mode;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);

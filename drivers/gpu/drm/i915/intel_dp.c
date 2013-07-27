@@ -1053,6 +1053,7 @@ static void ironlake_edp_panel_vdd_on(struct intel_dp *intel_dp)
 
 	if (!is_edp(intel_dp))
 		return;
+
 	DRM_DEBUG_KMS("Turn eDP VDD on\n");
 
 	if (intel_dp->want_panel_vdd)
@@ -1082,7 +1083,7 @@ static void ironlake_edp_panel_vdd_on(struct intel_dp *intel_dp)
 	 * If the panel wasn't on, delay before accessing aux channel
 	 */
 	if (!ironlake_edp_have_panel_power(intel_dp)) {
-		DRM_DEBUG_KMS("eDP was not running\n");
+		DRM_DEBUG_KMS("eDP was not running; waiting for VDD on\n");
 		msleep(intel_dp->panel_power_up_delay);
 	}
 }
@@ -1133,6 +1134,7 @@ static void ironlake_edp_panel_vdd_off(struct intel_dp *intel_dp, bool sync)
 		return;
 
 	DRM_DEBUG_KMS("Turn eDP VDD off %d\n", intel_dp->want_panel_vdd);
+
 	if (!intel_dp->want_panel_vdd)
 		DRM_DEBUG_KMS("eDP VDD not forced on");
 
@@ -1211,9 +1213,9 @@ static void ironlake_edp_panel_off(struct intel_dp *intel_dp)
 	WARN(!intel_dp->want_panel_vdd, "Need VDD to turn off panel\n");
 
 	pp = ironlake_get_pp_control(intel_dp);
-	/* We need to switch off panel power _and_ force vdd, for otherwise some
+	/* We need to switch off panel power, for otherwise some
 	 * panels get very unhappy and cease to work. */
-	pp &= ~(POWER_TARGET_ON | EDP_FORCE_VDD | PANEL_POWER_RESET | EDP_BLC_ENABLE);
+	pp &= ~(POWER_TARGET_ON | PANEL_POWER_RESET | EDP_BLC_ENABLE);
 
 	pp_ctrl_reg = IS_VALLEYVIEW(dev) ? PIPEA_PP_CONTROL : PCH_PP_CONTROL;
 
@@ -1234,8 +1236,6 @@ static void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 
 	if (!is_edp(intel_dp))
 		return;
-
-	/*intel_panel_disable_backlight(dev);*/
 
 	DRM_DEBUG_KMS("\n");
 	/*
@@ -1344,10 +1344,7 @@ static void intel_dp_prepare(struct drm_encoder *encoder)
 	ironlake_edp_panel_vdd_on(intel_dp);
 	ironlake_edp_backlight_off(intel_dp);
 	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
-	/* Some of the FFRD10 PR1.1B boards doesnt like when edp panel power
-	 * is off */
-	if (!i915_bytffrd_support)
-		ironlake_edp_panel_off(intel_dp);
+	ironlake_edp_panel_off(intel_dp);
 	intel_dp_link_down(intel_dp);
 }
 
@@ -1644,10 +1641,7 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		ironlake_edp_panel_vdd_on(intel_dp);
 		ironlake_edp_backlight_off(intel_dp);
 		intel_dp_sink_dpms(intel_dp, mode);
-		/* Some of the FFRD10 PR1.1B boards doesnt like when edp
-		 * panel power is off */
-		if (!i915_bytffrd_support)
-			ironlake_edp_panel_off(intel_dp);
+		ironlake_edp_panel_off(intel_dp);
 		intel_dp_link_down(intel_dp);
 
 		if (is_cpu_edp(intel_dp))
@@ -2420,7 +2414,6 @@ intel_dp_link_down(struct intel_dp *intel_dp)
 static bool
 intel_dp_get_dpcd(struct intel_dp *intel_dp)
 {
-	ironlake_edp_panel_vdd_on(intel_dp);
 	if (intel_dp_aux_native_read_retry(intel_dp, 0x000, intel_dp->dpcd,
 			sizeof(intel_dp->dpcd)) &&
 			(intel_dp->dpcd[DP_DPCD_REV] != 0)) {
@@ -2434,11 +2427,9 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 			DRM_DEBUG_KMS("Detected EDP PSR Panel.\n");
 			intel_dp_aux_native_write_1(intel_dp, DP_PSR_ESI, 0x1);
 		}
-		ironlake_edp_panel_vdd_off(intel_dp, false);
 		return true;
 	}
 
-	ironlake_edp_panel_vdd_off(intel_dp, false);
 	return false;
 }
 
