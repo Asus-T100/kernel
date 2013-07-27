@@ -2577,7 +2577,6 @@ g4x_dp_detect(struct intel_dp *intel_dp)
 
 	val1 = I915_READ(PORT_HOTPLUG_EN);
 	val2 = I915_READ(PORT_HOTPLUG_STAT);
-	DRM_ERROR("hotplug_en = 0x%x, hotplug_hpd = 0x%x\n", val1, val2);
 
 	/* HOTPLUG Detect is not working in some of VLV A0
 	 * boards. For those boards enable this WA

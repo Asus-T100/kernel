@@ -1063,9 +1063,9 @@ void i915_had_wq(struct work_struct *work)
 	struct drm_i915_private *dev_priv = container_of(work,
 		struct drm_i915_private, hdmi_audio_wq);
 
-	DRM_ERROR("Checking for HDMI connection at boot\n");
+	DRM_DEBUG_DRIVER("Checking for HDMI connection at boot\n");
 	if (i915_hdmi_state == connector_status_connected) {
-		DRM_ERROR("hdmi_do_audio_wq: HDMI plugged in\n");
+		DRM_DEBUG_DRIVER("hdmi_do_audio_wq: HDMI plugged in\n");
 		mid_hdmi_audio_signal_event(dev_priv->dev,
 			HAD_EVENT_HOT_PLUG);
 	}
