@@ -30,7 +30,6 @@
 
 #include <linux/sysrq.h>
 #include <linux/slab.h>
-#include <linux/pm_runtime.h>
 #include "drmP.h"
 #include "drm.h"
 #include "i915_drm.h"
@@ -318,7 +317,6 @@ static void i915_hotplug_work_func(struct work_struct *work)
 		return;
 	}
 
-	pm_runtime_get_sync(&dev->pdev->dev);
 	mutex_lock(&mode_config->mutex);
 	DRM_DEBUG_KMS("running encoder hotplug functions\n");
 
@@ -333,7 +331,6 @@ static void i915_hotplug_work_func(struct work_struct *work)
 
 	/* HDCPD needs a uevent, every time when there is a hotplug */
 	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
-	pm_runtime_put(&dev->pdev->dev);
 }
 /* defined intel_pm.c */
 extern spinlock_t mchdev_lock;

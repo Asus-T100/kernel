@@ -1178,6 +1178,28 @@ static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
 			OSPM_ISLAND_UP, VLV_IOSFSB_PWRGT_CNT_CTRL);
 }
 
+
+static void display_cancel_works(struct drm_device *drm_dev)
+{
+	struct drm_i915_private *dev_priv = drm_dev->dev_private;
+	struct drm_crtc *crtc;
+	struct intel_encoder *intel_encoder;
+
+	cancel_work_sync(&dev_priv->hotplug_work);
+	cancel_work_sync(&dev_priv->rps.work);
+	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
+		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
+			if (intel_encoder->type == INTEL_OUTPUT_EDP) {
+				struct intel_dp *intel_dp = container_of(\
+					intel_encoder, struct intel_dp, base);
+				cancel_delayed_work_sync(\
+					&intel_dp->panel_vdd_work);
+			}
+		}
+	}
+}
+
+
 /* follow the sequence below for VLV suspend*/
 /* ===========================================================================
  * D0 - Dx Power Transition
@@ -1227,6 +1249,9 @@ static int valleyview_freeze(struct drm_device *dev)
 		}
 		drm_irq_uninstall(dev);
 	}
+
+	/*cancel works to avoid device access after suspended*/
+	display_cancel_works(dev);
 
 	/* iii) Save state */
 	i915_save_gunit_regs(dev_priv);
