@@ -301,6 +301,7 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (err)
 		goto release_irq;
 
+
 	err = mei_register(dev);
 	if (err)
 		goto release_irq;
@@ -312,6 +313,9 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	if (IS_ERR_OR_NULL(hw->mdev))
 		goto deregister_mei;
+
+	/* This is w/a for BIOS not anbling waking up the device */
+	device_set_run_wake(&pdev->dev, true);
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
 	pm_runtime_use_autosuspend(&pdev->dev);
