@@ -1578,7 +1578,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 	u16 reg;
 
 	if (!data->cfg_name) {
-		dev_dbg(dev, "Skipping cfg download\n");
+		dev_info(dev, "Skipping cfg download\n");
 		return 0;
 	}
 
@@ -3182,6 +3182,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		 client->adapter->nr, client->addr);
 
 	data->fw_name = MXT_FW_NAME;
+	data->cfg_name = MXT_CFG_NAME;
 	data->pdata = pdata;
 	data->client = client;
 	data->irq = client->irq;
