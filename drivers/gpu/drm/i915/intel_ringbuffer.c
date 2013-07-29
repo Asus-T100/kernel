@@ -1073,6 +1073,10 @@ static int intel_init_ring_buffer(struct drm_device *dev,
 	INIT_LIST_HEAD(&ring->request_list);
 	ring->size = 32 * PAGE_SIZE;
 
+	/* Reset this variable, so as to avoid using the stale seqno
+	   on resume.*/
+	ring->outstanding_lazy_request = 0;
+
 	init_waitqueue_head(&ring->irq_queue);
 
 	if (I915_NEED_GFX_HWS(dev)) {
@@ -2042,6 +2046,10 @@ int intel_render_ring_init_dri(struct drm_device *dev, u64 start, u32 size)
 	ring->name = "render ring";
 	ring->id = RCS;
 	ring->mmio_base = RENDER_RING_BASE;
+
+	/* Reset this variable, so as to avoid using the stale seqno
+	   on resume.*/
+	ring->outstanding_lazy_request = 0;
 
 	if (INTEL_INFO(dev)->gen >= 6) {
 		/* non-kms not supported on gen6+ */
