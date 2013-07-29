@@ -318,7 +318,8 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pm_runtime_mark_last_busy(&pdev->dev);
 
-	pm_runtime_put_noidle(&pdev->dev);
+	if (pci_dev_run_wake(pdev))
+		pm_runtime_put_noidle(&pdev->dev);
 
 	if (!nopg)
 		pm_runtime_allow(&pdev->dev);
@@ -371,7 +372,8 @@ static void mei_txe_remove(struct pci_dev *pdev)
 		return;
 	}
 
-	pm_runtime_get_noresume(&pdev->dev);
+	if (pci_dev_run_wake(pdev))
+		pm_runtime_get_noresume(&pdev->dev);
 
 	hw = to_txe_hw(dev);
 
