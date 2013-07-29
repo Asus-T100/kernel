@@ -193,8 +193,6 @@ static struct atomisp_freq_scaling_rule dfs_rules[] = {
 	},
 };
 
-#define ISP_FREQ_RULE_MAX (ARRAY_SIZE(dfs_rules))
-
 static unsigned short atomisp_get_sensor_fps(struct atomisp_sub_device *asd)
 {
 	struct v4l2_subdev_frame_interval frame_interval;
@@ -313,7 +311,7 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 		curr_rules.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE;
 
 	/* search for the target frequency by looping freq rules*/
-	for (i = 0; i < ISP_FREQ_RULE_MAX; i++) {
+	for (i = 0; i < ARRAY_SIZE(dfs_rules); i++) {
 		if (curr_rules.width != dfs_rules[i].width
 			&& dfs_rules[i].width != ISP_FREQ_RULE_ANY)
 			continue;
@@ -328,7 +326,7 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 			continue;
 		break;
 	}
-	if (i == ISP_FREQ_RULE_MAX)
+	if (i == ARRAY_SIZE(dfs_rules))
 		new_freq = ISP_FREQ_320MHZ;
 	else
 		new_freq = dfs_rules[i].isp_freq;
