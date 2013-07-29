@@ -84,11 +84,16 @@ static struct platform_device vwm89942_device = {
 
 static struct platform_device wm8994_ldo1_device;
 static struct platform_device wm8994_ldo2_device;
-static struct platform_device *regulator_devices[] __initdata = {
+static struct platform_device *wm1811a_reg_devices[] __initdata = {
 	&vwm89941_device,
 	&vwm89942_device,
 	&wm8994_ldo1_device,
 	&wm8994_ldo2_device
+};
+
+static struct platform_device *wm8958_reg_devices[] __initdata = {
+	&vwm89941_device,
+	&vwm89942_device
 };
 
 static struct regulator_consumer_supply wm8994_avdd1_supply =
@@ -99,6 +104,7 @@ static struct regulator_consumer_supply wm8994_dcvdd_supply =
 
 static struct regulator_init_data wm8994_ldo1_data = {
 	.constraints	= {
+		.always_on	= 1,
 		.name		= "AVDD1_3.0V",
 		.valid_ops_mask	= REGULATOR_CHANGE_STATUS,
 	},
@@ -124,6 +130,7 @@ static struct platform_device wm8994_ldo1_device = {
 
 static struct regulator_init_data wm8994_ldo2_data = {
 	.constraints	= {
+		.always_on	= 1,
 		.name		= "DCVDD_1.0V",
 	},
 	.num_consumer_supplies	= 1,
@@ -193,22 +200,27 @@ void __init *wm8994_platform_data(void *info)
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
 	int irq = 0;
 
-	platform_add_devices(regulator_devices,
-		ARRAY_SIZE(regulator_devices));
-
 	if ((INTEL_MID_BOARD(1, PHONE, MRFL)) ||
-		   (INTEL_MID_BOARD(1, TABLET, MRFL)))
+		   (INTEL_MID_BOARD(1, TABLET, MRFL))) {
+
+		platform_add_devices(wm8958_reg_devices,
+			ARRAY_SIZE(wm8958_reg_devices));
+
 		irq = wm8994_get_irq_data(&wm8994_pdata, i2c_info,
 							"audiocodec_int");
-	else if ((SPID_PRODUCT(INTEL, CLVTP, PHONE, RHB)) ||
-		   (SPID_PRODUCT(INTEL, CLVT, TABLET, TBD)))
+		if (irq < 0)
+			return NULL;
+	} else if ((SPID_PRODUCT(INTEL, CLVTP, PHONE, RHB)) ||
+		   (SPID_PRODUCT(INTEL, CLVT, TABLET, TBD))) {
+
+		platform_add_devices(wm1811a_reg_devices,
+			ARRAY_SIZE(wm1811a_reg_devices));
+
 		i2c_info->addr = 0x1a;
-	else {
+	} else {
 		pr_err("Not supported....\n");
 		return NULL;
 	}
-	if (irq < 0)
-		return NULL;
 
 	return &wm8994_pdata;
 }
