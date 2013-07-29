@@ -107,6 +107,11 @@ static enum power_supply_property ec_battery_props[] = {
 
 static enum power_supply_property ec_charger_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_TYPE,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_MODEL_NAME,
+	POWER_SUPPLY_PROP_MANUFACTURER,
 };
 
 static short adjust_sign_value(int value)
@@ -328,20 +333,46 @@ static int ec_get_charger_property(struct power_supply *psy,
 	struct ec_battery_info *chip = container_of(psy,
 				struct ec_battery_info, chrg);
 	int ret = 0;
+	int chrg_present = 0;
 	u8 data;
 
 	mutex_lock(&chip->lock);
+	ret = byt_ec_read_byte(EC_REAL_AC_PWR_REG, &data);
+	if (ret < 0)
+		goto ec_read_err;
+	if (data & REAL_AC_PWR_ON)
+		chrg_present = 1;
+	/* As EC provides only charger present status, all other parameters
+	 * are hardcoded as per requirements.
+	 */
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		ret = byt_ec_read_byte(EC_REAL_AC_PWR_REG, &data);
-		if (ret < 0)
-			goto ec_read_err;
+	case POWER_SUPPLY_PROP_PRESENT:
 
-		if (data & REAL_AC_PWR_ON)
+		if (chrg_present)
 			val->intval = 1;
 		else
 			val->intval = 0;
 		break;
+	case POWER_SUPPLY_PROP_HEALTH:
+		if (chrg_present)
+			val->intval = POWER_SUPPLY_HEALTH_GOOD;
+		else
+			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
+		break;
+	case POWER_SUPPLY_PROP_MODEL_NAME:
+		if (chrg_present)
+			val->strval = "INBYTM";
+		else
+			val->strval = "Unknown";
+		break;
+	case POWER_SUPPLY_PROP_MANUFACTURER:
+		if (chrg_present)
+			val->strval = "Intel";
+		else
+			val->strval = "Unknown";
+		break;
+
 	default:
 		mutex_unlock(&chip->lock);
 		return -EINVAL;
