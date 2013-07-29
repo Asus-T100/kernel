@@ -47,9 +47,13 @@
 #include <linux/panic_gbuffer.h>
 #include "emmc_ipanic.h"
 
-static unsigned int ipanic_part_number;
-module_param(ipanic_part_number, uint, 0);
-MODULE_PARM_DESC(ipanic_part_number, "IPanic dump partition on mmcblk0");
+static char *block_name = "";
+module_param(block_name, charp, 0);
+MODULE_PARM_DESC(block_name, "IPanic dump block device name (mmcblk0)");
+
+static int ipanic_part_number = -1;
+module_param(ipanic_part_number, int, 0);
+MODULE_PARM_DESC(ipanic_part_number, "IPanic dump partition on defined block device");
 
 #ifdef CONFIG_ANDROID_LOGGER
 #include "../staging/android/logger.h"
@@ -68,8 +72,8 @@ static unsigned char *logcat_name[LOGCAT_BUFF_COUNT] = {
 static struct mmc_emergency_info emmc_info = {
 	.init = mmc_emergency_init,
 	.write = mmc_emergency_write,
-	.emmc_disk_name = "mmcblk0",
-	.part_number = 0,
+	.emmc_disk_name = EMMC_PANIC_BLOCK_NAME,
+	.part_number = EMMC_PANIC_PART_NUM,
 	.name = "emmc_ipanic",
 	.disk_device = NULL
 };
@@ -1176,10 +1180,10 @@ int __init emmc_ipanic_init(void)
 	/*initialization of drv_ctx */
 	memset(&drv_ctx, 0, sizeof(drv_ctx));
 	drv_ctx.emmc = &emmc_info;
-	if (!ipanic_part_number)
-		emmc_info.part_number = EMMC_PANIC_PART_NUM;
-	else
+	if (ipanic_part_number >= 0)
 		emmc_info.part_number = ipanic_part_number;
+	if (*block_name)
+		strcpy(emmc_info.emmc_disk_name, block_name);
 
 	drv_ctx.ipanic_proc_entry_name = ipanic_proc_entry_name;
 	drv_ctx.bounce = (void *)__get_free_page(GFP_KERNEL);
