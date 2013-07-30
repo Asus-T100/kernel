@@ -683,6 +683,7 @@ static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
 	.quirks2	= SDHCI_QUIRK2_POWER_PIN_GPIO_MODE,
 	.allow_runtime_pm = true,
 	.probe_slot	= byt_sd_probe_slot,
+	.remove_slot	= byt_sd_remove_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sdio = {
