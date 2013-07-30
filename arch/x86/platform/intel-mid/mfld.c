@@ -45,25 +45,6 @@ static struct intel_mid_ops penwell_ops = {
 	.arch_setup = penwell_arch_setup,
 };
 
-static void mfld_power_off(void)
-{
-#if defined(CONFIG_INTEL_MID_OSIP) && !defined(CONFIG_BOARD_REDRIDGE)
-	if (!get_force_shutdown_occured() &&
-	    power_supply_is_system_supplied()) {
-		/*
-		 * Do a cold reset to let bootloader bring up the
-		 * platform into acting dead mode to continue
-		 * battery charging.
-		 * If some special condition occured and wants to
-		 * make a force shutdown, even if the charger is
-		 * connected, dont boot(up to COS).
-		 */
-		rpmsg_send_generic_simple_command(IPCMSG_COLD_RESET, 0);
-	} else
-#endif
-	pmu_power_off();
-}
-
 static unsigned long __init mfld_calibrate_tsc(void)
 {
 	unsigned long fast_calibrate;
@@ -119,7 +100,6 @@ static unsigned long __init mfld_calibrate_tsc(void)
 static void __init penwell_arch_setup()
 {
 	x86_platform.calibrate_tsc = mfld_calibrate_tsc;
-	pm_power_off = mfld_power_off;
 }
 
 void *get_penwell_ops(void)
