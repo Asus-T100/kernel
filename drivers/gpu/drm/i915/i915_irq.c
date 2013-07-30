@@ -381,7 +381,8 @@ static void notify_ring(struct drm_device *dev,
 	if (ring->obj == NULL)
 		return;
 
-	trace_i915_gem_request_complete(ring, ring->get_seqno(ring, false));
+	ring->last_irq_seqno = ring->get_seqno(ring, false);
+	trace_i915_gem_request_complete(ring, ring->last_irq_seqno);
 
 	wake_up_all(&ring->irq_queue);
 }
@@ -2063,37 +2064,6 @@ ring_last_seqno(struct intel_ring_buffer *ring)
 			  struct drm_i915_gem_request, list)->seqno;
 }
 
-static bool i915_hangcheck_ring_idle(struct intel_ring_buffer *ring, bool *err)
-{
-	struct drm_device *dev = ring->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	uint32_t head;
-	uint32_t tail;
-	int pending_work = 1;
-
-	if (list_empty(&ring->request_list) ||
-	    i915_seqno_passed(ring->get_seqno(ring, false),
-			      ring_last_seqno(ring))) {
-		/* Issue a wake-up to catch stuck h/w. */
-		if (waitqueue_active(&ring->irq_queue)) {
-			*err = true;
-		}
-		pending_work = 0;
-	}
-
-	/* Make sure that the ring has caught up with any
-	* commands that are inserted directly in the ring
-	* Note: Head & tail will become equal *before* the
-	* ring has finished executing the current command
-	* so it is possible that we will consider the ring as idle
-	* prematurely. This is ok as the hang will be detected
-	* when new work is next added to the ring.*/
-	head = I915_READ_HEAD(ring) & HEAD_ADDR;
-	tail = I915_READ_TAIL(ring) & TAIL_ADDR;
-
-	/* The ring is idle if the head pointer == tail and no more work*/
-	return (((head == tail) && (pending_work == 0)) ? true : false);
-}
 
 static bool kick_ring(struct intel_ring_buffer *ring)
 {
@@ -2109,6 +2079,8 @@ static bool kick_ring(struct intel_ring_buffer *ring)
 	return false;
 }
 
+/* This function is called when the TDR algorithm detects that the hardware
+* has not advanced during the last sampling period.*/
 static bool i915_hangcheck_hung(struct intel_hangcheck *hc)
 {
 	struct drm_device *dev = hc->dev;
@@ -2146,6 +2118,7 @@ static bool i915_hangcheck_hung(struct intel_hangcheck *hc)
 			 */
 			ring = &dev_priv->ring[hc->ringid];
 			hung &= !kick_ring(ring);
+			DRM_DEBUG_TDR("hung=%d after kick ring\n", hung);
 		}
 
 		if (hung)
@@ -2157,20 +2130,25 @@ static bool i915_hangcheck_hung(struct intel_hangcheck *hc)
 	return false;
 }
 
-/**
- * This is called when the chip hasn't reported back with completed
- * batchbuffers in a long time. The first time this is called we simply record
- * ACTHD. If ACTHD hasn't changed by the time the hangcheck timer elapses
- * again, we assume the chip is wedged and try to fix it.
- */
-void i915_hangcheck_elapsed(unsigned long data)
+
+/* This is called from the hangcheck timer for each ring.
+* It samples the current state of the hardware to make
+* sure that it is progressing.
+*/
+void i915_hangcheck_sample(unsigned long data)
 {
 	struct intel_hangcheck *hc = (struct intel_hangcheck *)data;
 	struct drm_device *dev;
 	drm_i915_private_t *dev_priv;
-	uint32_t acthd, instdone[I915_MAX_INSTDONE_REG];
+	uint32_t head, tail, acthd, instdone[I915_MAX_INSTDONE_REG];
+	uint32_t cur_seqno = 0;
+	uint32_t last_seqno = 0;
 	struct intel_ring_buffer *ring;
 	bool err = false, idle;
+	int instdone_cmp;
+	int pending_work = 1;
+	int resched_timer = 1;
+	int empty;
 
 	if (!i915_enable_hangcheck || !hc)
 		return;
@@ -2178,41 +2156,94 @@ void i915_hangcheck_elapsed(unsigned long data)
 	dev = hc->dev;
 	dev_priv = dev->dev_private;
 
-	/* Check if the specified ring is idle and record active head */
 	ring = &dev_priv->ring[hc->ringid];
-	idle = i915_hangcheck_ring_idle(ring, &err);
+
+	/* Sample the current state */
+	head = I915_READ_HEAD(ring) & HEAD_ADDR;
+	tail = I915_READ_TAIL(ring) & TAIL_ADDR;
 	acthd = intel_ring_get_active_head(ring);
-
-	DRM_DEBUG_TDR("[%d] ahd: 0x%08x lst: 0x0%08x tl: 0x%08x idle: %d\r\n",
-		hc->ringid, acthd, hc->last_acthd,
-		I915_READ(RING_TAIL(ring->mmio_base)), idle);
-
-	/* If all work is done then ACTHD clearly hasn't advanced */
-	if (idle) {
-		if (err) {
-			i915_hangcheck_hung(hc);
-			goto repeat;
-		}
-
-		hc->count = 0;
-		return;
-	}
+	empty = list_empty(&ring->request_list);
 
 	i915_get_instdone(dev, instdone, ring);
-	if ((hc->last_acthd == acthd) &&
-	(memcmp(hc->prev_instdone, instdone, sizeof(instdone)) == 0)) {
-		i915_hangcheck_hung(hc);
-	} else {
-		hc->count = 0;
+	instdone_cmp = (memcmp(hc->prev_instdone,
+			instdone, sizeof(instdone)) == 0) ? 1 : 0;
 
-		hc->last_acthd = acthd;
-		memcpy(hc->prev_instdone, instdone, sizeof(instdone));
+	if (!empty) {
+		/* Examine the seqno's to see where the HW has got to
+		* (Only call ring_last_seqno when the list is non-empty)*/
+		cur_seqno = ring->get_seqno(ring, false);
+		last_seqno = ring_last_seqno(ring);
 	}
 
-repeat:
-	/* Reset timer in case chip hangs without another request being added*/
-	mod_timer(&hc->timer, jiffies + DRM_I915_HANGCHECK_JIFFIES);
+	if (empty || i915_seqno_passed(cur_seqno, last_seqno)) {
+		/* If the request list is empty or the HW has passed the
+		* last seqno of the last item in the request list then the
+		* HW is considered idle.
+		* The driver may not have cleaned up the request list yet */
+		pending_work = 0;
+	}
+
+	idle = ((head == tail) && (pending_work == 0));
+
+	DRM_DEBUG_TDR("[%d] HD: 0x%08x 0x%08x, ACTHD: 0x%08x 0x%08x IC: %d\n",
+		ring->id, head, hc->last_hd, acthd, hc->last_acthd,
+		instdone_cmp);
+	DRM_DEBUG_TDR("E:%d PW:%d TL:0x%08x Csq:0x%08x Lsq:0x%08x Idle: %d\n",
+		empty, pending_work, tail, cur_seqno, last_seqno, idle);
+
+	/* Check both head and active head.
+	* Neither is enough on its own - acthd can be pointing within the
+	* batch buffer so is more likely to be moving, but the same
+	* underlying buffer object could be submitted more than once.
+	* If it happens to pause at exactly the same place in the batch
+	* buffer and we sample it at that moment then we could see it as
+	* hung over 3 sample periods that do not belong to the same
+	* batch submission - this would result in a false positive.
+	* We know that the head pointer will have advanced for each
+	* batch buffer as the ring has to contain a new MI_BATCH_BUFFER_START
+	* for every do_exec call, so by combining head and active head we can
+	* ensure that the hang detection distinguishes between batch buffers*/
+	if ((hc->last_acthd == acthd)
+	&& (hc->last_hd == head)
+	&& instdone_cmp) {
+		/* Ring hasn't advanced in this sampling period */
+		if (idle) {
+			/* The hardware is idle */
+			if (waitqueue_active(&ring->irq_queue)) {
+				/* We expect the wait queue to drain
+				* if the hardware has remained idle
+				* for 3 consecutive samples. Wake up
+				* the queue on each sample to try and
+				* release it, but if it persists then
+				* trigger a reset */
+				DRM_DEBUG_TDR("Possible stuck wait (0x%08x)\n",
+					ring->last_irq_seqno);
+				wake_up_all(&ring->irq_queue);
+				i915_hangcheck_hung(hc);
+			} else {
+				/* Hardware and driver both idle */
+				hc->count = 0;
+				resched_timer = 0;
+			}
+		} else {
+			/* The hardware is busy but has not advanced
+			* since the last sample - possible hang*/
+			i915_hangcheck_hung(hc);
+		}
+	} else {
+		/* The state has changed so the hardware is active */
+		hc->count = 0;
+	}
+
+	/* Always update last sampled state */
+	hc->last_hd = head;
+	hc->last_acthd = acthd;
+	memcpy(hc->prev_instdone, instdone, sizeof(instdone));
+
+	if (resched_timer)
+		mod_timer(&hc->timer, jiffies + DRM_I915_HANGCHECK_JIFFIES);
 }
+
 
 /* drm_dma.h hooks
 */

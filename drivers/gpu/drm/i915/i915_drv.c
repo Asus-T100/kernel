@@ -128,7 +128,7 @@ MODULE_PARM_DESC(enable_hangcheck,
 		"WARNING: Disabling this can cause system wide hangs. "
 		"(default: true)");
 
-unsigned int i915_hangcheck_period __read_mostly = 667;
+unsigned int i915_hangcheck_period __read_mostly = 1000;
 
 int hangcheck_period_set(const char *val, const struct kernel_param *kp)
 {
@@ -161,7 +161,7 @@ module_param_cb(i915_hangcheck_period, &hangcheck_ops,
 MODULE_PARM_DESC(i915_hangcheck_period,
 		"The hangcheck timer period in milliseconds. "
 		"The actual time to detect a hang may be 3 - 4 times "
-		"this value (default = 667ms)");
+		"this value (default = 1000ms)");
 
 unsigned int i915_ring_reset_min_alive_period __read_mostly;
 module_param_named(i915_ring_reset_min_alive_period,
@@ -865,7 +865,7 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	/* Correct driver state */
 	intel_ring_resample(ring);
 
-	DRM_ERROR("Reset ring %d\n", ringid);
+	DRM_ERROR("Reset ring %d (GPU Hang)\n", ringid);
 
 	ret = intel_ring_enable(ring);
 
@@ -930,7 +930,7 @@ int i915_reset(struct drm_device *dev)
 
 	mutex_lock(&dev->struct_mutex);
 
-	DRM_ERROR("Reset GPU\n");
+	DRM_ERROR("Reset GPU (GPU Hang)\n");
 	i915_gem_reset(dev);
 
 	ret = -ENODEV;

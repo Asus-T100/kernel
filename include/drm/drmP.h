@@ -258,6 +258,7 @@ int drm_err(const char *func, const char *format, ...);
 #define DRM_DEBUG_DRIVER(fmt, args...) do { } while (0)
 #define DRM_DEBUG_KMS(fmt, args...)	do { } while (0)
 #define DRM_DEBUG_PRIME(fmt, args...)	do { } while (0)
+#define DRM_DEBUG_TDR(fmt, args...)     do { } while (0)
 #define DRM_DEBUG(fmt, arg...)		 do { } while (0)
 #define DRM_LOG(fmt, arg...)		do { } while (0)
 #define DRM_LOG_KMS(fmt, args...) do { } while (0)

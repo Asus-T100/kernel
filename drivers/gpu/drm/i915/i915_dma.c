@@ -1685,7 +1685,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		dev_priv->hangcheck[i].dev = dev;
 
 		setup_timer(&dev_priv->hangcheck[i].timer,
-			i915_hangcheck_elapsed,
+			i915_hangcheck_sample,
 			(unsigned long) &dev_priv->hangcheck[i]);
 	}
 

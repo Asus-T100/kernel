@@ -165,6 +165,8 @@ struct  intel_ring_buffer {
 	* data associated with this ring*/
 	u32 saved_state[I915_RING_CONTEXT_SIZE];
 
+	uint32_t last_irq_seqno;
+
 	void *private;
 };
 

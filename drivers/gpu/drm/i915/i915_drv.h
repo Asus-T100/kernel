@@ -418,10 +418,11 @@ struct intel_hangcheck {
 #define MBOX_HANGCHECK_THRESHOLD 4
 	int count;
 
-	/* Last recorded active head*/
+	/* Last sampled head and active head*/
 	uint32_t last_acthd;
+	uint32_t last_hd;
 
-	/* Last recorded ring head index.
+	/* Last recorded head index from previous ring hang.
 	* This is only ever a ring index where as active
 	* head may be a graphics address in a ring buffer */
 	uint32_t last_head;
@@ -1460,7 +1461,7 @@ extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 
 
 /* i915_irq.c */
-void i915_hangcheck_elapsed(unsigned long data);
+void i915_hangcheck_sample(unsigned long data);
 void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc,
 			int watchdog);
 
