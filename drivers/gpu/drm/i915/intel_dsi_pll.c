@@ -70,6 +70,41 @@ struct dsi_clock_table dsi_clk_tbl[] = {
 		{1000, 80, 2},		/* dsi clock frequency in Mhz*/
 };
 
+/* Get DSI clock from pixel clock */
+int dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
+		struct drm_display_mode *mode, u32 *dsi_clk) {
+	u32 dsi_bit_clock_hz;
+	u32 pkt_pixel_size;		/* in bits */
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (intel_dsi->dsi_packet_format == DSI_24BPP_PACKED)
+		pkt_pixel_size = 24;
+	else if (intel_dsi->dsi_packet_format == DSI_18BPP_LOOSELY_PACKED)
+		pkt_pixel_size = 24;
+	else if (intel_dsi->dsi_packet_format == DSI_18BPP_PACKED)
+		pkt_pixel_size = 18;
+	else if (intel_dsi->dsi_packet_format == DSI_16BPP_PACKED)
+		pkt_pixel_size = 16;
+	else
+		return -ECHRNG;
+
+	/* For Acer AUO B080XAT panel, use a fixed DSI data rate of 513 Mbps */
+	if (dev_priv->mipi.panel_id == MIPI_DSI_AUO_B080XAT_PANEL_ID) {
+		*dsi_clk = 513;
+		return 0;
+	}
+
+	/* DSI data rate = pixel clock * bits per pixel / lane count
+	   pixel clock is converted from KHz to Hz */
+	dsi_bit_clock_hz = (((mode->clock * 1000) * pkt_pixel_size) \
+				/ intel_dsi->dev.lane_count) * 2;
+
+	/* return DSI data rate as Mbps */
+	*dsi_clk = dsi_bit_clock_hz / (1024 * 1024);
+	return 0;
+}
+
 int dsi_rr_formula(struct intel_dsi *intel_dsi,
 		struct drm_display_mode *mode, u32 *dsi_clk) {
 	u32 hactive, vactive, hfp, hsync, hbp, vfp, vsync, vbp;
@@ -208,7 +243,7 @@ int get_dsi_clk(struct intel_dsi *intel_dsi, struct drm_display_mode *mode, \
 		u32 *dsi_clk)
 {
 
-	return dsi_rr_formula(intel_dsi, mode, dsi_clk);
+	return dsi_clk_from_pclk(intel_dsi, mode, dsi_clk);
 	/*return dsi_15percent_formula(intel_dsi, mode, dsi_clk);*/
 }
 
@@ -269,17 +304,28 @@ int dsi_calc_mnp(u32 dsi_clk, struct dsi_mnp *dsi_mnp)
 
 	for (m = 62; m <= 92; m++) {
 		for (p = 2; p <= 6; p++) {
-
+			/* Find the optimal m and p divisors
+			with minimal error +/- the required clock */
 			calc_dsi_clk = (m * ref_clk) / p;
-			if (calc_dsi_clk >= target_dsi_clk) {
+			if (calc_dsi_clk == target_dsi_clk) {
+				calc_m = m;
+				calc_p = p;
+				error = 0;
+				break;
+			} else if (calc_dsi_clk > target_dsi_clk)
 				tmp_error = calc_dsi_clk - target_dsi_clk;
-				if (tmp_error < error) {
+			else
+				tmp_error = target_dsi_clk - calc_dsi_clk;
+
+			if (tmp_error < error) {
 					error = tmp_error;
 					calc_m = m;
 					calc_p = p;
-				}
 			}
 		}
+
+		if (error == 0)
+			break;
 	}
 
 	m_seed = lfsr_converts[calc_m - 62];
