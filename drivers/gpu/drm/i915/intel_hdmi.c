@@ -846,11 +846,17 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 		connector->display_info.raw_edid = NULL;
 	}
 
-	/* Work around to enable Max Fifo back on HDMI hot un-plug */
+	/* Disable CRTC on HDMI hot un-plug */
 	if (status == connector_status_disconnected) {
-		if (!(is_sprite_enabled(dev_priv, PIPE_A, PLANE_A) ||
-			is_sprite_enabled(dev_priv, PIPE_A, PLANE_B)))
-			I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
+		if (intel_hdmi->base.base.crtc) {
+			struct drm_crtc *crtc = intel_hdmi->base.base.crtc;
+			struct drm_device *dev = crtc->dev;
+			connector->encoder = NULL;
+			drm_helper_disable_unused_functions(dev);
+			if (!(is_sprite_enabled(dev_priv, PIPE_A, PLANE_A) ||
+				is_sprite_enabled(dev_priv, PIPE_A, PLANE_B)))
+				I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
+		}
 	}
 
 	if ((status == connector_status_connected)
