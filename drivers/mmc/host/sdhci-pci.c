@@ -638,6 +638,11 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 		gpio_set_value(slot->host->gpio_1p8_en, 0);
 	}
 
+	/* Bayley Bay board */
+	if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
+			INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG))
+		slot->host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
+
 	return 0;
 }
 
