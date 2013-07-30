@@ -1218,6 +1218,27 @@ static int sst_download_library(const struct firmware *fw_lib,
 		goto free_block;
 	}
 	pr_debug("FW responded, ready for download now...\n");
+	codec_fw = kzalloc(fw_lib->size, GFP_KERNEL);
+	if (!codec_fw) {
+		memset(lib, 0, sizeof(*lib));
+		retval = -ENOMEM;
+		goto send_ipc;
+	}
+	memcpy(codec_fw, fw_lib->data, fw_lib->size);
+
+	if (sst_drv_ctx->use_dma)
+		retval = sst_parse_fw_dma(codec_fw, fw_lib->size,
+				 &sst_drv_ctx->library_list);
+	else
+		retval = sst_parse_fw_memcpy(codec_fw, fw_lib->size,
+				 &sst_drv_ctx->libmemcpy_list);
+
+	if (retval) {
+		kfree(codec_fw);
+		memset(lib, 0, sizeof(*lib));
+		goto send_ipc;
+	}
+
 	/* downloading on success */
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	sst_drv_ctx->sst_state = SST_FW_LOADED;
@@ -1231,35 +1252,14 @@ static int sst_download_library(const struct firmware *fw_lib,
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	mutex_unlock(&sst_drv_ctx->csr_lock);
 
-	codec_fw = kzalloc(fw_lib->size, GFP_KERNEL);
-	if (!codec_fw) {
-		retval = -ENOMEM;
-		goto free_block_unlock;
-	}
-	memcpy(codec_fw, fw_lib->data, fw_lib->size);
-
-	if (sst_drv_ctx->use_dma)
-		retval = sst_parse_fw_dma(codec_fw, fw_lib->size,
-				 &sst_drv_ctx->library_list);
-	else
-		retval = sst_parse_fw_memcpy(codec_fw, fw_lib->size,
-				 &sst_drv_ctx->libmemcpy_list);
-
-	if (retval) {
-		kfree(codec_fw);
-		goto free_block_unlock;
-	}
-
 	if (sst_drv_ctx->use_dma) {
 		ret_val = sst_do_dma(&sst_drv_ctx->library_list);
 		if (ret_val) {
 			pr_err("sst_do_dma failed, abort\n");
-
-			goto free_resources;
+			memset(lib, 0, sizeof(*lib));
 		}
-	} else {
+	} else
 		sst_do_memcpy(&sst_drv_ctx->libmemcpy_list);
-	}
 	/* set the FW to running again */
 	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
@@ -1270,7 +1270,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	csr.part.run_stall = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	mutex_unlock(&sst_drv_ctx->csr_lock);
-
+send_ipc:
 	/* send download complete and wait */
 	if (sst_create_ipc_msg(&msg, true)) {
 		retval = -ENOMEM;
@@ -1290,13 +1290,12 @@ static int sst_download_library(const struct firmware *fw_lib,
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	pr_debug("Waiting for FW response Download complete\n");
 	retval = sst_wait_timeout(sst_drv_ctx, block);
-
+	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 	if (block->data) {
 		struct snd_sst_lib_download_info *resp = block->data;
 		retval = resp->result;
 		if (retval) {
 			pr_err("err in lib dload %x\n", resp->result);
-			sst_drv_ctx->sst_state = SST_UN_INIT;
 			goto free_resources;
 		} else {
 			pr_debug("Codec download complete...\n");
@@ -1304,13 +1303,11 @@ static int sst_download_library(const struct firmware *fw_lib,
 		}
 	} else if (retval) {
 		/* error */
-		sst_drv_ctx->sst_state = SST_UN_INIT;
 		retval = -EIO;
 		goto free_resources;
 	}
 
 	pr_debug("FW success on Download complete\n");
-	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 
 free_resources:
 	if (sst_drv_ctx->use_dma) {
@@ -1320,7 +1317,6 @@ free_resources:
 	}
 
 	kfree(codec_fw);
-free_block_unlock:
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 free_block:
 	sst_free_block(sst_drv_ctx, block);
