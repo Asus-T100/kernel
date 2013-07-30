@@ -175,9 +175,9 @@ struct drm_display_mode *b080xat_get_modes(struct intel_dsi_device *dsi)
 	mode->htotal = 948;
 
 	mode->vdisplay = 1024;
-	mode->vsync_start = 1060;
-	mode->vsync_end = 1110;
-	mode->vtotal = 1140;
+	mode->vsync_start = 1160;
+	mode->vsync_end = 1210;
+	mode->vtotal = 1240;
 
 	mode->vrefresh = 60;
 
