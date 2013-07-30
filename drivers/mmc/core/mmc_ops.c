@@ -410,8 +410,16 @@ int mmc_switch(struct mmc_card *card, u8 set, u8 index, u8 value,
 	/* Must check status to be sure of no errors */
 	do {
 		err = mmc_send_status(card, &status);
-		if (err)
-			return err;
+		if (err) {
+			if (err == -EILSEQ && index == EXT_CSD_HS_TIMING) {
+				pr_warn("%s: CMD13 error after switching timing\n"
+					"%s: this error can be ignored...\n",
+					mmc_hostname(card->host),
+					mmc_hostname(card->host));
+				return 0;
+			} else
+				return err;
+		}
 		if (card->host->caps & MMC_CAP_WAIT_WHILE_BUSY)
 			break;
 		if (mmc_host_is_spi(card->host))

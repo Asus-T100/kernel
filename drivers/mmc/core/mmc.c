@@ -983,6 +983,12 @@ static int mmc_select_hs200(struct mmc_card *card)
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_HS_TIMING, 2, 0, true);
 err:
+	if (err) {
+		host->caps2 &= ~MMC_CAP2_HS200;
+		pr_warn("%s: failed to init eMMC in HS200 retry other mode\n",
+				mmc_hostname(card->host));
+	}
+
 	return err;
 }
 
