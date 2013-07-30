@@ -1199,7 +1199,7 @@ static int mxt_proc_message(struct mxt_data *data, u8 *message)
 		data->update_input = true;
 	} else if (report_id >= data->T63_reportid_min
 		   && report_id <= data->T63_reportid_max) {
-#ifdef SUPPORT_STYLUS
+#if SUPPORT_STYLUS
 		mxt_proc_t63_messages(data, message);
 #endif
 	} else if (report_id >= data->T42_reportid_min
@@ -3128,7 +3128,7 @@ static int mxt_initialize_t9_input_device(struct mxt_data *data)
 	input_set_abs_params(input_dev, ABS_MT_ORIENTATION,
 			     0, 255, 0, 0);
 
-#ifdef SUPPORT_STYLUS
+#if SUPPORT_STYLUS
 	/* For T63 active stylus */
 	if (data->T63_reportid_min) {
 		input_set_capability(input_dev, EV_KEY, BTN_STYLUS);
