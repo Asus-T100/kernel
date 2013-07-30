@@ -853,8 +853,9 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 			struct drm_device *dev = crtc->dev;
 			connector->encoder = NULL;
 			drm_helper_disable_unused_functions(dev);
-			if (!(is_sprite_enabled(dev_priv, PIPE_A, PLANE_A) ||
-				is_sprite_enabled(dev_priv, PIPE_A, PLANE_B)))
+
+			/* Enable Max Fifo on HDMI hot un-plg */
+			if (is_maxfifo_needed(dev_priv))
 				I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
 		}
 	}
