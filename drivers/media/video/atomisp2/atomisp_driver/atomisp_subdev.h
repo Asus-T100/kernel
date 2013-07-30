@@ -229,6 +229,9 @@ struct atomisp_css_params {
 	int num_flash_frames;
 	enum atomisp_flash_state flash_state;
 	enum atomisp_frame_status last_frame_status;
+	/* Only used by ISP2400 */
+	unsigned int frame_num_since_flash;
+
 	/* continuous capture */
 	struct atomisp_cont_capture_conf offline_parm;
 	/* Flag to check if driver needs to update params to css */
