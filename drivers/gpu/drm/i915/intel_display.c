@@ -7576,23 +7576,22 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 
 ssize_t display_runtime_resume(struct drm_device *drm_dev)
 {
-	struct drm_crtc *crtc;
-	struct intel_encoder *intel_encoder;
-	struct intel_crtc *intel_crtc;
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
 	i915_rpm_get_disp(drm_dev);
 	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
-	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
-		intel_crtc = to_intel_crtc(crtc);
-		if (intel_crtc->disp_suspend_state == true) {
-			i9xx_crtc_enable(crtc);
-			for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
-				intel_encoder_commit(&intel_encoder->base);
-			}
-		}
-	}
+
+	/* No need of separate crct enable and encoder commit calls
+	 * Move the modeset sequence in late resume instead of resume.
+	 * early suspend calls prepare calls to disable crtc and encoder.
+	 * Suspend just power gates the power well and few other PM settings.
+	 * Handle resume flow in same way. resume will ungate power well
+	 * and late resume will do the modeset, thereby enable crtc
+	 * and encoder commit.
+	 */
+	drm_helper_resume_force_mode(drm_dev);
+
 	mid_hdmi_audio_resume(drm_dev);
 	dev_priv->disp_pm_in_progress = false;
 	if (dev_priv->saveDPSTState)
