@@ -337,6 +337,41 @@ static struct irq_chip pmic_irq_chip = {
 	.irq_enable		= pmic_irq_enable,
 };
 
+static void pmic_shutdown(struct i2c_client *client)
+{
+	dev_dbg(&client->dev, "%s called\n", __func__);
+
+	if (pmic->irq > 0)
+		disable_irq(pmic->irq);
+
+	return;
+}
+
+static int pmic_suspend(struct device *dev)
+{
+	dev_dbg(dev, "%s called\n", __func__);
+
+	if (pmic->irq > 0)
+		disable_irq(pmic->irq);
+
+	return 0;
+}
+
+static int pmic_resume(struct device *dev)
+{
+	dev_dbg(dev, "%s called\n", __func__);
+
+	if (pmic->irq > 0)
+		enable_irq(pmic->irq);
+
+	return 0;
+}
+
+static const struct dev_pm_ops pmic_pm_ops = {
+		SET_SYSTEM_SLEEP_PM_OPS(pmic_suspend,
+				pmic_resume)
+};
+
 static int pmic_irq_init(void)
 {
 	int cur_irq;
@@ -427,11 +462,13 @@ static struct i2c_driver pmic_i2c_driver = {
 	.driver = {
 		.name = "intel_mid_i2c_pmic",
 		.owner = THIS_MODULE,
+		.pm = &pmic_pm_ops,
 		.acpi_match_table = ACPI_PTR(pmic_acpi_match),
 	},
 	.probe = pmic_i2c_probe,
 	.remove = pmic_i2c_remove,
 	.id_table = pmic_i2c_id,
+	.shutdown = pmic_shutdown,
 };
 
 static int __init pmic_i2c_init(void)
