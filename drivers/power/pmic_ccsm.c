@@ -991,6 +991,23 @@ static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 		if (mask) {
 			dev_info(chc.dev,
 				"USB VBUS Detected. Notifying OTG driver\n");
+		/* Work Around: When VBUS is not present, PMIC will not reset
+		*  the WDT. This would result in WDT expiration and charger will
+		*  get into HiZ mode where Voltage will be reset to lower value.
+		*  On resuming if the battery voltage is above the charger over
+		*  voltage condition, charger will raise over voltage interrupt.
+		*  To avoid this, set the CC and CV corresponding to the present
+		*  battery temperature
+		*/
+			ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+				CHGRCTRL1_FTEMP_EVENT_MASK,
+				CHGRCTRL1_FTEMP_EVENT_MASK);
+
+			if (unlikely(ret)) {
+				dev_err(chc.dev, "Error writing CHGRCTRL1 reg\n");
+				return;
+			}
+
 			ret = intel_scu_ipc_ioread8(USBIDSTAT_ADDR,
 							&usb_id_sts);
 			if (unlikely(ret)) {
@@ -1158,12 +1175,6 @@ static int pmic_init(void)
 	u8 reg_val;
 	struct ps_pse_mod_prof *bcprof = chc.actual_bcprof;
 
-	ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR, SWCONTROL_ENABLE,
-			CHGRCTRL0_SWCONTROL_MASK);
-	if (ret) {
-		dev_err(chc.dev, "Error enabling sw control!!\n");
-		return ret;
-	}
 
 	temp_mon_ranges = min_t(u16, bcprof->temp_mon_ranges,
 			BATT_PROF_MAX_TEMP_NR_RNG);
@@ -1231,6 +1242,48 @@ static int pmic_init(void)
 	ret = pmic_update_tt(TT_CUSTOMFIELDEN_ADDR,
 				TT_HOT_COLD_LC_MASK,
 				TT_HOT_COLD_LC_DIS);
+	if (ret)
+		return ret;
+
+	/* Work Around. PMIC sends CC and CV corresponding to the zone
+	*  even if the charging is disabled for that zone. This happens
+	*  when ZONE is changed to EMRGHIGH/EMRGLOW zones eventhough
+	*  the charging is disabled on these zones. If SW doesn't program
+	*  these zones with meaningfull values, it would result in OVERVOLTAGE
+	*  exceptions. So set the EMRGHIGH and LOW ZONES with default values
+	*  (values from previous zones) if charging is disabled in these zones
+	*/
+
+	ret = intel_scu_ipc_ioread8(CHGRCTRL0_ADDR, &reg_val);
+	if (unlikely(ret))
+		return ret;
+
+	if (!(reg_val & EMRGCHREN_ENABLE)) {
+
+		ret = pmic_read_tt(TT_CHRCVCOLDVAL_ADDR, &reg_val);
+		if (unlikely(ret))
+			return ret;
+		ret = pmic_write_tt(TT_CHRCVEMRGLOWVAL_ADDR, reg_val);
+		if (unlikely(ret))
+			return ret;
+		ret = pmic_read_tt(TT_CHRCVHOTVAL_ADDR, &reg_val);
+		if (unlikely(ret))
+			return ret;
+		ret = pmic_write_tt(TT_CHRCVEMRGHIVAL_ADDR, reg_val);
+
+	}
+
+
+	ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR, SWCONTROL_ENABLE,
+			CHGRCTRL0_SWCONTROL_MASK);
+	if (ret) {
+		dev_err(chc.dev, "Error enabling sw control!!\n");
+		return ret;
+	}
+
+	ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+		CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
+
 	return ret;
 }
 
@@ -1361,6 +1414,7 @@ static int pmic_check_initial_events(void)
 	struct pmic_event *evt;
 	int ret;
 	u8 mask = (CHRGRIRQ1_SVBUSDET_MASK);
+	u8 chgrirq0_mask, chgrirq1_mask;
 
 	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
 	if (evt == NULL) {
@@ -1370,9 +1424,20 @@ static int pmic_check_initial_events(void)
 	}
 
 	ret = intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR, &evt->chgrirq0_stat);
-	evt->chgrirq0_int = evt->chgrirq0_stat;
+	if (ret)
+		return ret;
+	ret = intel_scu_ipc_ioread8(MCHGRIRQ0_ADDR, &chgrirq0_mask);
+	if (ret)
+		return ret;
+	evt->chgrirq0_int = evt->chgrirq0_stat & chgrirq0_mask;
+
 	ret = intel_scu_ipc_ioread8(SCHGRIRQ1_ADDR, &evt->chgrirq1_stat);
-	evt->chgrirq1_int = evt->chgrirq1_stat;
+	if (ret)
+		return ret;
+	ret = intel_scu_ipc_ioread8(MCHGRIRQ1_ADDR, &chgrirq1_mask);
+	if (ret)
+		return ret;
+	evt->chgrirq1_int = evt->chgrirq1_stat & chgrirq1_mask;
 
 	if (evt->chgrirq1_stat || evt->chgrirq0_int) {
 		INIT_LIST_HEAD(&evt->node);
@@ -1532,6 +1597,8 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 		goto otg_req_failed;
 	}
 
+	chc.health = POWER_SUPPLY_HEALTH_GOOD;
+
 	retval = pmic_check_initial_events();
 	if (unlikely(retval)) {
 		dev_err(&pdev->dev,
@@ -1560,7 +1627,6 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	if (unlikely(retval))
 		goto unmask_irq_failed;
 
-	chc.health = POWER_SUPPLY_HEALTH_GOOD;
 #ifdef CONFIG_DEBUG_FS
 	pmic_debugfs_init();
 #endif
