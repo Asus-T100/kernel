@@ -437,6 +437,7 @@ static int fsa9285_irq_init(struct fsa9285_chip *chip)
 			dev_err(&client->dev, "failed to reqeust IRQ\n");
 			return ret;
 		}
+		enable_irq_wake(client->irq);
 	} else {
 		dev_err(&client->dev, "IRQ not set\n");
 		return -EINVAL;
@@ -558,12 +559,24 @@ static void fsa9285_shutdown(struct i2c_client *client)
 
 static int fsa9285_suspend(struct device *dev)
 {
+	struct fsa9285_chip *chip = dev_get_drvdata(dev);
+
+	if (chip->client->irq > 0) {
+		disable_irq(chip->client->irq);
+	}
+
 	dev_dbg(dev, "%s called\n", __func__);
 	return 0;
 }
 
 static int fsa9285_resume(struct device *dev)
 {
+	struct fsa9285_chip *chip = dev_get_drvdata(dev);
+
+	if (chip->client->irq > 0) {
+		enable_irq(chip->client->irq);
+	}
+
 	dev_dbg(dev, "%s called\n", __func__);
 	return 0;
 }
