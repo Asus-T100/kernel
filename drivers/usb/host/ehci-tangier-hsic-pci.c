@@ -23,13 +23,15 @@
 #include <linux/gpio.h>
 #include <linux/usb/ehci-tangier-hsic-pci.h>
 #include <asm/intel-mid.h>
+#include <linux/wakelock.h>
+#include <linux/jiffies.h>
 
 static struct pci_dev	*pci_dev;
 
 static int ehci_hsic_start_host(struct pci_dev  *pdev);
 static int ehci_hsic_stop_host(struct pci_dev *pdev);
-static int create_device_files();
-static void remove_device_files();
+static int create_device_files(void);
+static void remove_device_files(void);
 
 static int enabling_disabling;
 static int hsic_enable;
@@ -224,6 +226,10 @@ static irqreturn_t hsic_wakeup_gpio_irq(int irq, void *data)
 		return IRQ_HANDLED;
 	}
 
+	/* take a wake lock during 25ms, because resume lasts 20ms, after that
+	USB framework will prevent to go in low power if there is traffic */
+	wake_lock_timeout(&hsic.wake_lock, msecs_to_jiffies(25));
+
 	queue_work(hsic.work_queue, &hsic.wakeup_work);
 	dev_dbg(dev,
 		"%s<----\n", __func__);
@@ -394,7 +400,7 @@ static void hsic_aux_work(struct work_struct *work)
 	if (hsic.modem_dev == NULL) {
 		dev_dbg(&pci_dev->dev,
 			"%s---->Modem not created\n", __func__);
-		return -ENODEV;
+		return;
 	}
 
 	mutex_lock(&hsic.hsic_mutex);
@@ -428,12 +434,13 @@ static void wakeup_work(struct work_struct *work)
 		mutex_unlock(&hsic.hsic_mutex);
 		dev_dbg(&pci_dev->dev,
 			"%s---->Modem not created\n", __func__);
-		return -ENODEV;
+		return;
 	}
 
 	pm_runtime_get_sync(&hsic.modem_dev->dev);
 	usleep_range(500, 600);
 	pm_runtime_put_sync(&hsic.modem_dev->dev);
+
 	mutex_unlock(&hsic.hsic_mutex);
 
 	dev_dbg(&pci_dev->dev,
@@ -528,7 +535,6 @@ static ssize_t hsic_port_inactivityDuration_show(struct device *dev,
 static ssize_t hsic_port_inactivityDuration_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	int retval;
 	unsigned duration;
 
 	if (size > HSIC_DURATION_SIZE) {
@@ -569,7 +575,6 @@ static ssize_t hsic_autosuspend_enable_show(struct device *dev,
 static ssize_t hsic_autosuspend_enable_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	int retval;
 	int org_req;
 
 	if (size > HSIC_ENABLE_SIZE) {
@@ -614,7 +619,6 @@ static ssize_t hsic_bus_inactivityDuration_show(struct device *dev,
 static ssize_t hsic_bus_inactivityDuration_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	int retval;
 	unsigned duration;
 
 	if (size > HSIC_DURATION_SIZE) {
@@ -653,7 +657,6 @@ static ssize_t hsic_remoteWakeup_show(struct device *dev,
 static ssize_t hsic_remoteWakeup_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	int retval;
 	int org_req;
 
 	if (size > HSIC_ENABLE_SIZE) {
@@ -838,6 +841,8 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 		return -ENODEV;
 	pdev->current_state = PCI_D0;
 
+	wake_lock_init(&hsic.wake_lock, WAKE_LOCK_SUSPEND, "hsic_aux2_wlock");
+
 	/* we need not call pci_enable_dev since otg transceiver already take
 	 * the control of this device and this probe actaully gets called by
 	 * otg transceiver driver with HNP protocol.
@@ -945,6 +950,7 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 	return retval;
 
 unmap_registers:
+	destroy_workqueue(hsic.work_queue);
 	if (driver->flags & HCD_MEMORY) {
 		iounmap(hcd->regs);
 release_mem_region:
@@ -957,6 +963,7 @@ clear_companion:
 disable_pci:
 	pci_disable_device(pdev);
 	dev_err(&pdev->dev, "init %s fail, %d\n", dev_name(&pdev->dev), retval);
+	wake_lock_destroy(&(hsic.wake_lock));
 	return retval;
 }
 
@@ -1009,6 +1016,10 @@ static void ehci_hsic_remove(struct pci_dev *pdev)
 
 	hsic.hsic_stopped = 1;
 	hsic_enable = 0;
+
+	destroy_workqueue(hsic.work_queue);
+
+	wake_lock_destroy(&hsic.wake_lock);
 }
 
 static void ehci_hsic_shutdown(struct pci_dev *pdev)
