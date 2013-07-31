@@ -2027,7 +2027,15 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 				clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
 				clk |= SDHCI_CLOCK_CARD_EN;
 				sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
-				usleep_range(1000, 1500);
+
+				/*
+				 * Wait 1ms. If enable Auto Clock Gating,
+				 * then use busy_wait to avoid ACG issue
+				 */
+				if (host->quirks2 & SDHCI_QUIRK2_WAIT_FOR_IDLE)
+					sdhci_busy_wait(host, 1000);
+				else
+					usleep_range(1000, 1500);
 
 				/*
 				 * If DAT[3:0] level is 1111b, then the card
