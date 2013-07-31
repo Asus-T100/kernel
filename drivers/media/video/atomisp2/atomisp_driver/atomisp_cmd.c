@@ -855,6 +855,10 @@ static void atomisp_buf_done(struct atomisp_sub_device *asd, int error,
 				WARN_ON(1);
 				break;
 			}
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+			if (!frame->valid)
+				error = true;
+#endif
 
 			if (asd->params.flash_state ==
 			    ATOMISP_FLASH_ONGOING) {
@@ -887,6 +891,10 @@ static void atomisp_buf_done(struct atomisp_sub_device *asd, int error,
 				break;
 			}
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+			if (!frame->valid)
+				error = true;
+#endif
 			vb = atomisp_css_frame_to_vbuf(pipe, frame);
 			if (!vb) {
 				WARN_ON(1);
