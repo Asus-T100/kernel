@@ -453,6 +453,7 @@ static int byt_sdio_setup(struct sdhci_pci_data *data)
 	ACPI_HANDLE_SET(&pdev->dev, handle);
 	vwlan.gpio = acpi_get_gpio_by_index(&pdev->dev, 0, NULL);
 #endif
+
 	if (vwlan.gpio < 0) {
 		pr_err("%s: No wlan-enable GPIO in SDHB ACPI block\n",
 	       __func__);
@@ -463,6 +464,14 @@ static int byt_sdio_setup(struct sdhci_pci_data *data)
 			vwlan.gpio = acpi_get_gpio("\\_SB.GPO2", 20);
 	}
 	pr_info("vwlan gpio %d\n", vwlan.gpio);
+
+#ifdef CONFIG_ACPI
+	/* Have to set handle back to null so that we dont use ACPI
+	 * PM. Currently the DSDT allows only for D3hot, and not D3cold,
+	 * this will cause the device to enter D0 and prevent S3.
+	 */
+	ACPI_HANDLE_SET(&pdev->dev, NULL);
+#endif
 
 	/* add a regulator to control wlan enable gpio */
 	if (platform_device_register(&vwlan_device))
