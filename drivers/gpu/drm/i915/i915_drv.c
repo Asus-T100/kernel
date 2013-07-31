@@ -1060,15 +1060,17 @@ static int i915_release(struct inode *inode, struct file *filp)
 	struct drm_file *file_priv = filp->private_data;
 	struct drm_device *dev = file_priv->minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
+#ifdef CONFIG_PM_RUNTIME
 	i915_rpm_get_callback(dev);
+#endif
 #ifdef CONFIG_DRM_VXD_BYT
 	if (dev_priv->vxd_release)
 		ret = dev_priv->vxd_release(inode, filp);
 #endif
 	drm_release(inode, filp);
+#ifdef CONFIG_PM_RUNTIME
 	i915_rpm_put_callback(dev);
-
+#endif
 	return ret;
 }
 
@@ -1092,9 +1094,13 @@ static long i915_ioctl(struct file *filp,
 #endif
 	{
 		int ret;
+#ifdef CONFIG_PM_RUNTIME
 		i915_rpm_get_ioctl(dev);
+#endif
 		ret = drm_ioctl(filp, cmd, arg);
+#ifdef CONFIG_PM_RUNTIME
 		i915_rpm_put_ioctl(dev);
+#endif
 		return ret;
 	}
 }
@@ -1267,17 +1273,8 @@ static const struct vm_operations_struct i915_gem_vm_ops = {
 static const struct file_operations i915_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 	.release = i915_release,
-#else
-	.release = drm_release,
-#endif
-
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 	.unlocked_ioctl = i915_ioctl,
-#else
-	.unlocked_ioctl = drm_ioctl,
-#endif
 
 #ifdef CONFIG_DRM_VXD_BYT
 	.mmap = i915_mmap,
