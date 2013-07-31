@@ -559,14 +559,7 @@ EXPORT_SYMBOL_GPL(acpi_subsys_prepare);
 int acpi_subsys_suspend_late(struct device *dev)
 {
 	int ret = pm_generic_suspend_late(dev);
-	if (!ret)
-		ret = acpi_dev_suspend_late(dev);
-	/* no device should not stop entering S3 */
-	if (ret == -ENODEV) {
-		dev_err(dev, "error  -%d, ignore it enter S3\n", ret);
-		ret = 0;
-	}
-	return ret;
+	return ret ? ret : acpi_dev_suspend_late(dev);
 }
 EXPORT_SYMBOL_GPL(acpi_subsys_suspend_late);
 
