@@ -42,6 +42,7 @@
 #include "atomisp_tables.h"
 #include "atomisp_acc.h"
 #include "atomisp_compat.h"
+#include "atomisp_subdev.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
@@ -1828,11 +1829,10 @@ static void atomisp_curr_user_grid_info(struct atomisp_sub_device *asd,
 #else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	memcpy(info, &asd->params.curr_grid_info.s3a_grid,
 			sizeof(struct atomisp_css_3a_grid_info));
-
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
-static int atomisp_compare_grid(struct atomisp_sub_device *asd,
+int atomisp_compare_grid(struct atomisp_sub_device *asd,
 				struct atomisp_grid_info *atomgrid)
 {
 	struct atomisp_grid_info tmp = {0};
@@ -1986,63 +1986,7 @@ int atomisp_set_dis_vector(struct atomisp_sub_device *asd,
 int atomisp_get_dis_stat(struct atomisp_sub_device *asd,
 			 struct atomisp_dis_statistics *stats)
 {
-	struct atomisp_device *isp = asd->isp;
-	unsigned long flags;
-	int error;
-
-	if (stats->vertical_projections   == NULL ||
-	    stats->horizontal_projections == NULL ||
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	    asd->params.dvs_stat->hor_proj == NULL ||
-	    asd->params.dvs_stat->ver_proj == NULL)
-#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	    asd->params.dis_hor_proj_buf  == NULL ||
-	    asd->params.dis_ver_proj_buf  == NULL)
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-		return -EINVAL;
-
-	/* isp needs to be streaming to get DIS statistics */
-	spin_lock_irqsave(&isp->lock, flags);
-	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
-		spin_unlock_irqrestore(&isp->lock, flags);
-		return -EINVAL;
-	}
-	spin_unlock_irqrestore(&isp->lock, flags);
-
-	if (!asd->params.video_dis_en)
-		return -EINVAL;
-
-	if (atomisp_compare_grid(asd, &stats->grid_info) != 0)
-		/* If the grid info in the argument differs from the current
-		   grid info, we tell the caller to reset the grid size and
-		   try again. */
-		return -EAGAIN;
-
-	if (!asd->params.dis_proj_data_valid)
-		return -EBUSY;
-
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	error = copy_to_user(stats->vertical_projections,
-			     asd->params.dvs_stat->ver_proj,
-			     asd->params.dvs_ver_proj_bytes);
-
-	error |= copy_to_user(stats->horizontal_projections,
-			     asd->params.dvs_stat->hor_proj,
-			     asd->params.dvs_hor_proj_bytes);
-#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	error = copy_to_user(stats->vertical_projections,
-			     asd->params.dis_ver_proj_buf,
-			     asd->params.dis_ver_proj_bytes);
-
-	error |= copy_to_user(stats->horizontal_projections,
-			     asd->params.dis_hor_proj_buf,
-			     asd->params.dis_hor_proj_bytes);
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-
-	if (error)
-		return -EFAULT;
-
-	return 0;
+	return atomisp_css_get_dis_stat(asd, stats);
 }
 
 int atomisp_set_dis_coefs(struct atomisp_sub_device *asd,
@@ -2416,6 +2360,105 @@ set_lsc:
 	return 0;
 }
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css_stream.h"	/* FIXME */
+int atomisp_set_dvs_6axis_config(struct atomisp_sub_device *asd,
+					  struct atomisp_dvs_6axis_config
+					  *user_6axis_config)
+{
+	struct atomisp_css_dvs_6axis_config *dvs_6axis_config;
+	struct atomisp_css_dvs_6axis_config *old_6axis_config;
+	struct ia_css_stream *stream = asd->stream_env.stream;
+	struct ia_css_dvs_6axis_config *stream_dvs_config =
+	    stream->isp_params_configs->dvs_6axis_config;
+	int ret = -EFAULT;
+
+	if (!user_6axis_config)
+		return 0;
+
+	if (!stream_dvs_config)
+		return -EAGAIN;
+
+	if (stream_dvs_config->width_y != user_6axis_config->width_y ||
+	    stream_dvs_config->height_y != user_6axis_config->height_y ||
+	    stream_dvs_config->width_uv != user_6axis_config->width_uv ||
+	    stream_dvs_config->height_uv != user_6axis_config->height_uv) {
+		dev_err(asd->isp->dev, "%s: mismatch 6axis config!", __func__);
+		dev_err(asd->isp->dev, "CSS expected:width_y:%d, height_y:%d, width_uv:%d, height_uv:%d.\n",
+			 stream_dvs_config->width_y,
+			 stream_dvs_config->height_y,
+			 stream_dvs_config->width_uv,
+			 stream_dvs_config->height_uv);
+		dev_err(asd->isp->dev, "User space:width_y:%d, height_y:%d, width_uv:%d, height_uv:%d.\n",
+			 user_6axis_config->width_y,
+			 user_6axis_config->height_y,
+			 user_6axis_config->width_uv,
+			 user_6axis_config->height_uv);
+		return -EINVAL;
+	}
+
+	/* check whether need to reallocate for 6 axis config */
+	old_6axis_config = asd->params.dvs_6axis;
+	dvs_6axis_config = old_6axis_config;
+	if (old_6axis_config &&
+	    (old_6axis_config->width_y != user_6axis_config->width_y ||
+	     old_6axis_config->height_y != user_6axis_config->height_y ||
+	     old_6axis_config->width_uv != user_6axis_config->width_uv ||
+	     old_6axis_config->height_uv != user_6axis_config->height_uv)) {
+		ia_css_dvs2_6axis_config_free(asd->params.dvs_6axis);
+		asd->params.dvs_6axis = NULL;
+
+		dvs_6axis_config = ia_css_dvs2_6axis_config_allocate(asd->
+								     stream_env.
+								     stream);
+		if (!dvs_6axis_config)
+			return -ENOMEM;
+	} else if (!dvs_6axis_config) {
+		dvs_6axis_config = ia_css_dvs2_6axis_config_allocate(asd->
+								     stream_env.
+								     stream);
+		if (!dvs_6axis_config)
+			return -ENOMEM;
+	}
+
+	if (copy_from_user(dvs_6axis_config->xcoords_y,
+			   user_6axis_config->xcoords_y,
+			   user_6axis_config->width_y *
+			   user_6axis_config->height_y *
+			   sizeof(*user_6axis_config->xcoords_y)))
+		goto error;
+	if (copy_from_user(dvs_6axis_config->ycoords_y,
+			   user_6axis_config->ycoords_y,
+			   user_6axis_config->width_y *
+			   user_6axis_config->height_y *
+			   sizeof(*user_6axis_config->ycoords_y)))
+		goto error;
+	if (copy_from_user(dvs_6axis_config->xcoords_uv,
+			   user_6axis_config->xcoords_uv,
+			   user_6axis_config->width_uv *
+			   user_6axis_config->height_uv *
+			   sizeof(*user_6axis_config->xcoords_uv)))
+		goto error;
+	if (copy_from_user(dvs_6axis_config->ycoords_uv,
+			   user_6axis_config->ycoords_uv,
+			   user_6axis_config->width_uv *
+			   user_6axis_config->height_uv *
+			   sizeof(*user_6axis_config->ycoords_uv)))
+		goto error;
+
+	asd->params.dvs_6axis = dvs_6axis_config;
+	atomisp_css_set_dvs_6axis(asd, asd->params.dvs_6axis);
+	asd->params.css_update_params_needed = true;
+
+	return 0;
+
+error:
+	if (dvs_6axis_config)
+		ia_css_dvs2_6axis_config_free(dvs_6axis_config);
+	return ret;
+}
+#endif
+
 static int __atomisp_set_morph_table(struct atomisp_sub_device *asd,
 				struct atomisp_morph_table *user_morph_table)
 {
@@ -2514,6 +2557,18 @@ int atomisp_param(struct atomisp_sub_device *asd, int flag,
 			return -EINVAL;
 		}
 		atomisp_curr_user_grid_info(asd, &config->info);
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		/* update dvs grid info */
+		memcpy(&config->dvs_grid, &asd->params.curr_grid_info.dvs_grid,
+			sizeof(struct atomisp_css_dvs_grid_info));
+		/* update dvs envelop info */
+		config->dvs_envelop.width =
+		    asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_VIDEO].
+		    dvs_envelope.width;
+		config->dvs_envelop.height =
+		    asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_VIDEO].
+		    dvs_envelope.height;
+#endif
 		return 0;
 	}
 

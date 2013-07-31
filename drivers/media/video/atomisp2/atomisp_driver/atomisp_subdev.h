@@ -193,8 +193,14 @@ struct atomisp_css_params {
 	   CSS and user space. These are needed to perform the
 	   copy_to_user. */
 	struct ia_css_3a_statistics *s3a_user_stat;
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct ia_css_dvs2_coefficients *dvs_coeff;
+	struct ia_css_dvs2_statistics *dvs_stat;
+	struct ia_css_dvs_6axis_config *dvs_6axis;
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	struct ia_css_dvs_coefficients *dvs_coeff;
 	struct ia_css_dvs_statistics *dvs_stat;
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	int  dvs_hor_coef_bytes;
 	int  dvs_ver_coef_bytes;
 	int  dvs_ver_proj_bytes;
@@ -270,6 +276,7 @@ struct atomisp_sub_device {
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_stream_env stream_env;
 #endif
+	struct v4l2_pix_format dvs_envelop;
 	unsigned int s3a_bufs_in_css[CSS_PIPE_ID_NUM];
 	unsigned int dis_bufs_in_css;
 
