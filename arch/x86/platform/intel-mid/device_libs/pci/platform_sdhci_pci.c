@@ -450,6 +450,7 @@ static int byt_sdio_setup(struct sdhci_pci_data *data)
 	status = acpi_get_handle(NULL, "\\_SB.SDHB", &handle);
 	if (ACPI_FAILURE(status))
 		pr_err("wlan: cannot get SDHB acpi handle");
+	ACPI_HANDLE_SET(&pdev->dev, handle);
 	vwlan.gpio = acpi_get_gpio_by_index(&pdev->dev, 0, NULL);
 #endif
 	if (vwlan.gpio < 0) {
