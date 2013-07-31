@@ -7194,6 +7194,15 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 	uint32_t plane_bit = 0;
 	int ret;
 
+	/* Make sure the ring is accessible.
+	* mm.suspend alone might be usable for this purpose.
+	* But put additional check until it is confirmed. */
+	if (dev_priv->mm.suspended || (ring->obj == NULL)) {
+		DRM_ERROR("flip attempted while the ring is not ready\n");
+		ret = -EINVAL;
+		goto err;
+	}
+
 	ret = intel_pin_and_fence_fb_obj(dev, obj, ring);
 	if (ret)
 		goto err;
