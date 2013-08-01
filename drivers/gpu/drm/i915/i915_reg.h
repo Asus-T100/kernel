@@ -559,6 +559,10 @@
 #define HWSTAM		0x02098
 #define DMA_FADD_I8XX	0x020d0
 
+#define RCS_RING_TLB_INVALIDATE_VAL 0x02a002a0
+#define BLT_RING_TLB_INVALIDATE_VAL 0x02200220
+#define BSD_RING_TLB_INVALIDATE_VAL 0x02200220
+
 #define ERROR_GEN6	0x040a0
 
 /* GM45+ chicken bits -- debug workaround bits that may be required
