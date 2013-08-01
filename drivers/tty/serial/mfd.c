@@ -1772,9 +1772,11 @@ static int serial_hsu_do_suspend(struct pci_dev *pdev)
 				&& serial_in(up, UART_FOR) & 0x7F)
 			goto busy;
 
-		if ((chan_readl(up->rxc, HSU_CH_D0SAR) - up->rxbuf.dma_addr)
-			&& up->hw_type == HSU_INTEL)
-			goto busy;
+		if (up->hw_type == HSU_INTEL) {
+			if (chan_readl(up->rxc, HSU_CH_D0SAR) >
+					up->rxbuf.dma_addr)
+				goto busy;
+		}
 	}
 
 	if (cfg->hw_set_rts)
@@ -2152,7 +2154,7 @@ static int serial_port_setup(struct uart_hsu_port *up,
 	snprintf(up->name, sizeof(up->name) - 1, "%s_p", cfg->name);
 	up->index = index;
 
-	if ((hsu_dma_enable & (1 << index)) && up->hw_type == HSU_INTEL)
+	if (hsu_dma_enable & (1 << index))
 		up->use_dma = 1;
 	else
 		up->use_dma = 0;
