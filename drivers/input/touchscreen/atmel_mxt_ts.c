@@ -1393,7 +1393,7 @@ static int mxt_t6_command(struct mxt_data *data, u16 cmd_offset,
 			  u8 value, bool wait)
 {
 	u16 reg;
-	u8 command_register;
+	u8 command_register = 0;
 	int timeout_counter = 0;
 	int ret;
 
@@ -1517,7 +1517,7 @@ static int mxt_check_retrigen(struct mxt_data *data)
 {
 	struct i2c_client *client = data->client;
 	int error;
-	int val;
+	int val = 0;
 
 	if (data->pdata->irqflags & IRQF_TRIGGER_LOW)
 		return 0;
@@ -1539,6 +1539,15 @@ static int mxt_check_retrigen(struct mxt_data *data)
 }
 
 static int mxt_init_t7_power_cfg(struct mxt_data *data);
+
+
+#define CHECK_CFG_READ_POS() { \
+	if (data_pos >= cfg->size) { \
+		dev_err(dev, "Bad format at read position, %d\n", data_pos);\
+		ret = -EINVAL;\
+		goto release_mem;\
+	} \
+}
 
 /*
  * mxt_check_reg_init - download configuration to chip
@@ -1567,7 +1576,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 	const struct firmware *cfg = NULL;
 	int ret;
 	int offset;
-	int data_pos;
+	int data_pos = 0;
 	int byte_offset;
 	int i;
 	int cfg_start_ofs;
@@ -1584,7 +1593,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 	}
 
 	ret = request_firmware(&cfg, data->cfg_name, dev);
-	if (ret < 0) {
+	if (ret < 0 || !cfg) {
 		dev_err(dev, "Failure to request config file %s\n",
 			data->cfg_name);
 		return 0;
@@ -1602,6 +1611,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 
 	/* Load information block and check */
 	for (i = 0; i < sizeof(struct mxt_info); i++) {
+		CHECK_CFG_READ_POS();
 		ret = sscanf(cfg->data + data_pos, "%hhx%n",
 			     (unsigned char *)&cfg_info + i,
 			     &offset);
@@ -1627,6 +1637,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 	}
 
 	/* Read CRCs */
+	CHECK_CFG_READ_POS();
 	ret = sscanf(cfg->data + data_pos, "%x%n", &info_crc, &offset);
 	if (ret != 1) {
 		dev_err(dev, "Bad format: failed to parse Info CRC\n");
@@ -1635,6 +1646,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 	}
 	data_pos += offset;
 
+	CHECK_CFG_READ_POS();
 	ret = sscanf(cfg->data + data_pos, "%x%n", &config_crc, &offset);
 	if (ret != 1) {
 		dev_err(dev, "Bad format: failed to parse Config CRC\n");
@@ -1703,6 +1715,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 		if (!object) {
 			/* Skip object */
 			for (i = 0; i < size; i++) {
+				CHECK_CFG_READ_POS();
 				ret = sscanf(cfg->data + data_pos, "%hhx%n",
 					     &val,
 					     &offset);
@@ -1738,6 +1751,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 		reg = object->start_address + mxt_obj_size(object) * instance;
 
 		for (i = 0; i < size; i++) {
+			CHECK_CFG_READ_POS();
 			ret = sscanf(cfg->data + data_pos, "%hhx%n",
 				     &val,
 				     &offset);
@@ -2152,8 +2166,8 @@ static int mxt_read_t9_resolution(struct mxt_data *data)
 {
 	struct i2c_client *client = data->client;
 	int error;
-	struct t9_range range;
-	unsigned char orient;
+	struct t9_range range = {0};
+	unsigned char orient = 0;
 	struct mxt_object *object;
 
 	object = mxt_get_object(data, MXT_TOUCH_MULTI_T9);
@@ -2262,8 +2276,8 @@ static int mxt_read_t100_config(struct mxt_data *data)
 	struct i2c_client *client = data->client;
 	int error;
 	struct mxt_object *object;
-	u16 range_x, range_y;
-	u8 cfg, tchaux;
+	u16 range_x = 0, range_y = 0;
+	u8 cfg = 0, tchaux = 0;
 	u8 aux;
 
 	object = mxt_get_object(data, MXT_TOUCH_MULTITOUCHSCREEN_T100);
@@ -2349,7 +2363,7 @@ static int mxt_initialize_t100_input_device(struct mxt_data *data)
 		dev_warn(dev, "Failed to initialize T9 resolution\n");
 
 	input_dev = input_allocate_device();
-	if (!data || !input_dev) {
+	if (!input_dev) {
 		dev_err(dev, "Failed to allocate memory\n");
 		return -ENOMEM;
 	}
@@ -2426,7 +2440,7 @@ static int mxt_initialize(struct mxt_data *data)
 	int error;
 	bool alt_bootloader_addr = false;
 	bool retry = false;
-	struct mxt_info info;
+	struct mxt_info info = {0};
 
 	error = __mxt_read_reg(client, 0, sizeof(struct mxt_info), &info);
 	if (error || info.family_id != MXT1664S_FAMILY_ID) {
@@ -2636,7 +2650,7 @@ static int mxt_load_fw(struct device *dev)
 	int ret;
 
 	ret = request_firmware(&fw, data->fw_name, dev);
-	if (ret) {
+	if (ret || !fw) {
 		dev_err(dev, "Unable to open firmware %s\n", data->fw_name);
 		return ret;
 	}
