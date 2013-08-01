@@ -621,10 +621,8 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 	/* Fix panel, No need to read modes again If we already
 	have modes with connector */
 	list_for_each_entry(mode, &connector->modes, head) {
-		if (mode) {
-			mode->status = MODE_OK;
-			count++;
-		}
+		mode->status = MODE_OK;
+		count++;
 	}
 
 	if (count)

@@ -895,10 +895,8 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 	available and display is connected */
 	if (dev_priv->is_hdmi) {
 		list_for_each_entry(mode, &connector->modes, head) {
-			if (mode) {
-				mode->status = MODE_OK;
-				count++;
-			}
+			mode->status = MODE_OK;
+			count++;
 		}
 		/* If modes are availlable, no need to read again */
 		if (count)

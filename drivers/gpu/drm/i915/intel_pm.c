@@ -1282,7 +1282,6 @@ static void vlv_update_drain_latency(struct drm_device *dev)
 	int plane_prec_mult = 0, cursor_prec_mult = 0;
 	/* Precision multiplier is either 64 or 32 */
 	struct vlv_MA_component_enabled enable;
-	u32 val;
 
 	enable.EnPlane = is_plane_enabled(dev_priv, 0);
 	enable.EnCursor = false;
@@ -2149,7 +2148,6 @@ static void valleyview_update_sprite_wm(struct drm_device *dev, int pipe,
 	int sprite_prec = 0, sprite_dl = 0;
 	int sprite_prec_mult = 0;
 	struct vlv_MA_component_enabled enable;
-	u32 val;
 
 	enable.EnPlane = false;
 	enable.EnCursor = false;
