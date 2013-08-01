@@ -1099,7 +1099,7 @@ static long i915_ioctl(struct file *filp,
 	}
 }
 
-static int i915_pm_suspend(struct device *dev)
+static int i915_suspend_common(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
@@ -1132,6 +1132,30 @@ static int i915_pm_suspend(struct device *dev)
 	return 0;
 }
 
+static int i915_pm_suspend(struct device *dev)
+{
+	int ret;
+
+	DRM_DEBUG_PM("PM Suspend called\n");
+	ret = i915_suspend_common(dev);
+	DRM_DEBUG_PM("PM Suspend finished\n");
+
+	return ret;
+
+}
+
+static int i915_rpm_suspend(struct device *dev)
+{
+	int ret;
+
+	DRM_DEBUG_PM("Runtime PM Suspend called\n");
+	ret = i915_suspend_common(dev);
+	DRM_DEBUG_PM("Runtime PM Suspend finished\n");
+
+	return ret;
+
+}
+
 static void i915_pm_shutdown(struct pci_dev *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1140,7 +1164,7 @@ static void i915_pm_shutdown(struct pci_dev *pdev)
 	dev_priv = drm_dev->dev_private;
 
 	dev_priv->shut_down_state = 1;
-	i915_pm_suspend(dev);
+	i915_suspend_common(dev);
 }
 
 static int i915_pm_resume(struct device *dev)
@@ -1148,7 +1172,22 @@ static int i915_pm_resume(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
 
+	DRM_DEBUG_PM("PM Resume called\n");
 	return i915_resume_common(drm_dev, false);
+	DRM_DEBUG_PM("PM Resume finished\n");
+}
+
+static int i915_rpm_resume(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	int ret;
+
+	DRM_DEBUG_PM("Runtime PM Resume called\n");
+	ret = i915_resume_common(drm_dev, false);
+	DRM_DEBUG_PM("Runtime PM Resume finished\n");
+
+	return ret;
 }
 
 static int i915_pm_restore(struct device *dev)
@@ -1214,8 +1253,8 @@ static const struct dev_pm_ops i915_pm_ops = {
 	.poweroff = i915_pm_poweroff,
 	.restore = i915_pm_restore,
 #ifdef CONFIG_PM_RUNTIME
-	.runtime_suspend = i915_pm_suspend,
-	.runtime_resume = i915_pm_resume,
+	.runtime_suspend = i915_rpm_suspend,
+	.runtime_resume = i915_rpm_resume,
 #endif
 };
 
