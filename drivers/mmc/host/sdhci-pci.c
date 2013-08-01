@@ -356,7 +356,9 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP3))
 			slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
-		sdhci_alloc_panic_host(slot->host);
+		if (!INTEL_MID_BOARDV2(TABLET, BYT, BLB, PRO) &&
+				!INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
+			sdhci_alloc_panic_host(slot->host);
 		slot->rst_n_gpio = -EINVAL;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC |
@@ -607,6 +609,12 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int err;
+
+	/* On BYT-M, SD card is using to store ipanic as a W/A */
+	if (INTEL_MID_BOARDV2(TABLET, BYT, BLB, PRO) ||
+			INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
+		sdhci_alloc_panic_host(slot->host);
+
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	/*
 	 * change GPIOC_7 to alternate function 2
