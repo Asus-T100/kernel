@@ -80,6 +80,7 @@ struct mid_pmc_dev {
 	struct pci_dev const *pdev;
 	struct semaphore nc_ready_lock;
 	u32 s3_residency;
+	u32 s3_count;
 };
 
 extern void cstate_ignore_add_init(void);
