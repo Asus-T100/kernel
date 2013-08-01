@@ -35,6 +35,7 @@
 #define SUPPORT_STYLUS		0
 #define MXT_FORCE_BOOTLOADER	1
 #define MXT1664S_FAMILY_ID	0xa2
+#define PMIC_GPIO1P3		211
 
 /* Configuration file */
 #define MXT_FW_NAME		"maxtouch.fw"
@@ -3189,6 +3190,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	pdata->gpio_reset = acpi_get_gpio_by_index(&client->dev, 0, &gpio_info);
 	i2c_set_clientdata(client, data);
 
+	gpio_request(PMIC_GPIO1P3, "ts_power");
+	gpio_export(PMIC_GPIO1P3, 0);
+	gpio_direction_output(PMIC_GPIO1P3, 1);
+
 	init_completion(&data->bl_completion);
 	init_completion(&data->reset_completion);
 	init_completion(&data->crc_completion);
@@ -3260,6 +3265,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 
 	sysfs_remove_group(&client->dev.kobj, &mxt_attr_group);
 	free_irq(data->irq, data);
+	gpio_free(PMIC_GPIO1P3);
 	regulator_put(data->reg_avdd);
 	regulator_put(data->reg_vdd);
 	mxt_free_object_table(data);
@@ -3283,6 +3289,8 @@ static void mxt_early_suspend(struct early_suspend *es)
 	if (input_dev->users)
 		mxt_stop(data);
 	mutex_unlock(&input_dev->mutex);
+
+	gpio_set_value_cansleep(PMIC_GPIO1P3, 0);
 }
 
 static void mxt_late_resume(struct early_suspend *es)
@@ -3292,6 +3300,8 @@ static void mxt_late_resume(struct early_suspend *es)
 
 	data = container_of(es, struct mxt_data, early_suspend);
 	input_dev = data->input_dev;
+
+	gpio_set_value_cansleep(PMIC_GPIO1P3, 1);
 
 	mutex_lock(&input_dev->mutex);
 	if (input_dev->users)
