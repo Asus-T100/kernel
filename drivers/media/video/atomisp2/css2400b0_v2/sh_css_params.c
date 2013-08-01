@@ -5422,15 +5422,6 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 							pipeline->stages);
 		}
 
-		/* update isp_params to pipe specific copies */
-		if (params->isp_params_changed) {
-			reallocate_buffer(&cur_map->isp_param,
-				  &cur_map_size->isp_param,
-				  cur_map_size->isp_param,
-				  true,
-				  &err);
-			sh_css_update_isp_params_to_ddr(params, cur_map->isp_param);
-		}
 		/* update the other buffers to the pipe specific copies */
 		for (stage = pipeline->stages; stage;
 			stage = stage->next) {
@@ -5445,6 +5436,18 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 					break;
 			}
 		}
+
+		/* update isp_params to pipe specific copies */
+		if (params->isp_params_changed) {
+			reallocate_buffer(&cur_map->isp_param,
+				  &cur_map_size->isp_param,
+				  cur_map_size->isp_param,
+				  true,
+				  &err);
+			sh_css_update_isp_params_to_ddr(params,
+					cur_map->isp_param);
+		}
+
 		/* last make referenced copy */
 		err = ref_sh_css_ddr_address_map(
 					cur_map,
