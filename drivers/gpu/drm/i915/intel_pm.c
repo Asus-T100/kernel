@@ -32,10 +32,10 @@
 #include <linux/module.h>
 /* HDMI Audio OSPM handling */
 #include <psb_powermgmt.h>
+static struct drm_device *gdev;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	#include <linux/earlysuspend.h>
-	static struct drm_device *gdev;
 #endif
 
 /* FBC, or Frame Buffer Compression, is a technique employed to compress the
@@ -4470,7 +4470,6 @@ static struct early_suspend intel_display_early_suspend = {
 
 void intel_display_pm_init(struct drm_device *dev)
 {
-	gdev = dev;
 	register_early_suspend(&intel_display_early_suspend);
 }
 #endif
@@ -4479,13 +4478,16 @@ void intel_display_pm_init(struct drm_device *dev)
  * Will be updated once S0iX code is integrated */
 bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 {
-	return 1;
+	struct drm_dev *drm_dev = gdev;
+	i915_rpm_get_disp(drm_dev);
+	return i915_is_device_active(drm_dev);
 }
 EXPORT_SYMBOL(ospm_power_using_hw_begin);
 
 void ospm_power_using_hw_end(int hw_island)
 {
-
+	struct drm_dev *drm_dev = gdev;
+	i915_rpm_put_disp(drm_dev);
 }
 EXPORT_SYMBOL(ospm_power_using_hw_end);
 
@@ -4493,6 +4495,7 @@ EXPORT_SYMBOL(ospm_power_using_hw_end);
 void intel_init_pm(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	gdev = dev;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	intel_display_pm_init(dev);

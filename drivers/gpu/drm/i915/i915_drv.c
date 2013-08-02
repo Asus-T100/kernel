@@ -560,9 +560,6 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 
 	if (dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
-	/* Added for HDMI Audio */
-	/* TODO: display team to take care of error properly */
-	mid_hdmi_audio_suspend(dev);
 
 	error = dev_priv->pm.drm_freeze(dev);
 	if (error)
@@ -601,8 +598,6 @@ int i915_resume_common(struct drm_device *dev, bool is_hibernate_restore)
 		return ret;
 
 	drm_kms_helper_poll_enable(dev);
-	/* Added for HDMI Audio */
-	mid_hdmi_audio_resume(dev);
 	DRM_DEBUG_DRIVER("Gfx Resumed\n");
 	return 0;
 }
@@ -1118,9 +1113,6 @@ static int i915_pm_suspend(struct device *dev)
 
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
-	/* Added for HDMI Audio */
-	/* TODO: display team to take care of error properly */
-	mid_hdmi_audio_suspend(drm_dev);
 
 	error = dev_priv->pm.drm_freeze(drm_dev);
 	if (error)
