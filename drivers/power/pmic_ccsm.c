@@ -731,7 +731,7 @@ int pmic_set_cc(int new_cc)
 	int new_cc1;
 	int ret;
 	int i;
-	u8 reg_val;
+	u8 reg_val = 0;
 
 	/* No need to write PMIC if CC = 0 */
 	if (!new_cc)
@@ -745,11 +745,12 @@ int pmic_set_cc(int new_cc)
 				bcprof->temp_mon_range[i].full_chrg_cur);
 
 		if (new_cc1 != r_bcprof->temp_mon_range[i].full_chrg_cur) {
-			if (chc.pdata->cc_to_reg)
+			if (chc.pdata->cc_to_reg) {
 				chc.pdata->cc_to_reg(new_cc1, &reg_val);
-			ret = update_zone_cc(i, reg_val);
-			if (unlikely(ret))
-				return ret;
+				ret = update_zone_cc(i, reg_val);
+				if (unlikely(ret))
+					return ret;
+			}
 			r_bcprof->temp_mon_range[i].full_chrg_cur = new_cc1;
 		}
 	}
@@ -769,7 +770,7 @@ int pmic_set_cv(int new_cv)
 	int new_cv1;
 	int ret;
 	int i;
-	u8 reg_val;
+	u8 reg_val = 0;
 
 	/* No need to write PMIC if CV = 0 */
 	if (!new_cv)
@@ -783,13 +784,12 @@ int pmic_set_cv(int new_cv)
 				bcprof->temp_mon_range[i].full_chrg_vol);
 
 		if (new_cv1 != r_bcprof->temp_mon_range[i].full_chrg_vol) {
-			if (chc.pdata->cv_to_reg)
+			if (chc.pdata->cv_to_reg) {
 				chc.pdata->cv_to_reg(new_cv1, &reg_val);
-
-			ret = update_zone_cv(i, reg_val);
-			if (unlikely(ret))
-				return ret;
-
+				ret = update_zone_cv(i, reg_val);
+				if (unlikely(ret))
+					return ret;
+			}
 			r_bcprof->temp_mon_range[i].full_chrg_vol = new_cv1;
 		}
 	}
