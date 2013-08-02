@@ -3539,6 +3539,14 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		"port %d, status %04x, change %04x, %s\n",
 		port1, portstatus, portchange, portspeed(hub, portstatus));
 
+#ifdef CONFIG_USB_SUSPEND
+	/* add 5s time-out wakelock for delay system suspend */
+	wake_lock_timeout(&hcd->wake_lock, 5 * HZ);
+	dev_dbg(hub_dev,
+		"%s add 5s wake_lock for port connect change\n",
+		__func__);
+#endif
+
 	if (hub->has_indicators) {
 		set_port_led(hub, port1, HUB_LED_AUTO);
 		hub->indicator[port1-1] = INDICATOR_AUTO;
