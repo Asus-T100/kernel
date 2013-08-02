@@ -795,14 +795,15 @@ static int intel_moor_emmc_probe_slot(struct sdhci_pci_slot *slot)
 
 	slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
 				MMC_CAP2_INIT_CARD_SYNC;
+	if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HIGH_SPEED) {
+			slot->host->quirks2 |= SDHCI_QUIRK2_DISABLE_HIGH_SPEED;
+			slot->host->mmc->caps &= ~MMC_CAP_1_8V_DDR;
+		}
 
-	if (slot->data->platform_quirks & PLFM_QUIRK_NO_HIGH_SPEED) {
-		slot->host->quirks2 |= SDHCI_QUIRK2_DISABLE_HIGH_SPEED;
-		slot->host->mmc->caps &= ~MMC_CAP_1_8V_DDR;
-	}
-
-	if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
-		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
+	if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
+			slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 
 	return ret;
 }
@@ -815,8 +816,9 @@ static int intel_moor_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int ret = 0;
 
-	if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
-		ret = -ENODEV;
+	if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
+			ret = -ENODEV;
 
 	return ret;
 }
@@ -831,8 +833,9 @@ static int intel_moor_sdio_probe_slot(struct sdhci_pci_slot *slot)
 
 	slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
 
-	if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
-		ret = -ENODEV;
+	if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
+			ret = -ENODEV;
 
 	return ret;
 }

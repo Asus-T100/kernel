@@ -709,3 +709,11 @@ mmc_sdhci_pci_early_quirks);
 
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_SDIO,
 			mmc_sdhci_pci_early_quirks);
+
+/* Moorefield MMC PCI IDs */
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MOOR_EMMC,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MOOR_SD,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MOOR_SDIO,
+			mmc_sdhci_pci_early_quirks);
