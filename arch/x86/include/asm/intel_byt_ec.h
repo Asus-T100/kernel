@@ -17,6 +17,10 @@
 #define BYT_EC_SCI_BATTERY_PRSNT	0x33	/* Battery insertion or removal SCI */
 #define BYT_EC_SCI_BATTERY_OTP		0x34	/* Battery Over Temperature SCI */
 #define BYT_EC_SCI_BATTERY_OTP_CLR	0x35	/* Battery Over Temperature to Normal SCI */
+/* Battery Extreme Temperature SCI */
+#define BYT_EC_SCI_BATTERY_ETP		0x38
+/* Battery Extreme Temperature Clear SCI */
+#define BYT_EC_SCI_BATTERY_ETP_CLR	0x39
 #define BYT_EC_SCI_DOCKED		0x40	/* Dock complete SCI */
 #define BYT_EC_SCI_UNDOCKED		0x41	/* Undock complete SCI */
 #define BYT_EC_SCI_UNDOCKREQUEST	0x42	/* Undocking request SCI */

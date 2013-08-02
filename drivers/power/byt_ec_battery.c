@@ -78,13 +78,8 @@
 /* Battery operating temperature range is 0C to 40C while
  * charging and -20 C to 60C while Discharging/Full/Not Chraging.
  */
-/* Treat 50C as over temperature threshold while charging/discharging
- * till EC implements above  thresholds.
- */
-#define EC_BAT_CHRG_OVER_TEMP		3231  /* 323.1K ~ 50 C */
-#define EC_BAT_DISCHRG_OVER_TEMP	3231  /* 323.1K ~ 50 C */
+#define EC_BAT_CHRG_OVER_TEMP		3131  /* 313.1K ~ 40 C */
 #define EC_BAT_CHRG_UNDER_TEMP		2731  /* 273.1K ~ 0 C  */
-#define EC_BAT_DISCHRG_UNDER_TEMP	2531  /* 253.1K ~ -20 C */
 
 
 struct ec_battery_info {
@@ -193,18 +188,10 @@ static int ec_get_battery_property(struct power_supply *psy,
 		 *Both are treated as  overheat cases.
 		 *So report overheat in both high and low temp cases.
 		 */
-		if (val8 & BAT0_STAT_DISCHARGING) {
-			if ((val16 >= EC_BAT_DISCHRG_OVER_TEMP)
-				| (val16 <= EC_BAT_DISCHRG_UNDER_TEMP)) {
-				val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
-				break;
-			}
-		} else {
-			if ((val16 >= EC_BAT_CHRG_OVER_TEMP)
-				| (val16 <= EC_BAT_CHRG_UNDER_TEMP)) {
-				val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
-				break;
-			}
+		if ((val16 >= EC_BAT_CHRG_OVER_TEMP)
+			| (val16 <= EC_BAT_CHRG_UNDER_TEMP)) {
+			val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
+			break;
 		}
 		ret = byt_ec_read_word(EC_BAT0_VBATT_REG, &val16);
 		if (ret < 0)
@@ -393,11 +380,23 @@ static int byt_ec_evt_batt_callback(struct notifier_block *nb,
 		batt_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY_OTP:
+		/*Battery temp >40 is considered as over temperature*/
 		dev_info(&chip->pdev->dev, "Battery over temp event\n");
 		batt_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY_OTP_CLR:
+		/*Battery temp <= 39 will clear over temperature*/
 		dev_info(&chip->pdev->dev, "Battery over temp clear event\n");
+		batt_uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY_ETP:
+		/*Battery temp > 60 is considered as extreme temperature*/
+		dev_info(&chip->pdev->dev, "Battery extreme temp event\n");
+		batt_uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY_ETP_CLR:
+		/*Battery temp <= 59 will clear extreme temperature*/
+		dev_info(&chip->pdev->dev, "Battery extreme temp clear event\n");
 		batt_uevent = true;
 		break;
 	default:
