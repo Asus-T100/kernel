@@ -48,12 +48,12 @@
 #define ULPMC_FG_REG_TEMP		0x06
 #define ULPMC_FG_REG_VOLT		0x08
 #define ULPMC_FG_REG_FLAGS		0x0A
-#define FG_FLAG_DSC			BIT(0)
-#define FG_FLAG_SOCF			BIT(1) /* SOC threshold final */
-#define FG_FLAG_SOC1			BIT(2) /* SOC threshold 1 */
-#define FG_FLAG_BDET			BIT(3) /* Battery Detect */
-#define FG_FLAG_CHG			BIT(8)
-#define FG_FLAG_FC			BIT(9)
+#define FG_FLAG_DSC			(1 << 0)
+#define FG_FLAG_SOCF			(1 << 1) /* SOC threshold final */
+#define FG_FLAG_SOC1			(1 << 2) /* SOC threshold 1 */
+#define FG_FLAG_BDET			(1 << 3) /* Battery Detect */
+#define FG_FLAG_CHG			(1 << 8)
+#define FG_FLAG_FC			(1 << 9)
 #define ULPMC_FG_REG_NAC		0x0C /* Nominal available capacity */
 #define ULPMC_FG_REG_FAC		0x28 /* Full available capacity */
 #define ULPMC_FG_REG_RMC		0x10 /* Remaining capacity */
@@ -122,6 +122,16 @@
 #define FAULT_NTC_BOTH_HOT			(6 << 0)
 #define FAULT_NTC_ONE_COLD_ONE_HOT		(7 << 0)
 #define FAULT_NTC_MASK				(7 << 0)
+
+/* ULPMC NOT CHARGING REASONS */
+#define ULPMC_REG_NOT_CHG_STAT		0x4A
+#define NOT_CHG_AUX			(1 << 0)
+#define NOT_CHG_INV_BAT		(1 << 1)
+#define NOT_CHG_MAINT_CHG		(1 << 2)
+#define NOT_CHG_DPTF			(1 << 3)
+#define NOT_CHG_UNPLUG			(1 << 4)
+#define NOT_CHG_SDP			(1 << 5)
+#define NOT_CHG_OVP			(1 << 6)
 
 /* ULPMC Battery Manager Registers */
 #define ULPMC_BM_REG_LOWBAT_BTP		0x30
@@ -456,10 +466,19 @@ report_chrg_health:
 static int ulpmc_battery_health(struct ulpmc_chip_info *chip)
 {
 	int stat, fault, health, batt_type;
+	int not_chg_stat;
 
 	stat = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
 	if (stat < 0) {
 		dev_err(&chip->client->dev, "i2c read error:%d\n", stat);
+		health = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+		goto report_batt_health;
+	}
+
+	not_chg_stat = ulpmc_read_reg8(chip->client, ULPMC_REG_NOT_CHG_STAT);
+	if (not_chg_stat < 0) {
+		dev_err(&chip->client->dev,
+				"i2c read error:%d\n", not_chg_stat);
 		health = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
 		goto report_batt_health;
 	}
@@ -485,6 +504,12 @@ static int ulpmc_battery_health(struct ulpmc_chip_info *chip)
 	}
 
 	if (fault & FAULT_NTC_MASK) {
+		dev_info(&chip->client->dev, "battery over temp fault\n");
+		health = POWER_SUPPLY_HEALTH_OVERHEAT;
+		goto report_batt_health;
+	}
+
+	if (not_chg_stat & NOT_CHG_AUX) {
 		dev_info(&chip->client->dev, "battery over temp fault\n");
 		health = POWER_SUPPLY_HEALTH_OVERHEAT;
 		goto report_batt_health;
@@ -516,10 +541,24 @@ report_batt_health:
 	return health;
 }
 
+static bool ulpmc_battery_in_maintenance(struct ulpmc_chip_info *chip)
+{
+	int ret;
+
+	ret = ulpmc_read_reg8(chip->client, ULPMC_REG_NOT_CHG_STAT);
+	if (ret < 0)
+		goto err_maint;
+
+	if (ret & NOT_CHG_MAINT_CHG)
+		return true;
+
+err_maint:
+	return false;
+}
+
 static int ulpmc_battery_status(struct ulpmc_chip_info *chip)
 {
-	int stat, batt_health, chrg_health, ret;
-	bool fault;
+	int stat, ret;
 
 	ret = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
 	if (ret < 0) {
@@ -535,24 +574,12 @@ static int ulpmc_battery_status(struct ulpmc_chip_info *chip)
 		goto batt_stat_report;
 	}
 
-	/* check for charger or battery fault */
-	batt_health = ulpmc_battery_health(chip);
-	chrg_health = ulpmc_charger_health(chip);
-
-	if ((batt_health != POWER_SUPPLY_HEALTH_GOOD) &&
-		(batt_health != POWER_SUPPLY_HEALTH_DEAD))
-		fault = true;
-	else if (chrg_health != POWER_SUPPLY_HEALTH_GOOD)
-		fault = true;
-	else
-		fault = false;
-
 	switch (stat & BC_STAT_CHRG_MASK) {
 	case BC_STAT_NOT_CHRG:
-		if (fault)
-			ret = POWER_SUPPLY_STATUS_NOT_CHARGING;
-		else
+		if (ulpmc_battery_in_maintenance(chip))
 			ret = POWER_SUPPLY_STATUS_FULL;
+		else
+			ret = POWER_SUPPLY_STATUS_NOT_CHARGING;
 		break;
 	case BC_STAT_PRE_CHRG:
 	case BC_STAT_FAST_CHRG:
