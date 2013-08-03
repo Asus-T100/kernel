@@ -621,6 +621,17 @@ static void hsw_set_infoframes(struct drm_encoder *encoder,
 	intel_hdmi_set_spd_infoframe(encoder);
 }
 
+int intel_hdmi_encoder_status(struct drm_encoder *encoder)
+{
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 status = I915_READ(I915_LPE_AUDIO_HDMI_CONFIG_B);
+	if (status & I915_LPE_AUDIO_HDMI_ENABLE)
+		return true;
+	else
+		return false;
+}
+
 static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode)
@@ -1059,6 +1070,7 @@ static const struct drm_encoder_helper_funcs intel_hdmi_helper_funcs = {
 	.prepare = intel_encoder_prepare,
 	.mode_set = intel_hdmi_mode_set,
 	.commit = intel_encoder_commit,
+	.inuse = intel_hdmi_encoder_status,
 };
 
 static const struct drm_connector_funcs intel_hdmi_connector_funcs = {

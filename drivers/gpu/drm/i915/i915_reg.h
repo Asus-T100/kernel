@@ -668,8 +668,12 @@
 #define   I915_BSD_USER_INTERRUPT                      (1<<25)
 /* Added for HDMI Audio */
 /* HDMI AUDIO INTERRUPT TYPE */
+#define I915_LPE_AUDIO_HDMI_CONFIG_A			0x65000
 #define I915_LPE_AUDIO_HDMI_STATUS_A			0x65064
+#define I915_LPE_AUDIO_HDMI_CONFIG_B			0x65800
 #define I915_LPE_AUDIO_HDMI_STATUS_B			0x65864
+
+#define I915_LPE_AUDIO_HDMI_ENABLE			(1<<0)
 /* Discrepancy in Display HAS, bit definitions are reversed */
 #define I915_LPE_PIPE_A_INTERRUPT			(1<<21)
 #define I915_LPE_PIPE_B_INTERRUPT			(1<<20)

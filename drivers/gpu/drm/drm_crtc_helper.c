@@ -185,6 +185,13 @@ bool drm_helper_encoder_in_use(struct drm_encoder *encoder)
 {
 	struct drm_connector *connector;
 	struct drm_device *dev = encoder->dev;
+	struct drm_encoder_helper_funcs *encoder_funcs =
+						encoder->helper_private;
+
+	if (encoder_funcs->inuse)
+		if (encoder_funcs->inuse(encoder))
+			return true;
+
 	list_for_each_entry(connector, &dev->mode_config.connector_list, head)
 		if (connector->encoder == encoder)
 			return true;
