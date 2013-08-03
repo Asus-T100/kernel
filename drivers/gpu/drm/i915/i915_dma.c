@@ -1847,6 +1847,8 @@ int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 
 	idr_init(&file_priv->context_idr);
 
+	i915_perfmon_init(file);
+
 #ifdef CONFIG_DRM_VXD_BYT
 	drm_i915_private_t *dev_priv = dev->dev_private;
 
@@ -1899,6 +1901,7 @@ void i915_driver_lastclose(struct drm_device * dev)
 
 void i915_driver_preclose(struct drm_device * dev, struct drm_file *file_priv)
 {
+	i915_perfmon_close(dev, file_priv);
 	i915_gem_context_close(dev, file_priv);
 	i915_gem_release(dev, file_priv);
 }

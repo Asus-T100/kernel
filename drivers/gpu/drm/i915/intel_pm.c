@@ -3130,7 +3130,7 @@ void valleyview_enable_rps(struct drm_device *dev)
 	/* Setup Gfx Turbo */
 	if (i915_enable_turbo > 0) {
 		vlv_turbo_initialize(dev);
-		if (dev_priv->max_frequency_mode) {
+		if (dev_priv->max_freq_enable_count) {
 			vlv_turbo_disable(dev);
 			valleyview_set_rps(dev, dev_priv->rps.max_delay);
 		}

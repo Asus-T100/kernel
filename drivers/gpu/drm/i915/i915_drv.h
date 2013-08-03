@@ -465,7 +465,7 @@ typedef struct drm_i915_private {
 	unsigned int fw_mediacount;
 
 	/** counter for user requests to disable/re-enable RC6 */
-	unsigned int rc6_user_disable_count;
+	int rc6_user_disable_count;
 
 	/** gt_lock is also taken in irq contexts. */
 	struct spinlock gt_lock;
@@ -977,7 +977,7 @@ typedef struct drm_i915_private {
 		atomic_t down_threshold;
 	} turbodebug;
 
-	int max_frequency_mode;
+	int max_freq_enable_count;
 
 	u64 last_count1;
 	unsigned long last_time1;
@@ -1293,6 +1293,10 @@ struct drm_i915_file_private {
 #ifdef CONFIG_DRM_VXD_BYT
 	struct psb_fpriv *pPriv;
 #endif
+	struct {
+		int max_freq;
+		int rc6_disable;
+	} perfmon_override_counter;
 };
 
 #define INTEL_INFO(dev)	(((struct drm_i915_private *) (dev)->dev_private)->info)
@@ -1529,9 +1533,6 @@ int i915_gem_leavevt_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv);
 int i915_gem_vmap_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
-int i915_perfmon_ioctl(struct drm_device *dev, void *data,
-			struct drm_file *file);
-int i915_perfmon_set_rc6(struct drm_device *dev, __u32 enable);
 int i915_gem_set_tiling(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 int i915_gem_get_tiling(struct drm_device *dev, void *data,
@@ -2062,4 +2063,10 @@ int intel_flisdsi_write32_bits(struct drm_i915_private *dev_priv, \
 			intel_flisdsi_write32(dev_priv, reg, val)
 #define intel_flisdsi_write_bits(dev_priv, reg, val, mask) \
 			intel_flisdsi_write32_bits(dev_priv, reg, val, mask)
+
+/* i915_perfmon.c */
+int i915_perfmon_ioctl(struct drm_device *dev, void *data,
+			struct drm_file *file);
+void i915_perfmon_init(struct drm_file *file);
+void i915_perfmon_close(struct drm_device *dev, struct drm_file *file);
 #endif

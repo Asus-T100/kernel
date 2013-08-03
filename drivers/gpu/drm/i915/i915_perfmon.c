@@ -103,31 +103,119 @@ int intel_get_freq_info(struct drm_device *dev,
 	return retcode;
 }
 
+
 /**
- * intel_set_max_freq - enable max GPU frequency override
+ * i915_perfmon_update_override_counter - update override state counter
  *
- * Overrides turbo algorithm to switch GPU to maximum
- * frequency.
+ * Implements overrides reference counting. For each override there
+ * is a reference counter in both device (dev_priv) and file (file_priv).
+ * Enabling(disabling) override increments these two counters by +1 (-1).
+ * When device counter has incremented from 0, 'toggle' is set to 1 indicating
+ * that action needs to be taken to turn the override on. Similarly
+ * when device counter drops to 0 'toggle' is set to -1 to indicate that
+ * caller must turn the override off.
+ * When file is being closed, device counter is decremented by the value of
+ * counter in file_priv corresponding to the file being closed.
  */
-int intel_set_max_freq(struct drm_device *dev, int enable)
+int i915_perfmon_update_override_counter(int *device_counter,
+	int *file_counter,
+	int increment,
+	int *toggle)
+{
+	*toggle = 0;
+	if (*file_counter + increment < 0) {
+		if (*file_counter > 0)
+			increment = -1 * (*file_counter);
+		else
+			return -EINVAL;
+	}
+	if (increment > 0 && *device_counter == 0)
+		*toggle = 1;
+	*device_counter += increment;
+	*file_counter += increment;
+	if (increment < 0 && *device_counter == 0)
+		*toggle = -1;
+	return 0;
+}
+
+/**
+ * i915_perfmon_update_max_freq_override - enable max GPU frequency override
+ *
+ * Overrides turbo algorithm to switch GPU to maximum frequency.
+ */
+static int i915_perfmon_update_max_freq_override(struct drm_device *dev,
+	struct drm_file *file,
+	int increment)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_file_private *file_priv = file->driver_priv;
+	int ret_val;
+	int toggle = 0;
 
 	if (!IS_VALLEYVIEW(dev))
 		return -EINVAL;
 
 	mutex_lock(&dev->struct_mutex);
-	if (enable) {
-		dev_priv->max_frequency_mode = true;
-		vlv_turbo_disable(dev);
-		valleyview_set_rps(dev, dev_priv->rps.max_delay);
-	} else {
-		dev_priv->max_frequency_mode = false;
-		vlv_turbo_initialize(dev);
+	ret_val = i915_perfmon_update_override_counter(
+				&dev_priv->max_freq_enable_count,
+				&file_priv->perfmon_override_counter.max_freq,
+				increment,
+				&toggle);
+	if (!ret_val && toggle) {
+		if (toggle == 1) {
+			vlv_turbo_disable(dev);
+			valleyview_set_rps(dev, dev_priv->rps.max_delay);
+		} else
+			vlv_turbo_initialize(dev);
 	}
 	mutex_unlock(&dev->struct_mutex);
 
-	return 0;
+	return ret_val;
+}
+
+/**
+ * i915_perfmon_update_rc6_disable_override - set RC6 state
+ *
+ * Enable and re-enable RC6 on demand in runtime.
+ */
+static int i915_perfmon_update_rc6_disable_override(struct drm_device *dev,
+	struct drm_file *file,
+	int increment)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_file_private *file_priv = file->driver_priv;
+
+	int ret_val;
+	int toggle = 0;
+
+	if (!IS_VALLEYVIEW(dev))
+		return -EINVAL;
+
+	if (i915_enable_rc6 >= 0) {
+		int rc6_module_setting =
+			((i915_enable_rc6 & INTEL_RC6_ENABLE) != 0);
+		int rc6_enable = (increment < 0);
+		if (rc6_module_setting == rc6_enable)
+			return 0;
+		else
+			return -EINVAL;
+	}
+
+	mutex_lock(&dev->struct_mutex);
+	ret_val = i915_perfmon_update_override_counter(
+			&dev_priv->rc6_user_disable_count,
+			&file_priv->perfmon_override_counter.rc6_disable,
+			increment,
+			&toggle);
+	if (!ret_val && toggle) {
+		if (toggle == 1)
+			vlv_rs_setstate(dev, false);
+		else
+			vlv_rs_setstate(dev, true);
+	}
+	mutex_unlock(&dev->struct_mutex);
+
+	return ret_val;
 }
 
 
@@ -145,8 +233,9 @@ int i915_perfmon_ioctl(struct drm_device *dev, void *data,
 
 	switch (perfmon->op) {
 	case I915_PERFMON_SET_RC6:
-		retcode = i915_perfmon_set_rc6(dev,
-			perfmon->data.set_rc6.enable);
+		retcode = i915_perfmon_update_rc6_disable_override(dev,
+			file,
+			perfmon->data.set_rc6.enable ? -1 : 1);
 		break;
 	case I915_PERFMON_GET_FREQ_INFO:
 		retcode = intel_get_freq_info(dev,
@@ -155,8 +244,9 @@ int i915_perfmon_ioctl(struct drm_device *dev, void *data,
 			&perfmon->data.freq_info.cur_gpu_freq);
 		break;
 	case I915_PERFMON_SET_MAX_FREQ:
-		retcode = intel_set_max_freq(dev,
-			perfmon->data.set_max_freq.enable);
+		retcode = i915_perfmon_update_max_freq_override(dev,
+			file,
+			perfmon->data.set_max_freq.enable ? 1 : -1);
 		break;
 	case I915_PERFMON_ALLOC_OA_BUFFER:
 	case I915_PERFMON_FREE_OA_BUFFER:
@@ -174,40 +264,31 @@ int i915_perfmon_ioctl(struct drm_device *dev, void *data,
 }
 
 /**
- * i915_perfmon_set_rc6 - set RC6 state
+ * i915_perfmon_init - initialize perfmon overrides
  *
- * Enable and re-enable RC6 on demand in runtime.
+ * Initialize perfmon overrides per-file data.
  */
-int i915_perfmon_set_rc6(struct drm_device *dev, __u32 enable)
+void i915_perfmon_init(struct drm_file *file)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_file_private *file_priv = file->driver_priv;
+	file_priv->perfmon_override_counter.rc6_disable = 0;
+	file_priv->perfmon_override_counter.max_freq = 0;
+}
 
-	if (!IS_VALLEYVIEW(dev))
-		return -EINVAL;
+/**
+ * i915_perfmon_close - clean up perfmon upon driver close
+ *
+ * Perfmon overrides are being disabled here.
+ */
+void i915_perfmon_close(struct drm_device *dev, struct drm_file *file)
+{
+	struct drm_i915_file_private *file_priv = file->driver_priv;
 
-	if (i915_enable_rc6 >= 0) {
-		int rc6_module_setting =
-			((i915_enable_rc6 & INTEL_RC6_ENABLE) != 0);
-		int rc6_enable = (enable != 0);
-		if (rc6_module_setting == rc6_enable)
-			return 0;
-		else
-			return -EINVAL;
-	}
+	if (file_priv->perfmon_override_counter.rc6_disable > 0)
+		i915_perfmon_update_rc6_disable_override(dev, file,
+			-1 * file_priv->perfmon_override_counter.rc6_disable);
 
-	mutex_lock(&dev->struct_mutex);
-	if (enable && dev_priv->rc6_user_disable_count == 0) {
-		mutex_unlock(&dev->struct_mutex);
-		return -EINVAL;
-	}
-	if (!enable) {
-		if (dev_priv->rc6_user_disable_count++ == 0)
-			vlv_rs_setstate(dev, false);
-	} else {
-		if (--dev_priv->rc6_user_disable_count == 0)
-			vlv_rs_setstate(dev, true);
-	}
-	mutex_unlock(&dev->struct_mutex);
-
-	return 0;
+	if (file_priv->perfmon_override_counter.max_freq > 0)
+		i915_perfmon_update_max_freq_override(dev, file,
+			-1 * file_priv->perfmon_override_counter.max_freq);
 }
