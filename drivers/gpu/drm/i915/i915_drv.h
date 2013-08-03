@@ -1238,6 +1238,9 @@ struct drm_i915_gem_object {
 	 * reaches 0, dev_priv->pending_flip_queue will be woken up.
 	 */
 	atomic_t pending_flip;
+
+	/** Object datatype */
+	uint32_t datatype;
 };
 
 struct i915_gem_vmap_object {
@@ -1669,7 +1672,8 @@ void i915_gem_detach_phys_object(struct drm_device *dev,
 				 struct drm_i915_gem_object *obj);
 void i915_gem_free_all_phys_object(struct drm_device *dev);
 void i915_gem_release(struct drm_device *dev, struct drm_file *file);
-
+int i915_gem_access_datatype(struct drm_device *dev, void *data,
+		   struct drm_file *file);
 uint32_t
 i915_gem_get_unfenced_gtt_alignment(struct drm_device *dev,
 				    uint32_t size,

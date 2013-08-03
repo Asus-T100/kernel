@@ -1984,6 +1984,8 @@ struct drm_ioctl_desc i915_ioctls[] = {
 							DRM_AUTH|DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_PERFMON, i915_perfmon_ioctl, DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_DPST_CONTEXT, i915_dpst_context, DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_GEM_ACCESS_DATATYPE, i915_gem_access_datatype, \
+							DRM_UNLOCKED),
 };
 
 int i915_max_ioctl = DRM_ARRAY_SIZE(i915_ioctls);

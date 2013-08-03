@@ -4450,3 +4450,30 @@ rescan:
 	mutex_unlock(&dev->struct_mutex);
 	return cnt / 100 * sysctl_vfs_cache_pressure;
 }
+
+/**
+ * Reads/writes datatype for the object.
+ */
+int
+i915_gem_access_datatype(struct drm_device *dev, void *data,
+		   struct drm_file *file)
+{
+	struct drm_i915_gem_access_datatype *args = data;
+	struct drm_i915_gem_object *obj;
+
+	obj = to_intel_bo(drm_gem_object_lookup(dev, file, args->handle));
+	if (&obj->base == NULL)
+		return -ENOENT;
+
+	mutex_lock(&dev->struct_mutex);
+
+	if (args->write)
+		obj->datatype = args->datatype;
+	else
+		args->datatype = obj->datatype;
+
+	drm_gem_object_unreference(&obj->base);
+	mutex_unlock(&dev->struct_mutex);
+
+	return 0;
+}

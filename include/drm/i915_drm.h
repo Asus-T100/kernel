@@ -249,6 +249,7 @@ typedef struct _drm_i915_sarea {
 #define DRM_I915_PERFMON		0x3b
 #define DRM_I915_DPST_CONTEXT		0x3c
 #define DRM_I915_SET_PLANE_ALPHA	0x3d
+#define DRM_I915_GEM_ACCESS_DATATYPE	0x3e
 
 #define DRM_IOCTL_I915_INIT		DRM_IOW( DRM_COMMAND_BASE + DRM_I915_INIT, drm_i915_init_t)
 #define DRM_IOCTL_I915_FLUSH		DRM_IO ( DRM_COMMAND_BASE + DRM_I915_FLUSH)
@@ -329,6 +330,9 @@ typedef struct _drm_i915_sarea {
 #define DRM_IOCTL_I915_SET_PLANE_ALPHA		\
 			DRM_IOW(DRM_COMMAND_BASE + DRM_I915_SET_PLANE_ALPHA, \
 			struct drm_i915_set_plane_alpha)
+#define DRM_IOCTL_I915_GEM_ACCESS_DATATYPE	\
+		DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_GEM_ACCESS_DATATYPE, \
+		struct drm_i915_gem_access_datatype)
 /* Allow drivers to submit batchbuffers directly to hardware, relying
  * on the security mechanisms provided by hardware.
  */
@@ -887,6 +891,21 @@ struct drm_i915_gem_get_tiling {
 	 * mmap mapping.
 	 */
 	__u32 swizzle_mode;
+};
+
+struct drm_i915_gem_access_datatype {
+	/** Handle of the buffer whose datatype will be accessed */
+	__u32 handle;
+
+	/**
+	* Datatype:  This quantity is user defined
+	*/
+	__u32 datatype;
+
+	/**
+	* Write: 0=read datatype, 1=write datatype
+	*/
+	__u32 write;
 };
 
 struct drm_i915_gem_get_aperture {
