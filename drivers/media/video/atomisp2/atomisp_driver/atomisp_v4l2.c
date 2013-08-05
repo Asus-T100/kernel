@@ -40,6 +40,8 @@
 #include "atomisp-regs.h"
 #include "hmm/hmm.h"
 
+#include "hrt/hive_isp_css_mm_hrt.h"
+
 #include "device_access.h"
 #include <linux/intel_mid_pm.h>
 #include <asm/intel-mid.h>
@@ -1200,8 +1202,30 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	if (err)
 		dev_err(&dev->dev, "Failed to register reserved memory pool.\n");
 
+/*
+ * In css1.5, we still do hmm_init and load_firmware when open camera, this
+ * is beacuse ISP timeout will happen if put it here.
+ */
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	/* Init ISP memory management */
+	hrt_isp_css_mm_init();
+
+	/* Load firmware into ISP memory */
+	err = atomisp_css_load_firmware(isp);
+	if (err) {
+		dev_err(&dev->dev, "Failed to init css.\n");
+		goto css_init_fail;
+	}
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+
 	return 0;
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+css_init_fail:
+	hrt_isp_css_mm_clear();
+	hmm_pool_unregister(HMM_POOL_TYPE_RESERVED);
+	atomisp_acc_cleanup(isp);
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 enable_msi_fail:
 	destroy_workqueue(isp->delayed_init_workq);
 delayed_init_work_queue_fail:
@@ -1219,6 +1243,10 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 		pci_get_drvdata(dev);
 
 	atomisp_acc_cleanup(isp);
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	atomisp_css_unload_firmware(isp);
+	hrt_isp_css_mm_clear();
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 	pm_runtime_forbid(&dev->dev);
 	pm_runtime_get_noresume(&dev->dev);

@@ -48,6 +48,11 @@ int atomisp_css_init(struct atomisp_device *isp)
 {
 	device_set_base_address(0);
 
+	/* set css env */
+	isp->css_env.isp_css_env = sh_css_default_env();
+	isp->css_env.isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
+	isp->css_env.isp_css_env.sh_env.free = atomisp_kernel_free;
+
 	/*
 	 * if the driver gets closed and reopened, the HMM is not reinitialized
 	 * This means we need to put the L1 page table base address back into
@@ -143,13 +148,6 @@ int atomisp_css_irq_enable(struct atomisp_device *isp,
 	}
 
 	return 0;
-}
-
-void atomisp_set_css_env(struct atomisp_device *isp)
-{
-	isp->css_env.isp_css_env = sh_css_default_env();
-	isp->css_env.isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
-	isp->css_env.isp_css_env.sh_env.free = atomisp_kernel_free;
 }
 
 void atomisp_css_init_struct(struct atomisp_sub_device *asd)

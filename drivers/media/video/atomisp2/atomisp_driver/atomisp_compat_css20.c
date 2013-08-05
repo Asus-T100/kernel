@@ -568,15 +568,12 @@ int atomisp_css_init(struct atomisp_device *isp)
 	int ret;
 	enum ia_css_err err;
 
-	hrt_isp_css_mm_init();
 	ret = hmm_get_mmu_base_addr(&mmu_base_addr);
-	if (ret) {
-		hrt_isp_css_mm_clear();
+	if (ret)
 		return ret;
-	}
 
 	/* Init ISP */
-	err = ia_css_init(&isp->css_env.isp_css_env, &isp->css_env.isp_css_fw,
+	err = ia_css_init(&isp->css_env.isp_css_env, NULL,
 			  (uint32_t)mmu_base_addr, IA_CSS_IRQ_TYPE_PULSE);
 	if (err != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "css init failed --- bad firmware?\n");
@@ -586,6 +583,59 @@ int atomisp_css_init(struct atomisp_device *isp)
 	dev_dbg(isp->dev, "sh_css_init success\n");
 
 	return 0;
+}
+
+int atomisp_css_load_firmware(struct atomisp_device *isp)
+{
+	enum ia_css_err err;
+
+	/* set css env */
+	isp->css_env.isp_css_fw.data = (void *)isp->firmware->data;
+	isp->css_env.isp_css_fw.bytes = isp->firmware->size;
+
+	isp->css_env.isp_css_env.cpu_mem_env.alloc = atomisp_kernel_zalloc;
+	isp->css_env.isp_css_env.cpu_mem_env.free = atomisp_kernel_free;
+
+	isp->css_env.isp_css_env.css_mem_env.alloc = atomisp_css2_mm_alloc;
+	isp->css_env.isp_css_env.css_mem_env.free = atomisp_css2_mm_free;
+	isp->css_env.isp_css_env.css_mem_env.load = atomisp_css2_mm_load;
+	isp->css_env.isp_css_env.css_mem_env.store = atomisp_css2_mm_store;
+	isp->css_env.isp_css_env.css_mem_env.set = atomisp_css2_mm_set;
+	isp->css_env.isp_css_env.css_mem_env.mmap = atomisp_css2_mm_mmap;
+
+	isp->css_env.isp_css_env.hw_access_env.store_8 =
+							atomisp_css2_hw_store_8;
+	isp->css_env.isp_css_env.hw_access_env.store_16 =
+						atomisp_css2_hw_store_16;
+	isp->css_env.isp_css_env.hw_access_env.store_32 =
+						atomisp_css2_hw_store_32;
+
+	isp->css_env.isp_css_env.hw_access_env.load_8 = atomisp_css2_hw_load_8;
+	isp->css_env.isp_css_env.hw_access_env.load_16 =
+							atomisp_css2_hw_load_16;
+	isp->css_env.isp_css_env.hw_access_env.load_32 =
+							atomisp_css2_hw_load_32;
+
+	isp->css_env.isp_css_env.hw_access_env.load = atomisp_css2_hw_load;
+	isp->css_env.isp_css_env.hw_access_env.store = atomisp_css2_hw_store;
+
+	isp->css_env.isp_css_env.print_env.debug_print = atomisp_css2_dbg_print;
+	isp->css_env.isp_css_env.print_env.error_print = atomisp_css2_err_print;
+
+	/* load isp fw into ISP memory */
+	err = ia_css_load_firmware(&isp->css_env.isp_css_env,
+				   &isp->css_env.isp_css_fw);
+	if (err != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "css load fw failed.\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_unload_firmware(struct atomisp_device *isp)
+{
+	ia_css_unload_firmware();
 }
 
 void atomisp_css_uninit(struct atomisp_device *isp)
@@ -615,7 +665,7 @@ int atomisp_css_resume(struct atomisp_device *isp)
 		return -EINVAL;
 	}
 
-	ret = ia_css_init(&isp->css_env.isp_css_env, &isp->css_env.isp_css_fw,
+	ret = ia_css_init(&isp->css_env.isp_css_env, NULL,
 			  mmu_base_addr, IA_CSS_IRQ_TYPE_PULSE);
 	if (ret) {
 		dev_err(isp->dev, "re-init css failed.\n");
@@ -660,41 +710,6 @@ int atomisp_css_irq_enable(struct atomisp_device *isp,
 	}
 
 	return 0;
-}
-
-void atomisp_set_css_env(struct atomisp_device *isp)
-{
-	isp->css_env.isp_css_fw.data = (void *)isp->firmware->data;
-	isp->css_env.isp_css_fw.bytes = isp->firmware->size;
-
-	isp->css_env.isp_css_env.cpu_mem_env.alloc = atomisp_kernel_zalloc;
-	isp->css_env.isp_css_env.cpu_mem_env.free = atomisp_kernel_free;
-
-	isp->css_env.isp_css_env.css_mem_env.alloc = atomisp_css2_mm_alloc;
-	isp->css_env.isp_css_env.css_mem_env.free = atomisp_css2_mm_free;
-	isp->css_env.isp_css_env.css_mem_env.load = atomisp_css2_mm_load;
-	isp->css_env.isp_css_env.css_mem_env.store = atomisp_css2_mm_store;
-	isp->css_env.isp_css_env.css_mem_env.set = atomisp_css2_mm_set;
-	isp->css_env.isp_css_env.css_mem_env.mmap = atomisp_css2_mm_mmap;
-
-	isp->css_env.isp_css_env.hw_access_env.store_8 =
-							atomisp_css2_hw_store_8;
-	isp->css_env.isp_css_env.hw_access_env.store_16 =
-						atomisp_css2_hw_store_16;
-	isp->css_env.isp_css_env.hw_access_env.store_32 =
-						atomisp_css2_hw_store_32;
-
-	isp->css_env.isp_css_env.hw_access_env.load_8 = atomisp_css2_hw_load_8;
-	isp->css_env.isp_css_env.hw_access_env.load_16 =
-							atomisp_css2_hw_load_16;
-	isp->css_env.isp_css_env.hw_access_env.load_32 =
-							atomisp_css2_hw_load_32;
-
-	isp->css_env.isp_css_env.hw_access_env.load = atomisp_css2_hw_load;
-	isp->css_env.isp_css_env.hw_access_env.store = atomisp_css2_hw_store;
-
-	isp->css_env.isp_css_env.print_env.debug_print = atomisp_css2_dbg_print;
-	isp->css_env.isp_css_env.print_env.error_print = atomisp_css2_err_print;
 }
 
 void atomisp_css_init_struct(struct atomisp_sub_device *asd)

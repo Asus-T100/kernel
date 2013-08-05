@@ -35,6 +35,7 @@
 #include "atomisp_compat.h"
 #include "atomisp_subdev.h"
 #include "atomisp-regs.h"
+#include "hmm/hmm.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
@@ -425,8 +426,6 @@ static int atomisp_open(struct file *file)
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	int ret;
 
-	atomisp_set_css_env(isp);
-
 	dev_dbg(isp->dev, "open device %s\n", vdev->name);
 
 	mutex_lock(&isp->mutex);
@@ -456,6 +455,11 @@ static int atomisp_open(struct file *file)
 		goto error;
 	}
 
+	ret = hmm_pool_register((unsigned int)dypool_enable,
+						HMM_POOL_TYPE_DYNAMIC);
+	if (ret)
+		dev_err(isp->dev, "Failed to register dynamic memory pool.\n");
+
 	/* Init ISP */
 	if (atomisp_css_init(isp)) {
 		ret = -EINVAL;
@@ -482,6 +486,7 @@ done:
 	return 0;
 
 error:
+	hmm_pool_unregister(HMM_POOL_TYPE_DYNAMIC);
 	pm_runtime_put(vdev->v4l2_dev->dev);
 	mutex_unlock(&isp->mutex);
 	return ret;
@@ -561,7 +566,10 @@ static int atomisp_release(struct file *file)
 	atomisp_free_all_shading_tables(isp);
 	atomisp_free_internal_buffers(asd);
 	atomisp_css_uninit(isp);
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	hrt_isp_css_mm_clear();
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+	hmm_pool_unregister(HMM_POOL_TYPE_DYNAMIC);
 
 	ret = v4l2_subdev_call(isp->flash, core, s_power, 0);
 	if (ret < 0 && ret != -ENODEV && ret != -ENOIOCTLCMD)

@@ -69,12 +69,6 @@ int hmm_init(void)
 		v4l2_err(&atomisp_dev,
 			    "hmm_bo_device_init failed.\n");
 
-	ret = hmm_pool_register((unsigned int)dypool_enable,
-						HMM_POOL_TYPE_DYNAMIC);
-	if (ret)
-		v4l2_err(&atomisp_dev,
-			    "Failed to register dynamic memory pool.\n");
-
 	/*
 	 * As hmm use NULL to indicate invalid ISP virtual address,
 	 * and ISP_VM_START is defined to 0 too, so we allocate
@@ -95,7 +89,6 @@ void hmm_cleanup(void)
 	dummy_ptr = NULL;
 
 	hmm_bo_device_exit(&bo_device);
-	hmm_pool_unregister(HMM_POOL_TYPE_DYNAMIC);
 }
 
 void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
@@ -464,11 +457,11 @@ void hmm_pool_unregister(enum hmm_pool_type pool_type)
 {
 	switch (pool_type) {
 	case HMM_POOL_TYPE_RESERVED:
-		if (reserved_pool.pops->pool_exit)
+		if (reserved_pool.pops && reserved_pool.pops->pool_exit)
 			reserved_pool.pops->pool_exit(&reserved_pool.pool_info);
 		break;
 	case HMM_POOL_TYPE_DYNAMIC:
-		if (dynamic_pool.pops->pool_exit)
+		if (dynamic_pool.pops && dynamic_pool.pops->pool_exit)
 			dynamic_pool.pops->pool_exit(&dynamic_pool.pool_info);
 		break;
 	default:

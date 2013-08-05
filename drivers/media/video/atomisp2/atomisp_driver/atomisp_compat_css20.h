@@ -222,4 +222,9 @@ void atomisp_css_set_b_gamma_table(struct atomisp_sub_device *asd,
 
 void atomisp_css_set_anr_thres(struct atomisp_sub_device *asd,
 			struct atomisp_css_anr_thres *anr_thres);
+
+int atomisp_css_load_firmware(struct atomisp_device *isp);
+
+void atomisp_css_unload_firmware(struct atomisp_device *isp);
+
 #endif
