@@ -207,7 +207,6 @@ void mei_stop(struct mei_device *dev)
 {
 	dev_dbg(&dev->pdev->dev, "stopping the device.\n");
 
-	flush_scheduled_work();
 
 	mutex_lock(&dev->device_lock);
 
@@ -223,6 +222,8 @@ void mei_stop(struct mei_device *dev)
 	mutex_unlock(&dev->device_lock);
 
 	mei_watchdog_unregister(dev);
+
+	flush_scheduled_work();
 }
 EXPORT_SYMBOL_GPL(mei_stop);
 

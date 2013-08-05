@@ -552,5 +552,7 @@ void mei_nfc_host_exit(void)
 	if (ndev->cl && ndev->cl->device)
 		mei_cl_remove_device(ndev->cl->device);
 
+	cancel_work_sync(&ndev->init_work);
+
 	mei_nfc_free(ndev);
 }
