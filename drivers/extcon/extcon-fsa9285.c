@@ -35,9 +35,6 @@
 #include <linux/acpi.h>
 #include <linux/acpi_gpio.h>
 #include <linux/extcon/extcon-fsa9285.h>
-#include <linux/power/byt_ulpmc_battery.h>
-#include <linux/power/smb347-charger.h>
-#include <asm/intel_crystalcove_pwrsrc.h>
 
 /* FSA9285 I2C registers */
 #define FSA9285_REG_DEVID		0x01
@@ -116,8 +113,6 @@
 #define CHGCTRL_MIC_OVP_EN		(1 << 3)
 #define CHGCTRL_ASSERT_DP		(1 << 2)
 
-#define OTG_MUX_GPIO			3
-
 #define FSA9285_EXTCON_SDP		"CHARGER_USB_SDP"
 #define FSA9285_EXTCON_DCP		"CHARGER_USB_DCP"
 #define FSA9285_EXTCON_CDP		"CHARGER_USB_CDP"
@@ -181,6 +176,7 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 	u8 w_man_sw, w_man_chg_cntl;
 	bool discon_evt = false, drive_vbus = false;
 	int vbus_mask = 0;
+	int usb_switch = 1;
 
 	/* read status registers */
 	ret = fsa9285_read_reg(client, FSA9285_REG_DEVTYPE);
@@ -261,6 +257,8 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 			"ID or VBUS change event\n");
 		/* disconnect event */
 		discon_evt = true;
+		/* usb switch off per nothing attached */
+		usb_switch = 0;
 	}
 
 	/* VBUS control */
@@ -281,6 +279,13 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 	if (ret < 0)
 		dev_warn(&chip->client->dev,
 			"sdp cable control failed\n");
+
+	if (chip->pdata->xsd_gpio != -1) {
+		if (usb_switch)
+			gpio_direction_output(chip->pdata->xsd_gpio, 0);
+		else
+			gpio_direction_output(chip->pdata->xsd_gpio, 1);
+	}
 
 	if (chip->pdata->mux_gpio != -1) {
 		if (vbus_mask)
@@ -444,51 +449,11 @@ irq_i2c_failed:
 	return ret;
 }
 
-/*
- * function get_platform_data and
- * related fucntions are added as
- * WA to support multiple platforms
- * based on SPID.
- */
-static struct fsa9285_pdata fsa_pdata;
-static inline int fsa_dummy_vbus_enable(void)
-{
-	return 0;
-}
-static inline int fsa_dummy_vbus_disable(void)
-{
-	return 0;
-}
-static inline int fsa_dummy_sdp_pre_setup(void)
-{
-	return 0;
-}
-static inline int fsa_dummy_sdp_post_setup(void)
-{
-	return 0;
-}
-static void *get_platform_data(void)
-{
-	fsa_pdata.enable_vbus = crystal_cove_enable_vbus;
-	fsa_pdata.disable_vbus = crystal_cove_disable_vbus;
-#ifdef CONFIG_BYT_ULPMC_BATTERY
-	fsa_pdata.sdp_pre_setup = byt_ulpmc_suspend_sdp_charging;
-	fsa_pdata.sdp_post_setup = byt_ulpmc_reset_charger;
-#elif CONFIG_CHARGER_SMB347
-	fsa_pdata.sdp_pre_setup = smb347_disable_charger;
-	fsa_pdata.sdp_post_setup = smb347_enable_charger;
-#else
-	fsa_pdata.sdp_pre_setup = fsa_dummy_sdp_pre_setup;
-	fsa_pdata.sdp_post_setup = fsa_dummy_sdp_post_setup;
-#endif
-
-	return &fsa_pdata;
-}
-
 static int fsa9285_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
+	struct device *dev = &client->dev;
 	struct fsa9285_chip *chip;
 	int ret = 0;
 
@@ -510,7 +475,7 @@ static int fsa9285_probe(struct i2c_client *client,
 	}
 
 	chip->client = client;
-	chip->pdata = get_platform_data();
+	chip->pdata = dev->platform_data;
 	i2c_set_clientdata(client, chip);
 
 	/* register with extcon */
@@ -533,16 +498,6 @@ static int fsa9285_probe(struct i2c_client *client,
 	if (!chip->otg) {
 		dev_warn(&client->dev, "Failed to get otg transceiver!!\n");
 		goto otg_reg_failed;
-	}
-
-	chip->pdata->mux_gpio = -1;
-	ret = gpio_request(OTG_MUX_GPIO, "fsa-otg-mux");
-	if (ret) {
-		dev_warn(&client->dev, "unable to request GPIO pin\n");
-		/* WA for FFRD8 as USB3 mux not available */
-		chip->pdata->mux_gpio = -1;
-	} else {
-		chip->pdata->mux_gpio = OTG_MUX_GPIO;
 	}
 
 	ret = fsa9285_irq_init(chip);
