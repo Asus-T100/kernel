@@ -581,6 +581,7 @@ typedef struct drm_i915_private {
 	bool is_edp;
 	bool is_mipi;
 	bool is_hdmi;
+	bool csc_enabled;
 
 	bool no_aux_handshake;
 

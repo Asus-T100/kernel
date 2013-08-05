@@ -5305,27 +5305,25 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	return ret;
 }
 
-int intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
+u32 CSCSoftlut[CSC_MAX_COEFF_COUNT] = {
+	1024,	 0, 67108864, 0, 0, 1024
+};
+
+int
+do_intel_enable_CSC(struct drm_device *dev, void *data, struct drm_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct CSC_Coeff *wgCSCCoeff = data;
-	struct drm_mode_object *obj;
-	struct drm_crtc *crtc;
-	struct intel_crtc *intel_crtc;
-	u32 pipeconf;
-	int pipe;
+	struct intel_crtc *intel_crtc = NULL;
+	u32 pipeconf = 0;
+	int pipe = 0;
 	u32 csc_reg = 0;
 	int i = 0, j = 0;
 
-	obj = drm_mode_object_find(dev, wgCSCCoeff->crtc_id,
-			DRM_MODE_OBJECT_CRTC);
-	if (!obj) {
-		DRM_DEBUG_DRIVER("Unknown CRTC ID %d\n", wgCSCCoeff->crtc_id);
-			return -EINVAL;
+	if (!data) {
+		DRM_ERROR("NULL input to enable CSC");
+		return -EINVAL;
 	}
 
-	crtc = obj_to_crtc(obj);
-	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
 	intel_crtc = to_intel_crtc(crtc);
 	pipe = intel_crtc->pipe;
 	DRM_DEBUG_DRIVER("pipe = %d\n", pipe);
@@ -5337,15 +5335,56 @@ int intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
 	else if (pipe == 1)
 		csc_reg = _PIPEBCSC;
 
+	/* Enable csc correction */
 	I915_WRITE(PIPECONF(pipe), pipeconf);
 	POSTING_READ(PIPECONF(pipe));
 
+	/* Write csc coeff to csc regs */
 	for (i = 0; i < 6; i++) {
-		I915_WRITE(csc_reg + j, wgCSCCoeff->VLV_CSC_Coeff[i].Value);
+		I915_WRITE(csc_reg + j, ((u32 *)data)[i]);
 		j = j + 0x4;
 	}
-
 	return 0;
+}
+
+void
+do_intel_disable_CSC(struct drm_device *dev, struct drm_crtc *crtc)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = NULL;
+	u32 pipeconf = 0;
+	int pipe = 0;
+
+	intel_crtc = to_intel_crtc(crtc);
+	pipe = intel_crtc->pipe;
+	pipeconf = I915_READ(PIPECONF(pipe));
+	pipeconf &= ~(PIPECONF_CSC_ENABLE);
+
+	/* Disable CSC on PIPE */
+	I915_WRITE(PIPECONF(pipe), pipeconf);
+	POSTING_READ(PIPECONF(pipe));
+	return;
+}
+
+int
+intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
+{
+	struct CSC_Coeff *wgCSCCoeff = NULL;
+	struct drm_mode_object *obj;
+	struct drm_crtc *crtc = NULL;
+
+	wgCSCCoeff = (struct CSC_Coeff *)data;
+	obj = drm_mode_object_find(dev, wgCSCCoeff->crtc_id,
+			DRM_MODE_OBJECT_CRTC);
+	if (!obj) {
+		DRM_DEBUG_DRIVER("Unknown CRTC ID %d\n",
+			wgCSCCoeff->crtc_id);
+			return -EINVAL;
+	}
+
+	crtc = obj_to_crtc(obj);
+	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
+	return do_intel_enable_CSC(dev, CSCSoftlut, crtc);
 }
 /*
  * Initialize reference clocks when the driver loads
@@ -6380,6 +6419,38 @@ static int intel_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 	intel_crtc_update_cursor(crtc, true);
 
 	return 0;
+}
+
+int parse_clrmgr_input(uint *dest, char *src, int max, int read)
+{
+	int size = 0;
+	int bytes = 0;
+	char *populate = NULL;
+
+	/*Check for trailing comma or \n */
+	if (!dest || !src || *src == ',' || *src == '\n' || !read) {
+		DRM_ERROR("Invalid input to parse");
+		return -EINVAL;
+	}
+
+	/* Lower limit */
+	if (read < max) {
+		DRM_ERROR("Invalid input to parse");
+		return -EINVAL;
+	}
+
+	/* Extract values from buffer */
+	while ((size < max) && (*src != '\n')) {
+		populate = strsep(&src, ",");
+		if (!populate)
+			break;
+
+		bytes += (strlen(populate)+1);
+		kstrtoul((const char *)populate, 16,
+		&dest[size++]);
+	}
+
+	return read;
 }
 
 /** Sets the color ramps on behalf of RandR */

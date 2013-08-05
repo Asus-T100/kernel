@@ -29,6 +29,7 @@
 #include <linux/debugfs.h>
 #include <linux/slab.h>
 #include <linux/export.h>
+#include <linux/string.h>
 #include "drmP.h"
 #include "drm.h"
 #include "intel_drv.h"
@@ -38,7 +39,6 @@
 #include "i915_debugfs.h"
 
 #define DRM_I915_RING_DEBUG 1
-
 
 #if defined(CONFIG_DEBUG_FS)
 
@@ -93,6 +93,171 @@ static const char *cache_level_str(int type)
 	default: return "";
 	}
 }
+
+ssize_t i915_csc_adjust_read(struct file *filp,
+		 char __user *ubuf,
+		 size_t max,
+		 loff_t *ppos)
+{
+	/* To do: Not implemented yet */
+	DRM_ERROR("CSC adjust: Not implemented\n");
+	return -EINVAL;
+}
+
+ssize_t i915_csc_adjust_write(struct file *filp,
+		  const char __user *ubuf,
+		  size_t count,
+		  loff_t *ppos)
+{
+	int ret = 0;
+	char *buf  = NULL;
+
+	/* Validate input */
+	if (count <= 0) {
+		DRM_ERROR("CSC adjust: insufficient data\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf) {
+		DRM_ERROR("CSC adjust: insufficient memory\n");
+		ret = -ENOMEM;
+		goto EXIT;
+	}
+
+	/* Get the data */
+	if (copy_from_user(buf, ubuf, count)) {
+		DRM_ERROR("CSC adjust: copy failed\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	/* Parse data and load the csc  table */
+	ret = parse_clrmgr_input(CSCSoftlut,
+		buf, CSC_MAX_COEFF_COUNT, count);
+	if (ret < 0)
+		DRM_ERROR("CSC table loading failed\n");
+	else
+		DRM_DEBUG("CSC table loading done\n");
+EXIT:
+	kfree(buf);
+	/* If cant read the full buffer, read from last left */
+	if (ret < count-1)
+		return ret;
+
+	return count;
+}
+
+
+ssize_t i915_csc_enable_read(struct file *filp,
+		 char __user *ubuf,
+		 size_t max,
+		 loff_t *ppos)
+{
+	int len = 0;
+	char buf[10] = {0,};
+	struct drm_device *dev = filp->private_data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+
+	len = sprintf(buf, "%s\n",
+		dev_priv->csc_enabled ? "Enabled" : "Disabled");
+	return simple_read_from_buffer(ubuf, max, ppos,
+	(const void *) buf, 10);
+}
+
+ssize_t i915_csc_enable_write(struct file *filp,
+		  const char __user *ubuf,
+		  size_t count,
+		  loff_t *ppos)
+{
+	int ret = 0;
+	int status = 0;
+	char *buf = NULL;
+	struct drm_crtc *crtc = NULL;
+	struct drm_device *dev = filp->private_data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+
+	/* Validate input */
+	if (count <= 0) {
+		DRM_ERROR("CSC enable: insufficient data\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf) {
+		DRM_ERROR("CSC enable: Out of mem\n");
+		ret = -ENOMEM;
+		goto EXIT;
+	}
+
+	/* Get the data */
+	if (copy_from_user(buf, ubuf, count)) {
+		DRM_ERROR("CSC enable: copy failed\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	/* Finally, get the status */
+	kstrtoul((const char *)buf, 10,
+		(unsigned long *)&status);
+
+	if (status)
+		dev_priv->csc_enabled = 1;
+	else
+		dev_priv->csc_enabled = 0;
+
+	/* Search for a CRTC,
+	Assumption: Either MIPI or EDP is fix panel */
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		if (intel_pipe_has_type(crtc, dev_priv->is_mipi ?
+			INTEL_OUTPUT_DSI : INTEL_OUTPUT_EDP))
+			break;
+	}
+
+	/* No CRTC */
+	if (!crtc) {
+		DRM_ERROR("CSC enable: No local panel found\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	/* if CSC enabled, apply CSC correction */
+	if (dev_priv->csc_enabled) {
+		if (do_intel_enable_CSC(dev,
+			(void *) CSCSoftlut, crtc)) {
+			DRM_ERROR("CSC correction failed\n");
+			ret = -EINVAL;
+		} else
+			ret = count;
+	} else {
+		/* Disable CSC on this CRTC */
+		do_intel_disable_CSC(dev, crtc);
+		ret = count;
+	}
+
+EXIT:
+	kfree(buf);
+	return ret;
+}
+
+static const struct file_operations i915_csc_adjust_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_csc_adjust_read,
+	.write = i915_csc_adjust_write,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations i915_csc_enable_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_csc_enable_read,
+	.write = i915_csc_enable_write,
+	.llseek = default_llseek,
+};
+
 
 static void
 describe_obj(struct seq_file *m, struct drm_i915_gem_object *obj)
@@ -3335,6 +3500,18 @@ int i915_debugfs_init(struct drm_minor *minor)
 	ret = i915_debugfs_create(minor->debugfs_root, minor,
 					"i915_rpm_debug",
 					&i915_rpm_debug_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
+					"csc_adjust",
+					&i915_csc_adjust_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
+					"csc_enable",
+					&i915_csc_enable_fops);
 	if (ret)
 		return ret;
 

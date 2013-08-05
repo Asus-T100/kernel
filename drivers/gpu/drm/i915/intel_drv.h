@@ -274,6 +274,10 @@ struct cxsr_latency {
 #define DIP_SPD_BD	0xa
 #define DIP_SPD_SCD	0xb
 
+/* CSC correction */
+#define CSC_MAX_COEFF_COUNT			6
+#define CLR_MGR_PARSE_MAX			128
+
 struct dip_infoframe {
 	uint8_t type;		/* HB0 */
 	uint8_t ver;		/* HB1 */
