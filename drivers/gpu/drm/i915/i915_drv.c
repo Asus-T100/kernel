@@ -122,7 +122,7 @@ MODULE_PARM_DESC(enable_hangcheck,
 		"WARNING: Disabling this can cause system wide hangs. "
 		"(default: true)");
 
-unsigned int i915_hangcheck_period __read_mostly = 250;
+unsigned int i915_hangcheck_period __read_mostly = 667;
 
 int hangcheck_period_set(const char *val, const struct kernel_param *kp)
 {
@@ -155,7 +155,7 @@ module_param_cb(i915_hangcheck_period, &hangcheck_ops,
 MODULE_PARM_DESC(i915_hangcheck_period,
 		"The hangcheck timer period in milliseconds. "
 		"The actual time to detect a hang may be 3 - 4 times "
-		"this value (default = 250ms)");
+		"this value (default = 667ms)");
 
 unsigned int i915_ring_reset_min_alive_period __read_mostly;
 module_param_named(i915_ring_reset_min_alive_period,
