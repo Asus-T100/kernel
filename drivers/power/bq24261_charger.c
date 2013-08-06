@@ -1376,6 +1376,7 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Charge Progress\n");
+		bq24261_dump_regs(false);
 		break;
 	case BQ24261_STAT_CHRG_DONE:
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
