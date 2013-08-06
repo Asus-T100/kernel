@@ -407,6 +407,49 @@ cc_throttle_fail:
 	return ret;
 }
 
+static int byt_ulpmc_get_temp(int *temp)
+{
+	int ret, val;
+
+	ret = ulpmc_read_reg8(chip_ptr->client, ULPMC_BM_REG_TEMP);
+	if (ret < 0)
+		return ret;
+
+	/* check for sign bit for -ve range */
+	if (ret & 0x80) {
+		val = (~ret) & 0x7F;
+		val++;
+		val *= -1;
+	} else {
+		val = ret;
+	}
+
+	/*
+	 * ULPMC FW reports ULPMC skin temperature
+	 * which is not equal or correlated to battery
+	 * temperature. So the ulpmc skin temperature
+	 * is characterized against the platfrom skin
+	 * temperure and adjusted accordingly.
+	 */
+	if (val < 15)
+		*temp = val - (val * 60)/100;
+	else if (val < 25)
+		*temp = val - (val * 50)/100;
+	else if (val < 30)
+		*temp = val - (val * 40)/100;
+	else if (val < 35)
+		*temp = val - (val * 30)/100;
+	else if (val < 60)
+		*temp = val - (val * 20)/100;
+	else
+		*temp = val - (val * 15)/100;
+
+	dev_info(&chip_ptr->client->dev,
+		"raw temp:%d, scaled temp:%d\n", val, *temp);
+
+	return 0;
+}
+
 static int ulpmc_charger_health(struct ulpmc_chip_info *chip)
 {
 	int stat, fault, health;
@@ -466,7 +509,7 @@ report_chrg_health:
 static int ulpmc_battery_health(struct ulpmc_chip_info *chip)
 {
 	int stat, fault, health, batt_type;
-	int not_chg_stat;
+	int ret, not_chg_stat, temp;
 
 	stat = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
 	if (stat < 0) {
@@ -515,12 +558,20 @@ static int ulpmc_battery_health(struct ulpmc_chip_info *chip)
 		goto report_batt_health;
 	}
 
-	/*
-	 * TODO: check battery temp  high
-	 * and low thresholds and set health.
-	 * this will be done on PR1.1
-	 */
+	/* check battery temperature */
+	ret = byt_ulpmc_get_temp(&temp);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "i2c read error:%d\n", ret);
+		health = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+		goto report_batt_health;
+	}
 
+	if (temp > chip->pdata->temp_ul ||
+		temp < chip->pdata->temp_ll) {
+		dev_info(&chip->client->dev, "battery over temp fault\n");
+		health = POWER_SUPPLY_HEALTH_OVERHEAT;
+		goto report_batt_health;
+	}
 
 	/* check battery valid case */
 	if ((batt_type & BATT_PRESENT_DET_MASK) != BATT_PRESENT_DET_2P) {
@@ -610,7 +661,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 					enum power_supply_property psp,
 					union power_supply_propval *val)
 {
-	int ret = 0, batt_volt, cur_avg;
+	int ret = 0, batt_volt, cur_avg, temp;
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, bat);
 	mutex_lock(&chip->lock);
@@ -687,16 +738,10 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_TEMP);
+		ret = byt_ulpmc_get_temp(&temp);
 		if (ret < 0)
 			goto i2c_read_err;
-		/* check for sign bit for -ve range */
-		if (ret & 0x80) {
-			ret = (~ret) & 0x7F;
-			ret++;
-			ret *= -1;
-		}
-		val->intval = ret * 10;
+		val->intval = temp * 10;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_BATT_PRESENT);
