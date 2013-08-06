@@ -67,6 +67,7 @@
 #define SYS0ALRT	(1 << 0)
 #define THERM_EN	(1 << 0)
 #define ALERT_EN	(1 << 6)
+#define PROCHOT_EN	(1 << 7)
 #define IRQ_LVL1_EN	(1 << 1)
 #define TS_ENABLE_ALL	0x27
 
@@ -202,6 +203,12 @@ static struct thermal_regs {
 	{"THRMIRQ1",		0x05},
 	{"MTHRMIRQ0",		0x11},
 	{"MTHRMIRQ1",		0x12},
+	{"A0_SYS0_H",		0x94},
+	{"A0_SYS1_H",		0x99},
+	{"A0_SYS2_H",		0x9E},
+	{"A0_BAT0_H",		0xA3},
+	{"A0_BAT1_H",		0xA9},
+	{"A0_PMIC_H",		0xAF},
 };
 
 static struct dentry *thermal_dent[ARRAY_SIZE(thermal_regs)];
@@ -512,6 +519,24 @@ static int get_alert_temp(int alert_reg_l, int level)
 
 	/* Concatenate 'h' and 'l' to get 10-bit ADC code */
 	return ((h & 0x03) << 8) | l;
+}
+
+static int disable_prochot(void)
+{
+	int i, reg, ret;
+
+	mutex_lock(&thrm_update_lock);
+
+	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
+		reg = alert_regs_l[0][i] - 1;
+		ret = intel_mid_pmic_clearb(reg, PROCHOT_EN);
+		if (ret < 0)
+			goto exit;
+	}
+
+exit:
+	mutex_unlock(&thrm_update_lock);
+	return ret;
 }
 
 /**
@@ -1052,6 +1077,13 @@ static int byt_thermal_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "kzalloc failed\n");
 		ret = -ENOMEM;
 		goto exit_free;
+	}
+
+	/* Disable prochot on alert0 crossing */
+	ret = disable_prochot();
+	if (ret) {
+		dev_err(&pdev->dev, "Disabling prochot failed:%d\n", ret);
+		goto exit_tzd;
 	}
 
 	/* Program a default _max value for each sensor */
