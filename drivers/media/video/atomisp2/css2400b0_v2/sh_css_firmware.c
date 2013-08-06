@@ -71,6 +71,8 @@ sh_css_load_firmware(const char *fw_data,
 	/* Only allocate memory for ISP blob info */
 	sh_css_blob_info = sh_css_malloc((sh_css_num_binaries - 1) *
 						sizeof(*sh_css_blob_info));
+	if (!sh_css_blob_info)
+		return IA_CSS_ERR_INTERNAL_ERROR;
 
 	for (i = 0; i < sh_css_num_binaries; i++) {
 		struct ia_css_fw_info *bi = &binaries[i];

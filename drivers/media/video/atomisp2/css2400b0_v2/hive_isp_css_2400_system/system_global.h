@@ -46,8 +46,11 @@
  *
  * N.B. the 3 input formatters are of 2 different classess
  */
-
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
+#endif
 
 #define IS_ISP_2400_SYSTEM
 /*
@@ -210,7 +213,7 @@ typedef enum {
  * and put in the address maps of other devices we cannot
  * enumerate them as that assumes the instrances are the
  * same.
- *
+ * 
  * We define a single GP_DEVICE containing all gp_regs
  * w.r.t. a single base address
  *

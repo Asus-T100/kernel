@@ -60,8 +60,7 @@ static struct sh_css_refcount_entry *find_entry(hrt_vaddress ptr,
 {
 	uint32_t i;
 
-assert(ptr != 0);
-assert(myrefcount.items != NULL);
+	assert_exit_code(ptr && myrefcount.items, NULL);
 
 	for (i = 0; i < myrefcount.size; i++) {
 
@@ -131,11 +130,11 @@ hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr)
 
 	if (!entry) {
 		entry = find_entry(ptr, true);
+		if (!entry)
+			return mmgr_NULL;
 		entry->id = id;
-	}
-
-	assert(entry != NULL);
-	assert(entry->id == id);
+	} else
+		assert(entry->id == id);
 
 	if (entry->data == ptr)
 		entry->count += 1;
@@ -198,9 +197,9 @@ bool sh_css_refcount_is_single(hrt_vaddress ptr)
 int32_t sh_css_refcount_get_id(hrt_vaddress ptr)
 {
 	struct sh_css_refcount_entry *entry;
-	assert(ptr != mmgr_NULL);
+	assert_exit_code(ptr, 0);
 	entry = find_entry(ptr, false);
-	assert(entry != NULL);
+	assert_exit_code(entry, 0);
 	return entry->id;
 }
 

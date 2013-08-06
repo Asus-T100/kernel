@@ -40,8 +40,14 @@
  * "load" is a transfer from the device
  */
 
+
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
-#include <stddef.h>
+#endif
+
+#include "stddef.h"
 
 /*
  * User provided file that defines the system address types:

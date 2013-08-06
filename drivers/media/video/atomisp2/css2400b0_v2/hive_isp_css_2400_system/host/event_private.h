@@ -26,6 +26,8 @@
 
 #include "device_access.h"
 
+#include <bits.h>
+
 #include "assert_support.h"
 
 STORAGE_CLASS_EVENT_C void event_wait_for(

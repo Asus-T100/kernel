@@ -22,8 +22,13 @@
 #ifndef __INPUT_SYSTEM_LOCAL_H_INCLUDED__
 #define __INPUT_SYSTEM_LOCAL_H_INCLUDED__
 
-#include <stdbool.h>
+
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
+#include <stdbool.h>
+#endif
 
 #include "input_system_global.h"
 //#include "gp_device_local.h"
