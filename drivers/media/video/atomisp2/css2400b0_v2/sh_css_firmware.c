@@ -1,25 +1,23 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
 #include "sh_css_firmware.h"
 
@@ -73,8 +71,7 @@ sh_css_load_firmware(const char *fw_data,
 	/* Only allocate memory for ISP blob info */
 	sh_css_blob_info = sh_css_malloc((sh_css_num_binaries - 1) *
 						sizeof(*sh_css_blob_info));
-	if (!sh_css_blob_info)
-		return IA_CSS_ERR_INTERNAL_ERROR;
+
 	for (i = 0; i < sh_css_num_binaries; i++) {
 		struct ia_css_fw_info *bi = &binaries[i];
 		const char *name;
@@ -113,10 +110,12 @@ sh_css_load_firmware(const char *fw_data,
 
 void sh_css_unload_firmware(void)
 {
+	memset(&sh_css_sp_fw, 0, sizeof(sh_css_sp_fw));
 	if (sh_css_blob_info) {
 		sh_css_free(sh_css_blob_info);
 		sh_css_blob_info = NULL;
 	}
+	sh_css_num_binaries = 0;
 }
 
 hrt_vaddress

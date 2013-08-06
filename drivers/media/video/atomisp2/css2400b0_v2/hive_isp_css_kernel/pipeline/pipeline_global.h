@@ -1,11 +1,28 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 #ifndef __PIPELINE_GLOBAL_H_INCLUDED__
 #define __PIPELINE_GLOBAL_H_INCLUDED__
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 #include "system_types.h"	/* To get the DLI version, we should not need that */
 
@@ -188,10 +205,13 @@ struct sh_css_isp_params {
 	int ce_uv_level_min;
 	int ce_uv_level_max;
 
+	/* Bayer Anti-Aliasing */
+	int baf_strength;
+
 	sh_css_crop_pos_t sp_out_crop_pos[SH_CSS_MAX_STAGES];
 	sh_css_uds_info_t uds[SH_CSS_MAX_STAGES];
 
-/* parameters for ISP pipe version 2 */
+/* parameters only for ISP pipe version 2 */
 #if SH_CSS_ISP_PARAMS_VERSION == 2
 	/* DE (Demosaic) */
 	int ecd_zip_strength;
@@ -224,13 +244,10 @@ struct sh_css_isp_params {
 	int cnr_sense_gain_hy;
 	int cnr_sense_gain_hu;
 	int cnr_sense_gain_hv;
-#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
 	/* MACC */
 	int exp;
 
-/* parameters for ISP pipe version 2 */
-#if SH_CSS_ISP_PARAMS_VERSION == 2
 	/* CTC */
 	int ctc_y0;
 	int ctc_y1;
@@ -254,9 +271,9 @@ struct sh_css_isp_params {
 	int ctc_dydx4;
 	int ctc_dydx4_shift;
 
+	/* YUV Anti-Aliasing */
+	int aaf_strength;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
-	/* Anti-Aliasing */
-	int aa_scale;
 };
 
 #endif /* __CSC_KERNEL_GLOBAL_H_INCLUDED__ */

@@ -1,28 +1,27 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 #ifndef _SH_CSS_DEBUG_H_
 #define _SH_CSS_DEBUG_H_
 
-/*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
 /*! \file */
 
 #include "ia_css.h"
@@ -218,6 +217,20 @@ sh_css_wake_up_sp(void);
  */
 extern void
 sh_css_dump_isp_params(struct ia_css_stream *stream, unsigned int enable);
+
+/*! \brief Function to dump some sp performance counters.
+ * Dump sp performance counters, currently input system errors.
+ * \return	None
+ */
+void sh_css_dump_perf_counters(void);
+
+#ifdef HAS_WATCHDOG_SP_THREAD_DEBUG
+void sh_css_dump_thread_wait_info(void);
+void sh_css_dump_pipe_stage_info(void);
+void sh_css_dump_pipe_stripe_info(void);
+#endif
+
+void sh_css_dump_isp_binary(void);
 
 /*
 extern void sh_css_init_ddr_debug_queue(void);

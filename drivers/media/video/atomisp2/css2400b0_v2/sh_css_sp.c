@@ -1,25 +1,23 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
 #include "sh_css_sp.h"
 
@@ -160,9 +158,9 @@ sh_css_sp_start_binary_copy(unsigned int pipe_num, struct ia_css_frame *out_fram
 	enum ia_css_pipe_id pipe_id;
 	unsigned int thread_id;
 	struct sh_css_sp_pipeline *pipe;
-	unsigned stage_num = 0;
+	uint8_t stage_num = 0;
 
-	assert_exit(out_frame);
+assert(out_frame != NULL);
 	pipe_id = IA_CSS_PIPE_ID_CAPTURE;
 	sh_css_query_sp_thread_id(pipe_num, &thread_id);
 	pipe = &sh_css_sp_group.pipe[thread_id];
@@ -200,10 +198,10 @@ sh_css_sp_start_raw_copy(struct ia_css_frame *out_frame,
 {
 	enum ia_css_pipe_id pipe_id;
 	unsigned int thread_id;
-	unsigned stage_num = 0;
+	uint8_t stage_num = 0;
 	struct sh_css_sp_pipeline *pipe;
 
-	assert_exit(out_frame);
+assert(out_frame != NULL);
 
 	{
 		/**
@@ -304,7 +302,7 @@ sh_css_copy_frame_to_spframe(struct sh_css_sp_frame *sp_frame_out,
 	(void)pipe_num;
 	(void)stage_num;
 
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"sh_css_copy_frame_to_spframe frame id %d ptr 0x%08x\n",id,
 		sh_css_sp_stage.frames.static_frame_data[id]);
 
@@ -506,11 +504,11 @@ set_ref_extra_frame_buffer(const struct ia_css_frame *frame,
 			unsigned pipe_num, unsigned stage_num)
 {
 sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "set_ref_extra_frame_buffer() %08x\n",
-			frame);		
+			frame);
 
 	if (frame == NULL)
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
-	
+
 	if (frame->info.format != IA_CSS_FRAME_FORMAT_YUV420)
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
 	sh_css_copy_frame_to_spframe(NULL, frame,
@@ -608,7 +606,7 @@ void sh_css_sp_set_if_configs(
 #endif
 
 	if  (if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED) return;
-	
+
 	assert(if_config_index <= SH_CSS_MAX_IF_CONFIGS);
 
 	block[INPUT_FORMATTER0_ID] = (bool)config_a->block_no_reqs;
@@ -732,7 +730,7 @@ sh_css_sp_init_group(bool two_ppc,
 	sh_css_sp_group.config.no_isp_sync = no_isp_sync;
 	/* decide whether the frame is processed online or offline */
 	sh_css_sp_group.config.is_offline  = sh_css_continuous_start_sp_copy();
-	if (if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED) return; 
+	if (if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED) return;
 	assert(if_config_index <= SH_CSS_MAX_IF_CONFIGS);
 	sh_css_sp_group.config.input_formatter.set[if_config_index].stream_format = input_format;
 
@@ -791,7 +789,6 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 
 	sh_css_sp_stage.deinterleaved = stage == 0 && continuous;
 
-	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
 	/*
 	 * TODO: Make the Host dynamically determine
 	 * the stage type.
@@ -925,8 +922,7 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 #ifdef __KERNEL__
 	printk(KERN_ERR "load binary: %s\n", binary_name);
 #endif
-	if (!binary)
-		return IA_CSS_ERR_INTERNAL_ERROR;
+
 	sh_css_sp_init_stage(binary,
 			     (const char *)binary_name,
 			     blob_info,
@@ -1036,7 +1032,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 						= (uint32_t)input_mode;
 	sh_css_sp_group.pipe[thread_id].port_id = port_id;
 	sh_css_sp_group.pipe[thread_id].dvs_frame_delay = (uint32_t)me->dvs_frame_delay;
-	
+
 	/* TODO: next indicates from which queues parameters need to be
 		 sampled, needs checking/improvement */
 	if (sh_css_pipe_uses_params(me)) {
@@ -1275,24 +1271,22 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 	unsigned int HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
 	unsigned int offset;
 	struct sh_css_event_irq_mask event_irq_mask;
-	unsigned int pipe_num;
+
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_set_irq_mask("
 				"or_mask=%x, and_mask=%x)\n",
 				or_mask, and_mask);
-	assert_exit_code(pipe, IA_CSS_ERR_INTERNAL_ERROR);
+
 	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
-	assert(or_mask <= ~0);
-	assert(and_mask <= ~0);
-	pipe_num = ia_css_pipe_get_pipe_num(pipe);
-	if (pipe_num >= NR_OF_PIPELINES)
-		return IA_CSS_ERR_INTERNAL_ERROR;
+	assert(or_mask <= UINT16_MAX);
+	assert(and_mask <= UINT16_MAX);
+
 	event_irq_mask.or_mask  = (uint16_t)or_mask;
 	event_irq_mask.and_mask = (uint16_t)and_mask;
 
 	offset = offsetof(struct host_sp_communication,
-					host2sp_event_irq_mask[pipe_num]);
+					host2sp_event_irq_mask[ia_css_pipe_get_pipe_num(pipe)]);
 	assert(offset % HRT_BUS_BYTES == 0);
 	sp_dmem_store(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_com) + offset,
@@ -1310,19 +1304,16 @@ ia_css_event_get_irq_mask(const struct ia_css_pipe *pipe,
 	unsigned int HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
 	unsigned int offset;
 	struct sh_css_event_irq_mask event_irq_mask;
-	unsigned int pipe_num;
+
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_event_get_irq_mask()\n");
 
-	assert_exit_code(pipe, IA_CSS_ERR_INTERNAL_ERROR);
+	assert(pipe);
 	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
-	pipe_num = ia_css_pipe_get_pipe_num(pipe);
-	if (pipe_num >= NR_OF_PIPELINES)
-		return IA_CSS_ERR_INTERNAL_ERROR;
 
 	offset = offsetof(struct host_sp_communication,
-					host2sp_event_irq_mask[pipe_num]);
+					host2sp_event_irq_mask[ia_css_pipe_get_pipe_num(pipe)]);
 	assert(offset % HRT_BUS_BYTES == 0);
 	sp_dmem_load(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_com) + offset,
@@ -1354,22 +1345,22 @@ sh_css_sp_start_isp(void)
 {
 	const struct ia_css_fw_info *fw;
 	unsigned int HIVE_ADDR_sp_sw_state;
-	
+
 	fw = &sh_css_sp_fw;
 	HIVE_ADDR_sp_sw_state = fw->info.sp.sw_state;
-	
+
 
 	if (sp_running)
 		return;
 
 	(void)HIVE_ADDR_sp_sw_state; /* Suppres warnings in CRUN */
-	
+
 	/* no longer here, sp started immediately */
 	/*sh_css_debug_pipe_graph_dump_epilogue();*/
 
 	store_sp_group_data();
 	store_sp_per_frame_data(fw);
-	
+
 	sp_dmem_store_uint32(SP0_ID,
 		(unsigned int)sp_address_of(sp_sw_state),
 		(uint32_t)(SP_SW_STATE_NULL));
@@ -1385,10 +1376,15 @@ sh_css_sp_start_isp(void)
 	 * because only after the process_frame command has been
 	 * received, the SP starts configuring the input network.
 	 */
+
+	/* we need to set sp_running before we call ia_css_mmu_invalidate_cache
+	 * as ia_css_mmu_invalidate_cache checks on sp_running to 
+	 * avoid that it accesses dmem while the SP is not powered
+	 */
+	sp_running = true;
 	ia_css_mmu_invalidate_cache();
 	sh_css_hrt_sp_start_isp();
 
-	sp_running = true;
 }
 
 bool

@@ -1,3 +1,24 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 #include "ia_css_memory_access.h"
 #include "memory_access.h"
 #include "assert_support.h"
@@ -23,6 +44,7 @@ hrt_vaddress mmgr_alloc_attr(const size_t size, const uint16_t attrs)
 {
 	uint32_t my_attrs = 0;
 	uint16_t masked_attrs = attrs & MMGR_ATTRIBUTE_MASK;
+	hrt_vaddress ptr;
 
 	if (masked_attrs & MMGR_ATTRIBUTE_CACHED)
 		my_attrs |= IA_CSS_MEM_ATTR_CACHED;
@@ -33,7 +55,9 @@ hrt_vaddress mmgr_alloc_attr(const size_t size, const uint16_t attrs)
 	if (masked_attrs & MMGR_ATTRIBUTE_PAGEALIGN)
 		my_attrs |= IA_CSS_MEM_ATTR_PAGEALIGN;
 
-	return my_env.alloc(size, my_attrs);
+	ptr = my_env.alloc(size, my_attrs);
+	assert(ptr != 0);
+	return ptr;
 }
 
 hrt_vaddress

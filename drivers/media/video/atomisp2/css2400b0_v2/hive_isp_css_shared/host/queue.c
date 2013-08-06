@@ -1,11 +1,30 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 
 #include "queue.h"
 
 #include "sp.h"
 
-#ifndef __KERNEL__
 #include <stdbool.h>	/* bool				*/
-#endif
 
 /* MW: The queue should be application agnostic */
 #include "sh_css_internal.h"
@@ -51,8 +70,16 @@
 			"host_sp_communication"
  */
 /*STORAGE_CLASS_INLINE void init_sp_queue(*/
+
+/* MS: reduce host2sp parameter queue size to prevent
+			overflowing the sp2host parameter queue
+*/
+
+#define SH_CSS_CIRCULAR_BUF_DEFAULT_SIZE SH_CSS_CIRCULAR_BUF_NUM_ELEMS
+#define SH_CSS_CIRCULAR_BUF_PARAMETER_QUEUE_SIZE 3
+
 static void init_sp_queue(
-	struct sh_css_circular_buf *offset);
+	struct sh_css_circular_buf *offset, unsigned int size);
 
 /*! Push an element to the queue.
 
@@ -140,13 +167,16 @@ void init_host2sp_queues(void)
 			offset_to_queue = (struct sh_css_circular_buf *)
 				offsetof(struct host_sp_queues,
 					host2sp_buffer_queues[i][j]);
-			init_sp_queue(offset_to_queue);
+			init_sp_queue(offset_to_queue,
+				(j == sh_css_param_buffer_queue ?
+					SH_CSS_CIRCULAR_BUF_PARAMETER_QUEUE_SIZE :
+					SH_CSS_CIRCULAR_BUF_DEFAULT_SIZE));
 		}
 	}
 	offset_to_queue = (struct sh_css_circular_buf *)
 		offsetof(struct host_sp_queues,
 			host2sp_event_queue);
-	init_sp_queue(offset_to_queue);
+	init_sp_queue(offset_to_queue,SH_CSS_CIRCULAR_BUF_DEFAULT_SIZE);
 }
 
 void init_sp2host_queues(void)
@@ -159,13 +189,13 @@ void init_sp2host_queues(void)
 		offset_to_queue = (struct sh_css_circular_buf *)
 			offsetof(struct host_sp_queues,
 				sp2host_buffer_queues[j]);
-		init_sp_queue(offset_to_queue);
+		init_sp_queue(offset_to_queue,SH_CSS_CIRCULAR_BUF_DEFAULT_SIZE);
 		//init_sp_queue(&my_queues->sp2host_buffer_queues[j]);
 	}
 	offset_to_queue = (struct sh_css_circular_buf *)
 		offsetof(struct host_sp_queues,
 			sp2host_event_queue);
-	init_sp_queue(offset_to_queue);
+	init_sp_queue(offset_to_queue,SH_CSS_CIRCULAR_BUF_DEFAULT_SIZE);
 //	init_sp_queue(&my_queues->sp2host_event_queue);
 }
 
@@ -444,12 +474,12 @@ static void load_sp_queue(
  ************************************************************/
 /*STORAGE_CLASS_INLINE void init_sp_queue(*/
 static void init_sp_queue(
-	struct sh_css_circular_buf *offset)
+	struct sh_css_circular_buf *offset, unsigned int size)
 {
-	unsigned int size  = SH_CSS_CIRCULAR_BUF_NUM_ELEMS;
 	unsigned int step  = sizeof(offset->elems[0]);
 	unsigned int start = 0;
 	unsigned int end   = 0;
+	size = min(size, SH_CSS_CIRCULAR_BUF_NUM_ELEMS);
 	store_sp_queue (offset, &size, &step, &start, &end);
 }
 
