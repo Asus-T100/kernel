@@ -177,11 +177,6 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	msleep(20);
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp);
 
-	temp = I915_READ(MIPI_PORT_CTRL(pipe));
-	temp = temp | intel_dsi->dev.port_bits;
-	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
-	POSTING_READ(MIPI_PORT_CTRL(pipe));
-
 	temp = I915_READ(MIPI_DEVICE_READY(pipe));
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp | DEVICE_READY);
 
@@ -363,8 +358,14 @@ static void intel_dsi_commit(struct drm_encoder *encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	int pipe = intel_crtc->pipe;
+	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
+
+	temp = I915_READ(MIPI_PORT_CTRL(pipe));
+	temp = temp | intel_dsi->dev.port_bits;
+	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
+	POSTING_READ(MIPI_PORT_CTRL(pipe));
 
 	/* XXX: fix the bits with constants */
 	I915_WRITE(MIPI_DPI_CONTROL(pipe), ((0x1 << 1) &
@@ -497,7 +498,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	intel_flisdsi_write32(dev_priv, 0x08, 0x0000);
 
 	/* MIPI PORT Control register */
-	I915_WRITE(0x61190, 0x80010000);
+	I915_WRITE(0x61190, 0x00010000);
 
 	dsi_config(encoder);
 
