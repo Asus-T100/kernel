@@ -438,8 +438,14 @@ struct intel_hangcheck {
 	unsigned long last_reset;
 
 	/* Number of times this ring has been
-	* reset since boot*/
+	* reset since boot (TDR and watchdog)*/
 	uint32_t total;
+
+	/* Number of TDR hang detections for this ring */
+	uint32_t tdr_count;
+
+	/* Number of watchdog hang detections for this ring */
+	uint32_t watchdog_count;
 };
 
 
