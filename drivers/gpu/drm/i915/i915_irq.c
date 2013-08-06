@@ -774,7 +774,7 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 			 */
 			if (pipe_stats[pipe] & 0x8000ffff) {
 				if (pipe_stats[pipe] & PIPE_FIFO_UNDERRUN_STATUS)
-					DRM_DEBUG_DRIVER("pipe %c underrun\n",
+					DRM_ERROR("pipe %c underrun\n",
 							 pipe_name(pipe));
 				I915_WRITE(reg, pipe_stats[pipe]);
 			}

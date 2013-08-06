@@ -1242,6 +1242,9 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
 		*plane_dl = (64 * (*plane_prec_mult) * 4) / ((clock / 1000) *
 						     pixel_size);
+		/* Temp hack - Try raising priority to high to w/a
+		latency problems */
+		*plane_dl = 0;
 		latencyprogrammed = true;
 	}
 
@@ -1251,6 +1254,9 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
 		*cursor_dl = (64 * (*cursor_prec_mult) * 4) / ((clock / 1000) *
 							4);
+		/* Temp hack - Try raising priority to high to w/a
+		latency problems */
+		*cursor_dl = 0;
 		latencyprogrammed = true;
 	}
 
@@ -1260,6 +1266,9 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
 		*sprite_dl = (64 * (*sprite_prec_mult) * 4) / ((clock / 1000) *
 						sprite_pixel_size);
+		/* Temp hack - Try raising priority to high to w/a
+		latency problems */
+		*sprite_dl = 0;
 		latencyprogrammed = true;
 	}
 
