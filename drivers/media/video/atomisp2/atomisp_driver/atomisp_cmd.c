@@ -3437,6 +3437,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			atomisp_css_enable_dz(asd, false);
 		}
 
+		/* CSS doesn't support low light mode on SOC cameras, so disable
+		 * it. FIXME: if this is done elsewhere, it gives corrupted
+		 * colors into thumbnail image.
+		 */
+		if (isp->inputs[asd->input_curr].type == SOC_CAMERA)
+			asd->params.low_light = false;
+
 		if (!isp->asd.continuous_mode->val)
 			/* in case of ANR, force capture pipe to offline mode */
 			atomisp_css_capture_enable_online(asd,
