@@ -1699,6 +1699,7 @@ gen6_ring_reset(struct intel_ring_buffer *ring)
 	kobject_uevent_env(&dev->primary->kdev.kobj,
 			KOBJ_CHANGE, reset_event);
 
+	kfree(reset_event[0]);
 	return ret;
 }
 
