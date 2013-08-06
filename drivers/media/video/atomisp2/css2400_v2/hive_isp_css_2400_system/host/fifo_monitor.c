@@ -1,8 +1,29 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 
 #include "fifo_monitor.h"
-#ifndef __KERNEL__
+
 #include <stdbool.h>
-#endif
+
 #include "device_access.h"
 
 #include <hrt/bits.h>
@@ -42,7 +63,8 @@ void fifo_channel_get_state(
 	const fifo_channel_t		channel_id,
 	fifo_channel_state_t		*state)
 {
-	assert_exit(state && channel_id < N_FIFO_CHANNEL);
+assert(state != NULL);
+assert(channel_id < N_FIFO_CHANNEL);
 
 	switch (channel_id) {
 	case FIFO_CHANNEL_ISP0_TO_SP0:
@@ -496,9 +518,9 @@ void fifo_switch_get_state(
 {
 	hrt_data		data = (hrt_data)-1;
 
-	assert_exit(state);
-	assert(switch_id < N_FIFO_SWITCH);
-	assert(ID == FIFO_MONITOR0_ID);
+assert(state != NULL);
+assert(switch_id < N_FIFO_SWITCH);
+assert(ID == FIFO_MONITOR0_ID);
 
 (void)ID;
 
@@ -518,8 +540,8 @@ void fifo_monitor_get_state(
 	fifo_channel_t	ch_id;
 	fifo_switch_t	sw_id;
 
-	assert_exit(state);
-	assert(ID < N_FIFO_MONITOR_ID);
+assert(state != NULL);
+assert(ID < N_FIFO_MONITOR_ID);
 
 	for (ch_id = 0; ch_id < N_FIFO_CHANNEL; ch_id++) {
 		fifo_channel_get_state(ID, ch_id,

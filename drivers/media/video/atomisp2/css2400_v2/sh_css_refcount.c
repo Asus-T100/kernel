@@ -1,25 +1,23 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
 #include "sh_css_refcount.h"
 #include "memory_access/memory_access.h"
@@ -62,7 +60,8 @@ static struct sh_css_refcount_entry *find_entry(hrt_vaddress ptr,
 {
 	uint32_t i;
 
-	assert_exit_code(ptr && myrefcount.items, NULL);
+assert(ptr != 0);
+assert(myrefcount.items != NULL);
 
 	for (i = 0; i < myrefcount.size; i++) {
 
@@ -103,7 +102,7 @@ void sh_css_refcount_uninit(void)
 {
 	struct sh_css_refcount_entry *entry;
 	uint32_t i;
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_uninit() entry\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_uninit() enter\n");
 	for (i = 0; i < myrefcount.size; i++) {
 		entry = &myrefcount.items[i];
 		if (entry->data != mmgr_NULL) {
@@ -132,11 +131,11 @@ hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr)
 
 	if (!entry) {
 		entry = find_entry(ptr, true);
-		if (!entry)
-			return mmgr_NULL;
 		entry->id = id;
-	} else
-		assert(entry->id == id);
+	}
+
+	assert(entry != NULL);
+	assert(entry->id == id);
 
 	if (entry->data == ptr)
 		entry->count += 1;
@@ -199,9 +198,9 @@ bool sh_css_refcount_is_single(hrt_vaddress ptr)
 int32_t sh_css_refcount_get_id(hrt_vaddress ptr)
 {
 	struct sh_css_refcount_entry *entry;
-	assert_exit_code(ptr, 0);
+	assert(ptr != mmgr_NULL);
 	entry = find_entry(ptr, false);
-	assert_exit_code(entry, 0);
+	assert(entry != NULL);
 	return entry->id;
 }
 

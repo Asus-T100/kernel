@@ -1,28 +1,26 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 #ifndef _SH_CSS_DEFS_H_
 #define _SH_CSS_DEFS_H_
-
-/*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
 
 #include "isp.h"
 /*#include "vamem.h"*/ /* Cannot include for VAMEM properties this file is visible on ISP -> pipeline generator */
@@ -76,7 +74,8 @@
 #define SH_CSS_YEE_DETAIL_GAIN_SHIFT      8  /* [u5.8] */
 #define SH_CSS_YEE_SCALE_SHIFT            8
 #define SH_CSS_TNR_COEF_SHIFT                    13
-#define SH_CSS_MACC_COEF_SHIFT            11 /* [s2.11] */
+#define SH_CSS_MACC_COEF_SHIFT            11 /* [s2.11] for ISP1 */
+#define SH_CSS_MACC2_COEF_SHIFT           13 /* [s[exp].[13-exp]] for ISP2 */
 #define SH_CSS_DIS_COEF_SHIFT             13
 
 /*--------------- sRGB Gamma -----------------

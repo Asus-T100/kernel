@@ -1,14 +1,29 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 #ifndef __IRQ_PUBLIC_H_INCLUDED__
 #define __IRQ_PUBLIC_H_INCLUDED__
 
 #include "system_types.h"
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
-#include <stdint.h>
-#include "stddef.h"			/* size_t */
-#include <stdbool.h>		/* bool */
-#endif
+#include "stdbool.h"
 
 /*! Read the control registers of IRQ[ID]
 

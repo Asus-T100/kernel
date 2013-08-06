@@ -1,6 +1,28 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
-//#include "stddef.h"		/* NULL */
-//#include <stdbool.h>
+
+#include <stddef.h>		/* NULL */
+#include <stdbool.h>
+#include <stdint.h>
 
 #include "input_formatter.h"
 #include "gp_device.h"
@@ -75,7 +97,8 @@ void input_formatter_get_switch_state(
 	const input_formatter_ID_t		ID,
 	input_formatter_switch_state_t	*state)
 {
-	assert_exit(ID < N_INPUT_FORMATTER_ID && state);
+assert(ID < N_INPUT_FORMATTER_ID);
+assert(state != NULL);
 /* We'll change this into an intelligent function to get switch info per IF */
 (void)ID;
 
@@ -97,7 +120,8 @@ void input_formatter_get_state(
 	const input_formatter_ID_t		ID,
 	input_formatter_state_t			*state)
 {
-	assert_exit(ID < N_INPUT_FORMATTER_ID && state);
+assert(ID < N_INPUT_FORMATTER_ID);
+assert(state != NULL);
 /*
 	state->reset = input_formatter_reg_load(ID,
 		HIVE_IF_RESET_ADDRESS);
@@ -177,7 +201,8 @@ void input_formatter_bin_get_state(
 	const input_formatter_ID_t		ID,
 	input_formatter_bin_state_t		*state)
 {
-	assert_exit(ID < N_INPUT_FORMATTER_ID && state);
+assert(ID < N_INPUT_FORMATTER_ID);
+assert(state != NULL);
 
 	state->reset = input_formatter_reg_load(ID,
 		HIVE_STR2MEM_SOFT_RESET_REG_ADDRESS);

@@ -1,3 +1,24 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 #include "gp_device.h"
 
 #ifndef __INLINE_GP_DEVICE__
@@ -8,7 +29,8 @@ void gp_device_get_state(
 	const gp_device_ID_t		ID,
 	gp_device_state_t			*state)
 {
-	assert_exit(ID < N_GP_DEVICE_ID && state);
+assert(ID < N_GP_DEVICE_ID);
+assert(state != NULL);
 
 	state->syncgen_enable = gp_device_reg_load(ID,
 		_REG_GP_SYNCGEN_ENABLE_ADDR);

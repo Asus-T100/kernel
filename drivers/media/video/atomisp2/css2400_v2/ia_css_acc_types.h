@@ -1,25 +1,23 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
 #ifndef _IA_CSS_ACC_TYPES_H_
 #define _IA_CSS_ACC_TYPES_H_
@@ -51,6 +49,8 @@
 
 #include "ia_css.h"
 #include "ia_css_types.h"
+
+#include "debug_global.h"
 
 /* Types for the acceleration API.
  * These should be moved to sh_css_internal.h once the old acceleration
@@ -258,6 +258,7 @@ struct ia_css_binary_info {
 	struct {
 		uint16_t	bpp;
 		uint16_t	use_bci;
+		uint16_t	use_str;
 		uint16_t	woix;
 		uint16_t	woiy;
 		uint16_t	extra_out_vecs;
@@ -293,6 +294,14 @@ struct ia_css_sp_info {
 	uint32_t stop_copy_preview;
 	uint32_t debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */
+	uint32_t perf_counter_input_system_error; /**< input system perf
+	counter array */
+#ifdef HAS_WATCHDOG_SP_THREAD_DEBUG
+	uint32_t debug_wait; /**< thread/pipe post mortem debug */
+	uint32_t debug_stage; /**< thread/pipe post mortem debug */
+	uint32_t debug_stripe; /**< thread/pipe post mortem debug */
+#endif
+	uint32_t curr_binary_id;        /**< current binary id */
 	uint32_t ddr_parameter_address; /**< acc param ddrptr, sp dmem */
 	uint32_t ddr_parameter_size;    /**< acc param size, sp dmem */
 	/* Entry functions */
