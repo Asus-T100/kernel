@@ -201,6 +201,10 @@ void atomisp_store_uint32(hrt_address addr, uint32_t data)
 	atomisp_css2_hw_store_32(addr, data);
 }
 
+void atomisp_load_uint32(hrt_address addr, uint32_t *data)
+{
+	*data = atomisp_css2_hw_load_32(addr);
+}
 static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
 {
 	if (sh_mmu_mrfld.get_pd_base == NULL) {

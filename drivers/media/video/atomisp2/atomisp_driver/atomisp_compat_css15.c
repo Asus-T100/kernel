@@ -39,6 +39,11 @@ void atomisp_store_uint32(hrt_address addr, uint32_t data)
 	device_store_uint32(addr, data);
 }
 
+void atomisp_load_uint32(hrt_address addr, uint32_t *data)
+{
+	*data = device_load_uint32(addr);
+}
+
 int atomisp_css_init(struct atomisp_device *isp)
 {
 	device_set_base_address(0);

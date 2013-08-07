@@ -113,6 +113,10 @@
  */
 #define MRFLD_CSI_RECEIVER_SELECTION_REG       0x8081c
 
+#define MRFLD_INTR_CLEAR_REG		       0x50c
+#define MRFLD_INTR_STATUS_REG		       0x508
+#define MRFLD_INTR_ENABLE_REG		       0x510
+
 #define MRFLD_MAX_ZOOM_FACTOR	1024
 
 /* MRFLD ISP POWER related */
