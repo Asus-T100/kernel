@@ -3770,7 +3770,15 @@ int sdhci_runtime_resume_host(struct sdhci_host *host)
 			host->ops->enable_dma(host);
 	}
 
-	sdhci_init(host, 0);
+	if (host->mmc->caps2 & MMC_CAP2_PWCTRL_POWER)
+		sdhci_clear_set_irqs(host, SDHCI_INT_ALL_MASK,
+			SDHCI_INT_BUS_POWER | SDHCI_INT_DATA_END_BIT |
+			SDHCI_INT_DATA_CRC | SDHCI_INT_DATA_TIMEOUT |
+			SDHCI_INT_INDEX | SDHCI_INT_END_BIT | SDHCI_INT_CRC |
+			SDHCI_INT_TIMEOUT | SDHCI_INT_DATA_END |
+			SDHCI_INT_RESPONSE);
+	else
+		sdhci_init(host, 0);
 
 	/* Force clock and power re-program */
 	host->pwr = 0;
