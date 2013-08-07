@@ -25,6 +25,7 @@
 #include <linux/mm.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <asm/intel-mid.h>
 
 #include <media/v4l2-event.h>
 #include <media/v4l2-mediabus.h>
@@ -326,6 +327,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 	struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
 		*comp[ATOMISP_SUBDEV_PADS_NUM];
 	unsigned int i;
+	unsigned int padding_w = pad_w;
+	unsigned int padding_h = pad_h;
 
 	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
 
@@ -348,9 +351,17 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		crop[pad]->width = ffmt[pad]->width;
 		crop[pad]->height = ffmt[pad]->height;
 
+		/* Workaround for BYT 1080p perfectshot since the maxinum resolution of
+		 * front camera ov2722 is 1932x1092 and cannot use pad_w > 12*/
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2
+			&& crop[pad]->height == 1092) {
+			padding_w = 12;
+			padding_h = 12;
+		}
+
 		if (atomisp_subdev_format_conversion(isp, isp_sd->capture_pad)
 		    && crop[pad]->width && crop[pad]->height)
-			crop[pad]->width -= pad_w, crop[pad]->height -= pad_h;
+			crop[pad]->width -= padding_w, crop[pad]->height -= padding_h;
 
 		/* if subdev type is SOC camera,we do not need to set DVS */
 		if (isp->inputs[isp_sd->input_curr].type == SOC_CAMERA)
