@@ -48,6 +48,7 @@
  * #4684168, if concurrency access happened, system may hard hang.
  */
 static DEFINE_SPINLOCK(mmio_lock);
+extern raw_spinlock_t pci_config_lock;
 
 enum frame_info_type {
 	ATOMISP_CSS_VF_FRAME,
@@ -102,7 +103,9 @@ void atomisp_css2_hw_store_8(hrt_address addr, uint8_t data)
 	unsigned long flags;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	_hrt_master_port_store_8(addr, data);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
@@ -111,7 +114,9 @@ static void atomisp_css2_hw_store_16(hrt_address addr, uint16_t data)
 	unsigned long flags;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	_hrt_master_port_store_16(addr, data);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
@@ -120,7 +125,9 @@ static void atomisp_css2_hw_store_32(hrt_address addr, uint32_t data)
 	unsigned long flags;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	_hrt_master_port_store_32(addr, data);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
@@ -130,7 +137,9 @@ static uint8_t atomisp_css2_hw_load_8(hrt_address addr)
 	uint8_t ret;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	ret = _hrt_master_port_load_8(addr);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 	return ret;
 }
@@ -141,7 +150,9 @@ uint16_t atomisp_css2_hw_load_16(hrt_address addr)
 	uint16_t ret;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	ret = _hrt_master_port_load_16(addr);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 	return ret;
 }
@@ -151,7 +162,9 @@ uint32_t atomisp_css2_hw_load_32(hrt_address addr)
 	uint32_t ret;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	ret = _hrt_master_port_load_32(addr);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 	return ret;
 }
@@ -165,8 +178,10 @@ static void atomisp_css2_hw_store(hrt_address addr,
 	const char *_from = (const char *)from;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	for (i = 0; i < n; i++, _to++, _from++)
 		_hrt_master_port_store_8(_to , *_from);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
@@ -178,8 +193,10 @@ static void atomisp_css2_hw_load(hrt_address addr, void *to, uint32_t n)
 	unsigned int _from = (unsigned int)addr;
 
 	spin_lock_irqsave(&mmio_lock, flags);
+	raw_spin_lock(&pci_config_lock);
 	for (i = 0; i < n; i++, _to++, _from++)
 		*_to = _hrt_master_port_load_8(_from);
+	raw_spin_unlock(&pci_config_lock);
 	spin_unlock_irqrestore(&mmio_lock, flags);
 }
 
