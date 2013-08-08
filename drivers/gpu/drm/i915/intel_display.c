@@ -8299,6 +8299,8 @@ static void i915_disable_vga(struct drm_device *dev)
 
 void intel_modeset_init_hw(struct drm_device *dev)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	/* We attempt to init the necessary power wells early in the initialization
 	 * time, so the subsystems that expect power to be enabled can work.
 	 */
@@ -8308,9 +8310,9 @@ void intel_modeset_init_hw(struct drm_device *dev)
 
 	intel_init_clock_gating(dev);
 
-	mutex_lock(&dev->struct_mutex);
+	mutex_lock(&dev_priv->rps.rps_mutex);
 	intel_enable_gt_powersave(dev);
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 }
 
 void intel_modeset_init(struct drm_device *dev)

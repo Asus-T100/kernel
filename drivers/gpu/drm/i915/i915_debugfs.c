@@ -1080,7 +1080,7 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 		int max_freq;
 
 		/* RPSTAT1 is in the GT power well */
-		ret = mutex_lock_interruptible(&dev->struct_mutex);
+		ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 		if (ret)
 			return ret;
 
@@ -1097,7 +1097,7 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 
 		/* TBD: Wake up relevant engine for VLV rather all */
 		gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
-		mutex_unlock(&dev->struct_mutex);
+		mutex_unlock(&dev_priv->rps.rps_mutex);
 
 		seq_printf(m, "GT_PERF_STATUS: 0x%08x\n", gt_perf_status);
 		seq_printf(m, "RPSTAT1: 0x%08x\n", rpstat);
@@ -1199,7 +1199,7 @@ static int ironlake_drpc_info(struct seq_file *m)
 	u16 crstandvid;
 	int ret;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 	if (ret)
 		return ret;
 
@@ -1207,7 +1207,7 @@ static int ironlake_drpc_info(struct seq_file *m)
 	rstdbyctl = I915_READ(RSTDBYCTL);
 	crstandvid = I915_READ16(CRSTANDVID);
 
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 
 	seq_printf(m, "HD boost: %s\n", (rgvmodectl & MEMMODE_BOOST_EN) ?
 		   "yes" : "no");
@@ -1268,7 +1268,7 @@ static int gen6_drpc_info(struct seq_file *m)
 	int count=0, ret;
 
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 	if (ret)
 		return ret;
 
@@ -1291,7 +1291,7 @@ static int gen6_drpc_info(struct seq_file *m)
 
 	rpmodectl1 = I915_READ(GEN6_RP_CONTROL);
 	rcctl1 = I915_READ(GEN6_RC_CONTROL);
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 
 	seq_printf(m, "Video Turbo Mode: %s\n",
 		   yesno(rpmodectl1 & GEN6_RP_MEDIA_TURBO));
@@ -1468,7 +1468,7 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 		return 0;
 	}
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 	if (ret)
 		return ret;
 
@@ -1489,7 +1489,7 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 		seq_printf(m, "%d\t\t%d\n", gpu_freq * 50, ia_freq * 100);
 	}
 
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 
 	return 0;
 }
@@ -1965,13 +1965,13 @@ i915_set_max_freq(struct drm_device *dev, int val)
 
 	DRM_DEBUG_DRIVER("Manually setting max freq to %d\n", val);
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
-	if (ret)
-		return ret;
-
 	/*
 	 * Turbo will still be enabled, but won't go above the set value.
 	 */
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
+	if (ret)
+		return ret;
+
 	if (IS_VALLEYVIEW(dev)) {
 		dev_priv->rps.max_delay = val;
 		valleyview_set_rps(dev, val);
@@ -1980,8 +1980,7 @@ i915_set_max_freq(struct drm_device *dev, int val)
 		gen6_set_rps(dev, val / 50);
 	}
 
-	mutex_unlock(&dev->struct_mutex);
-
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 	return 0;
 }
 
@@ -1992,7 +1991,7 @@ i915_get_max_freq(struct drm_device *dev, int *val)
 	int ret;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 	if (ret)
 		return ret;
 
@@ -2001,8 +2000,7 @@ i915_get_max_freq(struct drm_device *dev, int *val)
 	else
 		*val = dev_priv->rps.max_delay * 50;
 
-	mutex_unlock(&dev->struct_mutex);
-
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 	return 0;
 }
 
@@ -2025,7 +2023,6 @@ i915_max_freq_read(struct file *filp,
 
 	len = snprintf(buf, sizeof(buf),
 		       "max freq: %d\n", val);
-	mutex_unlock(&dev->struct_mutex);
 
 	if (len > sizeof(buf))
 		len = sizeof(buf);
@@ -2082,13 +2079,13 @@ i915_set_min_freq(struct drm_device *dev, int val)
 
 	DRM_DEBUG_DRIVER("Manually setting min freq to %d\n", val);
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
-	if (ret)
-		return ret;
-
 	/*
 	 * Turbo will still be enabled, but won't go below the set value.
 	 */
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
+	if (ret)
+		return ret;
+
 	if (IS_VALLEYVIEW(dev)) {
 		dev_priv->rps.min_delay = val;
 		valleyview_set_rps(dev, val);
@@ -2097,8 +2094,7 @@ i915_set_min_freq(struct drm_device *dev, int val)
 		gen6_set_rps(dev, val / 50);
 	}
 
-	mutex_unlock(&dev->struct_mutex);
-
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 	return 0;
 }
 
@@ -2109,7 +2105,7 @@ i915_get_min_freq(struct drm_device *dev, int *val)
 	int ret;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 	if (ret)
 		return ret;
 
@@ -2118,8 +2114,7 @@ i915_get_min_freq(struct drm_device *dev, int *val)
 	else
 		*val = dev_priv->rps.min_delay * 50;
 
-	mutex_unlock(&dev->struct_mutex);
-
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 	return 0;
 }
 
@@ -2189,11 +2184,12 @@ static int
 i915_rps_enable_disable(struct drm_device *dev, long unsigned int val)
 {
 	int ret;
+	drm_i915_private_t *dev_priv = dev->dev_private;
 
 	if (!(IS_VALLEYVIEW(dev)))
 		return -ENODEV;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 	if (ret)
 		return ret;
 
@@ -2204,7 +2200,7 @@ i915_rps_enable_disable(struct drm_device *dev, long unsigned int val)
 	else
 		vlv_turbo_disable(dev);
 
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 
 	return 0;
 }
@@ -2640,12 +2636,12 @@ rc6_enable_disable(struct drm_device *dev, long unsigned int val)
 	} else if (val == 0)
 		return 0;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 	if (ret)
 		return ret;
 
 	vlv_rs_setstate(dev, (val > 0 ? true : false));
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 	DRM_DEBUG_DRIVER("RC6 feature status is %ld\n", val);
 
 	return 0;
@@ -2826,7 +2822,7 @@ i915_read_turbo_api(struct file *filp,
 	len = sizeof(i915_debugfs_vars.turbo.turbo_vars);
 
 	if (strcmp(operation, DETAILS_TOKEN) == 0) {
-		ret = mutex_lock_interruptible(&dev->struct_mutex);
+		ret = mutex_lock_interruptible(&dev_priv->rps.rps_mutex);
 		if (ret)
 			return ret;
 
@@ -2856,7 +2852,7 @@ i915_read_turbo_api(struct file *filp,
 				dev_priv->rps.rp_up_masked,
 				dev_priv->rps.rp_down_masked);
 
-		mutex_unlock(&dev->struct_mutex);
+		mutex_unlock(&dev_priv->rps.rps_mutex);
 
 	} else if (strcmp(operation, ENABLE_TOKEN) == 0) {
 

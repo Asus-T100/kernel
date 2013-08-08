@@ -2497,7 +2497,7 @@ void gen6_set_rps(struct drm_device *dev, u8 val)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 limits = gen6_rps_limits(dev_priv, &val);
 
-	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.rps_mutex));
 
 	if (val == dev_priv->rps.cur_delay)
 		return;
@@ -2605,7 +2605,7 @@ static void gen6_enable_rps(struct drm_device *dev)
 	int rc6_mode;
 	int i;
 
-	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.rps_mutex));
 
 	/* Here begins a magic sequence of register writes to enable
 	 * auto-downclocking.
@@ -2909,7 +2909,7 @@ static void vlv_rps_timer_work(struct work_struct *work)
 	drm_i915_private_t *dev_priv = container_of(work, drm_i915_private_t,
 							rps.rps_timer_work);
 
-	mutex_lock(&dev_priv->dev->struct_mutex);
+	mutex_lock(&dev_priv->rps.rps_mutex);
 
 	if (I915_READ(VLV_GTLC_SURVIVABILITY_REG) & VLV_GFX_CLK_STATUS_BIT) {
 		/* GT is not power gated. Cancel any pending ones
@@ -2931,7 +2931,7 @@ static void vlv_rps_timer_work(struct work_struct *work)
 		if (wait_for(((VLV_GFX_CLK_STATUS_BIT &
 		     I915_READ(VLV_GTLC_SURVIVABILITY_REG)) != 0), 500)) {
 			DRM_ERROR("GFX_CLK_ON request timed out\n");
-			mutex_unlock(&dev_priv->dev->struct_mutex);
+			mutex_unlock(&dev_priv->rps.rps_mutex);
 			return;
 		}
 
@@ -2956,7 +2956,7 @@ static void vlv_rps_timer_work(struct work_struct *work)
 			I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
 	}
 
-	mutex_unlock(&dev_priv->dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 }
 
 bool vlv_turbo_initialize(struct drm_device *dev)
@@ -3202,7 +3202,7 @@ static void ironlake_enable_rc6(struct drm_device *dev)
 	if (!intel_enable_rc6(dev))
 		return;
 
-	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.rps_mutex));
 
 	ret = ironlake_setup_rc6(dev);
 	if (ret)
@@ -4915,11 +4915,11 @@ void intel_gt_init(struct drm_device *dev)
 			 * (correctly) interpreted by the test below as MT
 			 * forcewake being disabled.
 			 */
-			mutex_lock(&dev->struct_mutex);
+			mutex_lock(&dev_priv->rps.rps_mutex);
 			__gen6_gt_force_wake_mt_get(dev_priv, FORCEWAKE_ALL);
 			ecobus = I915_READ_NOTRACE(ECOBUS);
 			__gen6_gt_force_wake_mt_put(dev_priv, FORCEWAKE_ALL);
-			mutex_unlock(&dev->struct_mutex);
+			mutex_unlock(&dev_priv->rps.rps_mutex);
 
 			if (ecobus & FORCEWAKE_MT_ENABLE) {
 				DRM_DEBUG_KMS("Using MT version of forcewake\n");

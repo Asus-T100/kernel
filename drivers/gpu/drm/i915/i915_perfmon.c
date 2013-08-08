@@ -155,7 +155,7 @@ static int i915_perfmon_update_max_freq_override(struct drm_device *dev,
 	if (!IS_VALLEYVIEW(dev))
 		return -EINVAL;
 
-	mutex_lock(&dev->struct_mutex);
+	mutex_lock(&dev_priv->rps.rps_mutex);
 	ret_val = i915_perfmon_update_override_counter(
 				&dev_priv->max_freq_enable_count,
 				&file_priv->perfmon_override_counter.max_freq,
@@ -168,7 +168,7 @@ static int i915_perfmon_update_max_freq_override(struct drm_device *dev,
 		} else
 			vlv_turbo_initialize(dev);
 	}
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 
 	return ret_val;
 }
@@ -201,7 +201,7 @@ static int i915_perfmon_update_rc6_disable_override(struct drm_device *dev,
 			return -EINVAL;
 	}
 
-	mutex_lock(&dev->struct_mutex);
+	mutex_lock(&dev_priv->rps.rps_mutex);
 	ret_val = i915_perfmon_update_override_counter(
 			&dev_priv->rc6_user_disable_count,
 			&file_priv->perfmon_override_counter.rc6_disable,
@@ -213,7 +213,7 @@ static int i915_perfmon_update_rc6_disable_override(struct drm_device *dev,
 		else
 			vlv_rs_setstate(dev, true);
 	}
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 
 	return ret_val;
 }

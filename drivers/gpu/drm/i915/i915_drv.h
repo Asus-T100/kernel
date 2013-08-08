@@ -942,6 +942,7 @@ typedef struct drm_i915_private {
 		u32 render_down_EI_C0;
 		u32 media_down_EI_C0;
 
+		struct mutex rps_mutex;
 	} rps;
 
 	/* Runtime power management related */
