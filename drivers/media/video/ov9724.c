@@ -630,33 +630,6 @@ static int get_resolution_index(int w, int h)
 	return -1;
 }
 
-/* alg from vendor to calculate reg value with gain value */
-static u16 get_gain_reg(u16 gain)
-{
-	u16 gain_r = 0;
-
-	if (gain > 31) {
-		gain = gain / 2;
-		gain_r = 0x10;
-	}
-	if (gain > 31) {
-		gain = gain / 2;
-		gain_r = gain_r | 0x20;
-	}
-	if (gain > 31) {
-		gain = gain / 2;
-		gain_r = gain_r | 0x40;
-	}
-	if (gain > 31) {
-		gain = gain / 2;
-		gain_r = gain_r | 0x80;
-	}
-	if (gain > 16)
-		gain_r = gain_r | (gain - 16);
-
-	return gain_r;
-}
-
 static int ov9724_try_mbus_fmt(struct v4l2_subdev *sd,
 				struct v4l2_mbus_framefmt *fmt)
 {
@@ -732,23 +705,6 @@ static int ov9724_set_mbus_fmt(struct v4l2_subdev *sd,
 		mutex_unlock(&dev->input_lock);
 		return ret;
 	}
-
-	/* FIXME: Workround for manual adjust gain */
-
-	/*
-	ret = ov9724_write_reg(client, OV9724_8BIT,
-		0x5180, 0x6);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return ret;
-	}
-	ret = ov9724_write_reg(client, OV9724_8BIT,
-		0x5184, 0x6);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return ret;
-	}
-	*/
 
 	/* disable group hold */
 	ret = ov9724_write_reg_array(client, ov9724_param_update);
@@ -1023,11 +979,7 @@ static long __ov9724_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
-	u16 gain_r;
 	struct ov9724_device *dev = to_ov9724_sensor(sd);
-
-	/* TODO - should be removed to 3a lib */
-	gain_r = get_gain_reg(gain);
 
 	/* enable group hold */
 	ret = ov9724_write_reg_array(client, ov9724_param_hold);
@@ -1035,12 +987,13 @@ static long __ov9724_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 		goto out;
 
 	/* set coarse integration time */
-	if (coarse_itg > dev->lines_per_frame)
+	if (coarse_itg > (dev->lines_per_frame - 5))
 		ov9724_write_reg(client, OV9724_16BIT,
-			OV9724_FRAME_LENGTH_LINES, coarse_itg);
+			OV9724_FRAME_LENGTH_LINES, coarse_itg + 5);
 	else
 		ov9724_write_reg(client, OV9724_16BIT,
 			OV9724_FRAME_LENGTH_LINES, dev->lines_per_frame);
+
 	ret = ov9724_write_reg(client, OV9724_16BIT,
 			OV9724_COARSE_INTEGRATION_TIME, coarse_itg);
 	if (ret)
@@ -1048,10 +1001,10 @@ static long __ov9724_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 
 	/* set global gain */
 	ret = ov9724_write_reg(client, OV9724_8BIT,
-			OV9724_GLOBAL_GAIN, gain_r);
+			OV9724_GLOBAL_GAIN, gain);
 	if (ret)
 		goto out_disable;
-	dev->gain       = gain_r;
+	dev->gain       = gain;
 	dev->coarse_itg = coarse_itg;
 
 out_disable:
