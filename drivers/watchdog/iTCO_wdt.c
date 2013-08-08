@@ -1142,6 +1142,20 @@ static void iTCO_wdt_shutdown(struct platform_device *dev)
 		iTCO_wdt_stop();
 }
 
+static int iTCO_wdt_suspend(struct platform_device *dev, pm_message_t state)
+{
+	if (iTCO_wdt_private.iTCO_version == 3)
+		return iTCO_wdt_stop();
+	return 0;
+}
+
+static int iTCO_wdt_resume(struct platform_device *dev)
+{
+	if (iTCO_wdt_private.iTCO_version == 3)
+		return iTCO_wdt_start();
+	return 0;
+}
+
 static struct platform_driver iTCO_wdt_driver = {
 	.probe          = iTCO_wdt_probe,
 	.remove         = __devexit_p(iTCO_wdt_remove),
@@ -1150,6 +1164,8 @@ static struct platform_driver iTCO_wdt_driver = {
 		.owner  = THIS_MODULE,
 		.name   = DRV_NAME,
 	},
+	.suspend        = iTCO_wdt_suspend,
+	.resume         = iTCO_wdt_resume,
 };
 
 static int __init iTCO_wdt_init_module(void)
