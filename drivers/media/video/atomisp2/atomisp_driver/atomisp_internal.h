@@ -49,7 +49,10 @@
 #include "irq.h"
 
 #define ATOMISP_PCI_DEVICE_SOC_MASK	0xfff8
+/* MRFLD with 0x1178: ISP freq can burst to 457MHz */
 #define ATOMISP_PCI_DEVICE_SOC_MRFLD	0x1178
+/* MRFLD with 0x1179: max ISP freq limited to 400MHz */
+#define ATOMISP_PCI_DEVICE_SOC_MRFLD_FREQ_LIMITED	0x1179
 #define ATOMISP_PCI_DEVICE_SOC_BYT	0x0f38
 
 #define ATOMISP_PCI_REV_MRFLD_A0_MAX	0
