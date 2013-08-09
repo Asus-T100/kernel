@@ -81,7 +81,7 @@ static const int ec_sensors[NUM_THERMAL_SENSORS] = {
 struct thermal_device_info {
 	struct intel_mid_thermal_sensor *sensor;
 	int sensor_index;
-	int trips[NUM_ALERT_LEVELS];
+	u8 trips[NUM_ALERT_LEVELS];
 };
 
 struct thermal_data {
@@ -175,24 +175,27 @@ static int set_trip_temp(struct thermal_device_info *td_info,
 			int flag, int temp)
 {
 	u8 val;
-	int new_val, old_val;
-	int new_reg, old_reg;
+	u8 new_val, old_val;
+	u8 new_reg, old_reg;
 	int ret;
 
 	/*
 	 * EC requires us to update both the thresholds simultaneously.
 	 * 'new_val' is the threshold that needs to programmed 'now'.
 	 * 'old_val' is what is stored previously. Same logic applies
-	 * to the 'address' of these registers as well.
-	 *
-	 * Exploit the fact that address of high register is
-	 * one less than that of the low register.
+	 * to the 'address' of these registers as well. Convert the
+	 * values from mC to C before writing into the registers.
 	 */
 	new_val = temp;
 	old_val = td_info->trips[flag % 1];
 
-	new_reg = flag == 1 ? TEMP_THRESH_HIGH : TEMP_THRESH_LOW;
-	old_reg = new_reg - !flag;
+	if (flag) {
+		new_reg = TEMP_THRESH_HIGH;
+		old_reg = TEMP_THRESH_LOW;
+	} else {
+		new_reg = TEMP_THRESH_LOW;
+		old_reg = TEMP_THRESH_HIGH;
+	}
 
 	ret = byt_ec_read_byte(TEMP_SENSOR_SELECT, &val);
 	if (ret < 0)
@@ -267,7 +270,7 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 
 	mutex_lock(&thrm_update_lock);
 
-	ret = set_trip_temp(td_info, trip == 1, trip_temp);
+	ret = set_trip_temp(td_info, trip == 1, trip_temp / 1000);
 	if (ret)
 		dev_err(&tzd->device, "Setting trip point failed:%d\n", ret);
 
@@ -283,7 +286,8 @@ static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
 
 	mutex_lock(&thrm_update_lock);
 
-	*trip_temp = td_info->trips[trip];
+	/* Convert to mC */
+	*trip_temp = td_info->trips[trip] * 1000;
 
 	mutex_unlock(&thrm_update_lock);
 
@@ -468,8 +472,6 @@ static int ec_thermal_evt_callback(struct notifier_block *nb,
 	case BYT_EC_SCI_THERMTRIP:
 		handle_therm_trip();
 		break;
-	default:
-		pr_info("invalid thermal event\n");
 	}
 
 	return 0;
