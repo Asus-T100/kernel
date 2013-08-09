@@ -1580,6 +1580,7 @@ static int mxt_check_reg_init(struct mxt_data *data)
 	int byte_offset;
 	int i;
 	int cfg_start_ofs;
+	int valid_cfg_size = 0;
 	u32 info_crc, config_crc, calculated_crc;
 	u8 *config_mem;
 	size_t config_mem_size;
@@ -1697,7 +1698,8 @@ static int mxt_check_reg_init(struct mxt_data *data)
 		goto release;
 	}
 
-	while (data_pos < cfg->size) {
+	valid_cfg_size = cfg->size - strlen("\r\n");
+	while (data_pos < valid_cfg_size) {
 		/* Read type, instance, length */
 		ret = sscanf(cfg->data + data_pos, "%x %x %x%n",
 			     &type, &instance, &size, &offset);
