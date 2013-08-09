@@ -404,7 +404,7 @@ static void dw_dma_start_rx(struct uart_hsu_port *up)
 		return;
 	}
 
-	dbuf->ofs = 2048 - 64;
+	dbuf->ofs = 1024 - 64;
 
 	/* Prepare the RX dma transfer */
 	rxconf->direction = DMA_FROM_DEVICE;
