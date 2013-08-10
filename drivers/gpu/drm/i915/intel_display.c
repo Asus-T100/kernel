@@ -3882,20 +3882,10 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
-	struct intel_encoder *encoder;
 	int val;
 
 	if (!intel_crtc->active)
 		return;
-
-	if (dev_priv->is_mipi) {
-		for_each_encoder_on_crtc(dev, crtc, encoder) {
-			if (encoder->type == INTEL_OUTPUT_DSI) {
-				intel_dsi_disable(encoder);
-				break;
-			}
-		}
-	}
 
 	/* Give the overlay scaler a chance to disable if it's on this pipe */
 	intel_crtc_wait_for_pending_flips(crtc);
