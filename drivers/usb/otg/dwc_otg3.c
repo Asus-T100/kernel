@@ -1130,7 +1130,8 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	otg->charging_cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
-	dwc_otg_charger_hwdet(false);
+	if (!otg->otg_data->is_byt)
+		dwc_otg_charger_hwdet(false);
 
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
@@ -1452,6 +1453,7 @@ static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 			gpio_direction_output(otg->otg_data->gpio_reset, 0);
 			usleep_range(200, 500);
 			gpio_set_value(otg->otg_data->gpio_reset, 1);
+			msleep(30);
 		} else {
 			/* Turn OFF phy via CS pin */
 			gpio_direction_output(otg->otg_data->gpio_cs, 0);
