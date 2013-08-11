@@ -770,6 +770,7 @@ static bool mei_txe_check_and_ack_intrs(struct mei_device *dev, bool do_ack)
 	u32 hisr;
 	u32 hhisr;
 	u32 ipc_isr;
+	u32 aliveness;
 	bool generated;
 
 	/* read interrupt registers */
@@ -780,7 +781,8 @@ static bool mei_txe_check_and_ack_intrs(struct mei_device *dev, bool do_ack)
 
 	hisr = mei_txe_br_reg_read(hw, HISR_REG);
 
-	if (hhisr & IPC_HHIER_SEC && hw->aliveness)
+	aliveness = mei_txe_aliveness_get(dev);
+	if (hhisr & IPC_HHIER_SEC && aliveness)
 		ipc_isr = mei_txe_sec_reg_read_silent(hw,
 				SEC_IPC_HOST_INT_STATUS_REG);
 	else
