@@ -99,9 +99,6 @@
 #define SET_CHRG_TYPE_ACA		(1 << 2)
 #define SET_CHRG_TYPE_SDP		(1 << 3)
 
-#define ULPMC_CHRG_VBUS_REG		0x56
-#define VBUS_OVP_ADC_THRESHOLD		0x269	/* 6V */
-
 #define ULPMC_BC_FAULT_REG			0x4B
 #define FAULT_WDT_TMR_EXP			(1 << 7)
 #define FAULT_VBUS_OVP				(1 << 6)
@@ -145,6 +142,13 @@
 #define ULPMC_BM_REG_DIS_VSYS		0x55
 #define BM_DISABLE_VSYS			0x1
 #define BM_RESET_VSYS			0x2
+
+#define ULPMC_BM_REG_CHGINIT		0x57
+#define CHGINIT_STATUS_SET		(1 << 0)
+
+#define ULPMC_BM_REG_CHGTYPE		0x39
+#define CHGTYPE_SET_DCP			(1 << 0)
+#define CHGTYPE_SET_CDP			(0 << 0)
 
 #define ULPMC_BM_REG_BATT_PRESENT	0x4E
 #define BATT_PRESENT_DET_FAIL		(0 << 0)
@@ -199,11 +203,12 @@ struct ulpmc_chip_info {
 	struct extcon_dev	*edev;
 	struct notifier_block	nb;
 
+	struct work_struct	chg_work;
+
 	struct mutex lock;
 	bool is_fwupdate_on;
 	int cur_throttle_state;
 	bool block_sdp;
-	bool chrg_ovp;
 };
 
 static struct ulpmc_chip_info *chip_ptr;
@@ -452,7 +457,7 @@ static int byt_ulpmc_get_temp(int *temp)
 
 static int ulpmc_charger_health(struct ulpmc_chip_info *chip)
 {
-	int stat, fault, health;
+	int stat, fault, health, not_chg_stat;
 
 	stat = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
 	if (stat < 0) {
@@ -468,6 +473,14 @@ static int ulpmc_charger_health(struct ulpmc_chip_info *chip)
 		goto report_chrg_health;
 	}
 
+	not_chg_stat = ulpmc_read_reg8(chip->client, ULPMC_REG_NOT_CHG_STAT);
+	if (not_chg_stat < 0) {
+		dev_err(&chip->client->dev,
+				"i2c read error:%d\n", not_chg_stat);
+		health = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+		goto report_chrg_health;
+	}
+
 	if (!(stat & BC_STAT_VBUS_MASK)) {
 		/* no charger present */
 		health = POWER_SUPPLY_HEALTH_UNKNOWN;
@@ -475,7 +488,7 @@ static int ulpmc_charger_health(struct ulpmc_chip_info *chip)
 	}
 
 	if ((fault & FAULT_VBUS_OVP) ||
-			chip->chrg_ovp) {
+		(not_chg_stat & NOT_CHG_OVP)) {
 		dev_info(&chip->client->dev, "charger over voltage fault\n");
 		health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 		goto report_chrg_health;
@@ -609,15 +622,20 @@ err_maint:
 
 static int ulpmc_battery_status(struct ulpmc_chip_info *chip)
 {
-	int stat, ret;
+	int stat, ret, chg_init;
 
-	ret = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
-	if (ret < 0) {
-		dev_err(&chip->client->dev, "i2c read error:%d\n", ret);
+	stat = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
+	if (stat < 0) {
+		dev_err(&chip->client->dev, "i2c read error:%d\n", stat);
 		ret = POWER_SUPPLY_STATUS_UNKNOWN;
 		goto batt_stat_report;
-	} else {
-		stat = ret;
+	}
+
+	chg_init = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_CHGINIT);
+	if (chg_init < 0) {
+		dev_err(&chip->client->dev, "i2c read error:%d\n", chg_init);
+		ret = POWER_SUPPLY_STATUS_UNKNOWN;
+		goto batt_stat_report;
 	}
 
 	if ((stat & BC_STAT_VBUS_MASK) != BC_STAT_VBUS_ADP) {
@@ -629,6 +647,8 @@ static int ulpmc_battery_status(struct ulpmc_chip_info *chip)
 	case BC_STAT_NOT_CHRG:
 		if (ulpmc_battery_in_maintenance(chip))
 			ret = POWER_SUPPLY_STATUS_FULL;
+		else if (chg_init & CHGINIT_STATUS_SET)
+			ret = POWER_SUPPLY_STATUS_CHARGING;
 		else
 			ret = POWER_SUPPLY_STATUS_NOT_CHARGING;
 		break;
@@ -1024,18 +1044,6 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 		break;
 	case INTSTAT_CHRG_OVP:
 		dev_info(&chip->client->dev, "charger over voltage evt\n");
-		ret = ulpmc_read_reg16(chip->client, ULPMC_CHRG_VBUS_REG);
-		if (ret < 0) {
-			dev_warn(&chip->client->dev, "i2c read error\n");
-			break;
-		}
-		/* update the charger OVP status */
-		mutex_lock(&chip->lock);
-		if (ret > VBUS_OVP_ADC_THRESHOLD)
-			chip->chrg_ovp = true;
-		else
-			chip->chrg_ovp = false;
-		mutex_unlock(&chip->lock);
 		break;
 	default:
 		dev_info(&chip->client->dev, "spurious event!!!\n");
@@ -1151,11 +1159,26 @@ int byt_ulpmc_reset_charger(void)
 }
 EXPORT_SYMBOL(byt_ulpmc_reset_charger);
 
+static void ulpmc_chg_work_handler(struct work_struct *work)
+{
+	struct ulpmc_chip_info *chip = container_of(work,
+					struct ulpmc_chip_info, chg_work);
+	int ret, val;
+
+	if (chip->chrg.type == POWER_SUPPLY_TYPE_USB_DCP)
+		val = CHGTYPE_SET_DCP;
+	else
+		val = CHGTYPE_SET_CDP;
+
+	ret = ulpmc_write_reg8(chip->client, ULPMC_BM_REG_CHGTYPE, val);
+	if (ret < 0)
+		dev_err(&chip->client->dev, "I2C write error:%d\n", ret);
+}
+
 static void handle_extcon_events(struct ulpmc_chip_info *chip)
 {
 	int chrg_type, idx, ret;
 	u32 event;
-	u8 ulpmc_chg_type = 0;
 
 	/* current extcon cable status */
 	event = chip->edev->state;
@@ -1185,15 +1208,12 @@ static void handle_extcon_events(struct ulpmc_chip_info *chip)
 		break;
 	case EXTCON_CDP:
 		chrg_type = POWER_SUPPLY_TYPE_USB_CDP;
-		ulpmc_chg_type = SET_CHRG_TYPE_CDP;
 		break;
 	case EXTCON_DCP:
 		chrg_type = POWER_SUPPLY_TYPE_USB_DCP;
-		ulpmc_chg_type = SET_CHRG_TYPE_DCP;
 		break;
 	case EXTCON_ACA:
 		chrg_type = POWER_SUPPLY_TYPE_USB_ACA;
-		ulpmc_chg_type = SET_CHRG_TYPE_ACA;
 		break;
 	default:
 		chrg_type = POWER_SUPPLY_TYPE_USB;
@@ -1202,6 +1222,7 @@ static void handle_extcon_events(struct ulpmc_chip_info *chip)
 
 extcon_evt_ret:
 	chip->chrg.type = chrg_type;
+	schedule_work(&chip->chg_work);
 }
 
 static int ulpmc_extcon_callback(struct notifier_block *nb,
@@ -1399,6 +1420,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	chip->pdata = client->dev.platform_data;
 	i2c_set_clientdata(client, chip);
 
+	INIT_WORK(&chip->chg_work, ulpmc_chg_work_handler);
 	mutex_init(&chip->lock);
 	chip_ptr = chip;
 
