@@ -26,6 +26,13 @@
 #include "hbm.h"
 #include "client.h"
 
+/* BACKPORT: backport from v3.9 */
+static inline bool pm_runtime_active(struct device *dev)
+{
+	return dev->power.runtime_status == RPM_ACTIVE
+		|| dev->power.disable_depth;
+}
+
 /**
  * mei_me_cl_by_uuid - locate index of me client
  *
@@ -404,16 +411,13 @@ int mei_cl_disconnect(struct mei_cl *cl)
 
 	cb->fop_type = MEI_FOP_CLOSE;
 
-	mutex_unlock(&dev->device_lock);
-	rets = pm_runtime_get_sync(&dev->pdev->dev);
-	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
-	mutex_lock(&dev->device_lock);
+	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets)) {
-		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
-	if (dev->hbuf_is_ready) {
+	if (pm_runtime_active(&dev->pdev->dev) && dev->hbuf_is_ready) {
 		dev->hbuf_is_ready = false;
 		if (mei_hbm_cl_disconnect_req(dev, cl)) {
 			rets = -ENODEV;
@@ -427,6 +431,7 @@ int mei_cl_disconnect(struct mei_cl *cl)
 		list_add_tail(&cb->list, &dev->ctrl_wr_list.list);
 
 	}
+
 	mutex_unlock(&dev->device_lock);
 
 	err = wait_event_timeout(dev->wait_recvd_msg,
@@ -519,19 +524,16 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 		goto out;
 	}
 
+	cb->fop_type = MEI_FOP_IOCTL;
 
-	mutex_unlock(&dev->device_lock);
-	rets = pm_runtime_get_sync(&dev->pdev->dev);
-	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
-	mutex_lock(&dev->device_lock);
+	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets)) {
-		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
-	cb->fop_type = MEI_FOP_IOCTL;
-
-	if (dev->hbuf_is_ready && !mei_cl_is_other_connecting(cl)) {
+	if (pm_runtime_active(&dev->pdev->dev) &&
+	    dev->hbuf_is_ready && !mei_cl_is_other_connecting(cl)) {
 		dev->hbuf_is_ready = false;
 
 		if (mei_hbm_cl_connect_req(dev, cl)) {
@@ -689,12 +691,9 @@ int mei_cl_read_start(struct mei_cl *cl, size_t length)
 		return  -ENODEV;
 	}
 
-	mutex_unlock(&dev->device_lock);
-	rets = pm_runtime_get_sync(&dev->pdev->dev);
-	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
-	mutex_lock(&dev->device_lock);
+	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets)) {
-		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
@@ -713,13 +712,13 @@ int mei_cl_read_start(struct mei_cl *cl, size_t length)
 	cb->fop_type = MEI_FOP_READ;
 	cl->read_cb = cb;
 
-
-	if (dev->hbuf_is_ready) {
+	if (pm_runtime_active(&dev->pdev->dev) && dev->hbuf_is_ready) {
 		dev->hbuf_is_ready = false;
 		if (mei_hbm_cl_flow_control_req(dev, cl)) {
 			rets = -ENODEV;
 			goto out;
 		}
+
 		list_add_tail(&cb->list, &dev->read_list.list);
 	} else {
 		list_add_tail(&cb->list, &dev->ctrl_wr_list.list);
@@ -830,16 +829,24 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 
 	dev_dbg(&dev->pdev->dev, "mei_cl_write %d\n", buf->size);
 
-	mutex_unlock(&dev->device_lock);
-	rets = pm_runtime_get_sync(&dev->pdev->dev);
-	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
-	mutex_lock(&dev->device_lock);
+	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets)) {
-		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
 	cb->fop_type = MEI_FOP_WRITE;
+
+	mei_hdr.host_addr = cl->host_client_id;
+	mei_hdr.me_addr = cl->me_client_id;
+	mei_hdr.reserved = 0;
+	mei_hdr.msg_complete = 0;
+
+	if (!pm_runtime_active(&dev->pdev->dev)) {
+		dev_dbg(&dev->pdev->dev, "device not active queue for later\n");
+		rets = buf->size;
+		goto out;
+	}
 
 	rets = mei_cl_flow_ctrl_creds(cl);
 	if (rets < 0)
@@ -849,7 +856,6 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 	if (rets == 0 || !dev->hbuf_is_ready) {
 		cb->buf_idx = 0;
 		/* unseting complete will enqueue the cb for write */
-		mei_hdr.msg_complete = 0;
 		rets = buf->size;
 		goto out;
 	}
@@ -865,9 +871,6 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 		mei_hdr.msg_complete = 1;
 	}
 
-	mei_hdr.host_addr = cl->host_client_id;
-	mei_hdr.me_addr = cl->me_client_id;
-	mei_hdr.reserved = 0;
 
 	dev_dbg(&dev->pdev->dev, "write " MEI_HDR_FMT "\n",
 		MEI_HDR_PRM(&mei_hdr));
