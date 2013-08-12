@@ -463,7 +463,7 @@ static int ec_battery_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, chip);
 	mutex_init(&chip->lock);
 
-	chip->bat.name = "byt-battery";
+	chip->bat.name = "byt_battery";
 	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
 	chip->bat.properties = ec_battery_props;
 	chip->bat.num_properties = ARRAY_SIZE(ec_battery_props);
@@ -474,7 +474,7 @@ static int ec_battery_probe(struct platform_device *pdev)
 		goto probe_failed_1;
 	}
 
-	chip->chrg.name = "byt-charger";
+	chip->chrg.name = "byt_charger";
 	chip->chrg.type = POWER_SUPPLY_TYPE_MAINS;
 	chip->chrg.properties = ec_charger_properties;
 	chip->chrg.num_properties = ARRAY_SIZE(ec_charger_properties);
