@@ -555,21 +555,14 @@ static int
 gen6_add_request(struct intel_ring_buffer *ring,
 		 u32 *seqno)
 {
-	u32 mbox1_reg;
-	u32 mbox2_reg;
 	int ret;
 
-	ret = intel_ring_begin(ring, 10);
+	ret = intel_ring_begin(ring, 4);
 	if (ret)
 		return ret;
 
-	mbox1_reg = ring->signal_mbox[0];
-	mbox2_reg = ring->signal_mbox[1];
-
 	*seqno = i915_gem_next_request_seqno(ring);
 
-	update_mboxes(ring, *seqno, mbox1_reg);
-	update_mboxes(ring, *seqno, mbox2_reg);
 	intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
 	intel_ring_emit(ring, I915_GEM_HWS_INDEX << MI_STORE_DWORD_INDEX_SHIFT);
 	intel_ring_emit(ring, *seqno);
@@ -592,6 +585,7 @@ gen6_ring_sync(struct intel_ring_buffer *waiter,
 	       u32 seqno)
 {
 	int ret;
+	u32 mbox_reg;
 	u32 dw1 = MI_SEMAPHORE_MBOX |
 		  MI_SEMAPHORE_COMPARE |
 		  MI_SEMAPHORE_REGISTER;
@@ -605,6 +599,28 @@ gen6_ring_sync(struct intel_ring_buffer *waiter,
 	WARN_ON(signaller->semaphore_register[waiter->id] ==
 		MI_SEMAPHORE_SYNC_INVALID);
 
+	/* Now add the Mbox update command in the Signaller ring,
+	 * this a point where the actual inter ring dependency has been
+	 * ascertained. Although this late sync could affect the performance
+	 * slightly but it shall improve the residency time of individual
+	 * power wells in C6 state
+	 */
+	if (signaller->id == RCS)
+		mbox_reg = signaller->signal_mbox[waiter->id == BCS];
+	else if (signaller->id == VCS)
+		mbox_reg = signaller->signal_mbox[waiter->id == BCS];
+	else
+		mbox_reg = signaller->signal_mbox[waiter->id == VCS];
+
+	ret = intel_ring_begin(signaller, 4);
+	if (ret)
+		return ret;
+
+	update_mboxes(signaller, (seqno + 1), mbox_reg);
+	intel_ring_emit(signaller, MI_NOOP);
+	intel_ring_advance(signaller);
+
+	/* Add the corresponding Semaphore Wait command in the waiter ring */
 	ret = intel_ring_begin(waiter, 4);
 	if (ret)
 		return ret;
