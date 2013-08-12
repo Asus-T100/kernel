@@ -1539,6 +1539,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		goto put_gmch;
 	}
 
+	spin_lock_init(&dev_priv->gt_lock);
+
 	/* RS state has to be initialized to pull render/media power wells out
 	 * of sleep. This is required before initializing gem, which touches
 	 * render/media registers

@@ -1362,8 +1362,9 @@ static int valleyview_thaw(struct drm_device *dev, bool is_hibernate_restore)
 				"ALLOW_WAKE_SET timed out, resume might fail\n");
 	}
 
-	/* v) Set Global Force Wake */
+	/* v) Set Global Force Wake and Wake up all wells explicitly */
 	vlv_rs_sleepstateinit(dev, false);
+	vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	/* vi)  Restore required registers and do the D0ix work */
 	i915_restore_state(dev);

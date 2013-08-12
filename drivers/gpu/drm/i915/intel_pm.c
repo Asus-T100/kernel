@@ -4896,7 +4896,6 @@ void intel_gt_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	spin_lock_init(&dev_priv->gt_lock);
 
 	if (IS_VALLEYVIEW(dev)) {
 		dev_priv->gt.force_wake_get = __vlv_force_wake_get;
@@ -4966,11 +4965,13 @@ void vlv_force_wake_put(struct drm_i915_private *dev_priv,
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 
 	if (FORCEWAKE_RENDER & fw_engine) {
+		WARN_ON(dev_priv->fw_rendercount == 0);
 		if (--dev_priv->fw_rendercount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_RENDER);
 	}
 
 	if (FORCEWAKE_MEDIA & fw_engine) {
+		WARN_ON(dev_priv->fw_mediacount == 0);
 		if (--dev_priv->fw_mediacount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_MEDIA);
 	}
@@ -5011,6 +5012,7 @@ void vlv_rs_sleepstateinit(struct drm_device *dev,
 	u32 rs_powerwell_status = 0;
 	u32 regdata = 0;
 	u32 isRenderWellFWreq = 0, isMediaWellFWreq = 0;
+	unsigned long irqflags = 0;
 
 	if ((I915_READ(VLV_POWER_CONTEXT_BASE_REG) >> 20) == 0) {
 
@@ -5082,7 +5084,9 @@ void vlv_rs_sleepstateinit(struct drm_device *dev,
 	 * Render and Media engines are awake at this point. Update the
 	 * FW counters to reflect the same
 	 */
+	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 	dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
+	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 
 	/*
 	 * Disable HW RC if requested. Will be requested during boot as
@@ -5184,7 +5188,7 @@ void vlv_rs_setstate(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 regdata = 0;
-
+	unsigned long irqflags = 0;
 	regdata = I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG);
 
 	if (enable) {
@@ -5204,7 +5208,9 @@ void vlv_rs_setstate(struct drm_device *dev,
 		/* Forcewake all engines first */
 		vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
+		spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 		dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
+		spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 
 		regdata &= ~(1 << 28);
 		regdata &= ~(1 << 24);

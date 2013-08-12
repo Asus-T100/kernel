@@ -2607,16 +2607,21 @@ static const struct file_operations i915_forcewake_fops = {
 
 /* Debugfs rc6 apis implementation */
 
-static int
-rc6_status(struct drm_device *dev, char *buf, int *len)
+static inline bool is_rc6_enabled(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
 
+	return I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG)
+			& (VLV_EVAL_METHOD_ENABLE_BIT
+			| VLV_TIMEOUT_METHOD_ENABLE_BIT);
+}
+
+static int
+rc6_status(struct drm_device *dev, char *buf, int *len)
+{
 	*len = snprintf(buf, MAX_BUFFER_STR_LEN,
 			"RC6 ENABLED: %s\n",
-			yesno(I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG)
-					& (VLV_EVAL_METHOD_ENABLE_BIT
-					| VLV_TIMEOUT_METHOD_ENABLE_BIT)));
+			yesno(is_rc6_enabled(dev)));
 	return 0;
 }
 
@@ -2624,9 +2629,16 @@ static int
 rc6_enable_disable(struct drm_device *dev, long unsigned int val)
 {
 	int ret;
+	drm_i915_private_t *dev_priv = dev->dev_private;
 
 	if (!(IS_VALLEYVIEW(dev)))
 		return -ENODEV;
+
+	if (is_rc6_enabled(dev)) {
+		if (val > 0)
+			return 0;
+	} else if (val == 0)
+		return 0;
 
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
@@ -3207,9 +3219,7 @@ i915_read_rc6_status(struct file *filp,
 
 	len = snprintf(buf, sizeof(buf),
 		"RC6 is %s\n",
-		(I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG)
-			& (VLV_EVAL_METHOD_ENABLE_BIT
-			| VLV_TIMEOUT_METHOD_ENABLE_BIT)) ?
+		(is_rc6_enabled(dev)) ?
 				"enabled" : "disabled");
 
 	len += snprintf(&buf[len], (sizeof(buf) - len),
