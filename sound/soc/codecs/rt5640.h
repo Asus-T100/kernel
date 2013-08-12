@@ -2134,7 +2134,6 @@ struct rt5640_pll_code {
 
 struct rt5640_priv {
 	struct snd_soc_codec *codec;
-	struct delayed_work patch_work;
 
 	int aif_pu;
 	int sysclk;

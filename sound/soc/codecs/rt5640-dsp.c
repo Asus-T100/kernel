@@ -28,7 +28,7 @@
 static const u16 rt5640_dsp_init[][2] = {
 	{0x3fd2, 0x0038}, {0x229C, 0x0fa0}, {0x22d2, 0x8400}, {0x22ee, 0x0001},
 	{0x22f2, 0x0040}, {0x22f5, 0x8000}, {0x22f6, 0x0000}, {0x22f9, 0x007f},
-	{0x2310, 0x0880},
+	{0x2310, 0x0880}, {0x22fb, 0x0000},
 };
 
 #define RT5640_DSP_INIT_NUM \
@@ -243,7 +243,7 @@ static int rt5640_dsp_done(struct snd_soc_codec *codec)
 static int rt5640_dsp_write(struct snd_soc_codec *codec,
 			    struct rt5640_dsp_param *param)
 {
-	unsigned int dsp_val = snd_soc_read(codec, RT5640_DSP_CTRL3);
+	unsigned int dsp_val;
 	int ret;
 
 	ret = rt5640_dsp_done(codec);
@@ -251,6 +251,7 @@ static int rt5640_dsp_write(struct snd_soc_codec *codec,
 		dev_err(codec->dev, "DSP is busy: %d\n", ret);
 		goto err;
 	}
+	dsp_val = snd_soc_read(codec, RT5640_DSP_CTRL3);
 	ret = snd_soc_write(codec, RT5640_GEN_CTRL3, param->cmd_fmt);
 	if (ret < 0) {
 		dev_err(codec->dev, "Failed to write cmd format: %d\n", ret);
@@ -486,156 +487,6 @@ static const struct snd_kcontrol_new rt5640_dsp_snd_controls[] = {
 	SOC_ENUM_EXT("DSP Function Switch", rt5640_dsp_enum,
 		     rt5640_dsp_get, rt5640_dsp_put),
 };
-
-static int rt5640_dsp_patch_3(struct snd_soc_codec *codec)
-{
-	struct rt5640_dsp_param param;
-	int ret, i;
-
-	param.cmd_fmt = 0x0090;
-	param.addr = 0x0064;
-	param.data = 0x0004;
-	param.cmd = RT5640_DSP_CMD_RW;
-	ret = rt5640_dsp_write(codec, &param);
-	if (ret < 0) {
-		dev_err(codec->dev,
-			"Fail to set DSP 3 bytes patch entrance: %d\n", ret);
-		goto patch_err;
-	}
-
-	param.cmd = RT5640_DSP_CMD_PE;
-	for (i = 0; i < RT5640_DSP_PATCH3_NUM; i++) {
-		param.cmd_fmt = rt5640_dsp_p3_tab[i][0];
-		param.addr = rt5640_dsp_p3_tab[i][1];
-		param.data = rt5640_dsp_p3_tab[i][2];
-		ret = rt5640_dsp_write(codec, &param);
-		if (ret < 0) {
-			dev_err(codec->dev, "Fail to patch Dsp: %d\n", ret);
-			goto patch_err;
-		}
-	}
-
-	return 0;
-
-patch_err:
-
-	return ret;
-}
-
-static int rt5640_dsp_patch_2(struct snd_soc_codec *codec)
-{
-	struct rt5640_dsp_param param;
-	int ret, i;
-
-	param.cmd_fmt = 0x0090;
-	param.addr = 0x0064;
-	param.data = 0x0000;
-	param.cmd = RT5640_DSP_CMD_RW;
-	ret = rt5640_dsp_write(codec, &param);
-	if (ret < 0) {
-		dev_err(codec->dev,
-			"Fail to set DSP 2 bytes patch entrance: %d\n", ret);
-		goto patch_err;
-	}
-
-	param.cmd_fmt = 0x00e0;
-	param.cmd = RT5640_DSP_CMD_MW;
-	for (i = 0; i < RT5640_DSP_PATCH2_NUM; i++) {
-		param.addr = rt5640_dsp_p2_tab[i][0];
-		param.data = rt5640_dsp_p2_tab[i][1];
-		ret = rt5640_dsp_write(codec, &param);
-		if (ret < 0) {
-			dev_err(codec->dev, "Fail to patch Dsp: %d\n", ret);
-			goto patch_err;
-		}
-	}
-
-	return 0;
-
-patch_err:
-
-	return ret;
-}
-
-/**
- * rt5640_dsp_patch - Write DSP patch code.
- *
- * @codec: SoC audio codec device.
- *
- * Write patch codes to DSP including 3 and 2 bytes data.
- *
- * Returns 0 for success or negative error code.
- */
-static int rt5640_dsp_patch(struct snd_soc_codec *codec)
-{
-	int ret;
-
-	dev_dbg(codec->dev, "\n DSP Patch Start ......\n");
-
-	ret = snd_soc_update_bits(codec, RT5640_MICBIAS,
-				  RT5640_PWR_CLK25M_MASK, RT5640_PWR_CLK25M_PU);
-	if (ret < 0)
-		goto patch_err;
-
-	ret = snd_soc_update_bits(codec, RT5640_GLB_CLK,
-				  RT5640_SCLK_SRC_MASK, RT5640_SCLK_SRC_RCCLK);
-	if (ret < 0)
-		goto patch_err;
-
-	ret = snd_soc_update_bits(codec, RT5640_PWR_DIG2,
-				  RT5640_PWR_I2S_DSP, RT5640_PWR_I2S_DSP);
-	if (ret < 0)
-		goto patch_err;
-
-	ret = snd_soc_update_bits(codec, RT5640_DSP_CTRL3,
-				  RT5640_DSP_PD_PIN_MASK, RT5640_DSP_PD_PIN_HI);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to power up DSP: %d\n", ret);
-		goto patch_err;
-	}
-
-	ret = snd_soc_update_bits(codec, RT5640_DSP_CTRL3,
-				  RT5640_DSP_RST_PIN_MASK,
-				  RT5640_DSP_RST_PIN_LO);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to reset DSP: %d\n", ret);
-		goto patch_err;
-	}
-
-	usleep_range(10000, 11000);
-
-	ret = snd_soc_update_bits(codec, RT5640_DSP_CTRL3,
-				  RT5640_DSP_RST_PIN_MASK,
-				  RT5640_DSP_RST_PIN_HI);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to recover DSP: %d\n", ret);
-		goto patch_err;
-	}
-
-	ret = rt5640_dsp_patch_3(codec);
-	if (ret < 0)
-		goto patch_err;
-
-	ret = rt5640_dsp_patch_2(codec);
-	if (ret < 0)
-		goto patch_err;
-
-	return 0;
-
-patch_err:
-
-	return ret;
-}
-
-static void rt5640_do_dsp_patch(struct work_struct *work)
-{
-	struct rt5640_priv *rt5640 =
-	    container_of(work, struct rt5640_priv, patch_work.work);
-	struct snd_soc_codec *codec = rt5640->codec;
-
-	if (rt5640_dsp_patch(codec) < 0)
-		dev_err(codec->dev, "Patch DSP rom code Fail !!!\n");
-}
 
 /**
  * rt5640_dsp_conf - Set DSP basic setting.
@@ -1093,7 +944,6 @@ static DEVICE_ATTR(dsp_reg, 0600, rt5640_dsp_show, dsp_reg_store);
  */
 int rt5640_dsp_probe(struct snd_soc_codec *codec)
 {
-	struct rt5640_priv *rt5640;
 	int ret;
 
 	if (codec == NULL)
@@ -1116,14 +966,7 @@ int rt5640_dsp_probe(struct snd_soc_codec *codec)
 	}
 
 	rt5640_dsp_conf(codec);
-	ret = rt5640_dsp_read(codec, 0x3800);
-	pr_info("DSP version code = 0x%04x\n", ret);
-	if (ret != 0x501a) {
-		rt5640 = snd_soc_codec_get_drvdata(codec);
-		INIT_DELAYED_WORK(&rt5640->patch_work, rt5640_do_dsp_patch);
-		schedule_delayed_work(&rt5640->patch_work,
-				      msecs_to_jiffies(100));
-	}
+	snd_soc_write(codec, RT5640_DSP_CTRL3, 0x0400);
 	snd_soc_update_bits(codec, RT5640_PWR_DIG2, RT5640_PWR_I2S_DSP, 0);
 
 	ret = device_create_file(codec->dev, &dev_attr_dsp_reg);
@@ -1229,67 +1072,7 @@ EXPORT_SYMBOL_GPL(rt56xx_dsp_ioctl_common);
 #ifdef CONFIG_PM
 int rt5640_dsp_suspend(struct snd_soc_codec *codec)
 {
-	struct rt5640_dsp_param param;
-	int ret;
-
-	if (RT5640_VER_C == snd_soc_read(codec, RT5640_VENDOR_ID))
-		return 0;
-
-	ret = snd_soc_update_bits(codec, RT5640_PWR_DIG2,
-				  RT5640_PWR_I2S_DSP, RT5640_PWR_I2S_DSP);
-	if (ret < 0) {
-		dev_err(codec->dev,
-			"Failed to power up DSP IIS interface: %d\n", ret);
-		goto rsm_err;
-	}
-
-	ret = snd_soc_update_bits(codec, RT5640_DSP_CTRL3,
-				  RT5640_DSP_PD_PIN_MASK, RT5640_DSP_PD_PIN_HI);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to power up DSP: %d\n", ret);
-		goto rsm_err;
-	}
-
-	ret = snd_soc_update_bits(codec, RT5640_DSP_CTRL3,
-				  RT5640_DSP_RST_PIN_MASK,
-				  RT5640_DSP_RST_PIN_LO);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to reset DSP: %d\n", ret);
-		goto rsm_err;
-	}
-
-	usleep_range(10000, 11000);
-
-	ret = snd_soc_update_bits(codec, RT5640_DSP_CTRL3,
-				  RT5640_DSP_RST_PIN_MASK,
-				  RT5640_DSP_RST_PIN_HI);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to recover DSP: %d\n", ret);
-		goto rsm_err;
-	}
-
-	param.cmd_fmt = 0x00e0;
-	param.addr = 0x3fd2;
-	param.data = 0x0030;
-	param.cmd = RT5640_DSP_CMD_MW;
-	ret = rt5640_dsp_write(codec, &param);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to Power up LDO of Dsp: %d\n", ret);
-		goto rsm_err;
-	}
-
-	ret = snd_soc_update_bits(codec, RT5640_DSP_CTRL3,
-				  RT5640_DSP_PD_PIN_MASK, RT5640_DSP_PD_PIN_LO);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to power down DSP: %d\n", ret);
-		goto rsm_err;
-	}
-
 	return 0;
-
-rsm_err:
-
-	return ret;
 }
 EXPORT_SYMBOL_GPL(rt5640_dsp_suspend);
 
