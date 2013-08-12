@@ -78,13 +78,13 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	dsi->port_bits = BANDGAP_LNC_CIRCUIT | LP_OUTPUT_HOLD;
 	dsi->turn_arnd_val = 0x3f;
 	dsi->rst_timer_val = 0xff;
-	dsi->hs_to_lp_count = 0x1b;
+	dsi->hs_to_lp_count = 0x46;
 	dsi->lp_byte_clk = 4;
 	dsi->bw_timer = 0;
-	dsi->clk_lp_to_hs_count = 0x1b;
-	dsi->clk_hs_to_lp_count = 0x0c;
+	dsi->clk_lp_to_hs_count = 0x24;
+	dsi->clk_hs_to_lp_count = 0x0F;
 	dsi->video_frmt_cfg_bits = IP_TG_CONFIG;
-	dsi->dphy_reg = 0x1B104315;
+	dsi->dphy_reg = 0x3F10430D;
 
 	return true;
 }
