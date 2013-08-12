@@ -1234,7 +1234,6 @@ static int sst_download_library(const struct firmware *fw_lib,
 				 &sst_drv_ctx->libmemcpy_list);
 
 	if (retval) {
-		kfree(codec_fw);
 		memset(lib, 0, sizeof(*lib));
 		goto send_ipc;
 	}
