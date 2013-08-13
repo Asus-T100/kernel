@@ -675,6 +675,8 @@ static void lnw_irq_handler(unsigned irq, struct irq_desc *desc)
 	for (base = 0; base < lnw->chip.ngpio; base += 32) {
 		gp_reg = gpio_reg(&lnw->chip, base, reg_type);
 		pending = readl(gp_reg);
+		if (platform == INTEL_MID_CPU_CHIP_TANGIER)
+			pending &= readl(gpio_reg(&lnw->chip, base, GIMR));
 		while (pending) {
 			gpio = __ffs(pending);
 			if (!lnw->wakeup)
