@@ -187,15 +187,16 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 
 	/* I2C devices for camera image subsystem */
+/*
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
 					&intel_register_i2c_camera_device},
 	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data,
 					&intel_register_i2c_camera_device},
 	{"mt9d113", SFI_DEV_TYPE_I2C, 0, &mt9d113_platform_data,
 					&intel_register_i2c_camera_device},
-	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
+*/	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
 					&intel_register_i2c_camera_device},
-	{"mt9v113", SFI_DEV_TYPE_I2C, 0, &mt9v113_platform_data,
+/*	{"mt9v113", SFI_DEV_TYPE_I2C, 0, &mt9v113_platform_data,
 					&intel_register_i2c_camera_device},
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data,
 					&intel_register_i2c_camera_device},
@@ -254,6 +255,7 @@ struct devs_id __initconst device_ids[] = {
 	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
 	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"dw9719", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
+*/
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},

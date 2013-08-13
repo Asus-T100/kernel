@@ -64,6 +64,7 @@ static struct sfi_device_table_entry byt_ffrd10_devs_table[] = {
 	/*{bus_type, host_num, addr, irq, max_freq, name}*/
 	{SFI_DEV_TYPE_IPC, 0, 0, 0, 0, "vlv2_plat_clk"},
 	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
+	{SFI_DEV_TYPE_I2C, 4, 0x48, 0x0, 0x0, "mt9m114"},
 	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
 	/* SD devices */
@@ -118,6 +119,8 @@ static struct sfi_table_header *get_devs_table(void)
 	struct sfi_table_simple *devs_table = NULL;
 	struct sfi_table_header *sfi_devs_table = NULL;
 	int tot_len = 0;
+
+        printk("[ASUS] Intel_mid_sfi.c get_devs_table [in], spi.hardware_id = %d\n", spid.hardware_id);
 
 	if (INTEL_MID_BOARD(1, TABLET, BYT)) {
 		if (spid.hardware_id == BYT_TABLET_BLK_8PR0) {
@@ -207,6 +210,8 @@ static int fix_sfi_table(char *sig, sfi_table_handler handler)
 	struct sfi_table_header *table =  NULL;
 	int ret = -EINVAL;
 
+        printk("[ASUS] fix_sfi_table [in]\n");
+
 	table = get_sfi_table(sig);
 
 	if (!table)
@@ -227,9 +232,12 @@ int handle_sfi_table(char *signature, char *oem_id, char *oem_table_id,
 {
 	int ret = -EINVAL;
 
+        printk("[ASUS] handle_sfi_table [in]\n");
+
 	ret = sfi_table_parse(signature, oem_id, oem_table_id, handler);
 
 	if (ret) {
+        printk("[ASUS] Failed to parse %s SFI table\n", signature);
 		pr_err("Failed to parse %s SFI table\n", signature);
 		ret = fix_sfi_table(signature, handler);
 	}
