@@ -57,6 +57,9 @@ extern bool i915_gpu_turbo_disable(void);
 #define SPRITED		6
 #define CURSORA		7
 #define CURSORB		8
+#define PIPEA			9
+#define PIPEB			10
+
 
 #define MAX_CSC_COEFFICIENTS 9
 struct drm_intel_csc_params {

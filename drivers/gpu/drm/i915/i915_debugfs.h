@@ -110,6 +110,9 @@ enum {
 };
 
 extern u32 CSCSoftlut[CSC_MAX_COEFF_COUNT];
+extern u32 gammaSoftlut[GAMMA_CORRECT_MAX_COUNT];
+extern u32 gammaSpriteSoftlut[GAMMA_SP_MAX_COUNT];
+
 
 extern int parse_clrmgr_input(uint *dest, char *src, int max, int read);
 extern int do_intel_enable_CSC(struct drm_device *dev, void *data,
@@ -117,5 +120,7 @@ extern int do_intel_enable_CSC(struct drm_device *dev, void *data,
 extern bool intel_pipe_has_type(struct drm_crtc *crtc, int type);
 extern void do_intel_disable_CSC(struct drm_device *dev,
 						struct drm_crtc *crtc);
+extern int intel_crtc_enable_gamma(struct drm_crtc *crtc, u32 identifier);
+extern void intel_crtc_disable_gamma(struct drm_crtc *crtc, u32 identifier);
 
 #endif /* _I915_DEBUGFS_H_ */
