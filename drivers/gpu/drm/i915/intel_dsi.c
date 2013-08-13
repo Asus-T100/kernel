@@ -387,7 +387,9 @@ static void intel_dsi_commit(struct drm_encoder *encoder)
 /* return pixels in terms of txbyteclkhs */
 static u32 txbyteclkhs(u32 pixels, int bpp, int lane_count)
 {
-	return (pixels * bpp) / (lane_count * 8);
+	u32 pixel_bytes;
+	pixel_bytes =  ((pixels * bpp) / 8) + (((pixels * bpp) % 8) && 1);
+	return (pixel_bytes / lane_count) + ((pixel_bytes % lane_count) && 1);
 }
 
 static void set_dsi_timings(struct drm_encoder *encoder,
