@@ -123,6 +123,7 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.dev_ops = &jdi_lpm070w425b_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
+	//<asus-Baron20130813+
 	{
 		.panel_id = MIPI_DSI_HV101HD1_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
@@ -130,6 +131,7 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.dev_ops = &hv101hd1_dsi_display_ops,
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
+	//<asus-Baron20130813-
 };
 
 /* Prototype for internal functions */
@@ -808,8 +810,8 @@ bool intel_dsi_init(struct drm_device *dev)
 		/* check if panel id available from VBT */
 		if (!dev_priv->mipi.panel_id) {
 			/* default ASUS panel */
-			//dev_priv->mipi.panel_id = MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID;
-			dev_priv->mipi.panel_id = MIPI_DSI_HV101HD1_PANEL_ID;
+			//dev_priv->mipi.panel_id = MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID; //<asus-Baron20130813->
+			dev_priv->mipi.panel_id = MIPI_DSI_HV101HD1_PANEL_ID; //<asus-Baron20130813+>
 		}
 	} else
 		dev_priv->mipi.panel_id = i915_mipi_panel_id;

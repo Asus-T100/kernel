@@ -155,7 +155,7 @@ extern struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops;
 extern struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
-extern struct intel_dsi_dev_ops hv101hd1_dsi_display_ops;
+extern struct intel_dsi_dev_ops hv101hd1_dsi_display_ops;  //<asus-Baron20130813+>
 
 /* external functions */
 void intel_dsi_enable(struct intel_encoder *encoder);
@@ -167,6 +167,6 @@ bool intel_dsi_init(struct drm_device *dev);
 #define	MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID	0x03
 #define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
 #define MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
-#define MIPI_DSI_HV101HD1_PANEL_ID			0x06
+#define MIPI_DSI_HV101HD1_PANEL_ID			0x06  //<asus-Baron20130813+>
 
 #endif /* _INTEL_DSI_H */
