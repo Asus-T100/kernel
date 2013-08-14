@@ -22,7 +22,7 @@
  *
  * Authors:
  *	Chris Tsai <chrisx.tsai@intel.com>
- */
+ */   
 #ifndef __HV101HD1_VID_H__
 #define __HV101HD1_VID_H__
 
