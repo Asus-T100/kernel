@@ -2566,15 +2566,25 @@ intel_pipe_set_base_atomic(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 }
 
 static int
-intel_finish_fb(struct drm_framebuffer *old_fb)
+intel_finish_fb(struct intel_crtc *crtc, struct drm_framebuffer *old_fb)
 {
 	struct drm_i915_gem_object *obj = to_intel_framebuffer(old_fb)->obj;
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
 	bool was_interruptible = dev_priv->mm.interruptible;
 	int ret;
 
-	wait_event(dev_priv->pending_flip_queue,
-		   atomic_read(&obj->pending_flip) == 0);
+	if (wait_event_timeout(dev_priv->pending_flip_queue,
+		   atomic_read(&obj->pending_flip), 100) == 0) {
+		DRM_DEBUG_DRIVER("flip wait timed out.\n");
+
+		/* cleanup */
+		if (crtc->unpin_work) {
+			intel_unpin_work_fn(&crtc->unpin_work->work);
+			crtc->unpin_work = NULL;
+			atomic_clear_mask(1 << crtc->plane,
+					  &obj->pending_flip.counter);
+		}
+	}
 
 	/* Big Hammer, we also need to ensure that any pending
 	 * MI_WAIT_FOR_EVENT inside a user batch buffer on the
@@ -2625,7 +2635,7 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	}
 
 	if (old_fb)
-		intel_finish_fb(old_fb);
+		intel_finish_fb(intel_crtc, old_fb);
 
 	ret = dev_priv->display.update_plane(crtc, crtc->fb, x, y);
 	if (ret) {
@@ -3218,12 +3228,13 @@ static void ironlake_fdi_disable(struct drm_crtc *crtc)
 static void intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
 	if (crtc->fb == NULL)
 		return;
 
 	mutex_lock(&dev->struct_mutex);
-	intel_finish_fb(crtc->fb);
+	intel_finish_fb(intel_crtc, crtc->fb);
 	mutex_unlock(&dev->struct_mutex);
 }
 
@@ -6884,7 +6895,7 @@ static void intel_crtc_destroy(struct drm_crtc *crtc)
 	kfree(intel_crtc);
 }
 
-static void intel_unpin_work_fn(struct work_struct *__work)
+void intel_unpin_work_fn(struct work_struct *__work)
 {
 	struct intel_unpin_work *work =
 		container_of(__work, struct intel_unpin_work, work);
@@ -7294,8 +7305,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	unsigned long flags;
 	int ret;
 
-
-	if (dev_priv->shut_down_state)
+	if (dev_priv->shut_down_state || !intel_crtc->active)
 		return -EINVAL;
 
 	/* Can't change pixel format via MI display flips. */
