@@ -21,12 +21,12 @@
 
 #include "debug.h"
 #include "memory_access.h"
+#include "assert_support.h"
 
 #include "sh_css_debug.h"
 #include "sh_css_debug_internal.h"
 #include "ia_css_stream.h"
 
-#include "assert_support.h"
 #include "print_support.h"
 #if !defined(__KERNEL__) && !defined(_MSC_VER)
 #include <stdio.h>	/* snprintf() */
@@ -67,8 +67,11 @@ return;
 
 static void print_sp_state(
 	const sp_state_t	*state,
-	const char			*cell)
+	const char		*cell)
 {
+	assert(state != NULL);
+	assert(cell != NULL);
+
 	sh_css_dtrace(2, "%s state:\n", cell);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "PC", state->pc);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "Status register",
@@ -82,8 +85,11 @@ return;
 
 static void print_isp_state(
 	const isp_state_t	*state,
-	const char			*cell)
+	const char		*cell)
 {
+	assert(state != NULL);
+	assert(cell != NULL);
+
 	sh_css_dtrace(2, "%s state:\n", cell);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "PC", state->pc);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "Status register",
@@ -224,6 +230,8 @@ static void print_if_state(
 	int st_allow_fifo_overflow = state->allow_fifo_overflow;
 	int st_block_fifo_when_no_req = state->block_fifo_when_no_req;
 
+	assert(state != NULL);
+
 	sh_css_dtrace(2, "InputFormatter State:\n");
 
 	sh_css_dtrace(2, "\tConfiguration:\n");
@@ -289,7 +297,7 @@ static void print_if_state(
 	 ***********************************************************/
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 			"IF_BLOCKED_FIFO_NO_REQ_ADDRESS",
-			input_formatter_reg_load(INPUT_FORMATTER0_ID, 							HIVE_IF_BLOCK_FIFO_NO_REQ_ADDRESS)
+			input_formatter_reg_load(INPUT_FORMATTER0_ID, HIVE_IF_BLOCK_FIFO_NO_REQ_ADDRESS)
 			);
 	/** End of hack for WHQL ***********************************/
 
@@ -755,8 +763,11 @@ return;
 
 static void print_fifo_channel_state(
 	const fifo_channel_state_t	*state,
-	const char					*descr)
+	const char			*descr)
 {
+	assert(state != NULL);
+	assert(descr != NULL);
+
 	sh_css_dtrace(2, "FIFO channel: %s\n", descr);
 	sh_css_dtrace(2, "\t%-32s: %d\n", "source valid", state->src_valid);
 	sh_css_dtrace(2, "\t%-32s: %d\n", "fifo accept" , state->fifo_accept);
@@ -841,6 +852,8 @@ return;
 static void sh_css_binary_info_print(
 	const struct ia_css_binary_info *info)
 {
+	assert(info != NULL);
+
 	sh_css_dtrace(2, "id = %d\n", info->id);
 	sh_css_dtrace(2, "mode = %d\n", info->mode);
 	sh_css_dtrace(2, "max_input_width = %d\n", info->max_input_width);
@@ -894,9 +907,14 @@ return;
 
 void sh_css_frame_print(
 	const struct ia_css_frame	*frame,
-	const char					*descr)
+	const char			*descr)
 {
-	char *data = (char *)HOST_ADDRESS(frame->data);
+	char *data;
+
+	assert(frame != NULL);
+	assert(descr != NULL);
+
+	data = (char *)HOST_ADDRESS(frame->data);
 	sh_css_dtrace(2, "frame %s (%p):\n", descr, frame);
 	sh_css_dtrace(2, "  resolution    = %dx%d\n",
 		     frame->info.res.width, frame->info.res.height);
@@ -968,15 +986,14 @@ void sh_css_frame_print(
 return;
 }
 
-#if SP_DEBUG !=SP_DEBUG_NONE
+#if SP_DEBUG != SP_DEBUG_NONE
 
 void sh_css_print_sp_debug_state(
 	const struct sh_css_sp_debug_state	*state)
 {
-
-#endif
-
 #if SP_DEBUG == SP_DEBUG_DUMP
+
+	assert(state != NULL);
 
 	sh_css_dtrace(SH_DBG_DEBUG, "current SP software counter: %d\n",
 				state->debug[0]);
@@ -1081,6 +1098,8 @@ void sh_css_print_sp_debug_state(
 	int sp_index = state->index;
 	int n;
 
+	assert(state != NULL);
+
 	if (sp_index < last_index) {
 		/* SP has been reset */
 		last_index = 0;
@@ -1140,6 +1159,8 @@ void sh_css_print_sp_debug_state(
 #endif
 	int t, d;
 
+	assert(state != NULL);
+
 	for (t = 0; t < SH_CSS_SP_DBG_NR_OF_TRACES; t++) {
 		/* base contains the "oldest" index */
 		int base = state->index[t];
@@ -1171,6 +1192,8 @@ void sh_css_print_sp_debug_state(
 	int limit = SH_CSS_NUM_SP_DEBUG;
 	int step = 1;
 
+	assert(state != NULL);
+
 	for (i = base; i < limit; i += step) {
 		sh_css_dtrace(SH_DBG_DEBUG,
 			"sp_dbg_trace[%d] = %d\n",
@@ -1178,8 +1201,6 @@ void sh_css_print_sp_debug_state(
 			state->debug[i]);
 	}
 #endif
-
-#if SP_DEBUG !=SP_DEBUG_NONE
 
 	return;
 }
@@ -1190,6 +1211,8 @@ static void print_rx_mipi_port_state(
 		mipi_port_state_t *state)
 {
 	int i;
+
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"device_ready"		, state->device_ready);
@@ -1235,6 +1258,8 @@ static void print_rx_channel_state(
 {
 	int i;
 
+	assert(state != NULL);
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"compression_scheme0"	, state->comp_scheme0);
 
@@ -1258,6 +1283,8 @@ static void print_rx_state(
 		receiver_state_t *state)
 {
 	int i;
+
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "CSI Receiver State:\n");
 
@@ -1416,6 +1443,8 @@ return;
 static void print_isys_capture_unit_state(
 	capture_unit_state_t *state)
 {
+	assert(state != NULL);
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Packet_Length"		, state->Packet_Length);
 
@@ -1470,6 +1499,8 @@ static void print_isys_capture_unit_state(
 static void print_isys_acquisition_unit_state(
 	acquisition_unit_state_t *state)
 {
+	assert(state != NULL);
+
 #if 0
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Init"			, state->Init);
@@ -1511,6 +1542,8 @@ static void print_isys_acquisition_unit_state(
 static void print_isys_ctrl_unit_state(
 	ctrl_unit_state_t *state)
 {
+	assert(state != NULL);
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"last_cmd"		, state->last_cmd);
 
@@ -1587,6 +1620,8 @@ static void print_isys_state(
 	input_system_state_t *state)
 {
 	int i;
+
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "InputSystem State:\n");
 
@@ -1771,6 +1806,8 @@ void sh_css_wake_up_sp(void)
 void sh_css_dump_isp_params(struct ia_css_stream *stream, unsigned int enable)
 {
 	const struct sh_css_isp_params *isp_params = ia_css_get_isp_params(stream);
+
+	assert(stream != NULL);
 
 	sh_css_dtrace(SH_DBG_DEBUG, "ISP PARAMETERS:\n");
 	if ((enable & SH_CSS_DEBUG_DUMP_FPN)
@@ -2324,6 +2361,8 @@ dtrace_dot(const char *fmt, ...)
 {
 	va_list ap;
 
+	assert(fmt != NULL);
+
 	va_start(ap, fmt);
 
 	sh_css_dtrace(SH_DBG_INFO, "%s", DPG_START);
@@ -2364,6 +2403,8 @@ sh_css_debug_pipe_graph_dump_stage(
 
 	char const *blob_name = "<unknow name>";
 	char const *bin_type = "<unknow type>";
+
+	assert(stage != NULL);
 
 	if (debug_pipe_graph_do_init) {
 		sh_css_debug_pipe_graph_dump_prologue();
@@ -2526,6 +2567,8 @@ void
 sh_css_debug_pipe_graph_dump_sp_raw_copy(
 	struct ia_css_frame *cc_frame)
 {
+	assert(cc_frame != NULL);
+
 	dtrace_dot(
 		"node [shape = circle, "
 		"fixedsize=true, width=2]; \"%s\"",
@@ -2560,4 +2603,3 @@ sh_css_debug_pipe_graph_dump_sp_raw_copy(
 #if defined(HRT_SCHED) || defined(SH_CSS_DEBUG_SPMEM_DUMP_SUPPORT)
 #include "spmem_dump.c"
 #endif
-

@@ -22,11 +22,7 @@
 #ifndef __ISP_GLOBAL_H_INCLUDED__
 #define __ISP_GLOBAL_H_INCLUDED__
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 #if defined (HAS_ISP_2401_MAMOIADA)
 #define IS_ISP_2401_MAMOIADA

@@ -26,6 +26,7 @@
 #include "sh_css_sp_start.h"
 
 #include "memory_access.h"
+#include "assert_support.h"
 
 #include "isp.h"				/* PMEM_WIDTH_LOG2 */
 
@@ -41,7 +42,12 @@ unsigned		  sh_css_num_binaries; /* This includes 1 SP binary */
 static void
 setup_sp(struct ia_css_fw_info *fw, const char *fw_data)
 {
-	const char  *blob_data = fw_data + fw->blob.offset;
+	const char *blob_data;
+
+	assert(fw != NULL);
+	assert(fw_data != NULL);
+
+	blob_data = fw_data + fw->blob.offset;
 
 	sh_css_sp_fw = *fw;
 	/* MW: code starts at "offset" */
@@ -57,6 +63,8 @@ sh_css_load_firmware(const char *fw_data,
 	struct ia_css_fw_info *binaries;
 	struct sh_css_fw_bi_file_h *file_header;
 
+	assert(fw_data != NULL);
+
 	file_header = (struct sh_css_fw_bi_file_h *)fw_data;
 	binaries = (struct ia_css_fw_info *)(&file_header[1]);
 
@@ -71,8 +79,9 @@ sh_css_load_firmware(const char *fw_data,
 	/* Only allocate memory for ISP blob info */
 	sh_css_blob_info = sh_css_malloc((sh_css_num_binaries - 1) *
 						sizeof(*sh_css_blob_info));
-	if (!sh_css_blob_info)
-		return IA_CSS_ERR_INTERNAL_ERROR;
+
+	if (sh_css_blob_info == NULL)
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 
 	for (i = 0; i < sh_css_num_binaries; i++) {
 		struct ia_css_fw_info *bi = &binaries[i];
@@ -81,7 +90,7 @@ sh_css_load_firmware(const char *fw_data,
 		name = (const char *)fw_data + bi->blob.prog_name_offset;
 
 		if (bi->blob.size != bi->blob.text_size + bi->blob.icache_size + bi->blob.data_size + bi->blob.padding_size) {
-/* sanity check, note the padding bytes added for section to DDR alignment */
+			/* sanity check, note the padding bytes added for section to DDR alignment */
 			return IA_CSS_ERR_INTERNAL_ERROR;
 		}
 		if (bi->blob.offset + bi->blob.size > fw_size)
@@ -100,6 +109,8 @@ sh_css_load_firmware(const char *fw_data,
 			const unsigned char *blob =
 				(const unsigned char *)fw_data +
 				bi->blob.offset;
+			if (i == 0)
+				return IA_CSS_ERR_INTERNAL_ERROR;
 			if (bi->type != ia_css_isp_firmware)
 				return IA_CSS_ERR_INTERNAL_ERROR;
 			sh_css_blob_info[i-1].blob = blob;
@@ -126,13 +137,17 @@ sh_css_load_blob(const unsigned char *blob, unsigned size)
 	hrt_vaddress target_addr = mmgr_malloc(size);
 	/* this will allocate memory aligned to a DDR word boundary which
 	   is required for the CSS DMA to read the instructions. */
-	mmgr_store(target_addr, blob, size);
+
+	assert(blob != NULL);
+	if (target_addr) {
+		mmgr_store(target_addr, blob, size);
 #if SH_CSS_PREVENT_UNINIT_READS == 1
-	{
-		unsigned padded_size = CEIL_MUL(size, HIVE_ISP_DDR_WORD_BYTES);
-		mmgr_clear(target_addr + size, padded_size - size);
-	}
+		{
+			unsigned padded_size = CEIL_MUL(size, HIVE_ISP_DDR_WORD_BYTES);
+			mmgr_clear(target_addr + size, padded_size - size);
+		}
 #endif
+	}
 	return target_addr;
 }
 
@@ -142,6 +157,9 @@ sh_css_load_blob_info(const char *fw, struct ia_css_blob_descr *bd)
 	const char *name;
 	const unsigned char *blob;
 	struct ia_css_fw_info *bi = (struct ia_css_fw_info *)fw;
+
+	assert(fw != NULL);
+	assert(bd != NULL);
 
 	name = fw + sizeof(*bi);
 	blob = (const unsigned char *)name + strlen(name)+1;

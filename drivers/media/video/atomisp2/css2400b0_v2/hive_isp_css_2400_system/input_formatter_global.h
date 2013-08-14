@@ -25,11 +25,7 @@
 #define IS_INPUT_FORMATTER_VERSION2
 #define IS_INPUT_SWITCH_VERSION2
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 #include "if_defs.h"
 #include "str2mem_defs.h"

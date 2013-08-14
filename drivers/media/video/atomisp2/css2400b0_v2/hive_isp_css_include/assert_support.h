@@ -22,6 +22,12 @@
 #ifndef __ASSERT_SUPPORT_H_INCLUDED__
 #define __ASSERT_SUPPORT_H_INCLUDED__
 
+#ifdef NDEBUG
+
+#define assert(cnd) ((void)0)
+
+#else
+
 #if defined(_MSC_VER)
 #include <wdm.h>
 #define assert(cnd) ASSERT(cnd)
@@ -47,14 +53,16 @@
 #include "sh_css_debug.h"
 #define __symbol2value( x ) #x
 #define __symbol2string( x ) __symbol2value( x )
-#define assert( expression )                                            \
-	do {                                                            \
-		if (!(expression))                                      \
-			sh_css_dtrace(SH_DBG_ERROR, "%s",               \
-				"Assertion failed: " #expression        \
-				  ", file " __FILE__                    \
-				  ", line " __symbol2string( __LINE__ ) \
-				  ".\n" );                              \
+#define assert(cnd)							\
+	do {								\
+		if (!(cnd)) {						\
+			sh_css_dtrace(SH_DBG_ERROR, "%s",		\
+				"Assertion failed: " #cnd		\
+				  ", file " __FILE__			\
+				  ", line " __symbol2string( __LINE__ )	\
+				  ".\n" );				\
+			BUG();						\
+		}							\
 	} while (0)
 
 #define OP___assert(cnd) assert(cnd)
@@ -71,18 +79,6 @@
 #define assert(cnd) ((void)0)
 #endif
 
-#define assert_exit(exp)						\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return;						\
-	} while (0)
-
-#define assert_exit_code(exp, code)					\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return code;					\
-	} while (0)
+#endif /* NDEBUG */
 
 #endif /* __ASSERT_SUPPORT_H_INCLUDED__ */

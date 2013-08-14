@@ -70,7 +70,7 @@
 #else
 #define NUM_CONTINUOUS_FRAMES	10
 #endif
-#define NUM_MIPI_FRAMES		8
+#define NUM_MIPI_FRAMES		4
 
 #define NUM_TNR_FRAMES		2
 
@@ -639,6 +639,7 @@ struct sh_css_circular_buf {
 
 struct sh_css_hmm_buffer {
 	hrt_vaddress kernel_ptr;
+	uint32_t exp_id;
 	union {
 		struct ia_css_isp_3a_statistics  s3a;
 		struct ia_css_isp_dvs_statistics dis;

@@ -53,8 +53,8 @@ void gdc_lut_store(
 {
 	unsigned int i, lut_offset = HRT_GDC_LUT_IDX;
 
-assert(ID < N_GDC_ID);
-assert(HRT_GDC_LUT_COEFF_OFFSET <= (4*sizeof(hrt_data)));
+	assert(ID < N_GDC_ID);
+	assert(HRT_GDC_LUT_COEFF_OFFSET <= (4*sizeof(hrt_data)));
 
 	for (i = 0; i < HRT_GDC_N; i++) {
 		hrt_data	entry_0 = data[0][i] & HRT_GDC_BCI_COEF_MASK;
@@ -76,7 +76,7 @@ return;
 int gdc_get_unity(
 	const gdc_ID_t		ID)
 {
-assert(ID < N_GDC_ID);
+	assert(ID < N_GDC_ID);
 	(void)ID;
 return (int)(1UL << HRT_GDC_FRAC_BITS);
 }

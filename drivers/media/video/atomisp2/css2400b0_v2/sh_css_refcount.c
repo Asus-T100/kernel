@@ -60,7 +60,8 @@ static struct sh_css_refcount_entry *find_entry(hrt_vaddress ptr,
 {
 	uint32_t i;
 
-	assert_exit_code(ptr && myrefcount.items, NULL);
+	assert(ptr != 0);
+	assert(myrefcount.items != NULL);
 
 	for (i = 0; i < myrefcount.size; i++) {
 
@@ -83,7 +84,7 @@ enum ia_css_err sh_css_refcount_init(void)
 	enum ia_css_err err = IA_CSS_SUCCESS;
 	int size = 1000;
 
-assert(myrefcount.items == NULL);
+	assert(myrefcount.items == NULL);
 
 	myrefcount.items =
 		sh_css_malloc(sizeof(struct sh_css_refcount_entry)*size);
@@ -130,11 +131,11 @@ hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr)
 
 	if (!entry) {
 		entry = find_entry(ptr, true);
-		if (!entry)
-			return mmgr_NULL;
 		entry->id = id;
-	} else
-		assert(entry->id == id);
+	}
+
+	assert(entry != NULL);
+	assert(entry->id == id);
 
 	if (entry->data == ptr)
 		entry->count += 1;
@@ -173,8 +174,8 @@ bool sh_css_refcount_release(int32_t id, hrt_vaddress ptr)
 		}
 	}
 
-/* SHOULD NOT HAPPEN: ptr not managed by refcount, or not valid anymore */
-assert(false);
+	/* SHOULD NOT HAPPEN: ptr not managed by refcount, or not valid anymore */
+	assert(false);
 
 	return false;
 }
@@ -197,9 +198,9 @@ bool sh_css_refcount_is_single(hrt_vaddress ptr)
 int32_t sh_css_refcount_get_id(hrt_vaddress ptr)
 {
 	struct sh_css_refcount_entry *entry;
-	assert_exit_code(ptr, 0);
+	assert(ptr != mmgr_NULL);
 	entry = find_entry(ptr, false);
-	assert_exit_code(entry, 0);
+	assert(entry != NULL);
 	return entry->id;
 }
 
@@ -208,6 +209,8 @@ void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr))
 	struct sh_css_refcount_entry *entry;
 	uint32_t i;
 	uint32_t count = 0;
+
+	assert(clear_func != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_clear(%x)\n", id);
 	for (i = 0; i < myrefcount.size; i++) {
 		entry = &myrefcount.items[i];

@@ -22,9 +22,8 @@
 #ifndef __DMA_LOCAL_H_INCLUDED__
 #define __DMA_LOCAL_H_INCLUDED__
 
-#ifndef __KERNEL__
 #include <stdbool.h>
-#endif
+
 #include "dma_global.h"
 
 #include <hrt/defs.h>				/* HRTCAT() */

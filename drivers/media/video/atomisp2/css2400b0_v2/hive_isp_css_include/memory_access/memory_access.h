@@ -53,11 +53,8 @@
  * different (set of) page tables can be shared through
  * a page table information mapping function
  */
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
+
 #include <stdint.h>
-#endif
 #include <stddef.h>
 
 /*

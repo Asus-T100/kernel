@@ -22,9 +22,7 @@
 #ifndef __SP_LOCAL_H_INCLUDED__
 #define __SP_LOCAL_H_INCLUDED__
 
-#ifndef __KERNEL__
 #include <stdbool.h>
-#endif
 
 #include "sp_global.h"
 

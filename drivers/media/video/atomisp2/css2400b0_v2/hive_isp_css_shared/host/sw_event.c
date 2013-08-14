@@ -38,10 +38,8 @@
 
 #include "sw_event.h"
 
-#ifndef __KERNEL__
 #include <stdbool.h>		/* bool */
 #include <stddef.h>		/* NULL */
-#endif
 
 #include "assert_support.h"	/* OP___assert() */
 
@@ -70,7 +68,10 @@ encode_sw_event(
 	uint32_t nr_of_bits;
 	uint32_t i;
 
-OP___assert (nr > 0 && nr <= MAX_NR_OF_PAYLOADS_PER_SW_EVENT);
+	assert(in != NULL);
+	assert(out != NULL);
+
+	OP___assert (nr > 0 && nr <= MAX_NR_OF_PAYLOADS_PER_SW_EVENT);
 
 	/* initialize the output */
 	*out = 0;
@@ -78,7 +79,7 @@ OP___assert (nr > 0 && nr <= MAX_NR_OF_PAYLOADS_PER_SW_EVENT);
 	/* get the number of bits per information */
 	nr_of_bits = sizeof(uint32_t) * 8 / nr;
 
-	/* compress the all inputs into a signle output */
+	/* compress the all inputs into a single output */
 	for (i = 0; i < nr; i++) {
 		*out <<= nr_of_bits;
 		*out |= in[i];

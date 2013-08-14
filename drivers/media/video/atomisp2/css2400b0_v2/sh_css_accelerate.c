@@ -20,6 +20,7 @@
  */
 
 #include "ia_css_accelerate.h"
+#include "assert_support.h"
 
 #include "sh_css_hrt.h"		/* sh_css_hrt_sp_wait() */
 #include "sh_css_sp_start.h"
@@ -36,7 +37,12 @@
 static const unsigned char *
 upload_isp_code(const struct ia_css_fw_info *firmware)
 {
-	const unsigned char *binary = firmware->isp_code;
+	const unsigned char *binary;
+
+	assert(firmware != NULL);
+
+	binary = firmware->isp_code;
+
 	if (!binary) {
 		unsigned size = firmware->blob.size;
 		const unsigned char *blob;
@@ -54,17 +60,19 @@ upload_isp_code(const struct ia_css_fw_info *firmware)
 			(hrt_vaddress)HOST_ADDRESS(binary);
 	}
 
-	if (!binary)
-		return NULL;
 	return binary;
 }
 
 static const unsigned char *
 sh_css_acc_upload_isp_code(const struct ia_css_acc_fw *firmware)
 {
-	struct ia_css_acc_fw_hdr *header
-		= (struct ia_css_acc_fw_hdr *)&firmware->header;
-	const unsigned char *binary = firmware->header.isp_code;
+	struct ia_css_acc_fw_hdr *header;
+	const unsigned char *binary;
+
+	assert(firmware != NULL);
+
+	header = (struct ia_css_acc_fw_hdr *)&firmware->header;
+	binary = firmware->header.isp_code;
 
 	if (!binary) {
 		const unsigned char *blob = IA_CSS_ACC_ISP_CODE(firmware);
@@ -99,20 +107,25 @@ upload_int(unsigned *sp_address, unsigned *val)
 void
 sh_css_acc_unload(const struct ia_css_acc_fw *firmware)
 {
-	struct ia_css_acc_fw_hdr *header
-		= (struct ia_css_acc_fw_hdr *)&firmware->header;
-	struct ia_css_acc_sp *sp = &header->sp;
+	struct ia_css_acc_fw_hdr *header;
+	struct ia_css_acc_sp *sp;
+
+	assert(firmware != NULL);
+
+	header = (struct ia_css_acc_fw_hdr *)&firmware->header;
+	sp = &header->sp;
+
 	if (sp->code)
 		mmgr_free(HOST_ADDRESS(sp->code));
 	if (header->isp_code)
 		mmgr_free(HOST_ADDRESS(header->isp_code));
-	sp->code  = NULL;
+	sp->code = NULL;
 	header->isp_code = NULL;
 }
 
 /* Load the firmware into xmem */
 enum ia_css_err
-sh_css_acc_load_extension(const struct ia_css_fw_info *firmware)
+sh_css_acc_load_extension(struct ia_css_fw_info *firmware)
 {
 #if !defined(C_RUN) && !defined(HRT_UNSCHED)
 	const unsigned char *isp_program
@@ -121,17 +134,21 @@ sh_css_acc_load_extension(const struct ia_css_fw_info *firmware)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 #endif
 
-	((struct ia_css_fw_info *)firmware)->loaded = true;
+	assert(firmware != NULL);
+
+	firmware->loaded = true;
 	return IA_CSS_SUCCESS;
 }
 
 void
-sh_css_acc_unload_extension(const struct ia_css_fw_info *firmware)
+sh_css_acc_unload_extension(struct ia_css_fw_info *firmware)
 {
+	assert(firmware != NULL);
+
 	if (firmware->isp_code)
 		mmgr_free(HOST_ADDRESS(firmware->isp_code));
-	((struct ia_css_fw_info *)firmware)->isp_code = NULL;
-	((struct ia_css_fw_info *)firmware)->loaded = false;
+	firmware->isp_code = NULL;
+	firmware->loaded = false;
 }
 
 /* Set acceleration parameter to value <val> */
@@ -139,6 +156,8 @@ enum ia_css_err
 sh_css_acc_set_parameter(struct ia_css_acc_fw *firmware,
 			 struct ia_css_data parameters)
 {
+	assert(firmware != NULL);
+
 	firmware->header.parameters = parameters;
 	return IA_CSS_SUCCESS;
 }
@@ -156,13 +175,20 @@ sh_css_acc_set_firmware_parameters(struct ia_css_fw_info *firmware,
 static void
 sh_css_acc_init(struct ia_css_acc_fw *firmware)
 {
-	struct ia_css_acc_sp *sp = &firmware->header.sp;
-	unsigned sp_address = (unsigned)HOST_ADDRESS(
-			sp->fw.info.sp.ddr_parameter_address);
-	unsigned sp_size = (unsigned)HOST_ADDRESS(
-			sp->fw.info.sp.ddr_parameter_size);
-	unsigned value = firmware->header.parameters.address;
-	unsigned size  = firmware->header.parameters.size;
+	struct ia_css_acc_sp *sp;
+	unsigned sp_address;
+	unsigned sp_size;
+	unsigned value;
+	unsigned size;
+
+	assert(firmware != NULL);
+
+	sp = &firmware->header.sp;
+	sp_address = (unsigned)HOST_ADDRESS(sp->fw.info.sp.ddr_parameter_address);
+	sp_size = (unsigned)HOST_ADDRESS(sp->fw.info.sp.ddr_parameter_size);
+	value = firmware->header.parameters.address;
+	size  = firmware->header.parameters.size;
+
 /* MW: "sp_address" is an offset address, 0 is a legal value*/
 	if (sp_address != 0) {
 		sp_dmem_store(SP0_ID, sp_address, &value, sizeof(value));
@@ -175,15 +201,21 @@ sh_css_acc_init(struct ia_css_acc_fw *firmware)
 enum ia_css_err
 sh_css_acc_start(struct ia_css_acc_fw *firmware)
 {
-	struct ia_css_acc_fw_hdr *header
-		= (struct ia_css_acc_fw_hdr *)&firmware->header;
-	struct ia_css_acc_sp *sp = &header->sp;
-	bool is_extension = header->type != IA_CSS_ACC_STANDALONE;
-	const struct ia_css_fw_info *sp_fw = &sp->fw;
+	struct ia_css_acc_fw_hdr *header;
+	struct ia_css_acc_sp *sp;
+	bool is_extension;
+	const struct ia_css_fw_info *sp_fw;
 	const unsigned char *sp_program;
 #if !defined(C_RUN) && !defined(HRT_UNSCHED)
 	const unsigned char *isp_program;
 #endif
+
+	assert(firmware != NULL);
+
+	header = (struct ia_css_acc_fw_hdr *)&firmware->header;
+	sp = &header->sp;
+	is_extension = header->type != IA_CSS_ACC_STANDALONE;
+	sp_fw = &sp->fw;
 
 	*(const void **)&sp_fw->blob.code = IA_CSS_ACC_SP_CODE(firmware);
 	*(const void **)&sp_fw->blob.data = IA_CSS_ACC_SP_DATA(firmware);

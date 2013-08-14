@@ -42,7 +42,7 @@
 /* This interface is deprecated */
 #include "hrt/hive_types.h"
 #else  /* __KERNEL__ */
-#include <linux/types.h>
+#include <stdint.h>
 
 #if HRT_ADDRESS_WIDTH==64
 typedef uint64_t			hrt_address;

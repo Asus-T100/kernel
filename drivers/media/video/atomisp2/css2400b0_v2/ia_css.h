@@ -27,7 +27,6 @@
 /* Move to "platform_support.h" */
 #ifdef __KERNEL__
 #include <linux/kernel.h>
-#include <linux/types.h>
 #else
 #include <stdbool.h>
 #include <stdint.h>
@@ -748,6 +747,7 @@ struct ia_css_env {
  */
 struct ia_css_buffer {
 	enum ia_css_buffer_type type; /**< Buffer type. */
+	unsigned int exp_id; /**< exposure id for this buffer; 0 = not available; currently only implemented for buffered sensor mode */
 	union {
 		struct ia_css_isp_3a_statistics  *stats_3a; /**< 3A statistics & optionally RGBY statistics. */
 		struct ia_css_isp_dvs_statistics *stats_dvs;/**< DVS statistics. */

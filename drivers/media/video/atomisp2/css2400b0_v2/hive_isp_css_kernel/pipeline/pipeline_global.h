@@ -22,11 +22,7 @@
 #ifndef __PIPELINE_GLOBAL_H_INCLUDED__
 #define __PIPELINE_GLOBAL_H_INCLUDED__
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 #include "system_types.h"	/* To get the DLI version, we should not need that */
 

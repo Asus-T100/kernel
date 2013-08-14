@@ -31,6 +31,8 @@ static struct ia_css_css_mem_env my_env;
 void
 ia_css_memory_access_init(const struct ia_css_css_mem_env *env)
 {
+	assert(env != NULL);
+
 	my_env = *env;
 }
 
@@ -44,6 +46,7 @@ hrt_vaddress mmgr_alloc_attr(const size_t size, const uint16_t attrs)
 {
 	uint32_t my_attrs = 0;
 	uint16_t masked_attrs = attrs & MMGR_ATTRIBUTE_MASK;
+	hrt_vaddress ptr;
 
 	if (masked_attrs & MMGR_ATTRIBUTE_CACHED)
 		my_attrs |= IA_CSS_MEM_ATTR_CACHED;
@@ -54,7 +57,9 @@ hrt_vaddress mmgr_alloc_attr(const size_t size, const uint16_t attrs)
 	if (masked_attrs & MMGR_ATTRIBUTE_PAGEALIGN)
 		my_attrs |= IA_CSS_MEM_ATTR_PAGEALIGN;
 
-	return my_env.alloc(size, my_attrs);
+	ptr = my_env.alloc(size, my_attrs);
+	assert(ptr != 0);
+	return ptr;
 }
 
 hrt_vaddress

@@ -22,11 +22,7 @@
 #ifndef _SH_CSS_SP_START_H_
 #define _SH_CSS_SP_START_H_
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 #define __INLINE_SP__
 #include "sp.h"

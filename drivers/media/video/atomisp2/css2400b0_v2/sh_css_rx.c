@@ -22,6 +22,7 @@
 #define __INLINE_INPUT_SYSTEM__
 #include "input_system.h"
 
+#include "assert_support.h"
 #include "ia_css.h"
 #include "sh_css_rx.h"
 #include "sh_css_internal.h"
@@ -76,6 +77,8 @@ ia_css_rx_get_irq_info(unsigned int *irq_infos)
 
 	hrt_data	bits = receiver_port_reg_load(RX0_ID,
 		MIPI_PORT1_ID, _HRT_CSS_RECEIVER_IRQ_STATUS_REG_IDX);
+
+	assert(irq_infos != NULL);
 
 	if (bits & (1U << _HRT_CSS_RECEIVER_IRQ_OVERRUN_BIT))
 		infos |= IA_CSS_RX_IRQ_INFO_BUFFER_OVERRUN;
@@ -168,6 +171,8 @@ enum ia_css_err sh_css_input_format_type(
 	mipi_predictor_t compression,
 	unsigned int *fmt_type)
 {
+	assert(fmt_type != NULL);
+
 /*
  * Custom (user defined) modes. Used for compressed
  * MIPI transfers
@@ -286,7 +291,7 @@ return IA_CSS_SUCCESS;
 
 /* This is a device function, shouldn't be here */
 static void sh_css_rx_set_bits(
-	const mipi_port_ID_t	port,
+	const mipi_port_ID_t		port,
 	const unsigned int		reg,
 	const unsigned int		lsb,
 	const unsigned int		bits,
@@ -302,7 +307,7 @@ return;
 }
 
 static void sh_css_rx_set_num_lanes(
-	const mipi_port_ID_t	port,
+	const mipi_port_ID_t		port,
 	const unsigned int		lanes)
 {
 	sh_css_rx_set_bits(port,
@@ -314,7 +319,7 @@ return;
 }
 
 static void sh_css_rx_set_timeout(
-	const mipi_port_ID_t	port,
+	const mipi_port_ID_t		port,
 	const unsigned int		timeout)
 {
 	sh_css_rx_set_bits(port,
@@ -326,19 +331,19 @@ return;
 }
 
 static void sh_css_rx_set_compression(
-	const mipi_port_ID_t				port,
-	const mipi_predictor_t				comp)
+	const mipi_port_ID_t		port,
+	const mipi_predictor_t		comp)
 {
 	unsigned int reg = _HRT_CSS_RECEIVER_COMP_PREDICT_REG_IDX;
 
-assert(comp < N_MIPI_PREDICTOR_TYPES);
+	assert(comp < N_MIPI_PREDICTOR_TYPES);
 
 	receiver_port_reg_store(RX0_ID, port, reg, comp);
 return;
 }
 
 static void sh_css_rx_set_uncomp_size(
-	const mipi_port_ID_t	port,
+	const mipi_port_ID_t		port,
 	const unsigned int		size)
 {
 	sh_css_rx_set_bits(port,
@@ -350,7 +355,7 @@ return;
 }
 
 static void sh_css_rx_set_comp_size(
-	const mipi_port_ID_t	port,
+	const mipi_port_ID_t		port,
 	const unsigned int		size)
 {
 	sh_css_rx_set_bits(port,
@@ -370,6 +375,8 @@ void sh_css_rx_configure(
 	bool	port_enabled[N_MIPI_PORT_ID];
 	bool	any_port_enabled = false;
 	mipi_port_ID_t	port;
+
+	assert(config != NULL);
 
 	for (port = (mipi_port_ID_t)0; port < N_MIPI_PORT_ID; port++) {
 		if (is_receiver_port_enabled(RX0_ID, port))
@@ -494,4 +501,3 @@ void sh_css_rx_disable(void)
 	}
 return;
 }
-
