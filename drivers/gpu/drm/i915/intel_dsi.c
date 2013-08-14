@@ -215,17 +215,19 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 			DRM_DEBUG_KMS("DPI FIFO not empty\n");
 	}
 
-	I915_WRITE(MIPI_DPI_CONTROL(pipe), SHUTDOWN);
+	if (i915_mipi_panel_id != MIPI_DSI_AUO_B080XAT_PANEL_ID) {
+		I915_WRITE(MIPI_DPI_CONTROL(pipe), SHUTDOWN);
 
-	/* Wait for special packet sent interrupt */
-	if (wait_for(I915_READ(MIPI_INTR_STAT(pipe)) &
-				SPL_PKT_SENT_INTERRUPT, 50))
-		DRM_DEBUG_KMS("Special packet not sent!\n");
-	else {
-		intr_stat = I915_READ(MIPI_INTR_STAT(pipe));
-		if (intr_stat & SPL_PKT_SENT_INTERRUPT)
-			I915_WRITE(MIPI_INTR_STAT(pipe),
-					SPL_PKT_SENT_INTERRUPT);
+		/* Wait for special packet sent interrupt */
+		if (wait_for(I915_READ(MIPI_INTR_STAT(pipe)) &
+					SPL_PKT_SENT_INTERRUPT, 50))
+			DRM_DEBUG_KMS("Special packet not sent!\n");
+		else {
+			intr_stat = I915_READ(MIPI_INTR_STAT(pipe));
+			if (intr_stat & SPL_PKT_SENT_INTERRUPT)
+				I915_WRITE(MIPI_INTR_STAT(pipe),
+						SPL_PKT_SENT_INTERRUPT);
+		}
 	}
 
 	I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
