@@ -70,10 +70,7 @@ void ia_css_i_host_refcount_retain_vbuf(
 {
 	int i;
 	struct ia_css_i_host_rmgr_vbuf_handle *h;
-
-	assert(handle != NULL);
-	assert(*handle != NULL);
-
+	assert_exit(handle && *handle);
 	/* new vbuf to count on */
 	if ((*handle)->count == 0) {
 		h = *handle;
@@ -84,7 +81,7 @@ void ia_css_i_host_refcount_retain_vbuf(
 				break;
 			}
 		}
-		assert(*handle != NULL);
+		assert_exit(*handle);
 		(*handle)->vptr = h->vptr;
 		(*handle)->size = h->size;
 	}
@@ -95,9 +92,8 @@ void ia_css_i_host_refcount_retain_vbuf(
 void ia_css_i_host_refcount_release_vbuf(
 		struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
-	assert(handle != NULL);
-	assert(*handle != NULL);
-	assert((*handle)->count != 0);
+	assert_exit(handle && *handle);
+	assert_exit((*handle)->count != 0);
 
 	/* decrease reference count */
 	(*handle)->count--;
@@ -113,11 +109,7 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 {
 	size_t bytes_needed;
 	ia_css_i_host_refcount_init_vbuf();
-
-	assert(pool != NULL);
-
-	if (pool == NULL)
-		return;
+	assert_exit(pool);
 	/* initialize the recycle pool if used */
 	if (pool->recycle && pool->size) {
 		/* allocate memory for storing the handles */
@@ -125,7 +117,8 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 			sizeof(struct ia_css_i_host_rmgr_vbuf_handle *) *
 			pool->size;
 		pool->handles = sh_css_malloc(bytes_needed);
-		memset(pool->handles, 0, bytes_needed);
+		if (pool->handles)
+			memset(pool->handles, 0, bytes_needed);
 	}
 	else {
 		/* just in case, set the size to 0 */
@@ -138,7 +131,7 @@ void ia_css_i_host_rmgr_uninit_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 {
 	uint32_t i;
 
-	assert(pool != NULL);
+	assert_exit(pool );
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_i_host_rmgr_uninit_vbuf()\n");
@@ -170,12 +163,7 @@ void ia_css_i_host_rmgr_push_handle(
 {
 	uint32_t i;
 	bool succes = false;
-
-	assert(pool != NULL);
-	assert(pool->recycle);
-	assert(pool->handles != NULL);
-	assert(handle != NULL);
-
+	assert_exit(pool && pool->recycle && pool->handles && handle);
 	for (i = 0; i < pool->size; i++) {
 		if (pool->handles[i] == NULL) {
 			ia_css_i_host_refcount_retain_vbuf(handle);
@@ -184,7 +172,7 @@ void ia_css_i_host_rmgr_push_handle(
 			break;
 		}
 	}
-	assert(succes);
+	assert_exit(succes);
 }
 
 static
@@ -194,13 +182,7 @@ void ia_css_i_host_rmgr_pop_handle(
 {
 	uint32_t i;
 	bool succes = false;
-
-	assert(pool != NULL);
-	assert(pool->recycle);
-	assert(pool->handles != NULL);
-	assert(handle != NULL);
-	assert(*handle != NULL);
-
+	assert_exit(pool && pool->recycle && pool->handles && handle);
 	for (i = 0; i < pool->size; i++) {
 		if (pool->handles[i] != NULL && pool->handles[i]->size == (*handle)->size) {
 			*handle = pool->handles[i];
@@ -217,12 +199,8 @@ void ia_css_i_host_rmgr_acq_vbuf(
 	struct ia_css_i_host_rmgr_vbuf_pool *pool,
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
-	struct ia_css_i_host_rmgr_vbuf_handle h;
-
-	assert(pool != NULL);
-	assert(handle != NULL);
-	assert(*handle != NULL);
-
+	uint32_t size;
+	assert_exit(pool && handle && *handle);
 	if (pool->copy_on_write) {
 		/* only one reference, reuse (no new retain) */
 		if ((*handle)->count == 1)
@@ -230,11 +208,14 @@ void ia_css_i_host_rmgr_acq_vbuf(
 		/* more than one reference, release current buffer */
 		if ((*handle)->count > 1) {
 			/* store current values */
-			h.vptr = 0x0;
-			h.size = (*handle)->size;
+			size = (*handle)->size;
 			/* release ref to current buffer */
 			ia_css_i_host_refcount_release_vbuf(handle);
-			*handle = &h;
+			if (!(*handle))
+				return;
+			(*handle)->vptr = 0;
+			(*handle)->size = size;
+			(*handle)->count = 0;
 		}
 		/* get new buffer for needed size */
 		if ((*handle)->vptr == 0x0) {
@@ -260,10 +241,7 @@ void ia_css_i_host_rmgr_rel_vbuf(
 	struct ia_css_i_host_rmgr_vbuf_pool *pool,
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
-	assert(pool != NULL);
-	assert(handle != NULL);
-	assert(*handle != NULL);
-
+	assert_exit(pool && handle && *handle);
 	/* release the handle */
 	if ((*handle)->count == 1) {
 		if (!pool->recycle) {

@@ -29,8 +29,7 @@ void gp_device_get_state(
 	const gp_device_ID_t		ID,
 	gp_device_state_t			*state)
 {
-	assert(ID < N_GP_DEVICE_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_GP_DEVICE_ID && state);
 
 	state->syncgen_enable = gp_device_reg_load(ID,
 		_REG_GP_SYNCGEN_ENABLE_ADDR);

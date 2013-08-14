@@ -22,7 +22,11 @@
 #ifndef __HMEM_GLOBAL_H_INCLUDED__
 #define __HMEM_GLOBAL_H_INCLUDED__
 
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
+#endif
 
 #define IS_HMEM_VERSION_1
 

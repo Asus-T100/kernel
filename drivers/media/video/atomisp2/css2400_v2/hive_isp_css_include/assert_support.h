@@ -49,7 +49,7 @@
 //#endif
 
 #elif defined(__KERNEL__) /* a.o. Android builds */
-
+#include <linux/bug.h>
 #include "sh_css_debug.h"
 #define __symbol2value( x ) #x
 #define __symbol2string( x ) __symbol2value( x )
@@ -78,7 +78,19 @@
 #else /* default is for unknown environments */
 #define assert(cnd) ((void)0)
 #endif
+#define assert_exit(exp)						\
+	do {								\
+		assert(exp);						\
+		if (!(exp))						\
+			return;						\
+	} while (0)
 
+#define assert_exit_code(exp, code)					\
+	do {								\
+		assert(exp);						\
+		if (!(exp))						\
+			return code;					\
+	} while (0)
 #endif /* NDEBUG */
 
 #endif /* __ASSERT_SUPPORT_H_INCLUDED__ */

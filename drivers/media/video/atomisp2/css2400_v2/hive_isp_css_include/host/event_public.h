@@ -22,7 +22,10 @@
 #ifndef __EVENT_PUBLIC_H_INCLUDED__
 #define __EVENT_PUBLIC_H_INCLUDED__
 
+#ifndef __KERNEL__
 #include <stdbool.h>
+#endif
+
 #include "system_types.h"
 
 /*! Blocking read from an event source EVENT[ID]

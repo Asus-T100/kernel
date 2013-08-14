@@ -46,8 +46,11 @@
  *
  * N.B. the 3 input formatters are of 2 different classess
  */
-
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
+#endif
 
 #define IS_ISP_2400_SYSTEM
 /*

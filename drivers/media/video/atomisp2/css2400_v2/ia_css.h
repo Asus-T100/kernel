@@ -27,6 +27,7 @@
 /* Move to "platform_support.h" */
 #ifdef __KERNEL__
 #include <linux/kernel.h>
+#include <linux/types.h>
 #else
 #include <stdbool.h>
 #include <stdint.h>
