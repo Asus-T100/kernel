@@ -210,6 +210,7 @@ struct t9_range {
 #define DEBUG_MSG_MAX		200
 
 #define MSLEEP(ms)	usleep_range(ms*1000, ms*1000)
+#define MXT_FRAME_TRY		10
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void mxt_early_suspend(struct early_suspend *es);
@@ -341,6 +342,14 @@ struct mxt_platform_data mxt_pdata[] = {
 	{
 		.irqflags = IRQF_TRIGGER_LOW | IRQF_TRIGGER_FALLING,
 		.cfg_name = MXT_CFG_NAME,
+		.info = {
+			.family_id = 160,
+			.variant_id = 10,
+			.version = 0x20,
+			.build = 0xAB,
+			.info_crc = 0xB86FA4,
+			.config_crc = 0xBBD300,
+		},
 		.hardware_id = MXT_3432S_ID,
 	},
 };
@@ -2521,7 +2530,7 @@ static void mxt_check_firmware(struct mxt_data *data)
 		error = mxt_load_fw(&client->dev);
 		if (!error) {
 			dev_info(&client->dev, "Firmware update succeeded\n");
-			MSLEEP(MXT_FW_RESET_TIME);
+			msleep(MXT_FW_RESET_TIME);
 		}
 	}
 }
@@ -2729,6 +2738,7 @@ static int mxt_load_fw(struct device *dev)
 	unsigned int pos = 0;
 	unsigned int retry = 0;
 	unsigned int frame = 0;
+	unsigned int frame_try = 0;
 	int ret;
 
 	ret = request_firmware(&fw, data->fw_name, dev);
@@ -2798,7 +2808,18 @@ static int mxt_load_fw(struct device *dev)
 		frame_size += 2;
 
 		/* Write one frame to device */
-		ret = mxt_bootloader_write(data, fw->data + pos, frame_size);
+		for (frame_try = 1; frame_try < MXT_FRAME_TRY; frame_try++) {
+			ret = mxt_bootloader_write(data,
+					fw->data + pos, frame_size);
+			if (ret) {
+				dev_warn(dev, "%s: frame failed: %d, size: %d, time: %d\n",
+						__func__, frame,
+						frame_size, frame_try);
+				msleep(frame_try * 40);
+				continue;
+			}
+			break;
+		}
 		if (ret)
 			goto disable_irq;
 
@@ -2895,7 +2916,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 		data->suspended = false;
 
 		/* Wait for reset */
-		MSLEEP(MXT_FW_RESET_TIME);
+		msleep(MXT_FW_RESET_TIME);
 		mxt_free_object_table(data);
 
 		error = mxt_initialize(data);
