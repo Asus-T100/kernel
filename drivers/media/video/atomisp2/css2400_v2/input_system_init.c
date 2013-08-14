@@ -23,11 +23,7 @@
 
 #ifdef HAS_INPUT_SYSTEM_VERSION_2
 #include "input_system_init.h"
-#ifdef __KERNEL__
-#include <linux/string.h>
-#else
 #include <string.h>
-#endif
 
 input_system_error_t ia_css_input_system_init(void)
 {

@@ -31,9 +31,7 @@
 #ifndef __SW_EVENT_PUBLIC_H_INCLUDED__
 #define __SW_EVENT_PUBLIC_H_INCLUDED__
 
-#ifndef __KERNEL__
 #include <stdbool.h>
-#endif
 #include "system_types.h"
 
 /**

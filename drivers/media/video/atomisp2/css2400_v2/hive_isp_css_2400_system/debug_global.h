@@ -22,11 +22,7 @@
 #ifndef __DEBUG_GLOBAL_H_INCLUDED__
 #define __DEBUG_GLOBAL_H_INCLUDED__
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
-#include <stdint.h>
-#endif
+#include "stdint.h"
 
 #define DEBUG_BUF_SIZE	1024
 #define DEBUG_BUF_MASK	(DEBUG_BUF_SIZE - 1)

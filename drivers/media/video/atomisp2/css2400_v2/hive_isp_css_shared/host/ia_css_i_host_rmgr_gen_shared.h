@@ -22,11 +22,7 @@
 #ifndef __IA_CSS_I_RMGR_GEN_HOST_SHARED_H_INCLUDED__
 #define __IA_CSS_I_RMGR_GEN_HOST_SHARED_H_INCLUDED__
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 #include <ia_css.h>
 #include <sh_css_debug.h>
 

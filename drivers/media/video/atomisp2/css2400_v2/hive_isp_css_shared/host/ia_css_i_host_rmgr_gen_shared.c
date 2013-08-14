@@ -20,9 +20,8 @@
  */
 
 #include "ia_css_i_host_rmgr_gen_shared.h"
-#ifndef __KERNEL__
+
 #include <stdbool.h>
-#endif
 #include <assert_support.h>
 #include <ia_css.h>
 
@@ -60,6 +59,7 @@ size: the new resource pool size
 enum ia_css_err ia_css_i_host_rmgr_init_gen(ia_css_resource_type_t resource_type)
 {
 	enum ia_css_err rval = IA_CSS_ERR_INTERNAL_ERROR;
+
 	assert((resource_type > IA_CSS_RESOURCE_START) && (resource_type < IA_CSS_RESOURCE_END));
 
 	switch (resource_type)
@@ -89,7 +89,9 @@ enum ia_css_err ia_css_i_host_rmgr_init_gen(ia_css_resource_type_t resource_type
 enum ia_css_err ia_css_i_host_rmgr_setup_gen(ia_css_resource_type_t resource_type, uint32_t size)
 {
 	enum ia_css_err rval = IA_CSS_ERR_INTERNAL_ERROR; 
-	assert((resource_type > IA_CSS_RESOURCE_START) && (resource_type <	IA_CSS_RESOURCE_END));
+
+	assert((resource_type > IA_CSS_RESOURCE_START) && (resource_type < IA_CSS_RESOURCE_END));
+
 	switch (resource_type)
 	{
 	case IA_CSS_RESOURCE_SP_THREAD:
@@ -117,7 +119,8 @@ enum ia_css_err ia_css_i_host_rmgr_acq_gen(ia_css_resource_type_t resource_type,
 {
 	enum ia_css_err rval = IA_CSS_ERR_INTERNAL_ERROR; 
 
-	assert((resource_type > IA_CSS_RESOURCE_START) && (resource_type <	IA_CSS_RESOURCE_END));
+	assert((resource_type > IA_CSS_RESOURCE_START) && (resource_type < IA_CSS_RESOURCE_END));
+
 	switch (resource_type)
 	{
 		case IA_CSS_RESOURCE_SP_THREAD:
@@ -144,6 +147,7 @@ enum ia_css_err ia_css_i_host_rmgr_acq_gen(ia_css_resource_type_t resource_type,
 enum ia_css_err ia_css_i_host_rmgr_rel_gen(ia_css_resource_type_t resource_type, uint32_t resource_id)
 {
 	assert((resource_type > IA_CSS_RESOURCE_START) && (resource_type < IA_CSS_RESOURCE_END));
+
 	switch (resource_type)
 	{
 		case IA_CSS_RESOURCE_SP_THREAD:
@@ -179,6 +183,9 @@ set_resource_pool_size(ia_css_resource_list_t* pool, uint32_t size)
 {
 	enum ia_css_err rval = IA_CSS_SUCCESS; 
 	uint32_t i = 0;
+
+	assert(pool != NULL);
+
 	if (size > IA_CSS_RESOURCE_LIST_MAX_AMOUNT) 
 		return IA_CSS_ERR_RESOURCE_LIST_TO_SMALL; 
 
@@ -201,7 +208,7 @@ set_resource_pool_size(ia_css_resource_list_t* pool, uint32_t size)
 		}
 	}
 	pool->size = size;
-return rval;
+	return rval;
 }
 
 
@@ -213,6 +220,10 @@ acquire_resource(ia_css_resource_list_t* pool, uint32_t* resource_id)
 	enum ia_css_err rval = IA_CSS_ERR_RESOURCE_EXHAUSTED;
 	bool free_place_found = false;
 	uint16_t i = 0;
+
+	assert(resource_id != NULL);
+	assert(pool != NULL);
+
 	/* loop trough list */
 	for (;( i < pool->size); i++)
 	{
@@ -234,6 +245,9 @@ static enum ia_css_err release_resource(ia_css_resource_list_t* pool, uint32_t r
 	enum ia_css_err rval = IA_CSS_ERR_RESOURCE_NOT_AVAILABLE;
 	bool resource_found = false;
 	uint16_t i = 0;
+
+	assert(pool != NULL);
+
 	/* loop trough list */
 	for (;( i <= pool->size) || (resource_found == false); i++)
 	{
@@ -251,10 +265,8 @@ static enum ia_css_err release_resource(ia_css_resource_list_t* pool, uint32_t r
 		rval = IA_CSS_SUCCESS;
 		}
 	}
-return rval;
+	return rval;
 }
-
-
 
 
 #ifdef TEST_RM
@@ -319,9 +331,9 @@ void test_resource_manager(void)
 	rval = ia_css_i_host_rmgr_setup_gen(IA_CSS_RESOURCE_SP_THREAD, 10);
 	assert(rval ==IA_CSS_SUCCESS);
 	rval = ia_css_i_host_rmgr_setup_gen(IA_CSS_RESOURCE_HOST2SP_QUEUE, 1111);
-	assert(rval!= IA_CSS_SUCCESS); 
+	assert(rval!= IA_CSS_SUCCESS);
 	rval = ia_css_i_host_rmgr_setup_gen(IA_CSS_RESOURCE_HOST2SP_QUEUE, 1);
-	assert(rval == IA_CSS_SUCCESS); 
+	assert(rval == IA_CSS_SUCCESS);
 
 	check_aquire(IA_CSS_RESOURCE_SP_THREAD, &resource_id_thread, 0, 0);
 	check_aquire(IA_CSS_RESOURCE_SP_THREAD, &resource_id_thread, 1, 0);

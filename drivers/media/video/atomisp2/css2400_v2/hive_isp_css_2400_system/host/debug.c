@@ -19,7 +19,6 @@
  *
  */
 
-
 #include "debug.h"
 
 #ifndef __INLINE_DEBUG__
@@ -77,7 +76,7 @@ return;
 void debug_buffer_setmode(
 	const debug_buf_mode_t	mode)
 {
-assert(debug_buffer_address != ((hrt_address)-1));
+	assert(debug_buffer_address != ((hrt_address)-1));
 
 	sp_dmem_store_uint32(SP0_ID,
 		debug_buffer_address + DEBUG_DATA_BUF_MODE_ADDR, mode);

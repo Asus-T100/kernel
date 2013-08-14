@@ -22,11 +22,7 @@
 #ifndef __VAMEM_GLOBAL_H_INCLUDED__
 #define __VAMEM_GLOBAL_H_INCLUDED__
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 #define IS_VAMEM_VERSION_2
 

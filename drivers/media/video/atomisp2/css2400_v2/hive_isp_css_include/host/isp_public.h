@@ -22,14 +22,9 @@
 #ifndef __ISP_PUBLIC_H_INCLUDED__
 #define __ISP_PUBLIC_H_INCLUDED__
 
-
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
-#include <stdint.h>
-#include "stddef.h"			/* size_t */
+#include <stddef.h>			/* size_t */
 #include <stdbool.h>		/* bool */
-#endif
+#include <stdint.h>			/* uint32_t */
 
 #include "system_types.h"
 

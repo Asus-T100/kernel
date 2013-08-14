@@ -25,9 +25,11 @@
 #include "isp_private.h"
 #endif /* __INLINE_ISP__ */
 
+#include "assert_support.h"
+
 void cnd_isp_irq_enable(
 	const isp_ID_t		ID,
-	const bool			cnd)
+	const bool		cnd)
 {
 	if (cnd) {
 		isp_ctrl_setbit(ID, ISP_IRQ_READY_REG, ISP_IRQ_READY_BIT);
@@ -42,10 +44,14 @@ return;
 
 void isp_get_state(
 	const isp_ID_t		ID,
-    isp_state_t			*state,
+	isp_state_t			*state,
 	isp_stall_t			*stall)
 {
 	hrt_data sc = isp_ctrl_load(ID, ISP_SC_REG);
+
+	assert(state != NULL);
+	assert(stall != NULL);
+
 	state->pc = isp_ctrl_load(ID, ISP_PC_REG);
 	state->status_register = sc;
 	state->is_broken = isp_ctrl_getbit(ID, ISP_SC_REG, ISP_BROKEN_BIT);

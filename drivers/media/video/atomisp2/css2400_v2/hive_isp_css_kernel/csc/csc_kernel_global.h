@@ -22,11 +22,7 @@
 #ifndef __CSC_KERNEL_GLOBAL_H_INCLUDED__
 #define __CSC_KERNEL_GLOBAL_H_INCLUDED__
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <stdint.h>
-#endif
 
 /* Can we pass a pointer (that can be resolved to a constant) without ill effects */
 //typedef const struct csc_kernel_param_s	*csc_kernel_param_h;

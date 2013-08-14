@@ -44,7 +44,8 @@ sh_css_binary_grid_info(const struct sh_css_binary *binary,
 	struct ia_css_3a_grid_info *s3a_info;
 	struct ia_css_dvs_grid_info *dvs_info;
 
-	assert_exit(binary && info);
+	assert(binary != NULL);
+	assert(info != NULL);
 	s3a_info = &info->s3a_grid;
 	dvs_info = &info->dvs_grid;
 
@@ -92,7 +93,7 @@ sh_css_binary_grid_info(const struct sh_css_binary *binary,
 static void
 init_pc_histogram(struct sh_css_pc_histogram *histo)
 {
-	assert_exit(histo);
+	assert(histo != NULL);
 
 	histo->length = 0;
 	histo->run = NULL;
@@ -103,7 +104,8 @@ static void
 init_metrics(struct sh_css_binary_metrics *metrics,
 	     const struct ia_css_binary_info *info)
 {
-	assert_exit(metrics && info);
+	assert(metrics != NULL);
+	assert(info != NULL);
 
 	metrics->mode = info->mode;
 	metrics->id   = info->id;
@@ -118,7 +120,7 @@ supports_output_format(const struct ia_css_binary_info *info,
 {
 	int i;
 
-	assert_exit_code(info, false);
+	assert(info != NULL);
 
 	for (i = 0; i < info->num_output_formats; i++) {
 		if (info->output_formats[i] == format)
@@ -134,7 +136,8 @@ init_binary_info(struct ia_css_binary_info *info, unsigned int i,
 	const unsigned char *blob = sh_css_blob_info[i].blob;
 	unsigned size = sh_css_blob_info[i].header.blob.size;
 
-	assert_exit_code(info && binary_found, IA_CSS_ERR_INTERNAL_ERROR);
+	assert(info != NULL);
+	assert(binary_found != NULL);
 
 	*info = sh_css_blob_info[i].header.info.isp;
 	*binary_found = blob != NULL;
@@ -160,6 +163,8 @@ sh_css_init_binary_infos(void)
 
 	all_binaries = sh_css_malloc(num_of_isp_binaries *
 						sizeof(*all_binaries));
+	if (all_binaries == NULL)
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 
 	for (i = 0; i < num_of_isp_binaries; i++) {
 		enum ia_css_err ret;
@@ -244,16 +249,15 @@ sh_css_fill_binary_info(const struct ia_css_binary_info *info,
 		     isp_output_width = 0,
 		     isp_output_height = 0,
 		     s3a_isp_width;
-	unsigned char enable_ds;
-	bool enable_yuv_ds;
+	unsigned char enable_ds = info->enable.ds;
+	bool enable_yuv_ds = enable_ds & 2;
 	bool enable_hus = false;
 	bool enable_vus = false;
 	bool is_out_format_rgba888 = false;
 	unsigned int tmp_width, tmp_height;
 
-	assert_exit_code(info && binary, IA_CSS_ERR_INTERNAL_ERROR);
-	enable_ds = info->enable.ds;
-	enable_yuv_ds = enable_ds & 2;
+	assert(info != NULL);
+	assert(binary != NULL);
 
 	if (in_info != NULL) {
 		bits_per_pixel = in_info->raw_bit_depth;
@@ -269,9 +273,9 @@ sh_css_fill_binary_info(const struct ia_css_binary_info *info,
 			out_info->format == IA_CSS_FRAME_FORMAT_RGBA888;
 	}
 	if (info->enable.dvs_envelope) {
-		assert_exit_code(dvs_env, IA_CSS_ERR_INTERNAL_ERROR);
-		dvs_env_width  = max(dvs_env->width, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
-		dvs_env_height = max(dvs_env->height, (unsigned int)SH_CSS_MIN_DVS_ENVELOPE);
+		assert(dvs_env != NULL);
+		dvs_env_width  = max(dvs_env->width, SH_CSS_MIN_DVS_ENVELOPE);
+		dvs_env_height = max(dvs_env->height, SH_CSS_MIN_DVS_ENVELOPE);
 	}
 	binary->dvs_envelope.width  = dvs_env_width;
 	binary->dvs_envelope.height = dvs_env_height;
@@ -376,9 +380,6 @@ sh_css_fill_binary_info(const struct ia_css_binary_info *info,
 		 * active instead of vfout port
 		 */
 		if (info->enable.raw_binning && continuous) {
-			if (in_info == NULL)
-				return IA_CSS_ERR_INTERNAL_ERROR;
-
 			binary->out_frame_info.res.width =
 				(in_info->res.width >> vf_log_ds);
 			binary->out_frame_info.padded_width = vf_out_width;
@@ -553,41 +554,71 @@ enum ia_css_err
 sh_css_binary_find(struct sh_css_binary_descr *descr,
 		   struct sh_css_binary *binary)
 {
-	int mode = descr->mode;
-	bool online = descr->online;
-	bool two_ppc = descr->two_ppc;
-	enum ia_css_stream_format stream_format = descr->stream_format;
-	const struct ia_css_frame_info *req_in_info = descr->in_info,
-				       *req_out_info = descr->out_info,
-				       *req_vf_info = descr->vf_info;
+	int mode;
+	bool online;
+	bool two_ppc;
+	enum ia_css_stream_format stream_format;
+	const struct ia_css_frame_info *req_in_info,
+				       *req_out_info,
+				       *req_vf_info;
 
-	struct ia_css_frame_info *cc_in_info
-				= sh_css_malloc(sizeof(*req_in_info));
-	struct ia_css_frame_info *cc_out_info
-				= sh_css_malloc(sizeof(*req_out_info));
-	struct ia_css_frame_info *cc_vf_info
-				= sh_css_malloc(sizeof(*req_vf_info));
+	struct ia_css_frame_info *cc_in_info;
+	struct ia_css_frame_info *cc_out_info;
+	struct ia_css_frame_info *cc_vf_info;
 
 	struct ia_css_binary_info *candidate;
-	bool need_ds = false,
-	     need_dz = false,
-	     need_dvs = false,
-	     need_outputdeci = false;
-	bool enable_yuv_ds = descr->enable_yuv_ds;
-	bool enable_high_speed = descr->enable_high_speed;
-	bool enable_dvs_6axis  = descr->enable_dvs_6axis;
-	bool enable_reduced_pipe = descr->enable_reduced_pipe;
+	bool need_ds, need_dz, need_dvs, need_outputdeci;
+	bool enable_yuv_ds;
+	bool enable_high_speed;
+	bool enable_dvs_6axis;
+	bool enable_reduced_pipe;
 	enum ia_css_err err = IA_CSS_ERR_INTERNAL_ERROR;
-	bool continuous = descr->continuous;
-	unsigned int isp_pipe_version = descr->isp_pipe_version;
+	bool continuous;
+	unsigned int isp_pipe_version;
 	struct ia_css_resolution dvs_env;
+
+	assert(descr != NULL);
+/* MW: used after an error check, may accept NULL, but doubtfull */
+	assert(binary != NULL);
+
+	mode = descr->mode;
+	online = descr->online;
+	two_ppc = descr->two_ppc;
+	stream_format = descr->stream_format;
+	req_in_info = descr->in_info;
+	req_out_info = descr->out_info;
+	req_vf_info = descr->vf_info;
+
+	cc_in_info = sh_css_malloc(sizeof(*req_in_info));
+	if (cc_in_info == NULL)
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	cc_out_info = sh_css_malloc(sizeof(*req_out_info));
+	if (cc_out_info == NULL)
+	{
+		sh_css_free(cc_in_info);
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	}
+	cc_vf_info = sh_css_malloc(sizeof(*req_vf_info));
+	if (cc_vf_info == NULL)
+	{
+		sh_css_free(cc_in_info);
+		sh_css_free(cc_out_info);
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	}
+
+	need_ds = false;
+	need_dz = false;
+	need_dvs = false;
+	need_outputdeci = false;
+	enable_yuv_ds = descr->enable_yuv_ds;
+	enable_high_speed = descr->enable_high_speed;
+	enable_dvs_6axis  = descr->enable_dvs_6axis;
+	enable_reduced_pipe = descr->enable_reduced_pipe;
+	continuous = descr->continuous;
+	isp_pipe_version = descr->isp_pipe_version;
 
 	dvs_env.width = 0;
 	dvs_env.height = 0;
-
-	assert_exit_code(descr, IA_CSS_ERR_INTERNAL_ERROR);
-/* MW: used after an error check, may accept NULL, but doubtfull */
-	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() enter: "
@@ -834,7 +865,7 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		break;
 	}
 /* MW: In case we haven't found a binary and hence the binary_info is uninitialised */
-	assert_exit_code(candidate, IA_CSS_ERR_INTERNAL_ERROR);
+	assert(candidate != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() selected = %p, mode = %d ID = %d\n",candidate, candidate->mode, candidate->id);

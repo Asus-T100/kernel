@@ -22,9 +22,7 @@
 #ifndef __DEBUG_PUBLIC_H_INCLUDED__
 #define __DEBUG_PUBLIC_H_INCLUDED__
 
-#ifndef __KERNEL__
 #include "stdbool.h"
-#endif
 
 #include "system_types.h"
 

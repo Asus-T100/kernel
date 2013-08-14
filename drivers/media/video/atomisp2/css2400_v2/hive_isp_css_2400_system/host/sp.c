@@ -25,9 +25,11 @@
 #include "sp_private.h"
 #endif /* __INLINE_SP__ */
 
+#include "assert_support.h"
+
 void cnd_sp_irq_enable(
 	const sp_ID_t		ID,
-	const bool			cnd)
+	const bool		cnd)
 {
 	if (cnd) {
 		sp_ctrl_setbit(ID, SP_IRQ_READY_REG, SP_IRQ_READY_BIT);
@@ -45,6 +47,10 @@ void sp_get_state(
 	sp_stall_t				*stall)
 {
 	hrt_data sc = sp_ctrl_load(ID, SP_SC_REG);
+
+	assert(state != NULL);
+	assert(stall != NULL);
+
 	state->pc = sp_ctrl_load(ID, SP_PC_REG);
 	state->status_register = sc;
 	state->is_broken   = (sc & (1U << SP_BROKEN_BIT)) != 0;

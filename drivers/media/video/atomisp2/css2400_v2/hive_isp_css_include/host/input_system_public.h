@@ -22,9 +22,7 @@
 #ifndef __INPUT_SYSTEM_PUBLIC_H_INCLUDED__
 #define __INPUT_SYSTEM_PUBLIC_H_INCLUDED__
 
-#ifndef __KERNEL__
 #include "stdbool.h"
-#endif
 
 typedef struct input_system_state_s		input_system_state_t;
 typedef struct receiver_state_s			receiver_state_t;

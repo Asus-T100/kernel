@@ -19,14 +19,12 @@
  *
  */
 
+#include "assert_support.h"
 #include "ia_css.h"
 #include "sh_css_param_dvs.h"
 #include "sh_css_debug.h"
-#ifdef __KERNEL__
-#include <linux/string.h>		/* memcpy() */
-#else
+
 #include <string.h>		/* memcpy() */
-#endif
 
 
 struct ia_css_dvs_6axis_config *
@@ -40,6 +38,9 @@ generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct
 	unsigned int height_uv;
 	enum ia_css_err err = IA_CSS_SUCCESS;	
 	struct ia_css_dvs_6axis_config  *dvs_config = NULL;
+
+	assert(frame_res != NULL);
+	assert(dvs_offset != NULL);
 	
 	dvs_config = (struct ia_css_dvs_6axis_config *)sh_css_malloc(sizeof(struct ia_css_dvs_6axis_config));
 	if(dvs_config == NULL)
@@ -174,6 +175,9 @@ generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct
 void
 free_dvs_6axis_table(struct ia_css_dvs_6axis_config  **dvs_6axis_config)
 {
+	assert(dvs_6axis_config != NULL);
+	assert(*dvs_6axis_config != NULL);
+
 	if( (dvs_6axis_config != NULL) && (*dvs_6axis_config != NULL) ) 
 	{
 		sh_css_dtrace(SH_DBG_TRACE, "-> free_dvs_6axis_table dvs_6axis_config %p\n",(*dvs_6axis_config));
@@ -205,15 +209,24 @@ free_dvs_6axis_table(struct ia_css_dvs_6axis_config  **dvs_6axis_config)
 		sh_css_free(*dvs_6axis_config);
 		*dvs_6axis_config = NULL;
 	}
+	sh_css_dtrace(SH_DBG_TRACE, "<- free_dvs_6axis_table dvs_6axis_config %p\n",(*dvs_6axis_config));
 }
 
 void copy_dvs_6axis_table(struct ia_css_dvs_6axis_config *dvs_config_dst,
 			const struct ia_css_dvs_6axis_config *dvs_config_src)
 {	
-	unsigned int width_y = dvs_config_src->width_y;
-	unsigned int height_y =  dvs_config_src->height_y;
-	unsigned int width_uv = dvs_config_src->width_uv; /* = Y/2, depens on colour format YUV 4.2.0*/
-	unsigned int height_uv = dvs_config_src->height_uv;   
+	unsigned int width_y;
+	unsigned int height_y;
+	unsigned int width_uv;
+	unsigned int height_uv;
+
+	assert(dvs_config_dst != NULL);
+	assert(dvs_config_src!= NULL);
+
+	width_y = dvs_config_src->width_y;
+	height_y =  dvs_config_src->height_y;
+	width_uv = dvs_config_src->width_uv; /* = Y/2, depens on colour format YUV 4.2.0*/
+	height_uv = dvs_config_src->height_uv;
 		
 	memcpy(dvs_config_dst->xcoords_y,dvs_config_src->xcoords_y, (width_y * height_y * sizeof(uint32_t)));
 	memcpy(dvs_config_dst->ycoords_y,dvs_config_src->ycoords_y, (width_y * height_y * sizeof(uint32_t)));
@@ -222,4 +235,3 @@ void copy_dvs_6axis_table(struct ia_css_dvs_6axis_config *dvs_config_dst,
 	memcpy(dvs_config_dst->ycoords_uv,dvs_config_src->ycoords_uv, (width_uv * height_uv * sizeof(uint32_t)));
 
 }
-

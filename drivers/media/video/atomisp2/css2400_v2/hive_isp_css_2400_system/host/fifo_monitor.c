@@ -19,11 +19,10 @@
  *
  */
 
-
 #include "fifo_monitor.h"
-#ifndef __KERNEL__
+
 #include <stdbool.h>
-#endif
+
 #include "device_access.h"
 
 #include <hrt/bits.h>
@@ -63,7 +62,8 @@ void fifo_channel_get_state(
 	const fifo_channel_t		channel_id,
 	fifo_channel_state_t		*state)
 {
-	assert_exit(state && channel_id < N_FIFO_CHANNEL);
+	assert(channel_id < N_FIFO_CHANNEL);
+	assert(state != NULL);
 
 	switch (channel_id) {
 	case FIFO_CHANNEL_ISP0_TO_SP0:
@@ -503,11 +503,11 @@ void fifo_channel_get_state(
 			SP_STR_MON_PORT_ISYS2SP);
 		break;
 	default:
-assert(0);
+		assert(0);
 		break;
 	}
 
-return;
+	return;
 }
 
 void fifo_switch_get_state(
@@ -517,11 +517,11 @@ void fifo_switch_get_state(
 {
 	hrt_data		data = (hrt_data)-1;
 
-	assert_exit(state);
-	assert(switch_id < N_FIFO_SWITCH);
 	assert(ID == FIFO_MONITOR0_ID);
+	assert(switch_id < N_FIFO_SWITCH);
+	assert(state != NULL);
 
-(void)ID;
+	(void)ID;
 
 	data = gp_device_reg_load(GP_DEVICE0_ID, FIFO_SWITCH_ADDR[switch_id]);
 
@@ -529,7 +529,7 @@ void fifo_switch_get_state(
 	state->is_sp = (data == HIVE_ISP_CSS_STREAM_SWITCH_SP);
 	state->is_isp = (data == HIVE_ISP_CSS_STREAM_SWITCH_ISP);
 
-return;
+	return;
 }
 
 void fifo_monitor_get_state(
@@ -539,8 +539,8 @@ void fifo_monitor_get_state(
 	fifo_channel_t	ch_id;
 	fifo_switch_t	sw_id;
 
-	assert_exit(state);
 	assert(ID < N_FIFO_MONITOR_ID);
+	assert(state != NULL);
 
 	for (ch_id = 0; ch_id < N_FIFO_CHANNEL; ch_id++) {
 		fifo_channel_get_state(ID, ch_id,
@@ -551,7 +551,7 @@ void fifo_monitor_get_state(
 		fifo_switch_get_state(ID, sw_id,
 			&(state->fifo_switches[sw_id]));
 	}
-return;
+	return;
 }
 
 STORAGE_CLASS_INLINE bool fifo_monitor_status_valid (
@@ -559,8 +559,9 @@ STORAGE_CLASS_INLINE bool fifo_monitor_status_valid (
 	const unsigned int			reg,
 	const unsigned int			port_id)
 {
-hrt_data	data = fifo_monitor_reg_load(ID, reg);
-return (data >> (((port_id * 2) + _hive_str_mon_valid_offset))) & 0x1;
+	hrt_data	data = fifo_monitor_reg_load(ID, reg);
+
+	return (data >> (((port_id * 2) + _hive_str_mon_valid_offset))) & 0x1;
 }
 
 STORAGE_CLASS_INLINE bool fifo_monitor_status_accept(
@@ -568,6 +569,7 @@ STORAGE_CLASS_INLINE bool fifo_monitor_status_accept(
 	const unsigned int			reg,
 	const unsigned int			port_id)
 {
-hrt_data	data = fifo_monitor_reg_load(ID, reg);
-return (data >> (((port_id * 2) + _hive_str_mon_accept_offset))) & 0x1;
+	hrt_data	data = fifo_monitor_reg_load(ID, reg);
+
+	return (data >> (((port_id * 2) + _hive_str_mon_accept_offset))) & 0x1;
 }
