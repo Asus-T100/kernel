@@ -30,6 +30,7 @@
 #include "intel_drv.h"
 #include "i915_drm.h"
 #include "i915_drv.h"
+#include "intel_clrmgr.h"
 
 /* Gamma lookup table for Sprite planes */
 u32 gammaSpriteSoftlut[GAMMA_SP_MAX_COUNT] = {
@@ -554,3 +555,40 @@ int intel_crtc_disable_gamma(struct drm_crtc *crtc, u32 identifier)
 	return 0;
 }
 
+/* Tune Contrast Brightness Value for Sprite */
+int intel_sprite_cb_adjust(drm_i915_private_t *dev_priv,
+		struct ContBrightlut *cb_ptr)
+{
+	if (!dev_priv || !cb_ptr) {
+		DRM_ERROR("Contrast Brightness: Invalid Arguments\n");
+		return -EINVAL;
+	}
+
+	switch (cb_ptr->sprite_no) {
+	/* Sprite plane */
+	case SPRITEA:
+		if (is_sprite_enabled(dev_priv, 0, 0))
+			I915_WRITE(SPRITEA_CB_REG, cb_ptr->val);
+		break;
+
+	case SPRITEB:
+		if (is_sprite_enabled(dev_priv, 0, 1))
+			I915_WRITE(SPRITEB_CB_REG, cb_ptr->val);
+		break;
+
+	case SPRITEC:
+		if (is_sprite_enabled(dev_priv, 1, 0))
+			I915_WRITE(SPRITEC_CB_REG, cb_ptr->val);
+		break;
+
+	case SPRITED:
+		if (is_sprite_enabled(dev_priv, 1, 1))
+			I915_WRITE(SPRITED_CB_REG, cb_ptr->val);
+
+	default:
+		DRM_ERROR("Invalid Sprite Number\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}

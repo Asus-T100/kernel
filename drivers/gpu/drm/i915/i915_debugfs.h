@@ -29,6 +29,9 @@
 #ifndef _I915_DEBUGFS_H_
 #define _I915_DEBUGFS_H_
 
+/* Header file for Color management through debugfs */
+#include "intel_clrmgr.h"
+
 #define to_drm_encoder(n) container_of(n, struct drm_encoder, dev)
 
 /* Operations supported
@@ -113,7 +116,6 @@ extern u32 CSCSoftlut[CSC_MAX_COEFF_COUNT];
 extern u32 gammaSoftlut[GAMMA_CORRECT_MAX_COUNT];
 extern u32 gammaSpriteSoftlut[GAMMA_SP_MAX_COUNT];
 
-
 extern int parse_clrmgr_input(uint *dest, char *src, int max, int read);
 extern int do_intel_enable_CSC(struct drm_device *dev, void *data,
 						struct drm_crtc *crtc);
@@ -122,5 +124,6 @@ extern void do_intel_disable_CSC(struct drm_device *dev,
 						struct drm_crtc *crtc);
 extern int intel_crtc_enable_gamma(struct drm_crtc *crtc, u32 identifier);
 extern void intel_crtc_disable_gamma(struct drm_crtc *crtc, u32 identifier);
-
+extern int intel_sprite_cb_adjust(drm_i915_private_t *dev_priv,
+		struct ContBrightlut *cb_ptr);
 #endif /* _I915_DEBUGFS_H_ */

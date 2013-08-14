@@ -252,6 +252,82 @@ const struct file_operations i915_gamma_enable_fops = {
 	.llseek = default_llseek,
 };
 
+ssize_t i915_cb_adjust_read(struct file *filp,
+		 char __user *ubuf,
+		 size_t max,
+		 loff_t *ppos)
+{
+	/* To do: Not implemented yet */
+	DRM_ERROR("Contrast Brightness adjust: Read Not implemented\n");
+	return -EINVAL;
+}
+
+ssize_t i915_cb_adjust_write(struct file *filp,
+		  const char __user *ubuf,
+		  size_t count,
+		  loff_t *ppos)
+{
+	int ret = count;
+	u32 val = 0;
+	struct drm_device *dev = filp->private_data;
+	struct ContBrightlut *cb_ptr = NULL;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	char *buf = NULL;
+
+	/* Validate input */
+	if (!count) {
+		DRM_ERROR("Contrast Brightness: insufficient data\n");
+		return -EINVAL;
+	}
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf) {
+		DRM_ERROR("Contrast Brightness adjust: insufficient memory\n");
+		return -ENOMEM;
+	}
+
+	cb_ptr = kzalloc(sizeof(struct ContBrightlut), GFP_KERNEL);
+	if (!cb_ptr) {
+		DRM_ERROR("Contrast Brightness adjust: insufficient memory\n");
+		kfree(buf);
+		return -ENOMEM;
+	}
+
+	/* Get the data */
+	if (copy_from_user(buf, ubuf, count)) {
+		DRM_ERROR("Contrast Brightness: copy failed\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	/* Parse input data */
+	ret = parse_clrmgr_input(cb_ptr, buf, 2, count);
+	if (ret < 0)
+		DRM_ERROR("Contrast Brightness loading failed\n");
+	else
+		DRM_DEBUG("Contrast Brightness loading done\n");
+
+	if (cb_ptr->sprite_no < SPRITEA || cb_ptr->sprite_no > SPRITED ||
+			cb_ptr->sprite_no == PLANEB) {
+		DRM_ERROR("Sprite value out of range. Enter 2,3, 5 or 6\n");
+		goto EXIT;
+	}
+
+	DRM_DEBUG("sprite = %d Val=0x%x,\n", cb_ptr->sprite_no, cb_ptr->val);
+
+	if (intel_sprite_cb_adjust(dev_priv, cb_ptr))
+		DRM_ERROR("Contrast Brightness update failed\n");
+
+EXIT:
+	kfree(cb_ptr);
+	kfree(buf);
+	/* If cant read the full buffer, read from last left */
+	if (ret < count-1)
+		return ret;
+
+	return count;
+}
+
 ssize_t i915_csc_adjust_read(struct file *filp,
 		 char __user *ubuf,
 		 size_t max,
@@ -396,6 +472,14 @@ EXIT:
 	kfree(buf);
 	return ret;
 }
+
+static const struct file_operations i915_cb_adjust_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_cb_adjust_read,
+	.write = i915_cb_adjust_write,
+	.llseek = default_llseek,
+};
 
 static const struct file_operations i915_csc_adjust_fops = {
 	.owner = THIS_MODULE,
@@ -3665,6 +3749,12 @@ int i915_debugfs_init(struct drm_minor *minor)
 		return ret;
 
 	ret = i915_debugfs_create(minor->debugfs_root, minor,
+					"cb_adjust",
+					&i915_cb_adjust_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
 					"csc_adjust",
 					&i915_csc_adjust_fops);
 	if (ret)
@@ -3728,6 +3818,8 @@ void i915_debugfs_cleanup(struct drm_minor *minor)
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_error_state_fops,
 				 1, minor);
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_rc6_status_fops,
+				 1, minor);
+	drm_debugfs_remove_files((struct drm_info_list *) &i915_cb_adjust_fops,
 				 1, minor);
 }
 

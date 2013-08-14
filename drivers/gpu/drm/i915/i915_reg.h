@@ -3309,6 +3309,12 @@ EDP_PSR_SW_TIMER
 #define _VLV_DSPBADDR		0x7117C
 #define _DSPBSURFLIVE		0x711AC
 
+/* Sprite Contrast and Brightness Registers */
+#define SPRITEA_CB_REG		0x721d0
+#define SPRITEB_CB_REG		0x722d0
+#define SPRITEC_CB_REG		0x723d0
+#define SPRITED_CB_REG		0x724d0
+
 /* Sprite A control */
 #define _DVSACNTR		0x72180
 #define   DVS_ENABLE		(1<<31)
