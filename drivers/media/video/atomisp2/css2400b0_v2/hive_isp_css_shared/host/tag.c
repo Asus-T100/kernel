@@ -38,7 +38,7 @@ sh_css_create_tag_descr(int num_captures,
 			unsigned int exp_id,
 			struct sh_css_tag_descr *tag_descr)
 {
-	assert(tag_descr != NULL);
+	assert_exit(tag_descr != NULL);
 
 	tag_descr->num_captures = num_captures;
 	tag_descr->skip		= skip;
@@ -62,7 +62,7 @@ sh_css_encode_tag_descr(struct sh_css_tag_descr *tag)
 	unsigned int exp_id;
 	unsigned int encoded_tag;
 
-	assert(tag != NULL);
+	assert_exit_code(tag != NULL, 0);
 
 	if (tag->num_captures < 0) {
 		num_captures = -tag->num_captures;

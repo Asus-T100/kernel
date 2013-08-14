@@ -322,8 +322,7 @@ static void sh_css_hrt_s2m_send_line2(
 {
 	unsigned int i, is_rgb = 0, is_legacy = 0;
 
-	assert(data != NULL);
-	assert((data2 != NULL) || (width2 == 0));
+	assert_exit(data != NULL && ((data2 != NULL) || (width2 == 0)));
 
 	if (type == sh_css_mipi_data_type_rgb)
 		is_rgb = 1;
@@ -407,7 +406,7 @@ sh_css_hrt_s2m_send_line(const unsigned short *data,
 			 unsigned int two_ppc,
 			 enum sh_css_mipi_data_type type)
 {
-	assert(data != NULL);
+	assert_exit(data != NULL);
 
 	sh_css_hrt_s2m_send_line2(data, width, NULL, 0,
 					hblank_cycles,
@@ -456,7 +455,7 @@ static void sh_css_hrt_s2m_send_frame(
 {
 	unsigned int i;
 
-	assert(data != NULL);
+	assert_exit(data != NULL);
 
 	sh_css_hrt_s2m_start_frame(ch_id, fmt_type);
 	for (i = 0; i < height; i++) {
@@ -517,7 +516,7 @@ void sh_css_hrt_send_input_frame(
 	unsigned int fmt_type, hblank_cycles, marker_cycles;
 	enum sh_css_mipi_data_type type;
 
-	assert(data != NULL);
+	assert_exit(data != NULL);
 
 	hblank_cycles = HBLANK_CYCLES;
 	marker_cycles = MARKER_CYCLES;
@@ -562,8 +561,8 @@ void sh_css_hrt_streaming_to_mipi_send_line(
 {
 	struct streaming_to_mipi_instance *s2mi;
 
-	assert(data != NULL);
-	assert((data2 != NULL) || (width2 == 0));
+	assert_exit(data != NULL);
+	assert_exit((data2 != NULL) || (width2 == 0));
 
 	s2mi = sh_css_hrt_s2m_get_inst(ch_id);
 

@@ -60,8 +60,7 @@ static struct sh_css_refcount_entry *find_entry(hrt_vaddress ptr,
 {
 	uint32_t i;
 
-	assert(ptr != 0);
-	assert(myrefcount.items != NULL);
+	assert_exit_code(ptr && myrefcount.items, NULL);
 
 	for (i = 0; i < myrefcount.size; i++) {
 
@@ -84,7 +83,7 @@ enum ia_css_err sh_css_refcount_init(void)
 	enum ia_css_err err = IA_CSS_SUCCESS;
 	int size = 1000;
 
-	assert(myrefcount.items == NULL);
+	assert_exit_code(myrefcount.items == NULL, IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
 
 	myrefcount.items =
 		sh_css_malloc(sizeof(struct sh_css_refcount_entry)*size);
@@ -131,11 +130,12 @@ hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr)
 
 	if (!entry) {
 		entry = find_entry(ptr, true);
+		if (!entry)
+			return mmgr_NULL;
 		entry->id = id;
 	}
 
-	assert(entry != NULL);
-	assert(entry->id == id);
+	assert_exit_code(entry->id == id, mmgr_NULL);
 
 	if (entry->data == ptr)
 		entry->count += 1;
@@ -160,7 +160,7 @@ bool sh_css_refcount_release(int32_t id, hrt_vaddress ptr)
 	entry = find_entry(ptr, false);
 
 	if (entry) {
-		assert(entry->id == id);
+		assert_exit_code(entry->id == id, false);
 		if (entry->count > 0) {
 			entry->count -= 1;
 			if (entry->count == 0) {
@@ -175,7 +175,7 @@ bool sh_css_refcount_release(int32_t id, hrt_vaddress ptr)
 	}
 
 	/* SHOULD NOT HAPPEN: ptr not managed by refcount, or not valid anymore */
-	assert(false);
+	assert_exit_code(false, false);
 
 	return false;
 }
@@ -198,9 +198,9 @@ bool sh_css_refcount_is_single(hrt_vaddress ptr)
 int32_t sh_css_refcount_get_id(hrt_vaddress ptr)
 {
 	struct sh_css_refcount_entry *entry;
-	assert(ptr != mmgr_NULL);
+	assert_exit_code(ptr, 0);
 	entry = find_entry(ptr, false);
-	assert(entry != NULL);
+	assert_exit_code(entry, 0);
 	return entry->id;
 }
 
@@ -210,7 +210,7 @@ void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr))
 	uint32_t i;
 	uint32_t count = 0;
 
-	assert(clear_func != NULL);
+	assert_exit(clear_func != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_clear(%x)\n", id);
 	for (i = 0; i < myrefcount.size; i++) {
 		entry = &myrefcount.items[i];
@@ -227,7 +227,7 @@ void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr))
 						"using mmgr_free: no clear_func\n");
 				mmgr_free(entry->data);
 			}
-			assert(entry->count == 0);
+			assert_exit(entry->count == 0);
 			entry->data = mmgr_NULL;
 			entry->count = 0;
 			entry->id = 0;

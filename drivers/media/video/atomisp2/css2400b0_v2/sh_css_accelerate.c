@@ -39,7 +39,7 @@ upload_isp_code(const struct ia_css_fw_info *firmware)
 {
 	const unsigned char *binary;
 
-	assert(firmware != NULL);
+	assert_exit_code(firmware, NULL);
 
 	binary = firmware->isp_code;
 
@@ -69,7 +69,7 @@ sh_css_acc_upload_isp_code(const struct ia_css_acc_fw *firmware)
 	struct ia_css_acc_fw_hdr *header;
 	const unsigned char *binary;
 
-	assert(firmware != NULL);
+	assert_exit_code(firmware, NULL);
 
 	header = (struct ia_css_acc_fw_hdr *)&firmware->header;
 	binary = firmware->header.isp_code;
@@ -110,7 +110,7 @@ sh_css_acc_unload(const struct ia_css_acc_fw *firmware)
 	struct ia_css_acc_fw_hdr *header;
 	struct ia_css_acc_sp *sp;
 
-	assert(firmware != NULL);
+	assert_exit(firmware);
 
 	header = (struct ia_css_acc_fw_hdr *)&firmware->header;
 	sp = &header->sp;
@@ -134,7 +134,7 @@ sh_css_acc_load_extension(struct ia_css_fw_info *firmware)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 #endif
 
-	assert(firmware != NULL);
+	assert_exit_code(firmware, IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
 
 	firmware->loaded = true;
 	return IA_CSS_SUCCESS;
@@ -143,7 +143,7 @@ sh_css_acc_load_extension(struct ia_css_fw_info *firmware)
 void
 sh_css_acc_unload_extension(struct ia_css_fw_info *firmware)
 {
-	assert(firmware != NULL);
+	assert_exit(firmware != NULL);
 
 	if (firmware->isp_code)
 		mmgr_free(HOST_ADDRESS(firmware->isp_code));
@@ -156,7 +156,7 @@ enum ia_css_err
 sh_css_acc_set_parameter(struct ia_css_acc_fw *firmware,
 			 struct ia_css_data parameters)
 {
-	assert(firmware != NULL);
+	assert_exit_code(firmware, IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
 
 	firmware->header.parameters = parameters;
 	return IA_CSS_SUCCESS;
@@ -181,7 +181,7 @@ sh_css_acc_init(struct ia_css_acc_fw *firmware)
 	unsigned value;
 	unsigned size;
 
-	assert(firmware != NULL);
+	assert_exit(firmware);
 
 	sp = &firmware->header.sp;
 	sp_address = (unsigned)HOST_ADDRESS(sp->fw.info.sp.ddr_parameter_address);
@@ -210,7 +210,7 @@ sh_css_acc_start(struct ia_css_acc_fw *firmware)
 	const unsigned char *isp_program;
 #endif
 
-	assert(firmware != NULL);
+	assert_exit_code(firmware, IA_CSS_ERR_INVALID_ARGUMENTS);
 
 	header = (struct ia_css_acc_fw_hdr *)&firmware->header;
 	sp = &header->sp;

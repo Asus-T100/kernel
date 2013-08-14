@@ -106,7 +106,7 @@ store_sp_per_frame_data(const struct ia_css_fw_info *fw)
 {
 	unsigned int HIVE_ADDR_sp_per_frame_data = 0;
 
-	assert(fw != NULL);
+	assert_exit(fw != NULL);
 
 	switch (fw->type) {
 	case ia_css_sp_firmware:
@@ -148,7 +148,7 @@ sh_css_sp_get_debug_state(struct sh_css_sp_debug_state *state)
 	unsigned i;
 	unsigned o = offsetof(struct sh_css_sp_output, debug)/sizeof(int);
 
-	assert(state != NULL);
+	assert_exit(state != NULL);
 
 	(void)HIVE_ADDR_sp_output; /* To get rid of warning in CRUN */
 	for (i = 0; i < sizeof(*state)/sizeof(int); i++)
@@ -166,7 +166,7 @@ sh_css_sp_start_binary_copy(unsigned int pipe_num, struct ia_css_frame *out_fram
 	struct sh_css_sp_pipeline *pipe;
 	uint8_t stage_num = 0;
 
-	assert(out_frame != NULL);
+	assert_exit(out_frame != NULL);
 	pipe_id = IA_CSS_PIPE_ID_CAPTURE;
 	sh_css_query_sp_thread_id(pipe_num, &thread_id);
 	pipe = &sh_css_sp_group.pipe[thread_id];
@@ -207,7 +207,7 @@ sh_css_sp_start_raw_copy(struct ia_css_frame *out_frame,
 	uint8_t stage_num = 0;
 	struct sh_css_sp_pipeline *pipe;
 
-	assert(out_frame != NULL);
+	assert_exit(out_frame != NULL);
 
 	{
 		/**
@@ -290,7 +290,7 @@ static void
 sh_css_frame_info_to_sp(struct sh_css_sp_frame_info *sp,
 			const struct ia_css_frame_info *host)
 {
-	assert(sp != NULL);
+	assert_exit(sp != NULL);
 
 	sp->width	      = (uint16_t)host->res.width;
 	sp->height	      = (uint16_t)host->res.height;
@@ -306,7 +306,7 @@ sh_css_copy_frame_to_spframe(struct sh_css_sp_frame *sp_frame_out,
 				unsigned pipe_num, unsigned stage_num,
 				enum sh_css_frame_id id)
 {
-	assert(frame_in != NULL);
+	assert_exit(frame_in != NULL);
 
 	/* TODO: remove pipe and stage from interface */
 	(void)pipe_num;
@@ -318,14 +318,14 @@ sh_css_copy_frame_to_spframe(struct sh_css_sp_frame *sp_frame_out,
 
 
 	if (frame_in->dynamic_data_index >= 0) {
-		assert((id == sh_css_frame_in) ||
+		assert_exit((id == sh_css_frame_in) ||
 				(id == sh_css_frame_out) ||
 				(id == sh_css_frame_out_vf));
 		/*
 		 * value >=0 indicates that function init_frame_pointers()
 		 * should use the dynamic data address
 		 */
-		assert(frame_in->dynamic_data_index <
+		assert_exit(frame_in->dynamic_data_index <
 					SH_CSS_NUM_DYNAMIC_FRAME_IDS);
 		/*
 		 * static_frame_data is overloaded, small values (<3) are
@@ -617,8 +617,8 @@ void sh_css_sp_set_if_configs(
 
 	if  (if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED) return;
 
-	assert(if_config_index < SH_CSS_MAX_IF_CONFIGS);
-	assert(config_a != NULL);
+	assert_exit(if_config_index < SH_CSS_MAX_IF_CONFIGS);
+	assert_exit(config_a != NULL);
 
 	block[INPUT_FORMATTER0_ID] = (bool)config_a->block_no_reqs;
 	if (config_b != NULL)
@@ -699,7 +699,7 @@ sh_css_sp_write_frame_pointers(const struct sh_css_binary_args *args,
 {
 	enum ia_css_err err = IA_CSS_SUCCESS;
 
-	assert(args != NULL);
+	assert_exit_code(args != NULL, IA_CSS_ERR_INTERNAL_ERROR);
 
 	if (args->in_frame)
 		err = set_input_frame_buffer(args->in_frame,
@@ -745,7 +745,7 @@ sh_css_sp_init_group(bool two_ppc,
 	/* decide whether the frame is processed online or offline */
 	sh_css_sp_group.config.is_offline  = sh_css_continuous_start_sp_copy();
 	if (if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED) return;
-	assert(if_config_index < SH_CSS_MAX_IF_CONFIGS);
+	assert_exit(if_config_index < SH_CSS_MAX_IF_CONFIGS);
 	sh_css_sp_group.config.input_formatter.set[if_config_index].stream_format = input_format;
 
 }
@@ -753,14 +753,14 @@ sh_css_sp_init_group(bool two_ppc,
 void
 sh_css_stage_write_binary_info(struct ia_css_binary_info *info)
 {
-	assert(info != NULL);
+	assert_exit(info != NULL);
 	sh_css_isp_stage.binary_info = *info;
 }
 
 static bool
 is_sp_stage(struct sh_css_pipeline_stage *stage)
 {
-	assert(stage != NULL);
+	assert_exit_code(stage != NULL, false);
 	return stage->sp_func != SH_CSS_SP_NO_FUNC;
 }
 
@@ -785,11 +785,11 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 	unsigned int thread_id;
 	bool continuous = sh_css_continuous_is_enabled((uint8_t)pipe_num);
 
-	assert(binary != NULL);
-	assert(blob_info != NULL);
-	assert(args != NULL);
-	assert(isp_mem_if != NULL);
-
+	assert_exit_code(binary != NULL, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(blob_info != NULL, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(args != NULL, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(isp_mem_if != NULL, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
 	info = binary->info;
 	{
 		/**
@@ -914,7 +914,7 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 	struct ia_css_data isp_mem_if[IA_CSS_NUM_ISP_MEMORIES];
 	const struct ia_css_data *mem_if = isp_mem_if;
 
-	assert(stage != NULL);
+	assert_exit_code(stage != NULL,IA_CSS_ERR_INTERNAL_ERROR);
 
 	binary = stage->binary;
 	firmware = stage->firmware;
@@ -944,13 +944,15 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 		blob_info = &firmware->blob;
 		mem_if = firmware->mem_initializers;
 	} else {
-		/* SP stage */
-		assert(stage->sp_func != SH_CSS_SP_NO_FUNC);
+	  /* SP stage */
+	  assert (stage->sp_func != SH_CSS_SP_NO_FUNC);
 	}
 
 #ifdef __KERNEL__
 	printk(KERN_ERR "load binary: %s\n", binary_name);
 #endif
+	if (!binary)
+		return IA_CSS_ERR_INTERNAL_ERROR;
 
 	sh_css_sp_init_stage(binary,
 			     (const char *)binary_name,
@@ -977,7 +979,7 @@ sp_init_sp_stage(struct sh_css_pipeline_stage *stage,
 {
 	const struct sh_css_binary_args *args = &stage->args;
 
-	assert(stage != NULL);
+	assert_exit(stage != NULL);
 	switch (stage->sp_func) {
 	case SH_CSS_SP_RAW_COPY:
 		sh_css_sp_start_raw_copy(args->out_frame,
@@ -986,11 +988,11 @@ sp_init_sp_stage(struct sh_css_pipeline_stage *stage,
 				copy_ovrd, if_config_index);
 		break;
 	case SH_CSS_SP_BIN_COPY:
-		assert(false); /* TBI */
+		assert_exit(false); /* TBI */
 	case SH_CSS_SP_ISYS_COPY:
-		assert(false); /* TBI */
+		assert_exit(false); /* TBI */
 	case SH_CSS_SP_NO_FUNC:
-		assert(false);
+		assert_exit(false);
 	}
 }
 
@@ -1018,8 +1020,8 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 	unsigned int thread_id;
 	uint8_t if_config_index;
 
-	assert(me != NULL);
-	assert(me->stages != NULL);
+	assert_exit(me != NULL);
+	assert_exit(me->stages != NULL);
 
 	first_binary = me->stages->binary;
 
@@ -1125,7 +1127,7 @@ sh_css_write_host2sp_command(enum host2sp_commands host2sp_command)
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	/* Previous command must be handled by SP (by design) */
-	assert(load_sp_array_uint(host_sp_com, o) == host2sp_cmd_ready);
+	assert_exit(load_sp_array_uint(host_sp_com, o) == host2sp_cmd_ready);
 
 	store_sp_array_uint(host_sp_com, o, host2sp_command);
 }
@@ -1187,7 +1189,7 @@ sh_css_update_host2sp_offline_frame(
 
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
-	assert(frame_num < NUM_CONTINUOUS_FRAMES);
+	assert_exit(frame_num < NUM_CONTINUOUS_FRAMES);
 
 	/* Write new frame data into SP DMEM */
 	HIVE_ADDR_host_sp_com = sh_css_sp_fw.info.sp.host_sp_com;
@@ -1213,7 +1215,7 @@ sh_css_update_host2sp_mipi_frame(
 
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
-	assert(frame_num < NUM_MIPI_FRAMES);
+	assert_exit(frame_num < NUM_MIPI_FRAMES);
 
 	/* Write new frame data into SP DMEM */
 	HIVE_ADDR_host_sp_com = sh_css_sp_fw.info.sp.host_sp_com;
@@ -1270,11 +1272,11 @@ sh_css_event_init_irq_mask(void)
 	event_irq_mask_init.and_mask = IA_CSS_EVENT_TYPE_NONE;
 	(void)HIVE_ADDR_host_sp_com; /* Suppress warnings in CRUN */
 
-	assert(sizeof(event_irq_mask_init) % HRT_BUS_BYTES == 0);
+	assert_exit(sizeof(event_irq_mask_init) % HRT_BUS_BYTES == 0);
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		offset = offsetof(struct host_sp_communication,
 						host2sp_event_irq_mask[i]);
-		assert(offset % HRT_BUS_BYTES == 0);
+		assert_exit(offset % HRT_BUS_BYTES == 0);
 		sp_dmem_store(SP0_ID,
 			(unsigned int)sp_address_of(host_sp_com) + offset,
 			&event_irq_mask_init, sizeof(event_irq_mask_init));
@@ -1292,10 +1294,10 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 	unsigned int offset;
 	struct sh_css_event_irq_mask event_irq_mask;
 
-	assert(pipe != NULL);
-	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
-	assert(or_mask <= UINT16_MAX);
-	assert(and_mask <= UINT16_MAX);
+	assert_exit_code(pipe != NULL, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(or_mask <= ~0, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(and_mask <= ~0, IA_CSS_ERR_INTERNAL_ERROR);
 
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
@@ -1308,7 +1310,7 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 
 	offset = offsetof(struct host_sp_communication,
 					host2sp_event_irq_mask[ia_css_pipe_get_pipe_num(pipe)]);
-	assert(offset % HRT_BUS_BYTES == 0);
+	assert_exit_code(offset % HRT_BUS_BYTES == 0, IA_CSS_ERR_INTERNAL_ERROR);
 	sp_dmem_store(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_com) + offset,
 		&event_irq_mask, sizeof(event_irq_mask));
@@ -1329,12 +1331,12 @@ ia_css_event_get_irq_mask(const struct ia_css_pipe *pipe,
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_event_get_irq_mask()\n");
 
-	assert(pipe != NULL);
-	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
+	assert_exit_code(pipe != NULL, IA_CSS_ERR_INTERNAL_ERROR);
+	assert_exit_code(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES, IA_CSS_ERR_INTERNAL_ERROR);
 
 	offset = offsetof(struct host_sp_communication,
 					host2sp_event_irq_mask[ia_css_pipe_get_pipe_num(pipe)]);
-	assert(offset % HRT_BUS_BYTES == 0);
+	assert_exit_code(offset % HRT_BUS_BYTES == 0, IA_CSS_ERR_INTERNAL_ERROR);
 	sp_dmem_load(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_com) + offset,
 		&event_irq_mask, sizeof(event_irq_mask));
@@ -1479,8 +1481,8 @@ sh_css_sp_set_dma_sw_reg(int dma_id,
 
 	(void)dma_id;
 
-	assert(channel_id >= 0 && channel_id < N_DMA_CHANNEL_ID);
-	assert(request_type >= 0);
+	assert_exit_code(channel_id >= 0 && channel_id < N_DMA_CHANNEL_ID, false);
+	assert_exit_code(request_type >= 0, false);
 
 	/* get the software-mask */
 	sw_reg =

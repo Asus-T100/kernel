@@ -33,7 +33,11 @@
 // 12KB = 256bit x 384 words
 #define		IB_CAPACITY_IN_WORDS (384)  
 
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
+#endif
 
 typedef enum {
 	MIPI_0LANE_CFG = 0,
