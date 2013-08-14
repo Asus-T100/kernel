@@ -630,7 +630,7 @@ void mei_timer(struct work_struct *work)
 		}
 	}
 out:
-	schedule_delayed_work(&dev->timer_work, 2 * HZ);
+	queue_delayed_work(dev->wq, &dev->timer_work, 2 * HZ);
 	mutex_unlock(&dev->device_lock);
 }
 

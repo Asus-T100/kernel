@@ -519,7 +519,7 @@ void mei_cl_bus_rx_event(struct mei_cl *cl)
 
 	set_bit(MEI_CL_EVENT_RX, &device->events);
 
-	schedule_work(&device->event_work);
+	queue_work(cl->dev->wq, &device->event_work);
 }
 
 int __init mei_cl_bus_init(void)

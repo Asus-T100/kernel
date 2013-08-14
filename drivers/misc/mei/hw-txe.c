@@ -884,7 +884,7 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 			    dev->dev_state != MEI_DEV_INITIALIZING) {
 				dev_dbg(&dev->pdev->dev, "FW not ready.\n");
 
-				schedule_work(&hw->reset_work);
+				queue_work(dev->wq, &hw->reset_work);
 				mutex_unlock(&dev->device_lock);
 				return IRQ_HANDLED;
 			}

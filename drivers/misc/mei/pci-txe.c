@@ -336,7 +336,7 @@ release_irq:
 	/* disable interrupts */
 	mei_disable_interrupts(dev);
 
-	flush_scheduled_work();
+	flush_workqueue(dev->wq);
 
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);

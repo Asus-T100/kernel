@@ -43,6 +43,8 @@
 #include "hw-me.h"
 #include "client.h"
 
+static struct workqueue_struct *mei_wq;
+
 /**
  * mei_open - the open function
  *
@@ -681,6 +683,9 @@ static struct miscdevice  mei_misc_device = {
 int mei_register(struct mei_device *dev)
 {
 	int ret;
+
+	dev->wq = mei_wq;
+
 	mei_misc_device.parent = &dev->pdev->dev;
 	ret = misc_register(&mei_misc_device);
 	if (ret)
@@ -703,12 +708,25 @@ EXPORT_SYMBOL_GPL(mei_deregister);
 
 static int __init mei_init(void)
 {
-	return mei_cl_bus_init();
+	int ret = 0;
+
+	mei_wq = alloc_workqueue("mei", 0, 0);
+	if (!mei_wq) {
+		pr_err("mei workqueue allocation failed.\n");
+		return -ENOMEM;
+	}
+
+	ret = mei_cl_bus_init();
+	if (ret)
+		destroy_workqueue(mei_wq);
+
+	return ret;
 }
 
 static void __exit mei_exit(void)
 {
 	mei_cl_bus_exit();
+	destroy_workqueue(mei_wq);
 }
 
 module_init(mei_init);

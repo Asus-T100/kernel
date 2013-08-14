@@ -231,7 +231,7 @@ static int mei_hbm_prop_req(struct mei_device *dev)
 
 	/* We got all client properties */
 	if (next_client_index == MEI_CLIENTS_MAX) {
-		schedule_work(&dev->init_work);
+		queue_work(dev->wq, &dev->init_work);
 
 		return 0;
 	}

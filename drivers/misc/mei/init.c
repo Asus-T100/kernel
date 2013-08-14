@@ -223,7 +223,7 @@ void mei_stop(struct mei_device *dev)
 
 	mei_watchdog_unregister(dev);
 
-	flush_scheduled_work();
+	flush_workqueue(dev->wq);
 }
 EXPORT_SYMBOL_GPL(mei_stop);
 
