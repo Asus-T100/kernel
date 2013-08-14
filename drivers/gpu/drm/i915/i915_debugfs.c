@@ -328,6 +328,81 @@ EXIT:
 	return count;
 }
 
+ssize_t i915_hs_adjust_read(struct file *filp,
+		 char __user *ubuf,
+		 size_t max,
+		 loff_t *ppos)
+{
+	/* To do: Not implemented yet */
+	DRM_ERROR("Hue Saturation adjust: Read Not implemented\n");
+	return -EINVAL;
+}
+ssize_t i915_hs_adjust_write(struct file *filp,
+		  const char __user *ubuf,
+		  size_t count,
+		  loff_t *ppos)
+{
+	int ret = count;
+	struct drm_device *dev = filp->private_data;
+	struct HueSaturationlut *hs_ptr = NULL;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	char *buf = NULL;
+
+	/* Validate input */
+	if (!count) {
+		DRM_ERROR("Hue Saturation: insufficient data\n");
+		return -EINVAL;
+	}
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf) {
+		DRM_ERROR("Hue Saturation adjust: insufficient memory\n");
+		return -ENOMEM;
+	}
+
+	hs_ptr = kzalloc(sizeof(struct HueSaturationlut), GFP_KERNEL);
+	if (!hs_ptr) {
+		DRM_ERROR("Hue Saturation adjust: insufficient memory\n");
+		kfree(buf);
+		return -ENOMEM;
+	}
+
+	/* Get the data */
+	if (copy_from_user(buf, ubuf, count)) {
+		DRM_ERROR("Hue Saturation: copy failed\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	/* Parse input data */
+	ret = parse_clrmgr_input(hs_ptr, buf, 2, count);
+	if (ret < 0)
+		DRM_ERROR("Hue Saturation loading failed\n");
+	else
+		DRM_DEBUG("Hue Saturation loading done\n");
+
+	if (hs_ptr->sprite_no < SPRITEA || hs_ptr->sprite_no > SPRITED ||
+			hs_ptr->sprite_no == PLANEB) {
+		DRM_ERROR("sprite = %d Val=0x%x,\n", hs_ptr->sprite_no,
+					hs_ptr->val);
+		goto EXIT;
+	}
+
+	DRM_DEBUG("sprite = %d Val=0x%x,\n", hs_ptr->sprite_no, hs_ptr->val);
+
+	if (intel_sprite_hs_adjust(dev_priv, hs_ptr))
+		DRM_ERROR("Hue Saturation update failed\n");
+
+EXIT:
+	kfree(hs_ptr);
+	kfree(buf);
+	/* If cant read the full buffer, read from last left */
+	if (ret < count-1)
+		return ret;
+
+	return count;
+}
+
 ssize_t i915_csc_adjust_read(struct file *filp,
 		 char __user *ubuf,
 		 size_t max,
@@ -478,6 +553,14 @@ static const struct file_operations i915_cb_adjust_fops = {
 	.open = simple_open,
 	.read = i915_cb_adjust_read,
 	.write = i915_cb_adjust_write,
+	.llseek = default_llseek,
+};
+
+static const struct file_operations i915_hs_adjust_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_hs_adjust_read,
+	.write = i915_hs_adjust_write,
 	.llseek = default_llseek,
 };
 
@@ -3755,6 +3838,12 @@ int i915_debugfs_init(struct drm_minor *minor)
 		return ret;
 
 	ret = i915_debugfs_create(minor->debugfs_root, minor,
+					"hs_adjust",
+					&i915_hs_adjust_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
 					"csc_adjust",
 					&i915_csc_adjust_fops);
 	if (ret)
@@ -3820,6 +3909,8 @@ void i915_debugfs_cleanup(struct drm_minor *minor)
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_rc6_status_fops,
 				 1, minor);
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_cb_adjust_fops,
+				 1, minor);
+	drm_debugfs_remove_files((struct drm_info_list *) &i915_hs_adjust_fops,
 				 1, minor);
 }
 

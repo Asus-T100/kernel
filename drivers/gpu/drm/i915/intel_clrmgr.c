@@ -592,3 +592,41 @@ int intel_sprite_cb_adjust(drm_i915_private_t *dev_priv,
 
 	return 0;
 }
+
+/* Tune Hue Saturation Value for Sprite */
+int intel_sprite_hs_adjust(drm_i915_private_t *dev_priv,
+		struct HueSaturationlut *hs_ptr)
+{
+	if (!dev_priv || !hs_ptr) {
+		DRM_ERROR("Hue Saturation: Invalid Arguments\n");
+		return -EINVAL;
+	}
+
+	switch (hs_ptr->sprite_no) {
+	/* Sprite plane */
+	case SPRITEA:
+		if (is_sprite_enabled(dev_priv, 0, 0))
+			I915_WRITE(SPRITEA_HS_REG, hs_ptr->val);
+		break;
+
+	case SPRITEB:
+		if (is_sprite_enabled(dev_priv, 0, 1))
+			I915_WRITE(SPRITEB_HS_REG, hs_ptr->val);
+		break;
+
+	case SPRITEC:
+		if (is_sprite_enabled(dev_priv, 1, 0))
+			I915_WRITE(SPRITEC_HS_REG, hs_ptr->val);
+		break;
+
+	case SPRITED:
+		if (is_sprite_enabled(dev_priv, 1, 1))
+			I915_WRITE(SPRITED_HS_REG, hs_ptr->val);
+
+	default:
+		DRM_ERROR("Invalid Sprite Number\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
