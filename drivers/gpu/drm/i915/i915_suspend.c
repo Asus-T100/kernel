@@ -1145,7 +1145,6 @@ static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
 			OSPM_ISLAND_UP, VLV_IOSFSB_PWRGT_CNT_CTRL);
 }
 
-
 static void display_cancel_works(struct drm_device *drm_dev)
 {
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
