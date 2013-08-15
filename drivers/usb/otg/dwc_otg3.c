@@ -2236,8 +2236,6 @@ static int dwc_otg_resume(struct device *dev)
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
-	pci_set_power_state(pci_dev, PCI_D0);
-
 	if (!otg)
 		return -ENODEV;
 
