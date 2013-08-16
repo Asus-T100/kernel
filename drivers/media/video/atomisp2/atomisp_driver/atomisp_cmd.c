@@ -29,7 +29,7 @@
 #include <linux/timer.h>
 
 #include <asm/intel-mid.h>
-
+#include <linux/intel_mid_pm.h>
 #include <media/v4l2-event.h>
 #include <media/videobuf-vmalloc.h>
 
@@ -362,6 +362,28 @@ int atomisp_reset(struct atomisp_device *isp)
 	if (ret < 0) {
 		dev_err(isp->dev, "can not disable ISP power\n");
 	} else {
+		/*
+		 * For BYT, to avoid ISP pci config register being accessed
+		 * by PCI runtime driver when ISP is power down, the hw
+		 * power down operation is done after runtime suspend,
+		 * and the hw power up operation is done before runtime
+		 * resume
+		 */
+		if (intel_mid_identify_cpu()
+		    == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+			if (pmu_nc_set_power_state(TNG_ISP_ISLAND,
+					OSPM_ISLAND_DOWN, MRFLD_ISPSSPM0)) {
+					dev_err(isp->dev,
+						"Failed to power off device\n");
+					return ret;
+			} else if (pmu_nc_set_power_state(TNG_ISP_ISLAND,
+							  OSPM_ISLAND_UP,
+							  MRFLD_ISPSSPM0)) {
+				dev_err(isp->dev,
+					"Failed to power on device\n");
+				return ret;
+			}
+		}
 		ret = pm_runtime_get_sync(isp->dev);
 		if (ret < 0)
 			v4l2_err(&atomisp_dev, "can not enable ISP power\n");

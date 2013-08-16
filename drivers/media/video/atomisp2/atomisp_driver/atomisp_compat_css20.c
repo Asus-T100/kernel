@@ -30,10 +30,12 @@
 #include "atomisp_compat.h"
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
+#include "atomisp-regs.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
 #include <asm/intel-mid.h>
+#include <linux/intel_mid_pm.h>
 
 #include "ia_css_accelerate.h"
 #include "sh_css_debug.h"
@@ -2549,6 +2551,23 @@ void atomisp_css_destroy_acc_pipe(struct atomisp_sub_device *asd)
 	ia_css_suspend();
 	if (pm_runtime_put_sync(asd->isp->dev) < 0)
 		dev_err(asd->isp->dev, "can not disable ISP power\n");
+	else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		/*
+		 * For BYT, to avoid ISP pci config register being accessed
+		 * by PCI runtime driver when ISP is power down, the hw
+		 * power down operation is done after runtime suspend,
+		 * and the hw power up operation is done before runtime
+		 * resume
+		 */
+		if (pmu_nc_set_power_state(TNG_ISP_ISLAND,
+				OSPM_ISLAND_DOWN, MRFLD_ISPSSPM0))
+			dev_err(asd->isp->dev, "Failed to power off device\n");
+		else if (pmu_nc_set_power_state(TNG_ISP_ISLAND,
+					OSPM_ISLAND_UP, MRFLD_ISPSSPM0))
+			dev_err(asd->isp->dev, "Failed to power on device\n");
+		else if (pm_runtime_get_sync(asd->isp->dev) < 0)
+			dev_err(asd->isp->dev, "can not enable ISP power\n");
+	}
 	else if (pm_runtime_get_sync(asd->isp->dev) < 0)
 		dev_err(asd->isp->dev, "can not enable ISP power\n");
 	ia_css_resume();

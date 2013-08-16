@@ -350,75 +350,6 @@ done:
 	return 0;
 }
 
-/* Workaround for pmu_nc_set_power_state not ready in MRFLD */
-static int atomisp_mrfld_power_down(struct atomisp_device *isp)
-{
-	unsigned long timeout;
-	u32 reg_value;
-
-	/* writing 0x3 to ISPSSPM0 bit[1:0] to power off the IUNIT */
-	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
-	reg_value &= ~MRFLD_ISPSSPM0_ISPSSC_MASK;
-	reg_value |= MRFLD_ISPSSPM0_IUNIT_POWER_OFF;
-	intel_mid_msgbus_write32(PUNIT_PORT, MRFLD_ISPSSPM0, reg_value);
-
-	/*
-	 * There should be no iunit access while power-down is
-	 * in progress HW sighting: 4567865
-	 * FIXME: msecs_to_jiffies(50)- experienced value
-	 */
-	timeout = jiffies + msecs_to_jiffies(50);
-	while (1) {
-		reg_value = intel_mid_msgbus_read32(PUNIT_PORT,
-							MRFLD_ISPSSPM0);
-		dev_dbg(isp->dev, "power-off in progress, ISPSSPM0: 0x%x\n",
-				reg_value);
-		/* wait until ISPSSPM0 bit[25:24] shows 0x3 */
-		if ((reg_value >> MRFLD_ISPSSPM0_ISPSSS_OFFSET) ==
-			MRFLD_ISPSSPM0_IUNIT_POWER_OFF)
-			return 0;
-
-		if (time_after(jiffies, timeout)) {
-			dev_err(isp->dev, "power-off iunit timeout.\n");
-			return -EBUSY;
-		}
-		/* FIXME: experienced value for delay */
-		usleep_range(100, 150);
-	};
-}
-
-
-/* Workaround for pmu_nc_set_power_state not ready in MRFLD */
-static int atomisp_mrfld_power_up(struct atomisp_device *isp)
-{
-	unsigned long timeout;
-	u32 reg_value;
-
-	/* writing 0x0 to ISPSSPM0 bit[1:0] to power off the IUNIT */
-	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
-	reg_value &= ~MRFLD_ISPSSPM0_ISPSSC_MASK;
-	intel_mid_msgbus_write32(PUNIT_PORT, MRFLD_ISPSSPM0, reg_value);
-
-	/* FIXME: experienced value for delay */
-	timeout = jiffies + msecs_to_jiffies(50);
-	while (1) {
-		reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
-		dev_dbg(isp->dev, "power-on in progress, ISPSSPM0: 0x%x\n",
-				reg_value);
-		/* wait until ISPSSPM0 bit[25:24] shows 0x0 */
-		if ((reg_value >> MRFLD_ISPSSPM0_ISPSSS_OFFSET) ==
-			MRFLD_ISPSSPM0_IUNIT_POWER_ON)
-			return 0;
-
-		if (time_after(jiffies, timeout)) {
-			dev_err(isp->dev, "power-on iunit timeout.\n");
-			return -EBUSY;
-		}
-		/* FIXME: experienced value for delay */
-		usleep_range(100, 150);
-	};
-}
-
 static int atomisp_runtime_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
@@ -436,8 +367,6 @@ static int atomisp_runtime_suspend(struct device *dev)
 	if (ret)
 		return ret;
 	pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		ret = atomisp_mrfld_power_down(isp);
 
 	return ret;
 }
@@ -447,12 +376,6 @@ static int atomisp_runtime_resume(struct device *dev)
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
 	int ret;
-
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		ret = atomisp_mrfld_power_up(isp);
-		if (ret)
-			return ret;
-	}
 
 	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN) {
@@ -514,7 +437,9 @@ static int atomisp_suspend(struct device *dev)
 	}
 	pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		ret = atomisp_mrfld_power_down(isp);
+		ret = pmu_nc_set_power_state(TNG_ISP_ISLAND, OSPM_ISLAND_DOWN,
+				MRFLD_ISPSSPM0);
+
 
 	return ret;
 }
@@ -526,7 +451,8 @@ static int atomisp_resume(struct device *dev)
 	int ret;
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		ret = atomisp_mrfld_power_up(isp);
+		ret = pmu_nc_set_power_state(TNG_ISP_ISLAND, OSPM_ISLAND_UP,
+				MRFLD_ISPSSPM0);
 		if (ret)
 			return ret;
 	}
@@ -1320,6 +1246,15 @@ static int __init atomisp_init(void)
 
 static void __exit atomisp_exit(void)
 {
+	/*
+	 * For BYT only: Because runtime_resume will be called
+	 * during _unregister and BYT ISP power up need to be
+	 * be called before runtime_resume to avoid PCI CFG register
+	 * accessed by PCI driver, this ISP Power up is necessary.
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		pmu_nc_set_power_state(TNG_ISP_ISLAND, OSPM_ISLAND_UP,
+			MRFLD_ISPSSPM0);
 	pci_unregister_driver(&atomisp_pci_driver);
 }
 
