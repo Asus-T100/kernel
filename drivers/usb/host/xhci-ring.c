@@ -2316,6 +2316,8 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 
 	slot_id = TRB_TO_SLOT_ID(le32_to_cpu(event->flags));
 	xdev = xhci->devs[slot_id];
+	event_dma = le64_to_cpu(event->buffer);
+	trb_comp_code = GET_COMP_CODE(le32_to_cpu(event->transfer_len));
 	if (!xdev) {
 		xhci_err(xhci, "ERROR Transfer event pointed to bad slot\n");
 		xhci_err(xhci, "@%016llx %08x %08x %08x %08x\n",
@@ -2343,6 +2345,10 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 	if (!ep_ring ||
 	    (le32_to_cpu(ep_ctx->ep_info) & EP_STATE_MASK) ==
 	    EP_STATE_DISABLED) {
+		if (trb_comp_code == COMP_OVERRUN) {
+			xhci_dbg(xhci, "overrun event on endpoint\n");
+			goto cleanup;
+		}
 		xhci_err(xhci, "ERROR Transfer event for disabled endpoint "
 				"or incorrect stream ring\n");
 		xhci_err(xhci, "@%016llx %08x %08x %08x %08x\n",
@@ -2364,8 +2370,6 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 			td_num++;
 	}
 
-	event_dma = le64_to_cpu(event->buffer);
-	trb_comp_code = GET_COMP_CODE(le32_to_cpu(event->transfer_len));
 	/* Look for common error cases */
 	switch (trb_comp_code) {
 	/* Skip codes that require special handling depending on
