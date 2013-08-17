@@ -564,6 +564,13 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 				intel_dsi->dev.video_frmt_cfg_bits |
 				VIDEO_MODE_BURST);
 
+	/*
+	 * Enabling panel fitter produces banding effect in non 24 bit
+	 * panels. Until we get a clarification from h/w designers don't
+	 * enable Panel Fitter in the MIPI DSI path.
+	 */
+	return;
+
 	if (intel_dsi->pfit && (adjusted_mode->hdisplay < PFIT_SIZE_LIMIT)) {
 		u32 val = 0;
 		if (intel_dsi->pfit == AUTOSCALE)
