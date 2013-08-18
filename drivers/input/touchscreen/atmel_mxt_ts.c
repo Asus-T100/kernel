@@ -2459,7 +2459,7 @@ retry_bootloader:
 			/* this is not an error state, we can reflash
 			 * from here */
 			data->in_bootloader = true;
-			return 0;
+			return -EIO;	//<asus-ych20130818>0, must return error to fix suspend exception
 		}
 
 		/* Attempt to exit bootloader into app mode */
