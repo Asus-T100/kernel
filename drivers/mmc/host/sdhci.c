@@ -1718,8 +1718,9 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	else
 		ctrl &= ~SDHCI_CTRL_HISPD;
 
-	if ((host->version >= SDHCI_SPEC_300) ||
-			(host->quirks2 & SDHCI_QUIRK2_V2_0_SUPPORT_DDR50)) {
+	if (((host->version >= SDHCI_SPEC_300) ||
+			(host->quirks2 & SDHCI_QUIRK2_V2_0_SUPPORT_DDR50)) &&
+			ios->timing != MMC_TIMING_LEGACY) {
 		u16 clk, ctrl_2;
 		unsigned int clock;
 

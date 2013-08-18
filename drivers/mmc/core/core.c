@@ -1417,6 +1417,13 @@ void mmc_power_off(struct mmc_host *host)
 	mmc_delay(1);
 
 	mmc_host_clk_release(host);
+
+	/*
+	 * some platform needs a long time delay so that the card can be
+	 * powered off completely
+	 */
+	if (host->caps2 & MMC_CAP2_PWOFF_DELAY)
+		msleep(200);
 }
 
 /*
@@ -2105,6 +2112,9 @@ static int mmc_do_hw_reset(struct mmc_host *host, int check)
 			}
 		}
 	}
+
+	mmc_power_off(host);
+	mmc_power_up(host);
 
 	host->card->state &= ~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_DDR);
 	if (mmc_host_is_spi(host)) {
