@@ -46,6 +46,27 @@
 
 #define HAS_eDP (intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 
+/* TBD, move the declaration to a header file */
+int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
+		bool interruptible, struct timespec *timeout);
+
+struct i915_flip_data {
+struct drm_device *dev;
+	u32 seqno;
+	u32 addr;
+	u32 plane;
+};
+struct i915_flip_work {
+	struct i915_flip_data flipdata;
+	struct work_struct  work;
+};
+
+/* Need one work item only for each plane,
+ * as we support only one outstanding flip request
+ * on each plane at a time.
+ */
+static struct i915_flip_work flip_works[I915_MAX_PLANES];
+
 bool intel_pipe_has_type(struct drm_crtc *crtc, int type);
 static void intel_increase_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
@@ -7186,6 +7207,92 @@ err:
 	return ret;
 }
 
+static void intel_vlv_queue_flip_work(struct work_struct *__work)
+{
+	struct i915_flip_work *flipwork =
+		container_of(__work, struct i915_flip_work, work);
+	int ret = 0;
+	struct drm_i915_private *dev_priv = flipwork->flipdata.dev->dev_private;
+	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
+
+	if (dev_priv->mm.suspended || (ring->obj == NULL)) {
+		DRM_ERROR("flip attempted while device/ring is not ready\n");
+		return;
+	}
+
+	/* sleep wait until the seqno has passed */
+	ret = __wait_seqno(ring, flipwork->flipdata.seqno, true, NULL);
+
+	if (ret)
+		DRM_ERROR("wait_seqno failed\n");
+
+	I915_MODIFY_DISPBASE(DSPSURF(flipwork->flipdata.plane),
+		flipwork->flipdata.addr);
+}
+
+/*
+ * Using MMIO based flips for VLV for Media power well residency
+ * optimization. The other alternative of having Render ring based
+ * flip calls is not being used, as the performance (FPS) of certain
+ * 3D Apps was getting severly affected.
+ */
+static int intel_vlv_queue_flip(struct drm_device *dev,
+				 struct drm_crtc *crtc,
+				 struct drm_framebuffer *fb,
+				 struct drm_i915_gem_object *obj)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
+	struct i915_flip_work *work = &flip_works[intel_crtc->plane];
+	int ret;
+
+	/* Make sure the ring is accessible.
+	* mm.suspend alone might be usable for this purpose.
+	* But put additional check until it is confirmed. */
+	if (dev_priv->mm.suspended || (ring->obj == NULL)) {
+		DRM_ERROR("flip attempted while the ring is not ready\n");
+		ret = -EINVAL;
+		goto err;
+	}
+
+	ret = intel_pin_and_fence_fb_obj(dev, obj, ring);
+	if (ret)
+		goto err;
+
+	switch (intel_crtc->plane) {
+	case PLANE_A:
+	case PLANE_B:
+	case PLANE_C:
+	break;
+	default:
+		WARN_ONCE(1, "unknown plane in flip command\n");
+		ret = -ENODEV;
+		goto err_unpin;
+	}
+
+	work->flipdata.dev = dev;
+	work->flipdata.addr = obj->gtt_offset +
+			      intel_crtc->dspaddr_offset;
+	work->flipdata.seqno = obj->last_read_seqno;
+	work->flipdata.plane = intel_crtc->plane;
+
+	INIT_WORK(&work->work, intel_vlv_queue_flip_work);
+
+	/* Queue the MMIO flip work in our private workqueue,
+	 * from which the work items will be dequeued sequentially
+	 * one by one
+	 */
+	queue_work(dev_priv->flipwq, &work->work);
+
+	return 0;
+
+err_unpin:
+	intel_unpin_fb_obj(obj);
+err:
+	return ret;
+}
+
 /*
  * On gen7 we currently use the blit ring because (in early silicon at least)
  * the render ring doesn't give us interrpts for page flip completion, which
@@ -7535,6 +7642,17 @@ static int display_disable_wq(struct drm_device *drm_dev)
 			}
 		}
 	}
+
+	/* No need to explictly flush the flipwq here. There is already
+	 * a wait for pending flips to get completed in crtc_disable,
+	 * and that wait will be over only when the pending flip work
+	 * items, if any, gets scheduled & a corresponding flip done
+	 * interrupt is generated.
+	 * And once the wait for pending flips in crtc_disable is completed
+	 * & crtc itself is also disabled, no new flip calls will be
+	 * accepted(TBD??) which can queue new flip work items.
+	 */
+
 	/* flush any delayed tasks or pending work */
 	flush_scheduled_work();
 	return 0;
@@ -8071,6 +8189,9 @@ static void intel_init_display(struct drm_device *dev)
 		dev_priv->display.queue_flip = intel_gen7_queue_flip;
 		break;
 	}
+
+	if (IS_VALLEYVIEW(dev))
+		dev_priv->display.queue_flip = intel_vlv_queue_flip;
 }
 
 /*
