@@ -23,6 +23,7 @@
 #include <linux/init.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
+#include <linux/ratelimit.h>
 
 #include <asm/processor.h>
 #include <asm/apic.h>
@@ -222,7 +223,7 @@ static int thresh_event_valid(int event)
 	state = (event == 0) ? &pstate->core_thresh0 : &pstate->core_thresh1;
 
 	if (time_before64(now, state->next_check)) {
-		pr_info("core threshold event rejected due to debounce\n");
+		pr_info_ratelimited("core threshold event rejected due to debounce\n");
 		return 0;
 	}
 
