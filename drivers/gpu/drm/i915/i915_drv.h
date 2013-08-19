@@ -64,6 +64,7 @@ enum plane {
 	PLANE_A = 0,
 	PLANE_B,
 	PLANE_C,
+	I915_MAX_PLANES
 };
 #define plane_name(p) ((p) + 'A')
 
@@ -607,6 +608,7 @@ typedef struct drm_i915_private {
 
 	wait_queue_head_t error_queue;
 	struct workqueue_struct *wq;
+	struct workqueue_struct *flipwq;
 
 	struct workqueue_struct *vmap_mn_unregister_wq;
 
