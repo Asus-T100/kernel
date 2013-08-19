@@ -463,8 +463,10 @@ static void __apply_additional_pipe_config(
 	case IA_CSS_PIPE_ID_CAPTURE:
 		/* enable capture pp manually or digital zoom would
 		 * fail*/
-		asd->stream_env.pipe_configs[pipe_id]
-		    .default_capture_config.enable_capture_pp = true;
+		if (asd->stream_env.pipe_configs[pipe_id].
+			default_capture_config.mode != CSS_CAPTURE_MODE_RAW)
+			asd->stream_env.pipe_configs[pipe_id]
+			    .default_capture_config.enable_capture_pp = true;
 		break;
 	case IA_CSS_PIPE_ID_VIDEO:
 		/* enable reduced pipe to have binary
