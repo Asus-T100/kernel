@@ -32,6 +32,7 @@
 #include "i915_drm.h"
 #include "i915_drv.h"
 #include "intel_bios.h"
+#include "intel_dsi.h"
 
 #define	SLAVE_ADDR1	0x70
 #define	SLAVE_ADDR2	0x72
@@ -575,19 +576,28 @@ parse_edp(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 static void
 parse_mipi(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 {
-	/* TBD:
-	 * Change VBT parsing when IAFW is ready with VBT
-	 * For now hardcode the useful values for mipi,
-	 * though we can read from VBT from EFI BIOS
-	 */
-	struct bdb_mipi *mipi;
-	mipi = find_section(bdb, BDB_MIPI);
+	struct bdb_mipi_config *mipi;
+	u8 *sequence;
+
+	mipi = find_section(bdb, BDB_MIPI_CONFIG);
 	if (!mipi) {
 		DRM_DEBUG_KMS("No MIPI BDB found");
 		return;
 	}
 
-	dev_priv->mipi.panel_id = mipi->panel_id;
+	/* found the mipi configuration block, check that we also
+	 * have the sequence block
+	 */
+	sequence = find_section(bdb, BDB_MIPI_SEQUENCE);
+	if (!sequence) {
+		DRM_DEBUG_KMS("No MIPI Sequnece BDB found");
+		return;
+	}
+
+	/* TBD:
+	 * parse the sequnec block for individual sequences
+	 */
+	dev_priv->mipi.panel_id = MIPI_DSI_RESERVED_PANEL_ID;
 }
 
 static void

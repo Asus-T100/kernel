@@ -104,7 +104,8 @@ struct vbios_data {
 #define BDB_LVDS_LFP_DATA	 42
 #define BDB_LVDS_BACKLIGHT	 43
 #define BDB_LVDS_POWER		 44
-#define BDB_MIPI		 50
+#define BDB_MIPI_CONFIG		 52
+#define BDB_MIPI_SEQUENCE	 53
 #define BDB_SKIP		254 /* VBIOS private block, ignore */
 
 struct bdb_general_features {
@@ -259,7 +260,7 @@ struct bdb_lvds_options {
 	u8 pfit_gfx_mode_enhanced:1;
 	u8 pfit_ratio_auto:1;
 	u8 pixel_dither:1;
-	u8 lvds_edid:1;
+	u8 panel_edid:1;
 	u8 rsvd2:1;
 	u8 rsvd4;
 } __attribute__((packed));
@@ -617,51 +618,189 @@ int intel_parse_bios(struct drm_device *dev);
 #define		PORT_IDPC	8
 #define		PORT_IDPD	9
 
-/* Block 50 contains MiPi Panel info */
-struct bdb_mipi {
+/* Block 52 contains MiPi Panel info
+ * 6 such enteries will there. Index into correct
+ * entery is based on the panle_index in #40 LFP
+ */
+#define MAX_MIPI_CONFIGURATIONS	6
+struct _mipi_config {
 	u16 panel_id;
-	u16 bridge_revision;
 
-	/* General params */
+	/* General Params */
 	u32 dithering:1;
-	u32 bpp_pixel_format:1;
 	u32 rsvd1:1;
-	u32 dphy_valid:1;
-	u32 resvd2:28;
+	u32 panel_type:1;
+	u32 panel_arch_type:2;
+	u32 cmd_mode:1;
+	u32 vtm:2;
+	u32 cabc:1;
+	u32 pwm_blc:1;
 
-	u16 port_info;
-	u16 rsvd3:2;
-	u16 num_lanes:2;
-	u16 rsvd4:12;
+	/* Bit 13:10
+	 * 000 - Reserved, 001 - RGB565, 002 - RGB666,
+	 * 011 - RGB666Loosely packed, 100 - RGB888,
+	 * others - rsvd
+	 */
+	u32 videomode_color_format:4;
 
-	/* DSI config */
-	u16 virt_ch_num:2;
-	u16 vtm:2;
-	u16 rsvd5:12;
+	/* Bit 15:14
+	 * 0 - No rotation, 1 - 90 degree
+	 * 2 - 180 degree, 3 - 270 degree
+	 */
+	u32 rotation:2;
+	u32 bta:1;
+	u32 rsvd2:15;
 
-	u32 dsi_clock;
+	/* 2 byte Port Description */
+	u16 dual_link:2;
+	u16 lane_cnt:2;
+	u16 rsvd3:12;
+
+	/* 2 byte DSI COntroller params */
+	/* 0 - Using DSI PHY, 1 - TE usage */
+	u16 dsi_usage:1;
+	u16 rsvd4:15;
+
+	u8 rsvd5[5];
+	u32 dsi_ddr_clk;
 	u32 bridge_ref_clk;
-	u16 rsvd_pwr;
 
-	/* Dphy Params */
+	u8 byte_clk_sel:2;
+	u8 rsvd6:6;
+
+	/* DPHY Flags */
+	u16 dphy_param_valid:1;
+	u16 eot_disabled:1;
+	u16 clk_stop:1;
+	u16 rsvd7:13;
+
+	u32 hs_tx_timeout;
+	u32 lp_rx_timeout;
+	u32 turn_around_timeout;
+	u32 device_reset_timer;
+	u32 master_init_timer;
+	u32 dbi_bw_timer;
+	u32 lp_byte_clk_val;
+
+	/*  4 byte Dphy Params */
 	u32 prepare_cnt:5;
-	u32 rsvd6:3;
+	u32 rsvd8:3;
 	u32 clk_zero_cnt:8;
 	u32 trail_cnt:5;
-	u32 rsvd7:3;
+	u32 rsvd9:3;
 	u32 exit_zero_cnt:6;
-	u32 rsvd8:2;
+	u32 rsvd10:2;
 
-	u32 hl_switch_cnt;
-	u32 lp_byte_clk;
 	u32 clk_lane_switch_cnt;
+	u32 hl_switch_cnt;
+
+	u32 rsvd11[6];
+
+	/* timings based on dphy spec */
+	u8 tclk_miss;
+	u8 tclk_post;
+	u8 rsvd12;
+	u8 tclk_pre;
+	u8 tclk_prepare;
+	u8 tclk_settle;
+	u8 tclk_term_enable;
+	u8 tclk_trail;
+	u16 tclk_prepare_clkzero;
+	u8 rsvd13;
+	u8 td_term_enable;
+	u8 teot;
+	u8 ths_exit;
+	u8 ths_prepare;
+	u16 ths_prepare_hszero;
+	u8 rsvd14;
+	u8 ths_settle;
+	u8 ths_skip;
+	u8 ths_trail;
+	u8 tinit;
+	u8 tlpx;
+	u8 rsvd15[3];
+
+	/* GPIOs */
+	u8 panel_enable;
+	u8 bl_enable;
+	u8 pwm_enable;
+	u8 reset_r_n;
+	u8 pwr_down_r;
+	u8 stdby_r_n;
 
 } __packed;
+
+struct bdb_mipi_config {
+	struct _mipi_config config[0];
+};
+
+/* Block 52 contains MiPi configuration block
+ * 6 * bdb_mipi_config, followed by 6 pps data
+ * block below
+ */
+struct _mipi_pps_data {
+	u16 panel_on_delay;
+	u16 bl_enable_delay;
+	u16 bl_disable_delay;
+	u16 panel_off_delay;
+	u16 panel_power_cycle_delay;
+};
+
+/* MIPI Sequnece Block definitions */
+enum MIPI_SEQ {
+	MIPI_SEQ_UNDEFINED = 0,
+	MIPI_SEQ_RESET,
+	MIPI_SEQ_INIT_OTP,
+	MIPI_SEQ_DISPLAY_ON,
+	MIPI_SEQ_DISPLAY_OFF,
+	MIPI_SEQ_MAX
+
+};
+
+enum MIPI_SEQ_ELEMENT {
+	MIPI_SEQ_ELEM_UNDEFINED = 0,
+	MIPI_SEQ_ELEM_SEND_PKT,
+	MIPI_SEQ_ELEM_DELAY,
+	MIPI_SEQ_ELEM_GPIO,
+	MIPI_SEQ_ELEM_STATUS,
+	MIPI_SEQ_ELEM_MAX
+
+};
+
+enum MIPI_SEQ_FLAG {
+	MIPI_SEQ_FLAG_UNDEFINED = 0,
+	MIPI_SEQ_FLAG_PRE_DPION,
+	MIPI_SEQ_FLAG_POST_DPION
+
+};
+
+enum MIPI_GPIO_PIN_INDEX {
+	MIPI_GPIO_UNDEFINED = 0,
+	MIPI_GPIO_PANEL_ENABLE,
+	MIPI_GPIO_BL_ENABLE,
+	MIPI_GPIO_PWM_ENABLE,
+	MIPI_GPIO_RESET_N,
+	MIPI_GPIO_PWR_DOWN_R,
+	MIPI_GPIO_STDBY_RST_N,
+	MIPI_GPIO_MAX
+
+};
+
+/* We will have variable number of these - max 6 */
+struct bdb_mipi_sequence {
+	u8 version;
+	void *data;
+};
 
 /* Expand to add more info as we work on mipi code */
 struct mipi_info {
 	u16 panel_id;
 	u16 panel_bpp;
+	struct _mipi_config *config;
+	struct _mipi_pps_data *pps;
+	u32 size;
+	u8 *data;
+	u8 *sequence[MIPI_SEQ_MAX];
 };
 
 #endif /* _I830_BIOS_H_ */
