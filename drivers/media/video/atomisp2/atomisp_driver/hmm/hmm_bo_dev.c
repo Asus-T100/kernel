@@ -35,10 +35,10 @@
 #include <linux/ion.h>
 #endif
 
+#include "atomisp_internal.h"
 #include "hmm/hmm_common.h"
 #include "hmm/hmm_bo_dev.h"
 #include "hmm/hmm_bo.h"
-#include "atomisp_internal.h"
 
 /*
  * hmm_bo_device functions.
@@ -53,13 +53,13 @@ int hmm_bo_device_init(struct hmm_bo_device *bdev,
 
 	ret = isp_mmu_init(&bdev->mmu, mmu_driver);
 	if (ret) {
-		v4l2_err(&atomisp_dev, "isp_mmu_init failed.\n");
+		dev_err(atomisp_dev, "isp_mmu_init failed.\n");
 		goto isp_mmu_init_err;
 	}
 
 	ret = hmm_vm_init(&bdev->vaddr_space, vaddr_start, size);
 	if (ret) {
-		v4l2_err(&atomisp_dev, "hmm_vm_init falied. "
+		dev_err(atomisp_dev, "hmm_vm_init falied. "
 			     "vaddr_start = 0x%x, size = %d\n", vaddr_start,
 			     size);
 		goto vm_init_err;
@@ -108,7 +108,7 @@ void hmm_bo_device_exit(struct hmm_bo_device *bdev)
 	 * destroy all bos in the bo list, even they are in use.
 	 */
 	if (!list_empty(&bdev->active_bo_list))
-		v4l2_warn(&atomisp_dev,
+		dev_warn(atomisp_dev,
 			     "there're still activated bo in use. "
 			     "force to free them.\n");
 
@@ -116,7 +116,7 @@ void hmm_bo_device_exit(struct hmm_bo_device *bdev)
 		hmm_bo_unref(list_to_hmm_bo(bdev->active_bo_list.next));
 
 	if (!list_empty(&bdev->free_bo_list))
-		v4l2_warn(&atomisp_dev,
+		dev_warn(atomisp_dev,
 				"there're still bo in free_bo_list. "
 				"force to free them.\n");
 

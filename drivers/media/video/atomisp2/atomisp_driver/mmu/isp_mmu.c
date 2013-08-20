@@ -36,8 +36,8 @@
 #include <linux/string.h>
 #include <linux/errno.h>
 
-#include "mmu/isp_mmu.h"
 #include "atomisp_internal.h"
+#include "mmu/isp_mmu.h"
 
 static void free_mmu_map(struct isp_mmu *mmu, unsigned int start_isp_virt,
 				unsigned int end_isp_virt);
@@ -133,7 +133,7 @@ static void mmu_remap_error(struct isp_mmu *mmu,
 			    unsigned int isp_virt, phys_addr_t old_phys,
 			    phys_addr_t new_phys)
 {
-	v4l2_err(&atomisp_dev, "address remap:\n\n"
+	dev_err(atomisp_dev, "address remap:\n\n"
 		     "\tL1 PT: virt = 0x%x, phys = 0x%llx, "
 		     "idx = %d\n"
 		     "\tL2 PT: virt = 0x%x, phys = 0x%llx, "
@@ -153,7 +153,7 @@ static void mmu_unmap_l2_pte_error(struct isp_mmu *mmu,
 				   phys_addr_t l2_pt, unsigned int l2_idx,
 				   unsigned int isp_virt, unsigned int pte)
 {
-	v4l2_err(&atomisp_dev, "unmap unvalid L2 pte:\n\n"
+	dev_err(atomisp_dev, "unmap unvalid L2 pte:\n\n"
 		     "\tL1 PT: virt = 0x%x, phys = 0x%llx, "
 		     "idx = %d\n"
 		     "\tL2 PT: virt = 0x%x, phys = 0x%llx, "
@@ -170,7 +170,7 @@ static void mmu_unmap_l1_pte_error(struct isp_mmu *mmu,
 				   phys_addr_t l1_pt, unsigned int l1_idx,
 				   unsigned int isp_virt, unsigned int pte)
 {
-	v4l2_err(&atomisp_dev, "unmap unvalid L1 pte (L2 PT):\n\n"
+	dev_err(atomisp_dev, "unmap unvalid L1 pte (L2 PT):\n\n"
 		     "\tL1 PT: virt = 0x%x, phys = 0x%llx, "
 		     "idx = %d\n"
 		     "\tisp_virt = 0x%x, l1_pte(L2 PT) = 0x%x\n",
@@ -181,7 +181,7 @@ static void mmu_unmap_l1_pte_error(struct isp_mmu *mmu,
 
 static void mmu_unmap_l1_pt_error(struct isp_mmu *mmu, unsigned int pte)
 {
-	v4l2_err(&atomisp_dev, "unmap unvalid L1PT:\n\n"
+	dev_err(atomisp_dev, "unmap unvalid L1PT:\n\n"
 		     "L1PT = 0x%x\n", (unsigned int)pte);
 }
 
@@ -258,7 +258,7 @@ static int mmu_l1_map(struct isp_mmu *mmu, phys_addr_t l1_pt,
 		if (!ISP_PTE_VALID(mmu, l2_pte)) {
 			l2_pt = alloc_page_table(mmu);
 			if (l2_pt == NULL_PAGE) {
-				v4l2_err(&atomisp_dev,
+				dev_err(atomisp_dev,
 					     "alloc page table fail.\n");
 
 				/* free all mapped pages */
@@ -289,8 +289,7 @@ static int mmu_l1_map(struct isp_mmu *mmu, phys_addr_t l1_pt,
 		}
 
 		if (ret) {
-			v4l2_err(&atomisp_dev,
-				    "setup mapping in L2PT fail.\n");
+			dev_err(atomisp_dev, "setup mapping in L2PT fail.\n");
 
 			/* free all mapped pages */
 			free_mmu_map(mmu, start, ptr);
@@ -320,8 +319,7 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 		 */
 		l1_pt = alloc_page_table(mmu);
 		if (l1_pt == NULL_PAGE) {
-			v4l2_err(&atomisp_dev,
-				    "alloc page table fail.\n");
+			dev_err(atomisp_dev, "alloc page table fail.\n");
 			mutex_unlock(&mmu->pt_mutex);
 			return -ENOMEM;
 		}
@@ -331,9 +329,8 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 		 */
 		ret = mmu->driver->set_pd_base(mmu, l1_pt);
 		if (ret) {
-			v4l2_err(&atomisp_dev,
-				     "set page directory base address "
-				     "fail.\n");
+			dev_err(atomisp_dev,
+				 "set page directory base address fail.\n");
 			mutex_unlock(&mmu->pt_mutex);
 			return ret;
 		}
@@ -350,8 +347,7 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 	ret = mmu_l1_map(mmu, l1_pt, start, end, phys);
 
 	if (ret)
-		v4l2_err(&atomisp_dev,
-			    "setup mapping in L1PT fail.\n");
+		dev_err(atomisp_dev, "setup mapping in L1PT fail.\n");
 
 	mutex_unlock(&mmu->pt_mutex);
 	return ret;
@@ -508,13 +504,12 @@ int isp_mmu_init(struct isp_mmu *mmu, struct isp_mmu_client *driver)
 		return -EINVAL;
 
 	if (!driver->name)
-		v4l2_warn(&atomisp_dev,
-			    "NULL name for MMU driver...\n");
+		dev_warn(atomisp_dev, "NULL name for MMU driver...\n");
 
 	mmu->driver = driver;
 
 	if (!driver->set_pd_base || !driver->tlb_flush_all) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "set_pd_base or tlb_flush_all operation "
 			     "not provided.\n");
 		return -EINVAL;
@@ -524,8 +519,7 @@ int isp_mmu_init(struct isp_mmu *mmu, struct isp_mmu_client *driver)
 		driver->tlb_flush_range = isp_mmu_flush_tlb_range_default;
 
 	if (!driver->pte_valid_mask) {
-		v4l2_err(&atomisp_dev,
-			 "PTE_MASK is missing from mmu driver\n");
+		dev_err(atomisp_dev, "PTE_MASK is missing from mmu driver\n");
 		return -EINVAL;
 	}
 
@@ -560,8 +554,7 @@ void isp_mmu_exit(struct isp_mmu *mmu)
 		return;
 
 	if (!ISP_PTE_VALID(mmu, mmu->l1_pte)) {
-		v4l2_warn(&atomisp_dev,
-			    "invalid L1PT: pte = 0x%x\n",
+		dev_warn(atomisp_dev, "invalid L1PT: pte = 0x%x\n",
 			    (unsigned int)mmu->l1_pte);
 		return;
 	}

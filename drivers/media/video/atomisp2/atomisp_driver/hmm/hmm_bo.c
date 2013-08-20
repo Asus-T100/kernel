@@ -40,12 +40,15 @@
 #include <linux/io.h>
 #include <asm/current.h>
 #include <linux/sched.h>
+
+#include "atomisp_internal.h"
+
 #include "hmm/hmm_vm.h"
 #include "hmm/hmm_bo.h"
 #include "hmm/hmm_pool.h"
 #include "hmm/hmm_bo_dev.h"
 #include "hmm/hmm_common.h"
-#include "atomisp_internal.h"
+
 #ifdef CONFIG_ION
 #include <linux/ion.h>
 #include <linux/scatterlist.h>
@@ -78,13 +81,13 @@ struct hmm_buffer_object *hmm_bo_create(struct hmm_bo_device *bdev, int pgnr)
 
 	bo = kzalloc(sizeof(*bo), GFP_KERNEL);
 	if (!bo) {
-		v4l2_err(&atomisp_dev, "out of memory for bo\n");
+		dev_err(atomisp_dev, "out of memory for bo\n");
 		return NULL;
 	}
 
 	ret = hmm_bo_init(bdev, bo, pgnr, free_bo_internal);
 	if (ret) {
-		v4l2_err(&atomisp_dev, "hmm_bo_init failed\n");
+		dev_err(atomisp_dev, "hmm_bo_init failed\n");
 		kfree(bo);
 		return NULL;
 	}
@@ -109,8 +112,7 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 	unsigned long flags;
 
 	if (bdev == NULL) {
-		v4l2_warn(&atomisp_dev,
-			    "NULL hmm_bo_device.\n");
+		dev_warn(atomisp_dev, "NULL hmm_bo_device.\n");
 		return -EINVAL;
 	}
 
@@ -120,8 +122,7 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 
 	/* prevent zero size buffer object */
 	if (pgnr == 0) {
-		v4l2_err(&atomisp_dev,
-			    "0 size buffer is not allowed.\n");
+		dev_err(atomisp_dev, "0 size buffer is not allowed.\n");
 		return -EINVAL;
 	}
 
@@ -139,8 +140,7 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 	bo->release = release;
 
 	if (!bo->release)
-		v4l2_warn(&atomisp_dev,
-			    "no release callback specified.\n");
+		dev_warn(atomisp_dev, "no release callback specified.\n");
 
 	/*
 	 * add to active_bo_list
@@ -180,23 +180,22 @@ static void hmm_bo_release(struct hmm_buffer_object *bo)
 	 * so, if this happened, something goes wrong.
 	 */
 	if (bo->status & HMM_BO_MMAPED) {
-		v4l2_err(&atomisp_dev,
-			     "destroy bo which is MMAPED, do nothing\n");
+		dev_err(atomisp_dev, "destroy bo which is MMAPED, do nothing\n");
 		goto err;
 	}
 
 	if (bo->status & HMM_BO_BINDED) {
-		v4l2_warn(&atomisp_dev,
+		dev_warn(atomisp_dev,
 			     "the bo is still binded, unbind it first...\n");
 		hmm_bo_unbind(bo);
 	}
 	if (bo->status & HMM_BO_PAGE_ALLOCED) {
-		v4l2_warn(&atomisp_dev,
+		dev_warn(atomisp_dev,
 			     "the pages is not freed, free pages first\n");
 		hmm_bo_free_pages(bo);
 	}
 	if (bo->status & HMM_BO_VM_ALLOCED) {
-		v4l2_warn(&atomisp_dev,
+		dev_warn(atomisp_dev,
 			     "the vm is still not freed, free vm first...\n");
 		hmm_bo_free_vm(bo);
 	}
@@ -234,8 +233,7 @@ void hmm_bo_unactivate(struct hmm_buffer_object *bo)
 	return;
 
 status_err:
-	v4l2_err(&atomisp_dev,
-			"buffer object already unactivated.\n");
+	dev_err(atomisp_dev, "buffer object already unactivated.\n");
 	return;
 }
 
@@ -252,8 +250,7 @@ int hmm_bo_alloc_vm(struct hmm_buffer_object *bo)
 	bdev = bo->bdev;
 	bo->vm_node = hmm_vm_alloc_node(&bdev->vaddr_space, bo->pgnr);
 	if (unlikely(!bo->vm_node)) {
-		v4l2_err(&atomisp_dev,
-				"hmm_vm_alloc_node err.\n");
+		dev_err(atomisp_dev, "hmm_vm_alloc_node err.\n");
 		goto null_vm;
 	}
 
@@ -268,8 +265,7 @@ null_vm:
 
 status_err:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev,
-			"buffer object already has vm allocated.\n");
+	dev_err(atomisp_dev, "buffer object already has vm allocated.\n");
 	return -EINVAL;
 }
 
@@ -294,8 +290,7 @@ void hmm_bo_free_vm(struct hmm_buffer_object *bo)
 
 status_err:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev,
-			"buffer object has no vm allocated.\n");
+	dev_err(atomisp_dev, "buffer object has no vm allocated.\n");
 }
 
 int hmm_bo_vm_allocated(struct hmm_buffer_object *bo)
@@ -347,7 +342,7 @@ static void free_private_bo_pages(struct hmm_buffer_object *bo,
 		default:
 			ret = set_pages_wb(bo->page_obj[i].page, 1);
 			if (ret)
-				v4l2_err(&atomisp_dev,
+				dev_err(atomisp_dev,
 						"set page to WB err ...\n");
 			__free_pages(bo->page_obj[i].page, 0);
 			break;
@@ -379,7 +374,7 @@ static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
 	bo->page_obj = atomisp_kernel_malloc(
 				sizeof(struct hmm_page_object) * pgnr);
 	if (unlikely(!bo->page_obj)) {
-		v4l2_err(&atomisp_dev, "out of memory for bo->page_obj\n");
+		dev_err(atomisp_dev, "out of memory for bo->page_obj\n");
 		return -ENOMEM;
 	}
 
@@ -448,8 +443,8 @@ retry:
 			 * no memory left.
 			 */
 			if (order == HMM_MIN_ORDER) {
-				v4l2_err(&atomisp_dev,
-					 "%s: cannot allocate pages\n",
+				dev_err(atomisp_dev,
+					"%s: cannot allocate pages\n",
 					 __func__);
 				goto cleanup;
 			}
@@ -474,7 +469,7 @@ retry:
 				 */
 				ret = set_pages_uc(pages, blk_pgnr);
 				if (ret) {
-					v4l2_err(&atomisp_dev,
+					dev_err(atomisp_dev,
 						     "set page uncacheable"
 							"failed.\n");
 
@@ -557,7 +552,7 @@ static int __get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 		vma = find_vma(mm, start);
 		if (!vma) {
-			v4l2_err(&atomisp_dev, "find_vma failed\n");
+			dev_err(atomisp_dev, "find_vma failed\n");
 			return i ? : -EFAULT;
 		}
 
@@ -578,7 +573,7 @@ static int __get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
 			 * pages and potentially allocating memory.
 			 */
 			if (unlikely(fatal_signal_pending(current))) {
-				v4l2_err(&atomisp_dev,
+				dev_err(atomisp_dev,
 					"fatal_signal_pending in %s\n",
 					__func__);
 				return i ? i : -ERESTARTSYS;
@@ -586,8 +581,7 @@ static int __get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 			ret = follow_pfn(vma, start, &pfn);
 			if (ret) {
-				v4l2_err(&atomisp_dev,
-					"follow_pfn() failed\n");
+				dev_err(atomisp_dev, "follow_pfn() failed\n");
 				return i ? : -EFAULT;
 			}
 
@@ -635,13 +629,13 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 	bo->page_obj = atomisp_kernel_malloc(
 			sizeof(struct hmm_page_object) * bo->pgnr);
 	if (unlikely(!bo->page_obj)) {
-		v4l2_err(&atomisp_dev, "out of memory for bo->page_obj...\n");
+		dev_err(atomisp_dev, "out of memory for bo->page_obj...\n");
 		return -ENOMEM;
 	}
 
 	bo->ihandle = ion_import_fd(bo->bdev->iclient, shared_fd);
 	if (IS_ERR_OR_NULL(bo->ihandle)) {
-		v4l2_err(&atomisp_dev, "invalid shared fd to ion.\n");
+		dev_err(atomisp_dev, "invalid shared fd to ion.\n");
 		ret = PTR_ERR(bo->ihandle);
 		if (!bo->ihandle)
 			ret = -EINVAL;
@@ -650,7 +644,7 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 
 	tmp = ion_map_dma(bo->bdev->iclient, bo->ihandle);
 	if (IS_ERR_OR_NULL(tmp)) {
-		v4l2_err(&atomisp_dev, "ion map_dma error.\n");
+		dev_err(atomisp_dev, "ion map_dma error.\n");
 		ret = PTR_ERR(tmp);
 		if (!tmp)
 			ret = -EINVAL;
@@ -663,7 +657,7 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 	} while (tmp && (page_nr < bo->pgnr));
 
 	if (page_nr != bo->pgnr) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			 "get_ion_pages err: bo->pgnr = %d, "
 			 "pgnr actually pinned = %d.\n",
 			 bo->pgnr, page_nr);
@@ -694,14 +688,14 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 
 	pages = atomisp_kernel_malloc(sizeof(struct page *) * bo->pgnr);
 	if (unlikely(!pages)) {
-		v4l2_err(&atomisp_dev, "out of memory for pages...\n");
+		dev_err(atomisp_dev, "out of memory for pages...\n");
 		return -ENOMEM;
 	}
 
 	bo->page_obj = atomisp_kernel_malloc(
 				sizeof(struct hmm_page_object) * bo->pgnr);
 	if (unlikely(!bo->page_obj)) {
-		v4l2_err(&atomisp_dev, "out of memory for bo->page_obj...\n");
+		dev_err(atomisp_dev, "out of memory for bo->page_obj...\n");
 		atomisp_kernel_free(pages);
 		return -ENOMEM;
 	}
@@ -711,7 +705,7 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 	vma = find_vma(current->mm, userptr);
 	up_read(&current->mm->mmap_sem);
 	if (vma == NULL) {
-		v4l2_err(&atomisp_dev, "find_vma failed\n");
+		dev_err(atomisp_dev, "find_vma failed\n");
 		atomisp_kernel_free(bo->page_obj);
 		atomisp_kernel_free(pages);
 		return -EFAULT;
@@ -742,7 +736,7 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 
 	/* can be written by caller, not forced */
 	if (page_nr != bo->pgnr) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 				"get_user_pages err: bo->pgnr = %d, "
 				"pgnr actually pinned = %d.\n",
 				bo->pgnr, page_nr);
@@ -831,7 +825,7 @@ int hmm_bo_alloc_pages(struct hmm_buffer_object *bo,
 		ret = alloc_ion_pages(bo, userptr);
 #endif
 	else {
-		v4l2_err(&atomisp_dev, "invalid buffer type.\n");
+		dev_err(atomisp_dev, "invalid buffer type.\n");
 		ret = -EINVAL;
 	}
 
@@ -848,11 +842,11 @@ int hmm_bo_alloc_pages(struct hmm_buffer_object *bo,
 
 alloc_err:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev, "alloc pages err...\n");
+	dev_err(atomisp_dev, "alloc pages err...\n");
 	return ret;
 status_err:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev,
+	dev_err(atomisp_dev,
 			"buffer object has already page allocated.\n");
 	return -EINVAL;
 }
@@ -880,14 +874,14 @@ void hmm_bo_free_pages(struct hmm_buffer_object *bo)
 		free_ion_pages(bo);
 #endif
 	else
-		v4l2_err(&atomisp_dev, "invalid buffer type.\n");
+		dev_err(atomisp_dev, "invalid buffer type.\n");
 	mutex_unlock(&bo->mutex);
 
 	return;
 
 status_err2:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev,
+	dev_err(atomisp_dev,
 			"buffer object not page allocated yet.\n");
 }
 
@@ -922,7 +916,7 @@ int hmm_bo_get_page_info(struct hmm_buffer_object *bo,
 	return 0;
 
 status_err:
-	v4l2_err(&atomisp_dev,
+	dev_err(atomisp_dev,
 			"buffer object not page allocated yet.\n");
 	mutex_unlock(&bo->mutex);
 	return -EINVAL;
@@ -993,17 +987,17 @@ map_err:
 	}
 
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev,
+	dev_err(atomisp_dev,
 			"setup MMU address mapping failed.\n");
 	return ret;
 
 status_err2:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev, "buffer object already binded.\n");
+	dev_err(atomisp_dev, "buffer object already binded.\n");
 	return -EINVAL;
 status_err1:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev,
+	dev_err(atomisp_dev,
 		     "buffer object vm_node or page not allocated.\n");
 	return -EINVAL;
 }
@@ -1050,7 +1044,7 @@ void hmm_bo_unbind(struct hmm_buffer_object *bo)
 
 status_err:
 	mutex_unlock(&bo->mutex);
-	v4l2_err(&atomisp_dev,
+	dev_err(atomisp_dev,
 		     "buffer vm or page not allocated or not binded yet.\n");
 }
 
@@ -1079,7 +1073,7 @@ void *hmm_bo_vmap(struct hmm_buffer_object *bo)
 
 	pages = atomisp_kernel_malloc(sizeof(*pages) * bo->pgnr);
 	if (unlikely(!pages)) {
-		v4l2_err(&atomisp_dev, "out of memory for pages...\n");
+		dev_err(atomisp_dev, "out of memory for pages...\n");
 		return NULL;
 	}
 
@@ -1182,7 +1176,7 @@ int hmm_bo_mmap(struct vm_area_struct *vma, struct hmm_buffer_object *bo)
 	 * must be the same.
 	 */
 	if ((start + pgnr_to_size(pgnr)) != end) {
-		v4l2_warn(&atomisp_dev,
+		dev_warn(atomisp_dev,
 			     "vma's address space size not equal"
 			     " to buffer object's size");
 		return -EINVAL;
@@ -1192,7 +1186,7 @@ int hmm_bo_mmap(struct vm_area_struct *vma, struct hmm_buffer_object *bo)
 	for (i = 0; i < pgnr; i++) {
 		pfn = page_to_pfn(bo->page_obj[i].page);
 		if (remap_pfn_range(vma, virt, pfn, PAGE_SIZE, PAGE_SHARED)) {
-			v4l2_warn(&atomisp_dev,
+			dev_warn(atomisp_dev,
 					"remap_pfn_range failed:"
 					" virt = 0x%x, pfn = 0x%x,"
 					" mapped_pgnr = %d\n", virt, pfn, 1);
@@ -1214,7 +1208,6 @@ int hmm_bo_mmap(struct vm_area_struct *vma, struct hmm_buffer_object *bo)
 	return 0;
 
 status_err:
-	v4l2_err(&atomisp_dev,
-			"buffer page not allocated yet.\n");
+	dev_err(atomisp_dev, "buffer page not allocated yet.\n");
 	return -EINVAL;
 }

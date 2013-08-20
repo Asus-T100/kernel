@@ -225,7 +225,7 @@ void atomisp_load_uint32(hrt_address addr, uint32_t *data)
 static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
 {
 	if (sh_mmu_mrfld.get_pd_base == NULL) {
-		v4l2_err(&atomisp_dev, "get mmu base address failed.\n");
+		dev_err(atomisp_dev, "get mmu base address failed.\n");
 		return -EINVAL;
 	}
 

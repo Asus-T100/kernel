@@ -75,8 +75,4 @@ struct atomisp_buffer {
 	struct videobuf_buffer	vb;
 };
 
-/*
- * supported V4L2 fmts and resolutions
- */
-extern struct v4l2_device atomisp_dev;
 #endif

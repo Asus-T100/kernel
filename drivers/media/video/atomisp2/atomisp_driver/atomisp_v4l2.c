@@ -81,9 +81,7 @@ int pad_h = 16;
 module_param(pad_h, int, 0644);
 MODULE_PARM_DESC(pad_h, "extra data for ISP processing");
 
-struct v4l2_device atomisp_dev = {
-	.name = "atomisp",
-};
+struct device *atomisp_dev;
 
 void __iomem *atomisp_io_base;
 
@@ -131,8 +129,7 @@ int atomisp_video_register(struct atomisp_video_pipe *video,
 
 	ret = video_register_device(&video->vdev, VFL_TYPE_GRABBER, -1);
 	if (ret < 0)
-		v4l2_err(&atomisp_dev,
-			"%s: could not register video device (%d)\n",
+		dev_err(vdev->dev, "%s: could not register video device (%d)\n",
 			__func__, ret);
 
 	return ret;
@@ -382,7 +379,7 @@ static int atomisp_runtime_resume(struct device *dev)
 		/*Turn on ISP d-phy */
 		ret = atomisp_ospm_dphy_up(isp);
 		if (ret) {
-			v4l2_err(&atomisp_dev, "Failed to power up ISP!.\n");
+			dev_err(isp->dev, "Failed to power up ISP!.\n");
 			return -EINVAL;
 		}
 	}
@@ -416,8 +413,7 @@ static int atomisp_suspend(struct device *dev)
 	spin_lock_irqsave(&isp->lock, flags);
 	if (asd->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
 		spin_unlock_irqrestore(&isp->lock, flags);
-		v4l2_err(&atomisp_dev,
-			    "atomisp cannot suspend at this time.\n");
+		dev_err(isp->dev, "atomisp cannot suspend at this time.\n");
 		return -EINVAL;
 	}
 	spin_unlock_irqrestore(&isp->lock, flags);
@@ -451,7 +447,7 @@ static int atomisp_resume(struct device *dev)
 	/*Turn on ISP d-phy */
 	ret = atomisp_ospm_dphy_up(isp);
 	if (ret) {
-		v4l2_err(&atomisp_dev, "Failed to power up ISP!.\n");
+		dev_err(isp->dev, "Failed to power up ISP!.\n");
 		return -EINVAL;
 	}
 
@@ -505,7 +501,7 @@ static int mrfld_csi_lane_config(struct atomisp_device *isp)
 			sensor_lanes[2] = mipi_info->num_lanes;
 			break;
 		default:
-			v4l2_err(&atomisp_dev,
+			dev_err(isp->dev,
 				"%s: invalid port: %d for the %dth sensor\n",
 				__func__, mipi_info->port, i);
 			break;
@@ -523,7 +519,7 @@ static int mrfld_csi_lane_config(struct atomisp_device *isp)
 	}
 
 	if (i == MRFLD_PORT_CONFIG_NUM) {
-		v4l2_err(&atomisp_dev,
+		dev_err(isp->dev,
 			"%s: could not find the CSI port setting for %d-%d-%d\n",
 			__func__, sensor_lanes[0],
 			sensor_lanes[1], sensor_lanes[2]);
@@ -531,9 +527,7 @@ static int mrfld_csi_lane_config(struct atomisp_device *isp)
 	}
 
 	pci_read_config_dword(isp->pdev, MRFLD_PCI_CSI_CONTROL, &data);
-	v4l2_dbg(3, dbg_level, &atomisp_dev,
-				"%s: original CSI_CONTROL is 0x%x\n",
-				__func__, data);
+	dev_dbg(isp->dev, "%s: original CSI_CONTROL is 0x%x\n", __func__, data);
 	data &= ~MRFLD_PORT_CONFIG_MASK;
 	data |= (i << MRFLD_PORT_CONFIGCODE_SHIFT)
 		| (mipi_lanes[i][2] ? 0 : (1 << MRFLD_PORT3_ENABLE_SHIFT))
@@ -543,7 +537,7 @@ static int mrfld_csi_lane_config(struct atomisp_device *isp)
 
 	pci_write_config_dword(isp->pdev, MRFLD_PCI_CSI_CONTROL, data);
 
-	v4l2_dbg(3, dbg_level, &atomisp_dev,
+	dev_dbg(isp->dev,
 		"%s: the portconfig is %d-%d-%d, CSI_CONTROL is 0x%x\n",
 		__func__, mipi_lanes[i][0], mipi_lanes[i][1],
 		mipi_lanes[i][2], data);
@@ -673,16 +667,15 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 
 	ret = media_device_register(&isp->media_dev);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev, "%s: Media device registration "
-			 "failed (%d)\n", __func__, ret);
+		dev_err(isp->dev, "%s: Media device registration failed (%d)\n",
+				__func__, ret);
 		return ret;
 	}
 
 	isp->v4l2_dev.mdev = &isp->media_dev;
 	ret = v4l2_device_register(isp->dev, &isp->v4l2_dev);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
-			"%s: V4L2 device registration failed (%d)\n",
+		dev_err(isp->dev, "%s: V4L2 device registration failed (%d)\n",
 			__func__, ret);
 		goto v4l2_device_failed;
 	}
@@ -699,8 +692,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 			continue;
 
 		/* error case */
-		v4l2_err(&atomisp_dev,
-			"failed to register the CSI port: %d\n", i);
+		dev_err(isp->dev, "failed to register the CSI port: %d\n", i);
 		/* deregister all registered CSI ports */
 		while (i--)
 			atomisp_mipi_csi2_unregister_entities(
@@ -712,28 +704,25 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	ret =
 	atomisp_file_input_register_entities(&isp->file_dev, &isp->v4l2_dev);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
-			"atomisp_file_input_register_entities\n");
+		dev_err(isp->dev, "atomisp_file_input_register_entities\n");
 		goto file_input_register_failed;
 	}
 
 	ret = atomisp_tpg_register_entities(&isp->tpg, &isp->v4l2_dev);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev, "atomisp_tpg_register_entities\n");
+		dev_err(isp->dev, "atomisp_tpg_register_entities\n");
 		goto tpg_register_failed;
 	}
 
 	ret = atomisp_subdev_register_entities(&isp->asd, &isp->v4l2_dev);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
-			"atomisp_subdev_register_entities fail\n");
+		dev_err(isp->dev, "atomisp_subdev_register_entities fail\n");
 		goto subdev_register_failed;
 	}
 
 	for (i = 0; i < isp->input_cnt; i++) {
 		if (isp->inputs[i].port >= ATOMISP_CAMERA_NR_PORTS) {
-			v4l2_err(&atomisp_dev,
-					"isp->inputs port %d not supported\n",
+			dev_err(isp->dev, "isp->inputs port %d not supported\n",
 					isp->inputs[i].port);
 			ret = -EINVAL;
 			goto link_failed;
@@ -751,7 +740,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		}
 	}
 
-	v4l2_dbg(1, dbg_level, &atomisp_dev,
+	dev_dbg(isp->dev,
 		"FILE_INPUT enable, camera_cnt: %d\n", isp->input_cnt);
 	isp->inputs[isp->input_cnt].type = FILE_INPUT;
 	isp->inputs[isp->input_cnt].port = -1;
@@ -760,7 +749,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	isp->inputs[isp->input_cnt++].camera = &isp->file_dev.sd;
 
 	if (isp->input_cnt < ATOM_ISP_MAX_INPUTS) {
-		v4l2_dbg(1, dbg_level, &atomisp_dev,
+		dev_dbg(isp->dev,
 			"TPG detected, camera_cnt: %d\n", isp->input_cnt);
 		isp->inputs[isp->input_cnt].type = TEST_PATTERN;
 		isp->inputs[isp->input_cnt].port = -1;
@@ -768,8 +757,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		isp->inputs[isp->input_cnt].morph_table = NULL;
 		isp->inputs[isp->input_cnt++].camera = &isp->tpg.sd;
 	} else {
-		v4l2_warn(&atomisp_dev,
-			"too many atomisp inputs, TPG ignored.\n");
+		dev_warn(isp->dev, "too many atomisp inputs, TPG ignored.\n");
 	}
 
 	ret = v4l2_device_register_subdev_nodes(&isp->v4l2_dev);
@@ -801,26 +789,26 @@ static int atomisp_initialize_modules(struct atomisp_device *isp)
 
 	ret = atomisp_mipi_csi2_init(isp);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev, "mipi csi2 initialization failed\n");
+		dev_err(isp->dev, "mipi csi2 initialization failed\n");
 		goto error_mipi_csi2;
 	}
 
 	ret = atomisp_file_input_init(isp);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
+		dev_err(isp->dev,
 			"file input device initialization failed\n");
 		goto error_file_input;
 	}
 
 	ret = atomisp_tpg_init(isp);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev, "tpg initialization failed\n");
+		dev_err(isp->dev, "tpg initialization failed\n");
 		goto error_tpg;
 	}
 
 	ret = atomisp_subdev_init(isp);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev, "ISP subdev initialization failed\n");
+		dev_err(isp->dev, "ISP subdev initialization failed\n");
 		goto error_isp_subdev;
 	}
 
@@ -946,6 +934,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	if (!is_valid_device(dev, id))
 		return -ENODEV;
 
+	/* Pointer to struct device. */
+	atomisp_dev = &dev->dev;
+
 	pdata = atomisp_get_platform_data();
 	if (pdata == NULL) {
 		dev_warn(&dev->dev, "no platform data available\n");
@@ -959,7 +950,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 
 	start = pci_resource_start(dev, ATOM_ISP_PCI_BAR);
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "start: 0x%x\n", start);
+	dev_dbg(&dev->dev, "start: 0x%x\n", start);
 
 	err = pcim_iomap_regions(dev, 1 << ATOM_ISP_PCI_BAR, pci_name(dev));
 	if (err) {
@@ -969,12 +960,11 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 
 	base = pcim_iomap_table(dev)[ATOM_ISP_PCI_BAR];
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: %p\n", base);
+	dev_dbg(&dev->dev, "base: %p\n", base);
 
 	atomisp_io_base = base;
 
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "atomisp_io_base: %p\n",
-			atomisp_io_base);
+	dev_dbg(&dev->dev, "atomisp_io_base: %p\n", atomisp_io_base);
 
 	isp = devm_kzalloc(&dev->dev, sizeof(struct atomisp_device), GFP_KERNEL);
 	if (!isp) {
