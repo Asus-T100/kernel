@@ -27,7 +27,7 @@ enum iio_chan_type {
 	IIO_ANGL,
 	IIO_TIMESTAMP,
 	IIO_CAPACITANCE,
-	IIO_RESISTANCE,
+	IIO_QUATERNION,
 };
 
 enum iio_modifier {
@@ -45,6 +45,7 @@ enum iio_modifier {
 	IIO_MOD_X_OR_Y_OR_Z,
 	IIO_MOD_LIGHT_BOTH,
 	IIO_MOD_LIGHT_IR,
+	IIO_MOD_R,
 };
 
 #define IIO_VAL_INT 1

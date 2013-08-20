@@ -90,7 +90,6 @@ enum iio_endian {
 
 struct iio_chan_spec;
 struct iio_dev;
-struct iio_channel;
 
 /**
  * struct iio_chan_spec_ext_info - Extended channel info attribute
@@ -259,9 +258,6 @@ struct iio_info {
 			int *val,
 			int *val2,
 			long mask);
-
-	int (*read_all_raw)(struct iio_channel *chan,
-			int *val);
 
 	int (*write_raw)(struct iio_dev *indio_dev,
 			 struct iio_chan_spec const *chan,
@@ -452,6 +448,7 @@ void iio_free_device(struct iio_dev *indio_dev);
  **/
 static inline bool iio_buffer_enabled(struct iio_dev *indio_dev)
 {
+
 	return indio_dev->currentmode
 		& (INDIO_BUFFER_TRIGGERED | INDIO_BUFFER_HARDWARE);
 };

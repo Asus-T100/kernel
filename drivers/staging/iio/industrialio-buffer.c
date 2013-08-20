@@ -14,7 +14,7 @@
  * - Alternative access techniques?
  */
 #include <linux/kernel.h>
-#include <linux/export.h>
+//#include <linux/export.h>
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
@@ -56,10 +56,13 @@ unsigned int iio_buffer_poll(struct file *filp,
 {
 	struct iio_dev *indio_dev = filp->private_data;
 	struct iio_buffer *rb = indio_dev->buffer;
+        if (rb->stufftoread)
+                return POLLIN | POLLRDNORM;
 
 	poll_wait(filp, &rb->pollq, wait);
-	if (rb->stufftoread)
-		return POLLIN | POLLRDNORM;
+        if (rb->stufftoread)
+                return POLLIN | POLLRDNORM;
+
 	/* need a way of knowing if there may be enough data... */
 	return 0;
 }
@@ -399,19 +402,25 @@ ssize_t iio_buffer_store_enable(struct device *dev,
 	int previous_mode;
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct iio_buffer *buffer = indio_dev->buffer;
+	printk("<ych> %s %d \n", __func__, __LINE__);	
+
 
 	mutex_lock(&indio_dev->mlock);
 	previous_mode = indio_dev->currentmode;
 	requested_state = !(buf[0] == '0');
 	current_state = iio_buffer_enabled(indio_dev);
 	if (current_state == requested_state) {
+			printk("<ych> %s %d \n", __func__, __LINE__);	
 		printk(KERN_INFO "iio-buffer, current state requested again\n");
 		goto done;
 	}
 	if (requested_state) {
+				printk("<ych> %s %d \n", __func__, __LINE__);	
 		if (indio_dev->setup_ops->preenable) {
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 			ret = indio_dev->setup_ops->preenable(indio_dev);
 			if (ret) {
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 				printk(KERN_ERR
 				       "Buffer not started:"
 				       "buffer preenable failed\n");
@@ -419,8 +428,10 @@ ssize_t iio_buffer_store_enable(struct device *dev,
 			}
 		}
 		if (buffer->access->request_update) {
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 			ret = buffer->access->request_update(buffer);
 			if (ret) {
+						printk("<ych> %s %d \n", __func__, __LINE__);	
 				printk(KERN_INFO
 				       "Buffer not started:"
 				       "buffer parameter update failed\n");
@@ -428,52 +439,75 @@ ssize_t iio_buffer_store_enable(struct device *dev,
 			}
 		}
 		/* Definitely possible for devices to support both of these.*/
+
 		if (indio_dev->modes & INDIO_BUFFER_TRIGGERED) {
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 			if (!indio_dev->trig) {
+						printk("<ych> %s %d \n", __func__, __LINE__);	
 				printk(KERN_INFO
 				       "Buffer not started: no trigger\n");
 				ret = -EINVAL;
 				goto error_ret;
 			}
+			printk("<ych> %s %d \n", __func__, __LINE__);	
+
 			indio_dev->currentmode = INDIO_BUFFER_TRIGGERED;
-		} else if (indio_dev->modes & INDIO_BUFFER_HARDWARE)
+		} else if (indio_dev->modes & INDIO_BUFFER_HARDWARE) {
+			printk("<ych> %s %d \n", __func__, __LINE__);	
+
 			indio_dev->currentmode = INDIO_BUFFER_HARDWARE;
+		}
 		else { /* should never be reached */
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 			ret = -EINVAL;
 			goto error_ret;
 		}
 
 		if (indio_dev->setup_ops->postenable) {
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 			ret = indio_dev->setup_ops->postenable(indio_dev);
 			if (ret) {
+						printk("<ych> %s %d \n", __func__, __LINE__);	
 				printk(KERN_INFO
 				       "Buffer not started:"
 				       "postenable failed\n");
 				indio_dev->currentmode = previous_mode;
-				if (indio_dev->setup_ops->postdisable)
+				if (indio_dev->setup_ops->postdisable) {
 					indio_dev->setup_ops->
 						postdisable(indio_dev);
+							printk("<ych> %s %d \n", __func__, __LINE__);	
+					}
 				goto error_ret;
 			}
 		}
 	} else {
+			printk("<ych> %s %d \n", __func__, __LINE__);	
 		if (indio_dev->setup_ops->predisable) {
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 			ret = indio_dev->setup_ops->predisable(indio_dev);
-			if (ret)
+			if (ret) {
+						printk("<ych> %s %d \n", __func__, __LINE__);	
 				goto error_ret;
+				}
 		}
+				printk("<ych> %s %d \n", __func__, __LINE__);	
 		indio_dev->currentmode = INDIO_DIRECT_MODE;
 		if (indio_dev->setup_ops->postdisable) {
+					printk("<ych> %s %d \n", __func__, __LINE__);	
 			ret = indio_dev->setup_ops->postdisable(indio_dev);
-			if (ret)
+			if (ret) {
+						printk("<ych> %s %d \n", __func__, __LINE__);	
 				goto error_ret;
+				}
 		}
 	}
 done:
+			printk("<ych> %s %d \n", __func__, __LINE__);	
 	mutex_unlock(&indio_dev->mlock);
 	return len;
 
 error_ret:
+			printk("<ych> %s %d \n", __func__, __LINE__);	
 	mutex_unlock(&indio_dev->mlock);
 	return ret;
 }
@@ -483,6 +517,7 @@ ssize_t iio_buffer_show_enable(struct device *dev,
 			       struct device_attribute *attr,
 			       char *buf)
 {
+
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	return sprintf(buf, "%d\n", iio_buffer_enabled(indio_dev));
 }

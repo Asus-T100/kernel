@@ -24,4 +24,7 @@ config SENSORS_HMC5843
 	  To compile this driver as a module, choose M here: the module
 	  will be called hmc5843
 
+#<ASUS-GUC20130730+>	  
+source "drivers/staging/iio/magnetometer/inv_compass/Kconfig"
+#<ASUS-GUC20130730->
 endmenu

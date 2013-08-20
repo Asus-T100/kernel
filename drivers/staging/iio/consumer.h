@@ -60,21 +60,6 @@ struct iio_channel *iio_st_channel_get_all(const char *name);
 void iio_st_channel_release_all(struct iio_channel *chan);
 
 /**
- * iio_st_channel_get_num() - get the number of channels
- * @chan: array of iio_channel structures
- */
-int iio_st_channel_get_num(const struct iio_channel *chan);
-
-/**
- * iio_st_channel_get_name() - get the channel names
- * @chan: array of iio_channel structures
- * @chan_name: pre-allocated string buffers of channel names
- *
- * Returns 0 on success.
- */
-int iio_st_channel_get_name(const struct iio_channel *chan, char **chan_name);
-
-/**
  * iio_st_read_channel_raw() - read from a given channel
  * @channel:		The channel being queried.
  * @val:		Value read back.
@@ -83,17 +68,6 @@ int iio_st_channel_get_name(const struct iio_channel *chan, char **chan_name);
  * scale will need to be applied if standard units required.
  */
 int iio_st_read_channel_raw(struct iio_channel *chan,
-			    int *val);
-
-/**
- * iio_st_read_channel_all_raw() - multiple reads from a given channel
- * @chan:		The channels being queried.
- * @val:		Values read back.
- *
- * Note raw reads from iio channels are in adc counts and hence
- * scale will need to be applied if standard units required.
- */
-int iio_st_read_channel_all_raw(struct iio_channel *chan,
 			    int *val);
 
 /**
