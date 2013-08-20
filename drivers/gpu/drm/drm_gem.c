@@ -80,7 +80,14 @@
 #define DRM_FILE_PAGE_OFFSET_SIZE ((0xFFFFFFFFUL >> PAGE_SHIFT) * 16)
 #else
 #define DRM_FILE_PAGE_OFFSET_START ((0xFFFFFFFUL >> PAGE_SHIFT) + 1)
-#define DRM_FILE_PAGE_OFFSET_SIZE ((0xFFFFFFFUL >> PAGE_SHIFT) * 16)
+/* Earlier the size of the range was ((0xFFFFFFFUL >> PAGE_SHIFT) * 16)
+ * But now have reduced the size of fake offset range (by ~256 MB) to
+ * bring it within a 32 bit number range. This is done to avoid the wrap
+ * around of the fake offset value, when calling libc's mmap function from
+ * libdrm side, which even though accepts 'file offset' argument as a 'long'
+ * data type, but 'long' data type is also of 32 bits only on x86 cpu.
+ */
+#define DRM_FILE_PAGE_OFFSET_SIZE ((0xEFFFFFFUL >> PAGE_SHIFT) * 16)
 #endif
 
 /**
