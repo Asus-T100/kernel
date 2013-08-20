@@ -4490,7 +4490,7 @@ void intel_display_pm_init(struct drm_device *dev)
  * Will be updated once S0iX code is integrated */
 bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 {
-	struct drm_dev *drm_dev = gdev;
+	struct drm_device *drm_dev = gdev;
 	i915_rpm_get_disp(drm_dev);
 	return i915_is_device_active(drm_dev);
 }
@@ -4498,7 +4498,7 @@ EXPORT_SYMBOL(ospm_power_using_hw_begin);
 
 void ospm_power_using_hw_end(int hw_island)
 {
-	struct drm_dev *drm_dev = gdev;
+	struct drm_device *drm_dev = gdev;
 	i915_rpm_put_disp(drm_dev);
 }
 EXPORT_SYMBOL(ospm_power_using_hw_end);
