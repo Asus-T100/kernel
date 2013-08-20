@@ -274,9 +274,10 @@ int atomisp_css_frame_map(struct atomisp_css_frame **frame,
 int atomisp_css_set_black_frame(struct atomisp_sub_device *asd,
 			const struct atomisp_css_frame *raw_black_frame);
 
-int atomisp_css_allocate_continuous_frames(bool init_time);
+int atomisp_css_allocate_continuous_frames(bool init_time,
+			struct atomisp_sub_device *asd);
 
-void atomisp_css_update_continuous_frames(void);
+void atomisp_css_update_continuous_frames(struct atomisp_sub_device *asd);
 
 int atomisp_css_stop(struct atomisp_sub_device *asd,
 			enum atomisp_css_pipe_id pipe_id, bool in_reset);

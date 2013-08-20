@@ -735,7 +735,8 @@ int atomisp_css_set_black_frame(struct atomisp_sub_device *asd,
 	return 0;
 }
 
-int atomisp_css_allocate_continuous_frames(bool init_time)
+int atomisp_css_allocate_continuous_frames(bool init_time,
+				struct atomisp_sub_device *asd)
 {
 	if (sh_css_allocate_continuous_frames(init_time) != sh_css_success)
 		return -EINVAL;
@@ -743,7 +744,7 @@ int atomisp_css_allocate_continuous_frames(bool init_time)
 	return 0;
 }
 
-void atomisp_css_update_continuous_frames(void)
+void atomisp_css_update_continuous_frames(struct atomisp_sub_device *asd)
 {
 	sh_css_update_continuous_frames();
 }

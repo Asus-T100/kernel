@@ -1070,8 +1070,9 @@ void atomisp_delayed_init_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  delayed_init_work);
-	atomisp_css_allocate_continuous_frames(false);
-	atomisp_css_update_continuous_frames();
+	struct atomisp_sub_device *asd = &isp->asd;
+	atomisp_css_allocate_continuous_frames(false, asd);
+	atomisp_css_update_continuous_frames(asd);
 	isp->delayed_init = ATOMISP_DELAYED_INIT_WORK_DONE;
 }
 
