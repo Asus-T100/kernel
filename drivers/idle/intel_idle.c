@@ -71,6 +71,9 @@
 #define INTEL_IDLE_VERSION "0.4"
 #define PREFIX "intel_idle: "
 
+#define CLPU_CR_C6_POLICY_CONFIG	0x668
+#define DISABLE_C6_DEMOTION		0x0f0f0f01
+
 static struct cpuidle_driver intel_idle_driver = {
 	.name = "intel_idle",
 	.owner = THIS_MODULE,
@@ -998,6 +1001,11 @@ static int __init intel_idle_init(void)
 			cpuidle_unregister_driver(&intel_idle_driver);
 			return retval;
 		}
+
+		if (platform_is(INTEL_ATOM_BYT))
+			if (wrmsr_on_cpu(i, CLPU_CR_C6_POLICY_CONFIG,
+						DISABLE_C6_DEMOTION, 0x0))
+				pr_debug(PREFIX "Error to disable C6 demotion");
 	}
 
 	return 0;
