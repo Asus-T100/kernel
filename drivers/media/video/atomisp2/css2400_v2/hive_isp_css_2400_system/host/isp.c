@@ -50,8 +50,8 @@ void isp_get_state(
 {
 	hrt_data sc = isp_ctrl_load(ID, ISP_SC_REG);
 
-	assert(state != NULL);
-	assert(stall != NULL);
+	assert_exit(state != NULL);
+	assert_exit(stall != NULL);
 
 	state->pc = isp_ctrl_load(ID, ISP_PC_REG);
 	state->status_register = sc;
