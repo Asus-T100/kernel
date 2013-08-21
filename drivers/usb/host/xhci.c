@@ -264,6 +264,8 @@ static void xhci_byt_pm_check_work(struct work_struct *work)
 	u32			gpe_sts = 0;
 	u32			gpe_en = 0;
 	unsigned long		flags;
+	int			pmcsr_pos = 0;
+	u16			pmcsr = 0;
 
 	if (xhci_host)
 		hcd = xhci_to_hcd(xhci_host);
@@ -283,13 +285,26 @@ static void xhci_byt_pm_check_work(struct work_struct *work)
 
 	if (pci_check_pme_enable_and_status(pdev)) {
 		/* wait for PME polling to be done */
+		xhci_dbg(xhci_host, "PCI STS/EN set\n");
 		msleep(1200);
 	}
+
+done:
+	/* sometimes PME received in D0 which is not expected, clear them */
+	pmcsr_pos = pdev->pm_cap + PCI_PM_CTRL;
+	pci_read_config_word(pdev, pmcsr_pos, &pmcsr);
+
+	if (pmcsr & 0x8100) {
+		/* Clear PME_STS and PME_EN anyway */
+		pci_write_config_word(pdev, pmcsr_pos, 0x8008);
+		pci_read_config_word(pdev, pmcsr_pos, &pmcsr);
+	}
+
+	xhci_dbg(xhci_host, "PCI STS/EN = 0x%x\n", pmcsr);
 
 	/* clear status of GPE.PME_B0 */
 	acpi_hw_register_write(0xf1, 0x2000);
 
-done:
 	/* re-enable GPE.PME_B0 interrupt */
 	acpi_hw_register_read(0xf2, &gpe_en);
 	gpe_en = gpe_en | 0x2000;
@@ -329,6 +344,9 @@ static int xhci_setup_msi(struct xhci_hcd *xhci)
 		pdev->device == PCI_DEVICE_ID_INTEL_BYT_USH) {
 		xhci_host = xhci;
 		INIT_WORK(&xhci->pm_check, xhci_byt_pm_check_work);
+
+		/* map PMC related MMIO for this workaround */
+		xhci_host->pmc_base_addr = ioremap_nocache(0xfed03000, 0x1000);
 		ret = request_irq(9, (irq_handler_t)xhci_byt_pm_irq,
 			IRQF_SHARED, "xhci-acpi-wa", xhci_to_hcd(xhci));
 		if (ret)
