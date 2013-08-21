@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -44,7 +45,8 @@ setup_sp(struct ia_css_fw_info *fw, const char *fw_data)
 {
 	const char *blob_data;
 
-	assert_exit(fw && fw_data);
+	assert(fw != NULL);
+	assert(fw_data != NULL);
 
 	blob_data = fw_data + fw->blob.offset;
 
@@ -62,7 +64,7 @@ sh_css_load_firmware(const char *fw_data,
 	struct ia_css_fw_info *binaries;
 	struct sh_css_fw_bi_file_h *file_header;
 
-	assert_exit_code(fw_data, IA_CSS_ERR_INTERNAL_ERROR);
+	assert(fw_data != NULL);
 
 	file_header = (struct sh_css_fw_bi_file_h *)fw_data;
 	binaries = (struct ia_css_fw_info *)(&file_header[1]);
@@ -137,7 +139,7 @@ sh_css_load_blob(const unsigned char *blob, unsigned size)
 	/* this will allocate memory aligned to a DDR word boundary which
 	   is required for the CSS DMA to read the instructions. */
 
-	assert_exit_code(blob != NULL, 0);
+	assert(blob != NULL);
 	if (target_addr) {
 		mmgr_store(target_addr, blob, size);
 #if SH_CSS_PREVENT_UNINIT_READS == 1
@@ -157,7 +159,8 @@ sh_css_load_blob_info(const char *fw, struct ia_css_blob_descr *bd)
 	const unsigned char *blob;
 	struct ia_css_fw_info *bi = (struct ia_css_fw_info *)fw;
 
-	assert_exit_code(fw && bd, IA_CSS_ERR_INVALID_ARGUMENTS);
+	assert(fw != NULL);
+	assert(bd != NULL);
 
 	name = fw + sizeof(*bi);
 	blob = (const unsigned char *)name + strlen(name)+1;

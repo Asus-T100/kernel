@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -47,7 +48,7 @@
 #include <stdint.h>
 #endif
 
-#include "stddef.h"
+#include <stddef.h>
 
 /*
  * User provided file that defines the system address types:

@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -49,7 +50,7 @@
 //#endif
 
 #elif defined(__KERNEL__) /* a.o. Android builds */
-#include <linux/bug.h>
+
 #include "sh_css_debug.h"
 #define __symbol2value( x ) #x
 #define __symbol2string( x ) __symbol2value( x )
@@ -66,20 +67,6 @@
 	} while (0)
 
 #define OP___assert(cnd) assert(cnd)
-
-#define assert_exit(exp)						\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return;						\
-	} while (0)
-
-#define assert_exit_code(exp, code)					\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return code;					\
-	} while (0)
 
 #elif defined(__FIST__)
 

@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -28,7 +29,7 @@ static struct ia_css_hw_access_env my_env;
 void
 ia_css_device_access_init(const struct ia_css_hw_access_env *env)
 {
-	assert_exit(env != NULL);
+	assert(env != NULL);
 
 	my_env = *env;
 }

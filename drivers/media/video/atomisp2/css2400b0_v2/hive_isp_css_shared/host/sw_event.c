@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -70,8 +71,8 @@ encode_sw_event(
 	uint32_t nr_of_bits;
 	uint32_t i;
 
-	assert_exit_code(in != NULL, false);
-	assert_exit_code(out != NULL, false);
+	assert(in != NULL);
+	assert(out != NULL);
 
 	OP___assert (nr > 0 && nr <= MAX_NR_OF_PAYLOADS_PER_SW_EVENT);
 

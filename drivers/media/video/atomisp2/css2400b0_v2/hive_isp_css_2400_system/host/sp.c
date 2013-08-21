@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -48,8 +49,8 @@ void sp_get_state(
 {
 	hrt_data sc = sp_ctrl_load(ID, SP_SC_REG);
 
-	assert_exit(state != NULL);
-	assert_exit(stall != NULL);
+	assert(state != NULL);
+	assert(stall != NULL);
 
 	state->pc = sp_ctrl_load(ID, SP_PC_REG);
 	state->status_register = sc;

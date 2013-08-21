@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -18,6 +19,7 @@
  * 02110-1301, USA.
  *
  */
+
 #include "assert_support.h"
 #include "ia_css.h"
 #include "sh_css_param_dvs.h"
@@ -27,6 +29,8 @@
 #else
 #include <string.h>		/* memcpy() */
 #endif
+
+
 struct ia_css_dvs_6axis_config *
 generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct ia_css_resolution *dvs_offset)
 {
@@ -39,8 +43,8 @@ generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct
 	enum ia_css_err err = IA_CSS_SUCCESS;	
 	struct ia_css_dvs_6axis_config  *dvs_config = NULL;
 
-	assert_exit_code(frame_res != NULL, NULL);
-	assert_exit_code(dvs_offset != NULL, NULL);
+	assert(frame_res != NULL);
+	assert(dvs_offset != NULL);
 	
 	dvs_config = (struct ia_css_dvs_6axis_config *)sh_css_malloc(sizeof(struct ia_css_dvs_6axis_config));
 	if(dvs_config == NULL)
@@ -175,8 +179,8 @@ generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct
 void
 free_dvs_6axis_table(struct ia_css_dvs_6axis_config  **dvs_6axis_config)
 {
-	assert_exit(dvs_6axis_config != NULL);
-	assert_exit(*dvs_6axis_config != NULL);
+	assert(dvs_6axis_config != NULL);
+	assert(*dvs_6axis_config != NULL);
 
 	if( (dvs_6axis_config != NULL) && (*dvs_6axis_config != NULL) ) 
 	{
@@ -220,8 +224,8 @@ void copy_dvs_6axis_table(struct ia_css_dvs_6axis_config *dvs_config_dst,
 	unsigned int width_uv;
 	unsigned int height_uv;
 
-	assert_exit(dvs_config_dst != NULL);
-	assert_exit(dvs_config_src!= NULL);
+	assert(dvs_config_dst != NULL);
+	assert(dvs_config_src!= NULL);
 
 	width_y = dvs_config_src->width_y;
 	height_y =  dvs_config_src->height_y;

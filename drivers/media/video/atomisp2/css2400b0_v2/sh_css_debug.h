@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -231,6 +232,8 @@ void sh_css_dump_pipe_stripe_info(void);
 #endif
 
 void sh_css_dump_isp_binary(void);
+
+void sh_css_dump_sp_raw_copy_linecount(bool reduced);
 
 /*
 extern void sh_css_init_ddr_debug_queue(void);
