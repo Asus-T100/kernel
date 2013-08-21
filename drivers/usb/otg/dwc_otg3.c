@@ -917,13 +917,13 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 
 		if (otg->otg_data->is_byt) {
 			otg_dbg(otg, "cancel discon work\n");
-			cancel_delayed_work(&otg->suspend_discon_work);
+			__cancel_delayed_work(&otg->suspend_discon_work);
 		}
 		return 0;
 	} else if (mA == OTG_DEVICE_RESET) {
 		if (otg->otg_data->is_byt) {
 			otg_dbg(otg, "cancel discon work\n");
-			cancel_delayed_work(&otg->suspend_discon_work);
+			__cancel_delayed_work(&otg->suspend_discon_work);
 		}
 		return 0;
 	}
@@ -1413,7 +1413,7 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 
 		if (otg->otg_data->is_byt) {
 			otg_dbg(otg, "cancel discon work\n");
-			cancel_delayed_work(&otg->suspend_discon_work);
+			__cancel_delayed_work(&otg->suspend_discon_work);
 		}
 		return DWC_STATE_INIT;
 	}
