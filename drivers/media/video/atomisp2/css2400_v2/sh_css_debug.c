@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -69,8 +70,8 @@ static void print_sp_state(
 	const sp_state_t	*state,
 	const char		*cell)
 {
-	assert_exit(state != NULL);
-	assert_exit(cell != NULL);
+	assert(state != NULL);
+	assert(cell != NULL);
 
 	sh_css_dtrace(2, "%s state:\n", cell);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "PC", state->pc);
@@ -87,8 +88,8 @@ static void print_isp_state(
 	const isp_state_t	*state,
 	const char		*cell)
 {
-	assert_exit(state != NULL);
-	assert_exit(cell != NULL);
+	assert(state != NULL);
+	assert(cell != NULL);
 
 	sh_css_dtrace(2, "%s state:\n", cell);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "PC", state->pc);
@@ -202,60 +203,35 @@ static void print_if_state(
 	unsigned int val;
 
 #if defined(HAS_INPUT_FORMATTER_VERSION_1)
-	const char *st_reset;
+	const char *st_reset  = (state->reset ? "Active" : "Not active");
 #endif
-	const char *st_vsync_active_low;
-	const char *st_hsync_active_low;
+	const char *st_vsync_active_low =
+		(state->vsync_active_low ? "low" : "high");
+	const char *st_hsync_active_low =
+		(state->hsync_active_low ? "low" : "high");
 
 	const char *fsm_sync_status_str    = "unknown";
 	const char *fsm_crop_status_str    = "unknown";
 	const char *fsm_padding_status_str = "unknown";
 
-	int st_stline;
-	int st_stcol;
-	int st_crpht;
-	int st_crpwd;
-	int st_verdcm;
-	int st_hordcm;
-	int st_ver_deinterleaving;
-	int st_hor_deinterleaving;
-	int st_leftpd;
-	int st_eoloff;
-	int st_vmstartaddr;
-	int st_vmendaddr;
-	int st_vmincr;
-	int st_yuv420;
-	int st_allow_fifo_overflow;
-	int st_block_fifo_when_no_req;
+	int st_stline = state->start_line;
+	int st_stcol  = state->start_column;
+	int st_crpht  = state->cropped_height;
+	int st_crpwd  = state->cropped_width;
+	int st_verdcm = state->ver_decimation;
+	int st_hordcm = state->hor_decimation;
+	int st_ver_deinterleaving = state->ver_deinterleaving;
+	int st_hor_deinterleaving = state->hor_deinterleaving;
+	int st_leftpd = state->left_padding;
+	int st_eoloff = state->eol_offset;
+	int st_vmstartaddr = state->vmem_start_address;
+	int st_vmendaddr = state->vmem_end_address;
+	int st_vmincr = state->vmem_increment;
+	int st_yuv420 = state->is_yuv420;
+	int st_allow_fifo_overflow = state->allow_fifo_overflow;
+	int st_block_fifo_when_no_req = state->block_fifo_when_no_req;
 
-	if (state == NULL)
-		return;
-
-#if defined(HAS_INPUT_FORMATTER_VERSION_1)
-	st_reset  = (state->reset ? "Active" : "Not active");
-#endif
-
-	st_vsync_active_low =
-		(state->vsync_active_low ? "low" : "high");
-	st_hsync_active_low =
-		(state->hsync_active_low ? "low" : "high");
-
-	st_stline = state->start_line;
-	st_stcol  = state->start_column;
-	st_crpht  = state->cropped_height;
-	st_crpwd  = state->cropped_width;
-	st_verdcm = state->ver_decimation;
-	st_hordcm = state->hor_decimation;
-	st_ver_deinterleaving = state->ver_deinterleaving;
-	st_hor_deinterleaving = state->hor_deinterleaving;
-	st_leftpd = state->left_padding;
-	st_eoloff = state->eol_offset;
-	st_vmstartaddr = state->vmem_start_address;
-	st_vmendaddr = state->vmem_end_address;
-	st_vmincr = state->vmem_increment;
-	st_yuv420 = state->is_yuv420;
-	st_allow_fifo_overflow = state->allow_fifo_overflow;
-	st_block_fifo_when_no_req = state->block_fifo_when_no_req;
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "InputFormatter State:\n");
 
@@ -597,6 +573,10 @@ void sh_css_dump_dma_state(void)
 		snprintf(last_cmd_str, 64,
 		  "UNKNOWN");
 		break;
+	default:
+		snprintf(last_cmd_str, 64,
+		  "unknown [Channel: %d]", ch_id);
+		break;
 	}
 	sh_css_dtrace(2, "\t%-32s: (0x%X : %s)\n", "last command received",
 		     state.last_command, last_cmd_str);
@@ -790,8 +770,8 @@ static void print_fifo_channel_state(
 	const fifo_channel_state_t	*state,
 	const char			*descr)
 {
-	assert_exit(state != NULL);
-	assert_exit(descr != NULL);
+	assert(state != NULL);
+	assert(descr != NULL);
 
 	sh_css_dtrace(2, "FIFO channel: %s\n", descr);
 	sh_css_dtrace(2, "\t%-32s: %d\n", "source valid", state->src_valid);
@@ -877,7 +857,7 @@ return;
 static void sh_css_binary_info_print(
 	const struct ia_css_binary_info *info)
 {
-	assert_exit(info != NULL);
+	assert(info != NULL);
 
 	sh_css_dtrace(2, "id = %d\n", info->id);
 	sh_css_dtrace(2, "mode = %d\n", info->mode);
@@ -936,8 +916,8 @@ void sh_css_frame_print(
 {
 	char *data;
 
-	assert_exit(frame != NULL);
-	assert_exit(descr != NULL);
+	assert(frame != NULL);
+	assert(descr != NULL);
 
 	data = (char *)HOST_ADDRESS(frame->data);
 	sh_css_dtrace(2, "frame %s (%p):\n", descr, frame);
@@ -1018,7 +998,7 @@ void sh_css_print_sp_debug_state(
 {
 #if SP_DEBUG == SP_DEBUG_DUMP
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(SH_DBG_DEBUG, "current SP software counter: %d\n",
 				state->debug[0]);
@@ -1123,7 +1103,7 @@ void sh_css_print_sp_debug_state(
 	int sp_index = state->index;
 	int n;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	if (sp_index < last_index) {
 		/* SP has been reset */
@@ -1184,7 +1164,7 @@ void sh_css_print_sp_debug_state(
 #endif
 	int t, d;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	for (t = 0; t < SH_CSS_SP_DBG_NR_OF_TRACES; t++) {
 		/* base contains the "oldest" index */
@@ -1217,7 +1197,7 @@ void sh_css_print_sp_debug_state(
 	int limit = SH_CSS_NUM_SP_DEBUG;
 	int step = 1;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	for (i = base; i < limit; i += step) {
 		sh_css_dtrace(SH_DBG_DEBUG,
@@ -1237,7 +1217,7 @@ static void print_rx_mipi_port_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"device_ready"		, state->device_ready);
@@ -1283,7 +1263,7 @@ static void print_rx_channel_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"compression_scheme0"	, state->comp_scheme0);
@@ -1309,7 +1289,7 @@ static void print_rx_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "CSI Receiver State:\n");
 
@@ -1468,7 +1448,7 @@ return;
 static void print_isys_capture_unit_state(
 	capture_unit_state_t *state)
 {
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Packet_Length"		, state->Packet_Length);
@@ -1524,7 +1504,7 @@ static void print_isys_capture_unit_state(
 static void print_isys_acquisition_unit_state(
 	acquisition_unit_state_t *state)
 {
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 #if 0
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
@@ -1567,7 +1547,7 @@ static void print_isys_acquisition_unit_state(
 static void print_isys_ctrl_unit_state(
 	ctrl_unit_state_t *state)
 {
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"last_cmd"		, state->last_cmd);
@@ -1646,7 +1626,7 @@ static void print_isys_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "InputSystem State:\n");
 
@@ -1832,7 +1812,7 @@ void sh_css_dump_isp_params(struct ia_css_stream *stream, unsigned int enable)
 {
 	const struct sh_css_isp_params *isp_params = ia_css_get_isp_params(stream);
 
-	assert_exit(stream != NULL);
+	assert(stream != NULL);
 
 	sh_css_dtrace(SH_DBG_DEBUG, "ISP PARAMETERS:\n");
 	if ((enable & SH_CSS_DEBUG_DUMP_FPN)
@@ -2123,6 +2103,37 @@ void sh_css_dump_isp_params(struct ia_css_stream *stream, unsigned int enable)
 	}
 }
 
+void sh_css_dump_sp_raw_copy_linecount(bool reduced)
+{
+	const struct ia_css_fw_info *fw;
+	unsigned int HIVE_ADDR_raw_copy_line_count;
+	int32_t raw_copy_line_count;
+	static int32_t prev_raw_copy_line_count = -1;
+
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_raw_copy_line_count =
+			fw->info.sp.raw_copy_line_count;
+
+	(void)HIVE_ADDR_raw_copy_line_count;
+
+	sp_dmem_load(SP0_ID,
+		(unsigned int)sp_address_of(raw_copy_line_count),
+		     &raw_copy_line_count,
+		     sizeof(raw_copy_line_count));
+
+	/* only indicate if copy loop is active */ 
+	if (reduced)
+		raw_copy_line_count = (raw_copy_line_count < 0)?raw_copy_line_count:1;
+	/* do the handling */
+	if (prev_raw_copy_line_count != raw_copy_line_count) {
+		sh_css_dtrace(SH_DBG_DEBUG,
+			"sh_css_dump_sp_raw_copy_linecount() "
+			"line_count=%d\n",
+			raw_copy_line_count);
+		prev_raw_copy_line_count = raw_copy_line_count;
+	}
+}
+
 void sh_css_dump_isp_binary(void)
 {
 	const struct ia_css_fw_info *fw;
@@ -2386,7 +2397,7 @@ dtrace_dot(const char *fmt, ...)
 {
 	va_list ap;
 
-	assert_exit(fmt != NULL);
+	assert(fmt != NULL);
 
 	va_start(ap, fmt);
 
@@ -2429,7 +2440,7 @@ sh_css_debug_pipe_graph_dump_stage(
 	char const *blob_name = "<unknow name>";
 	char const *bin_type = "<unknow type>";
 
-	assert_exit(stage != NULL);
+	assert(stage != NULL);
 
 	if (debug_pipe_graph_do_init) {
 		sh_css_debug_pipe_graph_dump_prologue();
@@ -2592,7 +2603,7 @@ void
 sh_css_debug_pipe_graph_dump_sp_raw_copy(
 	struct ia_css_frame *cc_frame)
 {
-	assert_exit(cc_frame != NULL);
+	assert(cc_frame != NULL);
 
 	dtrace_dot(
 		"node [shape = circle, "

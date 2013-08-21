@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -18,7 +19,6 @@
  * 02110-1301, USA.
  *
  */
-
 
 #include "queue.h"
 
@@ -214,8 +214,8 @@ bool host2sp_enqueue_buffer(
 
 	(void)stage_num;
 
-assert(pipe_num < SH_CSS_MAX_SP_THREADS);
-assert((index < SH_CSS_NUM_BUFFER_QUEUES));
+	assert(pipe_num < SH_CSS_MAX_SP_THREADS);
+	assert((index < SH_CSS_NUM_BUFFER_QUEUES));
 
 	if (pipe_num >= SH_CSS_MAX_SP_THREADS)
 		return false;
@@ -256,8 +256,8 @@ bool host2sp_dequeue_buffer(
 
 	(void)stage_num;
 
-assert(thread_id < SH_CSS_MAX_SP_THREADS);
-assert((index < SH_CSS_NUM_BUFFER_QUEUES));
+	assert(thread_id < SH_CSS_MAX_SP_THREADS);
+	assert((index < SH_CSS_NUM_BUFFER_QUEUES));
 
 	if (thread_id >= SH_CSS_MAX_SP_THREADS)
 		return false;
@@ -330,7 +330,8 @@ bool sp2host_dequeue_buffer(
 	(void)stage_num;
 	(void)pipe_num;
 
-assert((index < SH_CSS_NUM_BUFFER_QUEUES));
+	assert(buffer_ptr != NULL);
+	assert(index < SH_CSS_NUM_BUFFER_QUEUES);
 
 	/* This is just the first step of introducing the queue API */
 	/* The implementation is still the old non-queue implementation */
@@ -363,7 +364,7 @@ bool sp2host_dequeue_irq_event(
 	bool is_empty;
 	struct sh_css_circular_buf *offset_to_queue;
 
-	assert_exit_code(event != NULL, false);
+	assert(event != NULL);
 
 	offset_to_queue = (struct sh_css_circular_buf *)
 		offsetof(struct host_sp_queues,
@@ -535,7 +536,7 @@ static void pop_sp_queue(
 	unsigned int entry_to_cb_elem;
 	uint32_t cb_elem;
 
-	assert_exit(elem != NULL);
+	assert(elem != NULL);
 
 #ifndef C_RUN
 	/* get the variable address from the firmware */
