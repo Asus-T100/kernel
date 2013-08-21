@@ -329,10 +329,11 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 deregister_mei:
 	mei_deregister(dev);
 release_irq:
+
+	mei_cancel_work(dev);
+
 	/* disable interrupts */
 	mei_disable_interrupts(dev);
-
-	flush_scheduled_work();
 
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);

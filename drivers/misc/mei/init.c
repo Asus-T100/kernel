@@ -124,6 +124,19 @@ err:
 EXPORT_SYMBOL_GPL(mei_start);
 
 /**
+ * mei_cancel_work. Cancel backround mei backround jobs
+ *
+ * @dev: the device structure
+ */
+void mei_cancel_work(struct mei_device *dev)
+{
+	cancel_work_sync(&dev->init_work);
+
+	cancel_delayed_work(&dev->timer_work);
+}
+EXPORT_SYMBOL_GPL(mei_cancel_work);
+
+/**
  * mei_reset - resets host and fw.
  *
  * @dev: the device structure
@@ -207,10 +220,9 @@ void mei_stop(struct mei_device *dev)
 {
 	dev_dbg(&dev->pdev->dev, "stopping the device.\n");
 
+	mei_cancel_work(dev);
 
 	mutex_lock(&dev->device_lock);
-
-	cancel_delayed_work(&dev->timer_work);
 
 	mei_wd_stop(dev);
 
@@ -222,8 +234,6 @@ void mei_stop(struct mei_device *dev)
 	mutex_unlock(&dev->device_lock);
 
 	mei_watchdog_unregister(dev);
-
-	flush_scheduled_work();
 }
 EXPORT_SYMBOL_GPL(mei_stop);
 
