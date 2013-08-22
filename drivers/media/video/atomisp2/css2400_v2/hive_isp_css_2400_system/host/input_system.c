@@ -1619,6 +1619,7 @@ static input_system_error_t input_system_configure_channel_sensor(
 	status = set_csi_cfg(&(config.csi_value[port]), &channel.source_cfg.csi_cfg, &(config.csi_flags[port]));
 	if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
 		
+	assert_exit_code(channel.source_cfg.csi_cfg.csi_port < N_CSI_PORTS, INPUT_SYSTEM_ERR_PARAMETER_NOT_SUPPORTED);
 
 	switch (channel.source_cfg.csi_cfg.buffering_mode){
 		case INPUT_SYSTEM_FIFO_CAPTURE:

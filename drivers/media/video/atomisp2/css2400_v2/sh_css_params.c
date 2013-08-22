@@ -3241,16 +3241,17 @@ static enum ia_css_err sh_css_params_default_morph_table(
 	const struct sh_css_binary *binary)
 {
 /* MW 2400 advanced requires different scaling */
-	unsigned int i, j, k,
-		     step = (ISP_VEC_NELEMS / 16) * 128,
-		     width = binary->morph_tbl_width,
-		     height = binary->morph_tbl_height;
+	unsigned int i, j, k, width,height,
+		     step = (ISP_VEC_NELEMS / 16) * 128;
 	short start_x[IA_CSS_MORPH_TABLE_NUM_PLANES] = { -8, 0, -8, 0, 0, -8 },
 	      start_y[IA_CSS_MORPH_TABLE_NUM_PLANES] = { 0, 0, -8, -8, -8, 0 };
 	struct ia_css_morph_table *tab;
 
 	assert_exit_code(table && binary, IA_CSS_ERR_INTERNAL_ERROR);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_default_morph_table() enter:\n");
+
+	width = binary->morph_tbl_width,
+	height = binary->morph_tbl_height;
 
 	tab = ia_css_morph_table_allocate(width, height);
 	if (tab == NULL) {
@@ -5696,6 +5697,9 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 		pipeline = ia_css_pipe_get_pipeline(pipe);
 		pipe_num = ia_css_pipe_get_pipe_num(pipe);
 		sh_css_query_sp_thread_id(pipe_num, &thread_id);
+
+		if (!pipeline)
+			return;
 
 		cur_map = &params->pipe_ddr_ptrs[pipeline->pipe_id];
 		cur_map_size = &params->pipe_ddr_ptrs_size[pipeline->pipe_id];

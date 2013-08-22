@@ -28,7 +28,7 @@ static struct ia_css_hw_access_env my_env;
 void
 ia_css_device_access_init(const struct ia_css_hw_access_env *env)
 {
-	assert(env != NULL);
+	assert_exit(env != NULL);
 
 	my_env = *env;
 }

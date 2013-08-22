@@ -1326,7 +1326,7 @@ ia_css_event_get_irq_mask(const struct ia_css_pipe *pipe,
 	unsigned int HIVE_ADDR_host_sp_com = sh_css_sp_fw.info.sp.host_sp_com;
 	unsigned int offset;
 	struct sh_css_event_irq_mask event_irq_mask;
-
+	unsigned int pipe_num;
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_event_get_irq_mask()\n");
@@ -1334,8 +1334,11 @@ ia_css_event_get_irq_mask(const struct ia_css_pipe *pipe,
 	assert_exit_code(pipe != NULL, IA_CSS_ERR_INTERNAL_ERROR);
 	assert_exit_code(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES, IA_CSS_ERR_INTERNAL_ERROR);
 
+	pipe_num = ia_css_pipe_get_pipe_num(pipe);
+	assert_exit_code(pipe_num < NR_OF_PIPELINES, IA_CSS_ERR_INTERNAL_ERROR);
+
 	offset = offsetof(struct host_sp_communication,
-					host2sp_event_irq_mask[ia_css_pipe_get_pipe_num(pipe)]);
+					host2sp_event_irq_mask[pipe_num]);
 	assert_exit_code(offset % HRT_BUS_BYTES == 0, IA_CSS_ERR_INTERNAL_ERROR);
 	sp_dmem_load(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_com) + offset,

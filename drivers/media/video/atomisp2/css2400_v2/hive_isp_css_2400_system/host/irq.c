@@ -335,7 +335,7 @@ void virq_clear_info(
 {
 	irq_ID_t ID;
 
-	assert(irq_info != NULL);
+	assert_exit(irq_info != NULL);
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 			irq_info->irq_status_reg[ID] = 0;

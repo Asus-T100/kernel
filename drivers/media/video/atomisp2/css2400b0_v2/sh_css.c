@@ -642,11 +642,11 @@ static enum ia_css_frame_format yuv422_copy_formats[] = {
 static enum ia_css_err
 verify_copy_out_frame_format(struct sh_css_pipe *pipe)
 {
-	enum ia_css_frame_format out_fmt = pipe->output_info.format;
+	enum ia_css_frame_format out_fmt;
 	unsigned int i, found = 0;	
 
-	assert_exit_code(pipe != NULL, IA_CSS_ERR_INVALID_ARGUMENTS);
-	assert_exit_code(pipe->stream != NULL, IA_CSS_ERR_INVALID_ARGUMENTS);
+	assert_exit_code(pipe && pipe->stream, IA_CSS_ERR_INVALID_ARGUMENTS);
+	out_fmt = pipe->output_info.format;
 
 	switch (pipe->stream->config.format) {
 	case IA_CSS_STREAM_FORMAT_YUV420_8_LEGACY:
@@ -3625,10 +3625,9 @@ static enum ia_css_err add_capture_pp_stage(
 	struct ia_css_frame *vf_frame = NULL;
 
 /* out_frame can be NULL ??? */
-	assert_exit_code(pipe && me && capture_stage,
+	assert_exit_code(pipe && me && capture_stage
+		&& capture_pp_binary && pre_vf_pp_stage,
 		IA_CSS_ERR_INTERNAL_ERROR);
-	assert(capture_pp_binary != NULL);
-	assert(pre_vf_pp_stage != NULL);
 
 	in_frame = capture_stage->args.out_frame;
 
@@ -3647,6 +3646,9 @@ static enum ia_css_err add_capture_pp_stage(
 					    &capture_pp_binary->vf_frame_info);
 		if (err != IA_CSS_SUCCESS)
 			return err;
+		assert_exit_code(capture_pp_binary->info,
+		IA_CSS_ERR_INTERNAL_ERROR);
+
 		err = sh_css_pipeline_add_stage(me, capture_pp_binary, NULL,
 				capture_pp_binary->info->mode, NULL,
 				NULL,
@@ -4510,14 +4512,12 @@ ia_css_dequeue_event(struct ia_css_event *event)
 static void
 acc_start(struct sh_css_pipe *pipe)
 {
+	assert_exit(pipe && pipe->stream);
 	sh_css_start_pipeline(pipe->mode, &pipe->pipeline);
 //	while(!ia_css_sp_has_initialized())
 //		hrt_sleep();
 //	sh_css_init_host_sp_control_vars();
 //	sh_css_init_buffer_queues();
-
-	assert_exit(pipe != NULL);
-	assert_exit(pipe->stream != NULL);
 
 	start_pipe(pipe, SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD, pipe->stream->config.mode);
 }

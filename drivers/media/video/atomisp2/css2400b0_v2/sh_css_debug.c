@@ -202,35 +202,61 @@ static void print_if_state(
 	unsigned int val;
 
 #if defined(HAS_INPUT_FORMATTER_VERSION_1)
-	const char *st_reset  = (state->reset ? "Active" : "Not active");
+	const char *st_reset;
 #endif
-	const char *st_vsync_active_low =
-		(state->vsync_active_low ? "low" : "high");
-	const char *st_hsync_active_low =
-		(state->hsync_active_low ? "low" : "high");
+	const char *st_vsync_active_low;
+	const char *st_hsync_active_low;
 
 	const char *fsm_sync_status_str    = "unknown";
 	const char *fsm_crop_status_str    = "unknown";
 	const char *fsm_padding_status_str = "unknown";
 
-	int st_stline = state->start_line;
-	int st_stcol  = state->start_column;
-	int st_crpht  = state->cropped_height;
-	int st_crpwd  = state->cropped_width;
-	int st_verdcm = state->ver_decimation;
-	int st_hordcm = state->hor_decimation;
-	int st_ver_deinterleaving = state->ver_deinterleaving;
-	int st_hor_deinterleaving = state->hor_deinterleaving;
-	int st_leftpd = state->left_padding;
-	int st_eoloff = state->eol_offset;
-	int st_vmstartaddr = state->vmem_start_address;
-	int st_vmendaddr = state->vmem_end_address;
-	int st_vmincr = state->vmem_increment;
-	int st_yuv420 = state->is_yuv420;
-	int st_allow_fifo_overflow = state->allow_fifo_overflow;
-	int st_block_fifo_when_no_req = state->block_fifo_when_no_req;
+	int st_stline;
+	int st_stcol;
+	int st_crpht;
+	int st_crpwd;
+	int st_verdcm;
+	int st_hordcm;
+	int st_ver_deinterleaving;
+	int st_hor_deinterleaving;
+	int st_leftpd;
+	int st_eoloff;
+	int st_vmstartaddr;
+	int st_vmendaddr;
+	int st_vmincr;
+	int st_yuv420;
+	int st_allow_fifo_overflow;
+	int st_block_fifo_when_no_req;
 
-	assert_exit(state != NULL);
+	if (state == NULL)
+		return;
+
+
+#if defined(HAS_INPUT_FORMATTER_VERSION_1)
+	st_reset  = (state->reset ? "Active" : "Not active");
+#endif
+
+	st_vsync_active_low =
+		(state->vsync_active_low ? "low" : "high");
+	st_hsync_active_low =
+		(state->hsync_active_low ? "low" : "high");
+
+	st_stline = state->start_line;
+	st_stcol  = state->start_column;
+	st_crpht  = state->cropped_height;
+	st_crpwd  = state->cropped_width;
+	st_verdcm = state->ver_decimation;
+	st_hordcm = state->hor_decimation;
+	st_ver_deinterleaving = state->ver_deinterleaving;
+	st_hor_deinterleaving = state->hor_deinterleaving;
+	st_leftpd = state->left_padding;
+	st_eoloff = state->eol_offset;
+	st_vmstartaddr = state->vmem_start_address;
+	st_vmendaddr = state->vmem_end_address;
+	st_vmincr = state->vmem_increment;
+	st_yuv420 = state->is_yuv420;
+	st_allow_fifo_overflow = state->allow_fifo_overflow;
+	st_block_fifo_when_no_req = state->block_fifo_when_no_req;
 
 	sh_css_dtrace(2, "InputFormatter State:\n");
 
