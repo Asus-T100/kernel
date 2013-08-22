@@ -459,11 +459,9 @@ int mei_cl_disconnect(struct mei_cl *cl)
 	mei_io_list_flush(&dev->ctrl_wr_list, cl);
 free:
 
-	mutex_unlock(&dev->device_lock);
 	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
-	mutex_lock(&dev->device_lock);
 
 	mei_io_cb_free(cb);
 	return rets;
@@ -566,11 +564,9 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 	rets = cl->status;
 
 out:
-	mutex_unlock(&dev->device_lock);
 	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
-	mutex_lock(&dev->device_lock);
 
 	mei_io_cb_free(cb);
 	return rets;
@@ -728,11 +724,9 @@ int mei_cl_read_start(struct mei_cl *cl, size_t length)
 	}
 
 out:
-	mutex_unlock(&dev->device_lock);
 	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
-	mutex_lock(&dev->device_lock);
 
 	if (rets)
 		mei_io_cb_free(cb);
@@ -914,11 +908,9 @@ out:
 		mutex_lock(&dev->device_lock);
 	}
 err:
-	mutex_unlock(&dev->device_lock);
 	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
-	mutex_lock(&dev->device_lock);
 
 	return rets;
 }
