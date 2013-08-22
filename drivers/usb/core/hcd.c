@@ -2279,6 +2279,8 @@ struct usb_hcd *usb_create_shared_hcd(const struct hc_driver *driver,
 	hcd->rh_timer.data = (unsigned long) hcd;
 #ifdef CONFIG_USB_SUSPEND
 	INIT_WORK(&hcd->wakeup_work, hcd_resume_work);
+	wake_lock_init(&hcd->wake_lock,
+		       WAKE_LOCK_SUSPEND, "hcd_wake_lock");
 #endif
 
 	hcd->driver = driver;
@@ -2584,6 +2586,7 @@ void usb_remove_hcd(struct usb_hcd *hcd)
 	/* Resume root-hub and disable its runtime pm before removing it. */
 	usb_autoresume_device(rhdev);
 	usb_disable_autosuspend(rhdev);
+	wake_lock_destroy(&hcd->wake_lock);
 #endif
 
 	mutex_lock(&usb_bus_list_lock);
