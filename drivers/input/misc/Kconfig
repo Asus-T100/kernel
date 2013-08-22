@@ -616,4 +616,11 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
+#<ASUS-Bob20130820+>
+config INPUT_CAPELLA_CM3218
+	tristate "CM3218 light sensor"
+	depends on I2C
+	help
+	  Say Y here to enable the CM3218 Ambient Light Sensor.
+#<ASUS-Bob20130820->
 endif
