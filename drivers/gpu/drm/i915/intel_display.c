@@ -7646,6 +7646,7 @@ void i915_simulate_hpd(struct drm_device *dev, int hpd_on)
 			drm_get_connector_name(connector));
 		}
 	}
+	drm_sysfs_hotplug_event(dev);
 }
 
 static int display_disable_wq(struct drm_device *drm_dev)
