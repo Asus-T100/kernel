@@ -556,6 +556,10 @@ static int mt_event(struct hid_device *hid, struct hid_field *field,
 		case HID_DG_TIPSWITCH:
 			if (quirks & MT_QUIRK_NOT_SEEN_MEANS_UP)
 				td->curvalid = value;
+//ASUS-CCA20130820+
+                        if (quirks & MT_QUIRK_ALWAYS_VALID)
+                                td->curvalid = true;
+//ASUS-CCA20130820-	
 			td->curdata.touch_state = value;
 			break;
 		case HID_DG_CONFIDENCE:
@@ -796,6 +800,13 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_SERIAL,
 		HID_USB_DEVICE(USB_VENDOR_ID_ATMEL,
 			USB_DEVICE_ID_ATMEL_MXT_DIGITIZER) },
+//ASUS-CCA20130820+
+        { .driver_data = MT_CLS_SERIAL,
+	  .bus = BUS_I2C,
+	  .vendor = USB_VENDOR_ID_ATMEL,
+          .product = I2CHID_DEVICE_ID_ATMEL_1664T,	
+	},
+//ASUS-CCA20130820-
 
 	/* Baanto multitouch devices */
 	{ .driver_data = MT_CLS_DEFAULT,

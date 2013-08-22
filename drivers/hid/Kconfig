@@ -398,6 +398,18 @@ config HID_MULTITOUCH
 	  To compile this driver as a module, choose M here: the
 	  module will be called hid-multitouch.
 
+config TOUCHSCREEN_ATMEL_MXT_I2CHID
+        tristate "Atmel mXT I2C HID Touchscreen"
+        depends on I2C && INPUT
+        help
+          Say Y here if you have Atmel mXT series I2C touchscreen,
+          such as ATMXT1664S/AT42QT602240/ATMXT224, connected to your system.
+
+          If unsure, say N.
+
+          To compile this driver as a module, choose M here: the
+          module will be called atmel_mxt_ts.
+
 config HID_NTRIG
 	tristate "N-Trig touch screen"
 	depends on USB_HID
