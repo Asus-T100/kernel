@@ -1643,6 +1643,7 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		intel_dp_sink_dpms(intel_dp, mode);
 		ironlake_edp_panel_off(intel_dp);
 		intel_dp_link_down(intel_dp);
+		ironlake_panel_vdd_off_sync(intel_dp);
 
 		if (is_cpu_edp(intel_dp))
 			ironlake_edp_pll_off(encoder);
@@ -2654,6 +2655,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	if (force && dev_priv->is_edp)
 		return connector->status;
 
+	ironlake_edp_panel_vdd_on(intel_dp);
 
 	if (HAS_PCH_SPLIT(dev))
 		status = ironlake_dp_detect(intel_dp);
