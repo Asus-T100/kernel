@@ -63,6 +63,11 @@ static cpumask_t speedchange_cpumask;
 static spinlock_t speedchange_cpumask_lock;
 static struct mutex gov_lock;
 
+/*
+ * Frequency to which a touch boost takes the cpus to
+ */
+static unsigned long touchboost_freq;
+
 /* Hi speed to bump to from lo speed when load burst (default max) */
 static unsigned int hispeed_freq;
 
@@ -102,10 +107,14 @@ static int nabove_hispeed_delay = ARRAY_SIZE(default_above_hispeed_delay);
 
 /* Non-zero means indefinite speed boost active */
 static int boost_val;
-/* Duration of a boot pulse in usecs */
+/* Duration of a boost pulse in usecs */
 static int boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 /* End time of boost pulse in ktime converted to usecs */
 static u64 boostpulse_endtime;
+/* Duration of a touchboost pulse in usecs */
+static int touchboostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
+/* End time of touchboost pulse in ktime converted to usecs */
+static u64 touchboostpulse_endtime;
 
 /*
  * Max additional time to wait in idle, beyond timer_rate, at speeds above
@@ -364,16 +373,19 @@ static void cpufreq_interactive_timer(unsigned long data)
 	boosted = boost_val || now < boostpulse_endtime;
 
 	if (cpu_load >= go_hispeed_load || boosted) {
-		if (pcpu->target_freq < hispeed_freq) {
+		if (pcpu->target_freq < hispeed_freq)
 			new_freq = hispeed_freq;
-		} else {
+		 else {
 			new_freq = choose_freq(pcpu, loadadjfreq);
-
 			if (new_freq < hispeed_freq)
 				new_freq = hispeed_freq;
 		}
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq);
+		if (now < touchboostpulse_endtime) {
+			if (new_freq < touchboost_freq)
+				new_freq = touchboost_freq;
+			}
 	}
 
 	if (pcpu->target_freq >= hispeed_freq &&
@@ -609,6 +621,36 @@ static void cpufreq_interactive_boost(void)
 		wake_up_process(speedchange_task);
 }
 
+static void cpufreq_interactive_touchboost(void)
+{
+	int i;
+	int anyboost = 0;
+	unsigned long flags;
+	struct cpufreq_interactive_cpuinfo *pcpu;
+
+	spin_lock_irqsave(&speedchange_cpumask_lock, flags);
+	for_each_online_cpu(i) {
+		pcpu = &per_cpu(cpuinfo, i);
+
+	if (pcpu->target_freq < touchboost_freq) {
+			pcpu->target_freq = touchboost_freq;
+			cpumask_set_cpu(i, &speedchange_cpumask);
+			pcpu->hispeed_validate_time =
+					ktime_to_us(ktime_get());
+			anyboost = 1;
+		}
+	/* no need to set floor freq to touchboost freq as floor
+	freq is set only if the new_freq is more than
+	hispeed_freq which is not the case here*/
+
+	}
+
+	spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
+	if (anyboost)
+		wake_up_process(speedchange_task);
+}
+
+
 static int cpufreq_interactive_notifier(
 	struct notifier_block *nb, unsigned long val, void *data)
 {
@@ -821,6 +863,29 @@ static ssize_t store_go_hispeed_load(struct kobject *kobj,
 static struct global_attr go_hispeed_load_attr = __ATTR(go_hispeed_load, 0644,
 		show_go_hispeed_load, store_go_hispeed_load);
 
+static ssize_t show_touchboost_freq(struct kobject *kobj,
+				 struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", touchboost_freq);
+}
+
+static ssize_t store_touchboost_freq(struct kobject *kobj,
+				  struct attribute *attr,
+				  const char *buf,
+				  size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	touchboost_freq = val;
+	return count;
+}
+static struct global_attr touchboost_freq_attr = __ATTR(touchboost_freq, 0644,
+		show_touchboost_freq, store_touchboost_freq);
+
 static ssize_t show_min_sample_time(struct kobject *kobj,
 				struct attribute *attr, char *buf)
 {
@@ -961,6 +1026,49 @@ static ssize_t store_boostpulse_duration(
 
 define_one_global_rw(boostpulse_duration);
 
+static ssize_t store_touchboostpulse(struct kobject *kobj,
+		struct attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	touchboostpulse_endtime = ktime_to_us(ktime_get())
+						+ touchboostpulse_duration_val;
+	trace_cpufreq_interactive_boost("pulse");
+	cpufreq_interactive_touchboost();
+	return count;
+}
+
+static struct global_attr touchboostpulse =
+	__ATTR(touchboostpulse, 0200, NULL, store_touchboostpulse);
+
+static ssize_t show_touchboostpulse_duration(
+	struct kobject *kobj, struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", touchboostpulse_duration_val);
+}
+
+static ssize_t store_touchboostpulse_duration(
+	struct kobject *kobj, struct attribute *attr, const char *buf,
+	size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	touchboostpulse_duration_val = val;
+	return count;
+}
+
+define_one_global_rw(touchboostpulse_duration);
+
 static ssize_t show_io_is_busy(struct kobject *kobj,
 			struct attribute *attr, char *buf)
 {
@@ -994,6 +1102,9 @@ static struct attribute *interactive_attributes[] = {
 	&boost.attr,
 	&boostpulse.attr,
 	&boostpulse_duration.attr,
+	&touchboostpulse.attr,
+	&touchboostpulse_duration.attr,
+	&touchboost_freq_attr.attr,
 	&io_is_busy_attr.attr,
 	NULL,
 };
@@ -1066,6 +1177,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		if (!hispeed_freq)
 			hispeed_freq = policy->max;
 
+		if (!touchboost_freq)
+			touchboost_freq = policy->max;
 		for_each_cpu(j, policy->cpus) {
 			unsigned long expires;
 
