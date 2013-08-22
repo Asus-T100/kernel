@@ -706,10 +706,14 @@ static int update_temp(struct thermal_zone_device *tzd, long *temp)
 	if (!tdata->iio_chan)
 		return -EINVAL;
 
+	return -EINVAL;	//<ASUS-Bob20130822+>
+	
 	if (!tdata->is_initialized ||
 			time_after(jiffies, tdata->last_updated + HZ)) {
+/*//<ASUS-Bob20130822->
 		ret = iio_st_read_channel_all_raw(tdata->iio_chan,
 						tdata->cached_vals);
+*/
 		if (ret == -ETIMEDOUT) {
 			dev_err(&tzd->device,
 				"ADC sampling failed:%d Reading rslt regs\n",
@@ -1040,7 +1044,9 @@ static int byt_thermal_probe(struct platform_device *pdev)
 	}
 
 	/* Register with IIO to sample temperature values */
-	tdata->iio_chan = iio_st_channel_get_all("THERMAL");
+	//<ASUS-Bob20130822->	tdata->iio_chan = iio_st_channel_get_all("THERMAL");
+	tdata->iio_chan = NULL;	//<ASUS-Bob20130822+>
+
 	if (tdata->iio_chan == NULL) {
 		dev_err(&pdev->dev, "tdata->iio_chan is null\n");
 		ret = -EINVAL;
@@ -1048,8 +1054,11 @@ static int byt_thermal_probe(struct platform_device *pdev)
 	}
 
 	/* Check whether we got all the four channels */
-	ret = iio_st_channel_get_num(tdata->iio_chan);
-	if (ret != PMIC_THERMAL_SENSORS) {
+//<ASUS-Bob20130822+>
+//	ret = iio_st_channel_get_num(tdata->iio_chan);
+//	if (ret != PMIC_THERMAL_SENSORS) {
+		if(1) {
+//<ASUS-Bob20130822->
 		dev_err(&pdev->dev, "incorrect number of channels:%d\n", ret);
 		ret = -EFAULT;
 		goto exit_iio;
