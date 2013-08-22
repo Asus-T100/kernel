@@ -30,6 +30,7 @@
 #include "sh_css_legacy.h"
 
 #define ATOMISP_CSS2_PIPE_MAX	2
+#define ATOMISP_CSS2_NUM_OFFLINE_INIT_CONTINUOUS_FRAMES     3
 
 #define atomisp_css_pipe_id ia_css_pipe_id
 #define atomisp_css_pipeline	ia_css_pipe
