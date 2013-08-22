@@ -1714,8 +1714,16 @@ gen6_ring_enable(struct intel_ring_buffer *ring)
 
 int intel_ring_reset(struct intel_ring_buffer *ring)
 {
-	if (ring && ring->reset)
-		return ring->reset(ring);
+	if (ring && ring->reset) {
+		int ret = ring->reset(ring);
+		/* invalidate TLB, if we got reset due to TLB giving
+		 * stale addr (after soft reset) for HW status page,
+		 * resulting in seqno not getting updated.
+		 */
+		if (ring->invalidate_tlb)
+			ring->invalidate_tlb(ring);
+		return ret;
+	}
 	else {
 		DRM_ERROR("ring reset not supported\n");
 		return -EINVAL;
