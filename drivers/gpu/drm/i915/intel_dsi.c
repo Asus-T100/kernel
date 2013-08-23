@@ -547,8 +547,14 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 			intel_dsi->dev.pixel_format;
 	I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
 
+	/* With AUO B080XAT mipi panel HS transmitter timeout issue is observed.
+	 * The timeout could be because there is not enough time to go into BLLP
+	 * and hence the DSI link is in HS mode but HS TX timer timed out. As a
+	 * work around increase the HS TX timeout value.
+	 */
 	if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) && \
-			(intel_dsi->dev.video_mode_type == DSI_VIDEO_BURST))
+		(intel_dsi->dev.video_mode_type == DSI_VIDEO_BURST) && \
+		(dev_priv->mipi.panel_id != MIPI_DSI_AUO_B080XAT_PANEL_ID))
 		I915_WRITE(MIPI_HS_TX_TIMEOUT(pipe),
 			txbyteclkhs(adjusted_mode->htotal + 1, bpp,
 			intel_dsi->dev.lane_count));
