@@ -404,7 +404,7 @@ MODULE_DEVICE_TABLE(pci, iTCO_wdt_pci_tbl);
 #define TCO_STS_BIT		(1 << 13)
 #define EOS_BIT			(1 << 1)
 
-static int pmc_base_address;
+static u32 pmc_base_address;
 #define PMC_CFG		(pmc_base_address + 0x8)
 
 static struct dentry *iTCO_debugfs_dir;
