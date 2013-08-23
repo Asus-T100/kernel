@@ -26,8 +26,6 @@
 
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf-vmalloc.h>
-#include <linux/intel_mid_pm.h>
-#include <asm/intel-mid.h>
 
 #include "atomisp_cmd.h"
 #include "atomisp_common.h"
@@ -450,20 +448,7 @@ static int atomisp_open(struct file *file)
 		goto done;
 	}
 
-	/*
-	 * runtime power management, turn on ISP
-	 * For BYT, to avoid ISP pci config register being accessed by
-	 * PCI runtime driver when ISP is power down, the hw power
-	 * up operation is done after runtime resume
-	 */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		ret = pmu_nc_set_power_state(TNG_ISP_ISLAND,
-				OSPM_ISLAND_UP, MRFLD_ISPSSPM0);
-		if (ret < 0) {
-			dev_err(isp->dev, "Failed to power on device\n");
-			goto error;
-		}
-	}
+	/* runtime power management, turn on ISP */
 	ret = pm_runtime_get_sync(vdev->v4l2_dev->dev);
 	if (ret < 0) {
 		dev_err(isp->dev, "Failed to power on device\n");
@@ -597,17 +582,7 @@ static int atomisp_release(struct file *file)
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		dev_err(isp->dev, "Failed to power off device\n");
-	/*
-	 * For BYT, to avoid ISP pci config register being accessed
-	 * by PCI runtime driver when ISP is power down, the hw
-	 * power down operation is done after runtime suspend
-	 */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		ret = pmu_nc_set_power_state(TNG_ISP_ISLAND,
-				OSPM_ISLAND_DOWN, MRFLD_ISPSSPM0);
-		if (ret < 0)
-			dev_err(isp->dev, "Failed to power off device\n");
-	}
+
 done:
 	mutex_unlock(&isp->mutex);
 	mutex_unlock(&isp->streamoff_mutex);
