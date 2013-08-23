@@ -956,6 +956,9 @@ static int i915_drm_thaw(struct drm_device *dev, bool is_hibernate_restore)
 		dev_priv->mm.suspended = 0;
 
 		error = i915_gem_init_hw(dev);
+		if (error)
+			DRM_ERROR("get_init_hw failed with error %x\n", error);
+
 		mutex_unlock(&dev->struct_mutex);
 
 		intel_modeset_init_hw(dev);

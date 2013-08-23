@@ -119,6 +119,8 @@ struct  intel_ring_buffer {
 
 	int		(*enable)(struct intel_ring_buffer *ring);
 	int		(*disable)(struct intel_ring_buffer *ring);
+	int		(*start)(struct intel_ring_buffer *ring);
+	int		(*stop)(struct intel_ring_buffer *ring);
 	int		(*reset)(struct intel_ring_buffer *ring);
 	int		(*save)(struct intel_ring_buffer *ring,
 				uint32_t *data, uint32_t max,
