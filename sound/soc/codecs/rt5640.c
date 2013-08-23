@@ -103,14 +103,19 @@ static struct rt5640_init_reg init_list[] = {
 /*	{RT5640_SPO_R_MIXER	, 0x1800},//DAC -> SPORMIX*/
 /*	{RT5640_I2S1_SDP	, 0xD000},//change IIS1 and IIS2*/
 	/*record */
-	{RT5640_IN1_IN2, 0x5080},	/*IN1 boost 40db and differential mode */
-	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost 40db and signal ended mode */
+//	{RT5640_IN1_IN2, 0x5080},	/*IN1 boost 40db and differential mode */ //<asus-baron20130823->
+//	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost 40db and signal ended mode */ //<asus-baron20130823->
+	{RT5640_IN1_IN2, 0x1080},	/*IN1 boost +20db and differential mode */ //<asus-baron20130823+>
+	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost +0db and signal ended mode */ //<asus-baron20130823+>
+	
 /*	{RT5640_REC_L2_MIXER	, 0x007d},//Mic1 -> RECMIXL*/
 /*	{RT5640_REC_R2_MIXER	, 0x007d},//Mic1 -> RECMIXR*/
 	{RT5640_REC_L2_MIXER, 0x006f},	/*Mic2 -> RECMIXL */
 	{RT5640_REC_R2_MIXER, 0x006f},	/*Mic2 -> RECMIXR */
-	{RT5640_STO_ADC_MIXER, 0x1000},	/*DMIC1 & AMIC */
-	{RT5640_MONO_ADC_MIXER, 0x1010},
+//	{RT5640_STO_ADC_MIXER, 0x1000},	/*DMIC1 & AMIC */ //<asus-baron20130823->
+//	{RT5640_MONO_ADC_MIXER, 0x1010},  //<asus-baron20130823->
+	{RT5640_STO_ADC_MIXER, 0x3020},  //<asus-baron20130823+>
+	{RT5640_MONO_ADC_MIXER, 0x3030},  //<asus-baron20130823+>
 	{RT5640_ADC_DIG_VOL, 0xe2e2},
 /*	{RT5640_MONO_MIXER, 0xcc00},*/	/*OUTMIX -> MONOMIX */
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
