@@ -218,7 +218,10 @@ static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
 static const struct snd_soc_dapm_route byt_audio_map[] = {
 	{"IN2P", NULL, "Headset Mic"},
 	{"IN2N", NULL, "Headset Mic"},
-	{"DMIC1", NULL, "Int Mic"},
+	//{"DMIC1", NULL, "Int Mic"}, //<asus-baron20130823->
+	{"micbias1", NULL, "Int Mic"}, //<asus-baron20130823+>
+	{"IN1P", NULL, "micbias1"}, //<asus-baron20130823+>
+	{"IN1N", NULL, "micbias1"},	//<asus-baron20130823+>
 	{"Headphone", NULL, "HPOL"},
 	{"Headphone", NULL, "HPOR"},
 	{"Ext Spk", NULL, "SPOLP"},
