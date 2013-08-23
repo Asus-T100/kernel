@@ -285,11 +285,17 @@ static void xhci_byt_pm_check_work(struct work_struct *work)
 		/* wait for PME polling to be done */
 		msleep(1200);
 	}
-
+	
 	/* clear status of GPE.PME_B0 */
-	acpi_hw_register_write(0xf1, 0x2000);
+	//<ASUS-Larry 20130823 +>
+	//acpi_hw_register_write(0xf1, 0x2000);
+	//<ASUS-Larry 20130823 ->
 
 done:
+	//<ASUS-Larry 20130823 +>
+	/* clear status of GPE.PME_B0 */
+	acpi_hw_register_write(0xf1, 0x2000);
+	//<ASUS-Larry 20130823 ->
 	/* re-enable GPE.PME_B0 interrupt */
 	acpi_hw_register_read(0xf2, &gpe_en);
 	gpe_en = gpe_en | 0x2000;
