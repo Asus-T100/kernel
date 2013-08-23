@@ -561,10 +561,6 @@
 #define HWSTAM		0x02098
 #define DMA_FADD_I8XX	0x020d0
 
-#define RCS_RING_TLB_INVALIDATE_VAL 0x02a002a0
-#define BLT_RING_TLB_INVALIDATE_VAL 0x02200220
-#define BSD_RING_TLB_INVALIDATE_VAL 0x02200220
-
 #define ERROR_GEN6	0x040a0
 
 /* GM45+ chicken bits -- debug workaround bits that may be required
@@ -697,6 +693,8 @@
 					will not assert AGPBUSY# and will only
 					be delivered when out of C3. */
 #define   INSTPM_FORCE_ORDERING				(1<<7) /* GEN6+ */
+#define   INSTPM_TLB_INVALIDATE	(1<<9)
+#define   INSTPM_SYNC_FLUSH	(1<<5)
 #define ACTHD	        0x020c8
 #define FW_BLC		0x020d8
 #define FW_BLC2		0x020dc
