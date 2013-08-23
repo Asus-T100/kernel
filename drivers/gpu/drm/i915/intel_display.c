@@ -7728,9 +7728,9 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 		if ((intel_crtc->pipe == PIPE_B) && (audiosts != true))
 			continue;
-		i9xx_crtc_disable(crtc);
 		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder)
 			intel_encoder_prepare(&intel_encoder->base);
+		i9xx_crtc_disable(crtc);
 	}
 	dev_priv->disp_pm_in_progress = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
