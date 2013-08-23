@@ -54,3 +54,7 @@ obj-$(CONFIG_BATTERY_ANDROID)	+= android_battery.o
 obj-$(CONFIG_BYT_ULPMC_BATTERY)	+= byt_ulpmc_battery.o
 obj-$(CONFIG_BYT_ULPMC_FWUPDATE)	+= byt_ulpmc_fwupdate.o
 obj-$(CONFIG_BYT_EC_BATTERY)	+= byt_ec_battery.o
+
+#ASUS- Hollie 2013/08/23
+obj-$(CONFIG_BYT_BATTERY)	+= byt_battery.o
+
