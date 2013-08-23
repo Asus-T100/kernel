@@ -51,7 +51,7 @@ int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 		bool interruptible, struct timespec *timeout);
 
 struct i915_flip_data {
-struct drm_device *dev;
+	struct drm_crtc *crtc;
 	u32 seqno;
 	u32 addr;
 	u32 plane;
@@ -72,9 +72,6 @@ static void intel_increase_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
 static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 			int x, int y);
-static int vlv_set_pixel_format(struct drm_i915_private *dev_priv, u32 pipe,
-			u32 pixel_format);
-
 typedef struct {
 	/* given values */
 	int n;
@@ -7212,7 +7209,9 @@ static void intel_vlv_queue_flip_work(struct work_struct *__work)
 	struct i915_flip_work *flipwork =
 		container_of(__work, struct i915_flip_work, work);
 	int ret = 0;
-	struct drm_i915_private *dev_priv = flipwork->flipdata.dev->dev_private;
+	struct drm_crtc *crtc = flipwork->flipdata.crtc;
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
 
 	if (dev_priv->mm.suspended || (ring->obj == NULL)) {
@@ -7226,8 +7225,7 @@ static void intel_vlv_queue_flip_work(struct work_struct *__work)
 	if (ret)
 		DRM_ERROR("wait_seqno failed\n");
 
-	I915_MODIFY_DISPBASE(DSPSURF(flipwork->flipdata.plane),
-		flipwork->flipdata.addr);
+	i9xx_update_plane(crtc, crtc->fb, 0, 0);
 }
 
 /*
@@ -7271,7 +7269,7 @@ static int intel_vlv_queue_flip(struct drm_device *dev,
 		goto err_unpin;
 	}
 
-	work->flipdata.dev = dev;
+	work->flipdata.crtc = crtc;
 	work->flipdata.addr = obj->gtt_offset +
 			      intel_crtc->dspaddr_offset;
 	work->flipdata.seqno = obj->last_read_seqno;
@@ -7416,34 +7414,12 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 		return -EINVAL;
 
 	/* Can't change pixel format via MI display flips. */
-	if (fb->pixel_format != crtc->fb->pixel_format) {
-		if (IS_VALLEYVIEW(dev)) {
-			DRM_DEBUG("pixel format = %d", fb->pixel_format);
-			vlv_set_pixel_format(dev_priv, intel_crtc->pipe,
-				fb->pixel_format);
-		} else
+	if (fb->pixel_format != crtc->fb->pixel_format)
+		if (!IS_VALLEYVIEW(dev))
 			return -EINVAL;
-	}
 
 	intel_fb = to_intel_framebuffer(crtc->fb);
 	intel_new_fb = to_intel_framebuffer(fb);
-	/*
-	 * TILEOFF/LINOFF registers can't be changed via MI display flips.
-	 * Note that pitch changes could also affect these register.
-	 */
-	if (INTEL_INFO(dev)->gen > 3 &&
-	    (fb->offsets[0] != crtc->fb->offsets[0] ||
-	     fb->pitches[0] != crtc->fb->pitches[0] ||
-	     intel_new_fb->obj->tiling_mode != intel_fb->obj->tiling_mode)) {
-		if (IS_VALLEYVIEW(dev)) {
-			DRM_DEBUG(" crtc fb: pitch = %d offset = %d", \
-			crtc->fb->pitches[0], crtc->fb->offsets[0]);
-			DRM_DEBUG(" input fb: pitch = %d offset = %d", \
-			fb->pitches[0], fb->offsets[0]);
-			i9xx_update_plane(crtc, fb, 0, 0);
-		} else
-			return -EINVAL;
-	}
 
 	work = kzalloc(sizeof *work, GFP_KERNEL);
 	if (work == NULL)
@@ -8655,51 +8631,3 @@ int i915_disp_screen_control(struct drm_device *dev, void *data,
 
 	return 0;
 }
-
-static int vlv_set_pixel_format(struct drm_i915_private *dev_priv, u32 pipe,
-		u32 pixel_format)
-{
-	u32 dspcntr;
-	u32 reg;
-	int ret = 0;
-	reg = DSPCNTR(pipe);
-	dspcntr = I915_READ(reg);
-
-	/* Mask out pixel format bits in case we change it */
-	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
-	switch (pixel_format) {
-	case DRM_FORMAT_C8:
-		dspcntr |= DISPPLANE_8BPP;
-		break;
-	case DRM_FORMAT_XRGB1555:
-	case DRM_FORMAT_ARGB1555:
-		dspcntr |= DISPPLANE_BGRX555;
-		break;
-	case DRM_FORMAT_RGB565:
-		dspcntr |= DISPPLANE_BGRX565;
-		break;
-	case DRM_FORMAT_XRGB8888:
-	case DRM_FORMAT_ARGB8888:
-		dspcntr |= DISPPLANE_BGRX888;
-		break;
-	case DRM_FORMAT_XBGR8888:
-	case DRM_FORMAT_ABGR8888:
-		dspcntr |= DISPPLANE_RGBX888;
-		break;
-	case DRM_FORMAT_XRGB2101010:
-	case DRM_FORMAT_ARGB2101010:
-		dspcntr |= DISPPLANE_BGRX101010;
-		break;
-	case DRM_FORMAT_XBGR2101010:
-	case DRM_FORMAT_ABGR2101010:
-		dspcntr |= DISPPLANE_RGBX101010;
-		break;
-	default:
-		DRM_ERROR("Unknown pixel format 0x%08x\n", pixel_format);
-		return -EINVAL;
-	}
-	DRM_DEBUG("dspcntr = %0x", dspcntr);
-	I915_WRITE(reg, dspcntr);
-	return ret;
-}
-
