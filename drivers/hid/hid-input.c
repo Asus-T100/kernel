@@ -448,8 +448,10 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 
 	field->hidinput = hidinput;
 
-	if (field->flags & HID_MAIN_ITEM_CONSTANT)
+	if (((usage->hid & HID_USAGE_PAGE) != HID_UP_ASUSVENDOR) &&
+            (field->flags & HID_MAIN_ITEM_CONSTANT)) {
 		goto ignore;
+        }        
 
 	/* only LED usages are supported in output fields */
 	if (field->report_type == HID_OUTPUT_REPORT &&
@@ -835,6 +837,15 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 	case HID_UP_PID:
 		switch (usage->hid & HID_USAGE) {
 		case 0xa4: map_key_clear(BTN_DEAD);	break;
+		default: goto ignore;
+		}
+		break;
+
+	case HID_UP_ASUSVENDOR:
+		switch (usage->hid & HID_USAGE) {
+		case 0x06C: 
+                    map_key_clear(KEY_POWER);	        
+                    break;
 		default: goto ignore;
 		}
 		break;
