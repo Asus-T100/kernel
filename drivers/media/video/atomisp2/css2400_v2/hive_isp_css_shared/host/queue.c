@@ -330,7 +330,7 @@ bool sp2host_dequeue_buffer(
 	(void)stage_num;
 	(void)pipe_num;
 
-	assert(buffer_ptr != NULL);
+	assert_exit_code(buffer_ptr != NULL, false);
 	assert(index < SH_CSS_NUM_BUFFER_QUEUES);
 
 	/* This is just the first step of introducing the queue API */

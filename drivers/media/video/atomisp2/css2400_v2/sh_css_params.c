@@ -6168,6 +6168,7 @@ sh_css_params_write_to_ddr(struct ia_css_stream *stream,
 		struct ia_css_pipe *pipe = stream->pipes[i];
 		struct sh_css_pipeline *pipeline;
 		pipeline = ia_css_pipe_get_pipeline(pipe);
+		assert_exit_code(pipeline, IA_CSS_ERR_INTERNAL_ERROR);
 		err = sh_css_params_write_to_ddr_internal(
 				params,
 				binary,

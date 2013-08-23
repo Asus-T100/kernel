@@ -3365,9 +3365,7 @@ free_mipi_frames(struct sh_css_pipe *pipe, bool uninit)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"free_mipi_frames(%p, %d) enter:\n", pipe, uninit);
 	if (!uninit) {
-		assert(pipe != NULL);
-		assert(pipe->stream != NULL);
-	
+		assert_exit(pipe && pipe->stream);
 		if (pipe->stream->config.mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR) {
 			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 				"free_mipi_frames() exit: wrong mode\n");
@@ -3707,7 +3705,7 @@ number_stages(
 	unsigned i = 0;
 	struct sh_css_pipeline_stage *stage;
 
-	assert(pipe != NULL);
+	assert_exit(pipe);
 
 	for (stage = pipe->pipeline.stages; stage; stage = stage->next) {
 		stage->stage_num = i;
@@ -4218,7 +4216,7 @@ ia_css_pipe_dequeue_buffer(struct ia_css_pipe *pipe,
 		buffer->exp_id = ddr_buffer.exp_id;
 		switch (buf_type) {
 		case IA_CSS_BUFFER_TYPE_OUTPUT_FRAME:
-			assert_exit_code(pipe, IA_CSS_ERR_INTERNAL_ERROR);
+			assert_exit_code(pipe && old_pipe, IA_CSS_ERR_INTERNAL_ERROR);
 			if (pipe->stop_requested == true)
 			{
 				free_mipi_frames(old_pipe, false);
@@ -4554,13 +4552,12 @@ set_sp_copy_pack(void)
 static void
 acc_start(struct sh_css_pipe *pipe)
 {
+	assert_exit(pipe && pipe->stream);
 	sh_css_start_pipeline(pipe->mode, &pipe->pipeline);
 //	while(!ia_css_sp_has_initialized())
 //		hrt_sleep();
 //	sh_css_init_host_sp_control_vars();
 //	sh_css_init_buffer_queues();
-
-	assert_exit(pipe && pipe->stream);
 
 	start_pipe(pipe, SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD, pipe->stream->config.mode);
 }
