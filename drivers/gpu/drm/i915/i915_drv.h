@@ -1048,6 +1048,7 @@ typedef struct drm_i915_private {
 
 	int shut_down_state;
 	bool is_resuming;
+	bool is_turbo_enabled;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */
