@@ -128,3 +128,6 @@ obj-$(subst m,y,$(CONFIG_INTEL_MID_OSNIB_ILB))				+= platform_osnib_ilb.o
 obj-$(subst m,y,$(CONFIG_SCU_LOGGING))					+= platform_scu_log.o
 # Panel Control Device
 obj-$(subst m,y,$(CONFIG_DRM_MRFLD))					+= platform_panel.o
+
+#ASUS- Hollie 2013/08/23
+obj-$(subst m,y,$(CONFIG_BYT_BATTERY))				+= platform_byt_battery.o
