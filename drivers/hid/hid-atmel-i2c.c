@@ -17,6 +17,7 @@
 #include <linux/hiddev.h>
 #include <linux/hid-debug.h>
 #include <linux/hidraw.h>
+#include "atmel-config.h"
 
 static int debug = 0;
 
@@ -27,6 +28,8 @@ do {									  \
 } while (0)
 
 #define I2C_HID_RESET_PENDING	(1 << 1)
+#define I2C_HID_RWMM_PENDING   (1 << 10)
+
 
 #pragma pack(1)
 typedef struct _HIDDesc{
@@ -111,6 +114,17 @@ struct mxt_data {
 	struct hid_device *hid;
 	unsigned long flags;
 	wait_queue_head_t	wait;/* For waiting the interrupt */
+
+	MxtHIDOutput *MxtHIDOut;
+	MxtHIDInput  *MxtHIDIn;
+	IDInfo 		ID;
+	ObjectType      *MxtCFGObjs;
+	int	T5_Index;
+	int 	T6_Index;
+	int 	T38_Index;
+	u8	T6_ReportID;	
+	u32	ConfigCheckSum;
+	u32	ConfigVersion;
 };
 
 static int mxt_write_read(struct i2c_client *client,u8 *write_buf, u16 write_len,u8 *read_buf, u16 read_len)
@@ -194,6 +208,46 @@ static HIDDesc HIDDS;
 static MxtHIDOutput *MxtHIDOut;
 static MxtHIDInput  *MxtHIDIn;
 
+
+void ParseLine (char  **BufLine,int	*PSize, int  *Argc,char  **Argv)
+{
+	int 	Arg;
+  	char	*Char;
+  	bool	LookingForArg;
+  	int	Index;
+
+	*Argc = 0;
+  	LookingForArg = TRUE;
+  	for (Char = *BufLine, Arg = 0,Index = 0; (*Char != '\0') && (*Char != 0x0A) ; Char++,Index++) {
+    		// Perform any text coversion here
+    		if (LookingForArg) {
+      		// Look for the beging of an Argv[] entry
+        		if (*Char != ' ') {
+        			Argv[Arg++] = Char;
+        			LookingForArg = FALSE;
+      			}
+    		} else {
+      		// Looking for the terminator of an Argv[] entry
+      			if ((*Char == ' ') || (*Char == 0x0D)) {
+        			*Char = '\0';
+        			LookingForArg = TRUE;
+      			}
+    		}
+    		if ((Arg >= 1024)) {
+      		// Error check buffer and exit since it does not look valid
+      			break;
+    		}
+  	}
+  	*Argc = Arg;
+  	while(*Char == 0x0A ||*Char == 0x0D) {
+		Char++;
+		Index++;
+  	}
+  	*BufLine = Char;	
+  	*PSize = Index;
+  	return;
+}
+
 static int mxt_hid_read_config(struct i2c_client *client,u16 addr,u8 *read_buf,u8 read_len)
 {
 	int TimeOut = 1000;
@@ -215,8 +269,8 @@ static int mxt_hid_read_config(struct i2c_client *client,u16 addr,u8 *read_buf,u
 		mxt_read(client,MxtHIDIn,HIDDS.InputLen);
 		if((MxtHIDIn->ReportID == MxtHIDOut->ReportID) && (MxtHIDIn->Status ==0x00))
 			break;
-		msleep_interruptible(1);
-	}while(TimeOut--);
+		msleep(1);
+	}while(--TimeOut);
 	
 	if(!TimeOut) return -1;
 
@@ -239,6 +293,7 @@ static int mxt_hid_write_config(struct i2c_client *client,u16 addr,u8 *write_buf
         MxtHIDOut->NumRx    = 0x0;
         MxtHIDOut->Addr   = addr;
 
+	memcpy(&(MxtHIDOut->Data),write_buf,write_len);
         mxt_write(client,MxtHIDOut,HIDDS.OutputLen+2);
 
         do
@@ -246,12 +301,226 @@ static int mxt_hid_write_config(struct i2c_client *client,u16 addr,u8 *write_buf
                 mxt_read(client,MxtHIDIn,HIDDS.InputLen);
                 if((MxtHIDIn->ReportID == MxtHIDOut->ReportID) && (MxtHIDIn->Status ==0x04))
                         break;
-                msleep_interruptible(1);
-        }while(TimeOut--);
+                msleep(1);
+        }while(--TimeOut);
 
         if(!TimeOut) return -1;
-
         return 0;
+}
+
+static int mxt_init_object(struct mxt_data *data)
+{
+	IDInfo ID;
+	u16 index = 0x00;
+	int ObjNum;
+	int T5Found = 0;
+	int T6Found = 0;
+	ObjectType      TempObject;
+	ObjectType	T5_Object,T6_Object;	
+        u8   Cmd;
+	int	TimeOut = 1000;	
+	T6_Message 	T6_Msg;
+        u8           ReportID;
+	u32		CheckSum;
+	int ret;
+	u8  		Buf[32];
+	int		i;
+	ObjectType      *MxtCFGObjs;
+	struct i2c_client *client = data->client;
+
+	MxtHIDOut = kzalloc(HIDDS.OutputLen+2,GFP_KERNEL);
+	MxtHIDIn = kzalloc(HIDDS.InputLen,GFP_KERNEL);
+
+        data->MxtHIDOut = kzalloc(HIDDS.OutputLen+2,GFP_KERNEL);
+        data->MxtHIDIn = kzalloc(HIDDS.InputLen,GFP_KERNEL);
+
+	//static int mxt_hid_read_config(struct i2c_client *client,u16 addr,u8 *read_buf,u8 read_len)
+	ret = mxt_hid_read_config(client,index,&data->ID,sizeof(IDInfo));
+	if(ret != 0 ) {
+		pr_err("read ID err %x\n",ret);
+		return 0;
+	}
+	pr_err("Touch Firmware Version = %x Build = %x\n",data->ID.Version,data->ID.Build);
+
+	ObjNum = data->ID.NumOfObject;
+	data->MxtCFGObjs = kmalloc(sizeof(ObjectType)*ObjNum, GFP_KERNEL);
+	MxtCFGObjs = data->MxtCFGObjs;
+	index = sizeof(IDInfo);
+	ReportID = 1;//0 resever for atmel
+	i=0;
+	while(ObjNum >0) {
+		ret = mxt_hid_read_config(client,index,&MxtCFGObjs[i],sizeof(ObjectType));
+	        if(ret != 0 ) {
+        	        pr_err("read Object err %x\n",ret);
+      			return 0;
+	  	}
+
+		if(MxtCFGObjs[i].Type == 0x05) {
+			data->T5_Index = i;
+		}
+                if(MxtCFGObjs[i].Type == 0x06) {
+                        data->T6_Index = i;
+			data->T6_ReportID = ReportID;
+                }
+		if(MxtCFGObjs[i].Type == 0x26) {
+                        data->T38_Index = i;
+                }
+		ReportID += (MxtCFGObjs[i].Inst_dec1+1)*MxtCFGObjs[i].NumOfReportID;
+                index += sizeof(ObjectType);
+                ObjNum--;
+		i++;
+	}
+
+	mxt_dbg("T5 addr = %x T6 addr = %x T6 report ID = %x\n",*((UINT16*)&MxtCFGObjs[data->T5_Index].LSB),*((u16*)&MxtCFGObjs[data->T6_Index].LSB),data->T6_ReportID);
+
+	mxt_hid_read_config(client,*((UINT16*)&MxtCFGObjs[data->T38_Index].LSB),&data->ConfigVersion,3);
+        if(ret != 0 ) {
+                pr_err("read config version err %x\n",ret);
+                return 0;
+        }
+
+	pr_err("config ver = %x\n",data->ConfigVersion);
+
+	//Use REPORTALL  to generate checksum
+	CheckSum = 0x0;
+
+	Cmd = 0x01;
+	
+	ret = mxt_hid_write_config(client,*((u16*)&MxtCFGObjs[data->T6_Index].LSB)+3,&Cmd,1);
+		
+	if(ret <0) {
+		pr_err("write REPORTALL err\n");
+	}
+			
+        do {
+                ret = mxt_hid_read_config(client,*((UINT16*)&MxtCFGObjs[data->T5_Index].LSB),Buf,MxtCFGObjs[data->T5_Index].Size_dec1+1);
+                if(ret <0) {
+			pr_err("read REPORTALL err\n");
+			break;
+		}
+                if(Buf[0] == data->T6_ReportID) {
+                        break;
+		}
+		msleep(100);
+        }while(--TimeOut);
+        if(!TimeOut) {
+		pr_err("read REPORTALL time out\n");
+	}
+	
+{
+	int j =0 ;
+	
+	mxt_dbg("config checksum:");
+	for(j=0;j<MxtCFGObjs[data->T5_Index].Size_dec1+1;j++)
+		mxt_dbg("%x= %x ",j,Buf[j]);
+	mxt_dbg("\n");
+}
+	
+	memcpy(&data->ConfigCheckSum,&Buf[2],3);
+	return 0;
+}
+
+static int mxt_update_config(struct mxt_data *data)
+{
+	int 	i,j;
+	int 	Argc;
+	char	*Argv[1024];
+	char	*CFGData;
+	int 		CFGSize,Size;
+	u8		Type,Inst,CDSize;	
+	u8		*CData,*PData;
+	u8		CFGObjFound;	
+	int		CFGWriteLen;
+	u16		CFGBase;
+	u32		Remaining;
+	u8		Cmd;
+	u32		CheckSum;
+	u32		NewCheckSum;
+	char		*after;
+	struct i2c_client *client = data->client;
+	ObjectType      *MxtCFGObjs;
+
+
+	MxtCFGObjs = data->MxtCFGObjs;
+	CFGData = atmel_config;
+  	CFGSize = strlen(atmel_config);
+
+	mxt_dbg("config size = %x\n",CFGSize);
+	CFGWriteLen = (HIDDS.OutputLen+2)-sizeof(MxtHIDOutput);
+
+
+	ParseLine(&CFGData,&Size,&Argc,Argv); //Title
+	CFGSize -= Size;
+	ParseLine(&CFGData,&Size,&Argc,Argv);//Version
+	mxt_dbg("ver %x %x %x\n",Argv[0],Argv[1],Argv[2]);
+	CFGSize -= Size;
+	ParseLine(&CFGData,&Size,&Argc,Argv);//Firmware checksum
+	CFGSize -= Size;
+	ParseLine(&CFGData,&Size,&Argc,Argv);//Configure checksum
+	CFGSize -= Size;
+	NewCheckSum  = (u32)simple_strtoull(Argv[0],&after,16);
+	pr_err("current checksum = %x ,new checksum %x\n",data->ConfigCheckSum,NewCheckSum); 
+
+	if(data->ConfigCheckSum == NewCheckSum) 
+		return;
+
+	while(CFGSize) {
+		ParseLine(&CFGData,&Size,&Argc,Argv);
+		Type = (u8)simple_strtoull(Argv[0],&after,16);
+		Inst = (u8)simple_strtoull(Argv[1],&after,16);
+		CDSize = (u8)simple_strtoull(Argv[2],&after,16);
+		mxt_dbg("type = %x CDSize = %x argc = %x\n",Type,CDSize,Argc-3);
+		if(CDSize != (Argc-3)) {
+			pr_err("Type = %x Error CFG Data Size not match\n",Type);
+			break;
+		}
+		CData = kmalloc(sizeof(u8)*CDSize, GFP_KERNEL); 
+		for(i=0;i<CDSize;i++)
+			CData[i] = (u8)simple_strtoull(Argv[3+i],&after,16);		
+		
+		CFGObjFound = 0;
+		for(i=0;i<data->ID.NumOfObject;i++) {
+			if(Type == data->MxtCFGObjs[i].Type) {
+				//Update Configure
+				PData = CData;
+				CFGBase = *((UINT16*)&MxtCFGObjs[i].LSB)+(MxtCFGObjs[i].Size_dec1+1)*Inst;
+				for(j=0;j<CDSize/CFGWriteLen;j++) {
+					mxt_hid_write_config(client,CFGBase,PData,CFGWriteLen);
+					PData += CFGWriteLen;
+					CFGBase += CFGWriteLen;
+				}
+				Remaining = CDSize%CFGWriteLen;
+				if(Remaining)
+					mxt_hid_write_config(client,CFGBase,PData,Remaining); 
+				//MxtHIDWriteBlock()
+				CFGObjFound = 1;
+				break;
+			}
+		}
+		if(!CFGObjFound)
+			pr_err("Warring T%d object not match\n",Type);	
+/*
+        	Print(L"# %x %x %x : ",Type,Inst,CDSize);
+		for(i=0;i<CDSize;i++)
+ 			Print(L"%x ",CData[i]);
+	        Print(L"\n");
+*/
+		CFGSize -= Size;
+	}
+
+	mxt_dbg("Backup config setting\n");
+        //backup setting
+        Cmd = 0x55;
+	mxt_hid_write_config(client,*((UINT16*)&MxtCFGObjs[data->T6_Index].LSB)+1,&Cmd,1);
+
+	
+	mxt_dbg("reset mxt device\n");
+	Cmd = 0x01;
+	mxt_hid_write_config(client,*((UINT16*)&MxtCFGObjs[data->T6_Index].LSB),&Cmd,1);
+	msleep(200);
+
+
+	return 0;
 }
 
 static void mxt_report_handle(struct mxt_data *data)
@@ -265,13 +534,17 @@ static void mxt_report_handle(struct mxt_data *data)
         mxt_read(client,Buf,HIDDS.InputLen);
 
 	length = Buf[0] | Buf[1] << 8;
-        mxt_dbg("%x %x %x %x %x \n",Buf[0],Buf[1],Buf[2],Buf[3],Buf[4]);
+        mxt_dbg("%x %x %x %x %x %x %x %x\n",Buf[0],Buf[1],Buf[2],Buf[3],Buf[4],Buf[5],Buf[6],Buf[7]);
 
 	if(!length) {
 		if (test_and_clear_bit(I2C_HID_RESET_PENDING, &data->flags))
 			wake_up(&data->wait);
 		return;
 	}
+	if(Buf[2] == 0x06) {
+		return;
+	}
+
 	ret = hid_input_report(data->hid, HID_INPUT_REPORT,&Buf[2],HIDDS.InputLen-2,1);
         mxt_dbg("input report = %x  %x ret = %x\n",Buf[3],Buf[4],ret);
 
@@ -342,7 +615,6 @@ static int i2chid_parse(struct hid_device *hid)
 	int ret;
 
 	mxt_dbg("parse\n");
-
 	hid_set_power(hid,0);
 
 	ret = hid_reset(hid);
@@ -446,18 +718,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	data->irq = gpio_to_irq(data->gpio_num);
 
-        /* register interrupt */
-        ret = request_threaded_irq(data->irq, NULL,
-                                        mxt_thread_handler,
-                                        IRQF_TRIGGER_LOW|IRQF_TRIGGER_FALLING,
-                                        "mxt-touch", data);
-        if (ret) {
-                pr_err("cannot get IRQ:%d\n", data->irq);
-                data->irq = -1;
-        } else {
-                pr_err("IRQ No:%d\n", data->irq);
-        }
-
 	mxt_write_read(client,&HIDStartAddr,2,&HIDDS,2);
 
 	mxt_write_read(client,&HIDStartAddr,2,&HIDDS,HIDDS.HIDDescLen);
@@ -475,6 +735,24 @@ static int __devinit mxt_probe(struct i2c_client *client,
         mxt_dbg("VendorID = %x\n",HIDDS.VendorID);
         mxt_dbg("ProductID = %x\n",HIDDS.ProductID);
         mxt_dbg("VersionID = %x\n",HIDDS.VersionID);
+
+
+        mxt_init_object(data);
+
+        mxt_update_config(data);
+
+
+        /* register interrupt */
+        ret = request_threaded_irq(data->irq, NULL,
+                                        mxt_thread_handler,
+                                        IRQF_TRIGGER_LOW|IRQF_TRIGGER_FALLING,
+                                        "mxt-touch", data);
+        if (ret) {
+                pr_err("cannot get IRQ:%d\n", data->irq);
+                data->irq = -1;
+        } else {
+                pr_err("IRQ No:%d\n", data->irq);
+        }
 
 	hid = hid_allocate_device();
 	if (IS_ERR(hid))
