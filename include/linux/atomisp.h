@@ -389,6 +389,7 @@ struct atomisp_morph_table {
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 struct atomisp_shading_table {
+         __u8 flags;
 	__u32 enable;
 
 	__u32 sensor_width;
