@@ -184,7 +184,7 @@ int parse_clrmgr_input(uint *dest, char *src, int max, int read)
 	}
 
 	/* Extract values from buffer */
-	while ((size < max) && (*src != '\n')) {
+	while ((size < max) && (src ? *src != '\n' : 0)) {
 		populate = strsep(&src, ",");
 		if (!populate)
 			break;

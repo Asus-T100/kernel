@@ -268,7 +268,6 @@ ssize_t i915_cb_adjust_write(struct file *filp,
 		  loff_t *ppos)
 {
 	int ret = count;
-	u32 val = 0;
 	struct drm_device *dev = filp->private_data;
 	struct ContBrightlut *cb_ptr = NULL;
 	drm_i915_private_t *dev_priv = dev->dev_private;
