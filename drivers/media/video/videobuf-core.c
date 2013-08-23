@@ -689,7 +689,8 @@ int videobuf_dqbuf(struct videobuf_queue *q,
 		   struct v4l2_buffer *b, int nonblocking)
 {
 	struct videobuf_buffer *buf = NULL;
-	int retval;
+	int retval, i;
+        unsigned int *addr;
 
 	MAGIC_CHECK(q->int_ops->magic, MAGIC_QTYPE_OPS);
 
@@ -702,15 +703,28 @@ int videobuf_dqbuf(struct videobuf_queue *q,
 		goto done;
 	}
 
+	// <ASUS-Ian20130822+>
+	/*
+    printk("[ASUS] videobuf_dqbuf, index = %d, size = %d, baddr = %x", buf->i, buf->size, buf->baddr);
+    addr = buf->baddr;
+    for(i = 0; i < 100; i++){
+        printk("%x ", addr[i]);
+        if((i + 1)%10 == 0){
+            printk("\n");
+        }
+    }
+	*/
+	// <ASUS-Ian20130822->
+
 	switch (buf->state) {
 	case VIDEOBUF_ERROR:
-		dprintk(1, "dqbuf: state is error\n");
+		printk("dqbuf: state is error\n");
 		break;
 	case VIDEOBUF_DONE:
-		dprintk(1, "dqbuf: state is done\n");
+		printk("dqbuf: state is done\n");
 		break;
 	default:
-		dprintk(1, "dqbuf: state invalid\n");
+		printk("dqbuf: state invalid\n");
 		retval = -EINVAL;
 		goto done;
 	}
@@ -725,7 +739,7 @@ done:
 }
 EXPORT_SYMBOL_GPL(videobuf_dqbuf);
 
-int videobuf_streamon(struct videobuf_queue *q)
+ int videobuf_streamon(struct videobuf_queue *q)
 {
 	struct videobuf_buffer *buf;
 	unsigned long flags = 0;

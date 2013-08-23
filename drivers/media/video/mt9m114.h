@@ -82,6 +82,26 @@
 /* sensor coarse integration time register */
 #define MISENSOR_COARSE_INTEGRATION_TIME 0xC83C
 
+//registers
+#define REG_SW_RESET                    0x301A
+#define REG_SW_STREAM                   0xDC00
+#define REG_SCCB_CTRL                   0x3100
+#define REG_SC_CMMN_CHIP_ID             0x0000
+#define REG_V_START                     0xc800 //16bits
+#define REG_H_START                     0xc802 //16bits
+#define REG_V_END                       0xc804 //16bits
+#define REG_H_END                       0xc806 //16bits
+#define REG_PIXEL_CLK                   0xc808 //32bits
+#define REG_TIMING_VTS                  0xc812 //16bits
+#define REG_TIMING_HTS                  0xc814 //16bits
+#define REG_WIDTH                       0xC868 //16bits
+#define REG_HEIGHT                      0xC86A //16bits
+#define REG_EXPO_COARSE                 0x3012 //16bits
+#define REG_EXPO_FINE                   0x3014 //16bits
+#define REG_GAIN                        0x305E
+#define REG_ANALOGGAIN                  0x305F
+#define REG_ADDR_ACESSS                 0x098E //logical_address_access
+#define REG_COMM_Register               0x0080 //command_register
 
 #define SENSOR_DETECTED		1
 #define SENSOR_NOT_DETECTED	0
@@ -481,6 +501,15 @@ static const struct i2c_device_id mt9m114_id[] = {
 	{"mt9m114", 0},
 	{}
 };
+
+static struct misensor_reg const mt9m114_exitstandby[] = {
+	 {MISENSOR_16BIT,  0x098E, 0xDC00},
+           // exit-standby
+          {MISENSOR_8BIT,  0xDC00, 0x54},
+	 {MISENSOR_16BIT,  0x0080, 0x8002},
+	 {MISENSOR_TOK_TERM, 0, 0}
+};
+
 
 static struct misensor_reg const mt9m114_suspend[] = {
 	 {MISENSOR_16BIT,  0x098E, 0xDC00},
