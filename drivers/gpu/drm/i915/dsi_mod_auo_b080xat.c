@@ -83,7 +83,7 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	dsi->bw_timer = 0;
 	dsi->clk_lp_to_hs_count = 0x24;
 	dsi->clk_hs_to_lp_count = 0x0F;
-	dsi->video_frmt_cfg_bits = 0;
+	dsi->video_frmt_cfg_bits = DISABLE_VIDEO_BTA;
 	dsi->dphy_reg = 0x3F10430D;
 
 	return true;
