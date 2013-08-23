@@ -73,9 +73,9 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 
 	dsi->eotp_pkt = 1;
 	dsi->operation_mode = DSI_VIDEO_MODE;
-	dsi->video_mode_type = DSI_VIDEO_BURST | IP_TG_CONFIG;
+	dsi->video_mode_type = DSI_VIDEO_BURST;
 	dsi->pixel_format = VID_MODE_FORMAT_RGB666_LOOSE;
-	dsi->port_bits = BANDGAP_LNC_CIRCUIT | LP_OUTPUT_HOLD;
+	dsi->port_bits = 0;
 	dsi->turn_arnd_val = 0x3f;
 	dsi->rst_timer_val = 0xff;
 	dsi->hs_to_lp_count = 0x46;
@@ -83,7 +83,7 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	dsi->bw_timer = 0;
 	dsi->clk_lp_to_hs_count = 0x24;
 	dsi->clk_hs_to_lp_count = 0x0F;
-	dsi->video_frmt_cfg_bits = IP_TG_CONFIG;
+	dsi->video_frmt_cfg_bits = 0;
 	dsi->dphy_reg = 0x3F10430D;
 
 	return true;
