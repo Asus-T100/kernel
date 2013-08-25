@@ -1047,6 +1047,7 @@ typedef struct drm_i915_private {
 	uint32_t watchdog_threshold[I915_NUM_RINGS];
 
 	int shut_down_state;
+	bool is_resuming;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */

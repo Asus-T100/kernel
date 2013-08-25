@@ -993,7 +993,6 @@ void intel_wait_for_vblank(struct drm_device *dev, int pipe)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int pipestat_reg = PIPESTAT(pipe);
-
 	if (INTEL_INFO(dev)->gen >= 5) {
 		ironlake_wait_for_vblank(dev, pipe);
 		return;
@@ -1933,7 +1932,15 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 		return;
 
 	I915_WRITE(reg, val | PIPECONF_ENABLE);
-	intel_wait_for_vblank(dev_priv->dev, pipe);
+	/* No need to wait in case of mipi.
+	 * Since data will flow only when port is enabled.
+	 * wait for vblank will time out for mipi
+	 */
+	if (!dev_priv->is_mipi)
+		intel_wait_for_vblank(dev_priv->dev, pipe);
+	else
+		POSTING_READ(reg);
+
 	if (dev_priv->disp_pm_in_progress == true) {
 		DRM_DEBUG_DRIVER("Enable the sprites if disabled\n");
 		enable_sprites(dev_priv, pipe);
@@ -2017,7 +2024,14 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
 
 	I915_WRITE(reg, val | DISPLAY_PLANE_ENABLE);
 	intel_flush_display_plane(dev_priv, plane);
-	intel_wait_for_vblank(dev_priv->dev, pipe);
+	/* No need to wait in case of mipi.
+	 * Since data will flow only when port is enabled.
+	 * wait for vblank will time out for mipi
+	 */
+	if (!dev_priv->is_mipi)
+		intel_wait_for_vblank(dev_priv->dev, pipe);
+	else
+		POSTING_READ(reg);
 }
 
 /**
@@ -2664,7 +2678,11 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	}
 
 	if (old_fb) {
-		intel_wait_for_vblank(dev, intel_crtc->pipe);
+		/* Wait for vblank only if pipe is actually running
+		 * and if the framebuffers have changed.
+		 */
+		if (intel_crtc->active && old_fb != crtc->fb)
+			intel_wait_for_vblank(dev, intel_crtc->pipe);
 		intel_unpin_fb_obj(to_intel_framebuffer(old_fb)->obj);
 	}
 
@@ -4040,6 +4058,13 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	u32 data = 0;
+	/* If device is resuming, no need of prepare.
+	 * ALready the pipe is off and inactive
+	 */
+	if (dev_priv->is_resuming == true) {
+		DRM_DEBUG("device is resuming. returning\n");
+		return;
+	}
 
 	i9xx_crtc_disable(crtc);
 
@@ -4104,6 +4129,15 @@ static void ironlake_crtc_commit(struct drm_crtc *crtc)
 void intel_encoder_prepare(struct drm_encoder *encoder)
 {
 	struct drm_encoder_helper_funcs *encoder_funcs = encoder->helper_private;
+	struct drm_device *dev = encoder->dev;
+	/* If device is resuming, no need of prepare.
+	 * Already the pipe is off and inactive
+	 */
+	if (i915_is_device_resuming(dev)) {
+		DRM_DEBUG("device is resuming. returning\n");
+		return;
+	}
+
 	/* lvds has its own version of prepare see intel_lvds_prepare */
 	encoder_funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
 }
@@ -5315,10 +5349,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 
 	I915_WRITE(PIPECONF(pipe), pipeconf);
 	POSTING_READ(PIPECONF(pipe));
-	if (!is_dsi) {
-		intel_enable_pipe(dev_priv, pipe, false);
-		intel_wait_for_vblank(dev, pipe);
-	}
 
 	I915_WRITE(DSPCNTR(plane), dspcntr);
 	POSTING_READ(DSPCNTR(plane));
@@ -7747,6 +7777,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	display_save_restore_hotplug(drm_dev, RESTOREHPD);
 	drm_kms_helper_poll_enable(drm_dev);
+	dev_priv->is_resuming = false;
 	return 0;
 }
 

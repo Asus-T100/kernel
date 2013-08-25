@@ -359,6 +359,16 @@ static bool intel_dsi_mode_fixup(struct drm_encoder *encoder,
 
 static void intel_dsi_mode_prepare(struct drm_encoder *encoder)
 {
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	/* If device is resuming, no need of prepare.
+	 * ALready the pipe is off and inactive
+	 */
+	if (dev_priv->is_resuming == true) {
+		DRM_DEBUG("device is resuming. returning\n");
+		return;
+	}
+
 	DRM_DEBUG_KMS("\n");
 }
 

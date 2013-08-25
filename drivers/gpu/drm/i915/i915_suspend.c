@@ -1296,6 +1296,7 @@ static int valleyview_thaw(struct drm_device *dev, bool is_hibernate_restore)
 	int error = 0;
 	u32 reg;
 
+	dev_priv->is_resuming = true;
 	/* Only restore if it is resuming from hibernate */
 	if (is_hibernate_restore) {
 		if (drm_core_check_feature(dev, DRIVER_MODESET)) {

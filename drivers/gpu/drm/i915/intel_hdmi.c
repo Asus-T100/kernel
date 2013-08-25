@@ -716,6 +716,13 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		int pipe = crtc ? to_intel_crtc(crtc)->pipe : -1;
 
 		if (mode != DRM_MODE_DPMS_ON) {
+			/* If device is resuming, no need of dpms off.
+			 * ALready the pipe is off and inactive
+			 */
+			if (dev_priv->is_resuming == true) {
+				DRM_DEBUG("device is resuming.Returning\n");
+				goto exit;
+			}
 			if (temp & SDVO_PIPE_B_SELECT) {
 				temp &= ~SDVO_PIPE_B_SELECT;
 				I915_WRITE(intel_hdmi->sdvox_reg, temp);
@@ -739,6 +746,7 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		}
 	}
 
+exit:
 	/* HW workaround, need to toggle enable bit off and on for 12bpc, but
 	 * we do this anyway which shows more stable in testing.
 	 */
