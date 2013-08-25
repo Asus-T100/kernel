@@ -18,6 +18,7 @@
 #include <linux/hid-debug.h>
 #include <linux/hidraw.h>
 #include "atmel-config.h"
+#include "atmel-firmware.h"
 
 static int debug = 0;
 
@@ -50,7 +51,7 @@ typedef struct _HIDDesc{
 }HIDDesc;
 
 
-typedef struct HIDCommand
+struct HIDCommand
 {
 	u16	CommandReg;
 	u8	ReportTypeID;
@@ -125,7 +126,10 @@ struct mxt_data {
 	u8	T6_ReportID;	
 	u32	ConfigCheckSum;
 	u32	ConfigVersion;
+
+	u8	bootloader_addr;
 };
+
 
 static int mxt_write_read(struct i2c_client *client,u8 *write_buf, u16 write_len,u8 *read_buf, u16 read_len)
 {
@@ -133,7 +137,7 @@ static int mxt_write_read(struct i2c_client *client,u8 *write_buf, u16 write_len
         int ret;
         int num =2;
 
-        memset(&msg,0,sizeof(struct i2c_msg)*2);
+        memset(msg,0,sizeof(struct i2c_msg)*2);
 
         num = 2;
         msg[0].addr = client->addr;
@@ -161,7 +165,7 @@ static int mxt_write(struct i2c_client *client,u8 *write_buf, u16 write_len)
         int ret;
         int num =1;
 
-        memset(&msg,0,sizeof(struct i2c_msg)*2);
+        memset(msg,0,sizeof(struct i2c_msg)*2);
 
         num = 1;
         msg[0].addr = client->addr;
@@ -185,7 +189,7 @@ static int mxt_read(struct i2c_client *client, u8 *read_buf, u16 read_len)
         int ret;
         int num =2;
 
-        memset(&msg,0,sizeof(struct i2c_msg)*2);
+        memset(msg,0,sizeof(struct i2c_msg)*2);
 
         num = 1;
 
@@ -195,6 +199,48 @@ static int mxt_read(struct i2c_client *client, u8 *read_buf, u16 read_len)
         msg[0].buf = read_buf;
 
         ret = i2c_transfer(client->adapter, msg, num);
+
+        if(ret <0) {
+                pr_err("i2c transfer error\n");
+                return -EIO;
+        } else
+                return 0;
+
+}
+
+static int mxt_bootloader_read(struct mxt_data *data, u8 *read_buf, u16 read_len)
+{
+	int ret;
+	struct i2c_msg msg;
+
+	memset(&msg,0,sizeof(struct i2c_msg));
+	msg.addr = data->bootloader_addr;
+	msg.flags = I2C_M_RD;
+	msg.len = read_len;
+	msg.buf = read_buf;
+
+	ret = i2c_transfer(data->client->adapter, &msg, 1);
+
+        if(ret <0) {
+                pr_err("i2c transfer error\n");
+                return -EIO;
+        } else
+                return 0;
+
+}
+
+static int mxt_bootloader_write(struct mxt_data *data,u8 *write_buf, u16 write_len)
+{
+	int ret;
+	struct i2c_msg msg;
+
+	memset(&msg,0,sizeof(struct i2c_msg));
+	msg.addr = data->bootloader_addr;
+	msg.flags = !I2C_M_RD;
+	msg.len = write_len;
+	msg.buf = write_buf;
+
+	ret = i2c_transfer(data->client->adapter, &msg, 1);
 
         if(ret <0) {
                 pr_err("i2c transfer error\n");
@@ -262,11 +308,11 @@ static int mxt_hid_read_config(struct i2c_client *client,u16 addr,u8 *read_buf,u
         MxtHIDOut->NumRx    = read_len;
 	MxtHIDOut->Addr	  = addr;
 
-	mxt_write(client,MxtHIDOut,HIDDS.OutputLen+2);
+	mxt_write(client,(u8 *)MxtHIDOut,HIDDS.OutputLen+2);
 
 	do
 	{
-		mxt_read(client,MxtHIDIn,HIDDS.InputLen);
+		mxt_read(client,(u8 *)MxtHIDIn,HIDDS.InputLen);
 		if((MxtHIDIn->ReportID == MxtHIDOut->ReportID) && (MxtHIDIn->Status ==0x00))
 			break;
 		msleep(1);
@@ -278,6 +324,26 @@ static int mxt_hid_read_config(struct i2c_client *client,u16 addr,u8 *read_buf,u
 
 	return 0;
 }
+
+static int mxt_hid_write(struct i2c_client *client,u16 addr,u8 *write_buf,u8 write_len)
+{
+        memset(MxtHIDOut,0,HIDDS.OutputLen+2);
+
+        MxtHIDOut->OutputReg = HIDDS.OutputReg;
+        MxtHIDOut->OutputLen = HIDDS.OutputLen;
+        MxtHIDOut->ReportID    = 0x06;
+        MxtHIDOut->CommandID = 0x51;
+        MxtHIDOut->NumWx     = write_len+0x02;
+        MxtHIDOut->NumRx    = 0x0;
+        MxtHIDOut->Addr   = addr;
+
+        memcpy(&(MxtHIDOut->Data),write_buf,write_len);
+        mxt_write(client,(u8 *)MxtHIDOut,HIDDS.OutputLen+2);
+
+        return 0;
+}
+
+
 
 static int mxt_hid_write_config(struct i2c_client *client,u16 addr,u8 *write_buf,u8 write_len)
 {
@@ -294,11 +360,11 @@ static int mxt_hid_write_config(struct i2c_client *client,u16 addr,u8 *write_buf
         MxtHIDOut->Addr   = addr;
 
 	memcpy(&(MxtHIDOut->Data),write_buf,write_len);
-        mxt_write(client,MxtHIDOut,HIDDS.OutputLen+2);
+        mxt_write(client,(u8 *)MxtHIDOut,HIDDS.OutputLen+2);
 
         do
         {
-                mxt_read(client,MxtHIDIn,HIDDS.InputLen);
+                mxt_read(client,(u8 *)MxtHIDIn,HIDDS.InputLen);
                 if((MxtHIDIn->ReportID == MxtHIDOut->ReportID) && (MxtHIDIn->Status ==0x04))
                         break;
                 msleep(1);
@@ -310,21 +376,15 @@ static int mxt_hid_write_config(struct i2c_client *client,u16 addr,u8 *write_buf
 
 static int mxt_init_object(struct mxt_data *data)
 {
-	IDInfo ID;
-	u16 index = 0x00;
-	int ObjNum;
-	int T5Found = 0;
-	int T6Found = 0;
-	ObjectType      TempObject;
-	ObjectType	T5_Object,T6_Object;	
-        u8   Cmd;
+	u16 	index = 0x00;
+	int 	ObjNum;
+        u8   	Cmd;
 	int	TimeOut = 1000;	
-	T6_Message 	T6_Msg;
-        u8           ReportID;
-	u32		CheckSum;
-	int ret;
-	u8  		Buf[32];
-	int		i;
+        u8      ReportID;
+	u32	CheckSum;
+	int 	ret;
+	u8  	Buf[32];
+	int	i;
 	ObjectType      *MxtCFGObjs;
 	struct i2c_client *client = data->client;
 
@@ -335,7 +395,7 @@ static int mxt_init_object(struct mxt_data *data)
         data->MxtHIDIn = kzalloc(HIDDS.InputLen,GFP_KERNEL);
 
 	//static int mxt_hid_read_config(struct i2c_client *client,u16 addr,u8 *read_buf,u8 read_len)
-	ret = mxt_hid_read_config(client,index,&data->ID,sizeof(IDInfo));
+	ret = mxt_hid_read_config(client,index,(u8 *)&data->ID,sizeof(IDInfo));
 	if(ret != 0 ) {
 		pr_err("read ID err %x\n",ret);
 		return 0;
@@ -343,13 +403,13 @@ static int mxt_init_object(struct mxt_data *data)
 	pr_err("Touch Firmware Version = %x Build = %x\n",data->ID.Version,data->ID.Build);
 
 	ObjNum = data->ID.NumOfObject;
-	data->MxtCFGObjs = kmalloc(sizeof(ObjectType)*ObjNum, GFP_KERNEL);
+	data->MxtCFGObjs = kzalloc(sizeof(ObjectType)*ObjNum, GFP_KERNEL);
 	MxtCFGObjs = data->MxtCFGObjs;
 	index = sizeof(IDInfo);
 	ReportID = 1;//0 resever for atmel
 	i=0;
 	while(ObjNum >0) {
-		ret = mxt_hid_read_config(client,index,&MxtCFGObjs[i],sizeof(ObjectType));
+		ret = mxt_hid_read_config(client,index,(u8 *)&MxtCFGObjs[i],sizeof(ObjectType));
 	        if(ret != 0 ) {
         	        pr_err("read Object err %x\n",ret);
       			return 0;
@@ -373,7 +433,7 @@ static int mxt_init_object(struct mxt_data *data)
 
 	mxt_dbg("T5 addr = %x T6 addr = %x T6 report ID = %x\n",*((UINT16*)&MxtCFGObjs[data->T5_Index].LSB),*((u16*)&MxtCFGObjs[data->T6_Index].LSB),data->T6_ReportID);
 
-	mxt_hid_read_config(client,*((UINT16*)&MxtCFGObjs[data->T38_Index].LSB),&data->ConfigVersion,3);
+	mxt_hid_read_config(client,*((UINT16*)&MxtCFGObjs[data->T38_Index].LSB),(u8 *)&data->ConfigVersion,3);
         if(ret != 0 ) {
                 pr_err("read config version err %x\n",ret);
                 return 0;
@@ -420,11 +480,217 @@ static int mxt_init_object(struct mxt_data *data)
 	return 0;
 }
 
+//Update frame setting
+#define WAITING_MASK      0xC0
+#define WAITING_BOOTLOAD_CMD 0xC0
+#define WAITING_FRAME_DATA 0x80
+#define FRAME_CRC_CHECK 0x02
+#define FRAME_CRC_FAIL  0x03
+#define FRAME_CRC_PASS  0x04
+
+int UpdateFrame(struct mxt_data *data,u8 *Buf,int Size) {
+	u8	Ack = 0;
+	int	TimeOut;
+	int	ret;
+	
+	TimeOut = 1000;
+	do {
+		mxt_bootloader_read(data,&Ack,1);
+		if((Ack&WAITING_MASK)== WAITING_FRAME_DATA) 
+			break;	
+		msleep(1);
+	}while(--TimeOut);
+
+        if(!TimeOut) { 
+		pr_err("waiting frame data time out\n");
+               	return -EINVAL;
+	}
+
+	ret = mxt_bootloader_write(data,Buf,Size);
+
+	TimeOut = 1000;
+        do {
+		mxt_bootloader_read(data,&Ack,1);
+                if(Ack == FRAME_CRC_CHECK)
+                        break;
+                msleep(1);
+        }while(--TimeOut);
+
+        if(!TimeOut) {  
+		pr_err("waiting frame crc time out\n");
+                return -EINVAL;
+	}
+
+	TimeOut = 1000;
+	Ack = FRAME_CRC_FAIL;
+	do {
+		mxt_bootloader_read(data,&Ack,1);
+                if(Ack == FRAME_CRC_PASS || Ack == FRAME_CRC_FAIL)
+                        break;
+		msleep(1);
+        }while(--TimeOut);
+
+        if(!TimeOut) {
+                pr_err("waiting frame crc  pass time out\n");
+                return -EINVAL;
+        }
+
+        if(Ack == FRAME_CRC_FAIL) {
+                pr_err("CRC failed\n");
+                return -EINVAL;
+        }
+
+	return 0;
+}
+
+int UpdateataFrames(struct mxt_data *data,u8 *FlashData,int TotalFlashSize) {
+	u16 FrameSize;	
+	u8	Ack = 0;
+        int   TimeOut;
+	u16	UnLockDevice = 0xAADC;
+	int 	FlashSize = TotalFlashSize;
+	int ret;       
+ 
+	TimeOut = 1000;
+        do {
+		mxt_bootloader_read(data,&Ack,1);
+                if((Ack&WAITING_MASK) == WAITING_BOOTLOAD_CMD)
+                        break;
+		msleep(1);	
+        }while(--TimeOut);
+
+        if(!TimeOut) {
+		pr_err("wait bootloader cmd timeout\n");
+                return -EINVAL;
+	}
+
+	mxt_dbg("unlock device\n");
+
+	mxt_bootloader_write(data,(u8 *)&UnLockDevice,2);
+
+	while(FlashSize > 0 ) {
+		FrameSize = (int)(*FlashData<<8)|(int)(*(FlashData+1)+2);
+		mxt_dbg("FlashSize = %x FrameSize= %x data = %x\n",FlashSize,FrameSize,FlashData[0]);
+		ret = UpdateFrame(data,FlashData,FrameSize);
+		if(ret) return -1;
+
+		FlashData +=FrameSize;
+		FlashSize -= FrameSize;
+	}
+	mxt_dbg("\n");
+
+	return 0;
+}
+
+
+static int mxt_check_bootloader(struct mxt_data *data)
+{
+	int ret;
+	u8 tmp;
+
+	ret = mxt_bootloader_read(data,&tmp,1);
+	
+	return ret;
+} 
+
+static void mxt_load_firmware(u8 **FlashData,int *FlashSize)
+{
+	u8 *encode_data = atmel_firmware;
+	int encode_size = strlen(atmel_firmware);
+	u8 *str_data;
+	int str_size;
+	char str[3];
+	int i;
+	char *after;
+
+	str_size = encode_size / 2;
+	str_data = kzalloc(str_size, GFP_KERNEL);	
+        str[2] = '\0';
+        for(i=0;i<str_size;i++) {
+		memcpy(str,encode_data,2);
+		encode_data +=2;
+		str_data[i] = (u8)simple_strtoul(str,&after,16);
+	}
+	
+	*FlashData = str_data;
+	*FlashSize = str_size;
+}
+
+static int mxt_recovery_firmware(struct mxt_data *data)
+{
+        u8      *FlashData;
+        int     FlashSize;
+	int ret;
+
+	mxt_load_firmware(&FlashData,&FlashSize);
+
+	pr_err("Recovery firmware,please wait\n");
+
+        UpdateataFrames(data,FlashData,FlashSize);
+
+        msleep(1000);
+
+        ret = mxt_check_bootloader(data);
+        if(ret) {
+                pr_err("flash firmware success\\n");
+                return 0;
+        }else {
+                pr_err("exit boot mode failed\n");
+                return -EINVAL;
+        }
+	
+	return ret;
+}
+
+
+static int mxt_update_firmware(struct mxt_data *data)
+{
+	u8	*FlashData;
+	int	FlashSize;
+        struct i2c_client *client = data->client;
+        ObjectType      *MxtCFGObjs = data->MxtCFGObjs;
+	u8	Cmd;
+	int ret;
+
+	mxt_load_firmware(&FlashData,&FlashSize);
+
+	pr_err("Flash firmware,please wait\n");	
+
+        mxt_dbg("enter boot mode\n");
+       	//enter bootloader mode
+	Cmd = 0xA5;
+       	mxt_hid_write(client,*((UINT16*)&MxtCFGObjs[data->T6_Index].LSB),&Cmd,1);
+
+	msleep(6000);
+
+	mxt_dbg("check bootloader mode\n");
+	ret = mxt_check_bootloader(data);
+	if(ret) {
+		pr_err("enter boot mode failed\n");
+		return ret;
+	}
+
+
+	UpdateataFrames(data,FlashData,FlashSize);
+	
+	msleep(1000);
+
+        ret = mxt_check_bootloader(data);
+        if(ret) {
+                pr_err("flash firmware success\n");
+                return 0;
+        }else {
+		pr_err("exit boot mode failed\n");
+		return -EINVAL;
+	}
+}
+
+
 static int mxt_update_config(struct mxt_data *data)
 {
 	int 	i,j;
 	int 	Argc;
-	char	*Argv[1024];
+	char	**Argv;
 	char	*CFGData;
 	int 		CFGSize,Size;
 	u8		Type,Inst,CDSize;	
@@ -434,8 +700,7 @@ static int mxt_update_config(struct mxt_data *data)
 	u16		CFGBase;
 	u32		Remaining;
 	u8		Cmd;
-	u32		CheckSum;
-	u32		NewCheckSum;
+	u32		ConfigCheckSum;
 	char		*after;
 	struct i2c_client *client = data->client;
 	ObjectType      *MxtCFGObjs;
@@ -448,35 +713,37 @@ static int mxt_update_config(struct mxt_data *data)
 	mxt_dbg("config size = %x\n",CFGSize);
 	CFGWriteLen = (HIDDS.OutputLen+2)-sizeof(MxtHIDOutput);
 
+	Argv = kzalloc(sizeof(char*)*1024, GFP_KERNEL);
 
 	ParseLine(&CFGData,&Size,&Argc,Argv); //Title
 	CFGSize -= Size;
 	ParseLine(&CFGData,&Size,&Argc,Argv);//Version
-	mxt_dbg("ver %x %x %x\n",Argv[0],Argv[1],Argv[2]);
 	CFGSize -= Size;
 	ParseLine(&CFGData,&Size,&Argc,Argv);//Firmware checksum
 	CFGSize -= Size;
 	ParseLine(&CFGData,&Size,&Argc,Argv);//Configure checksum
 	CFGSize -= Size;
-	NewCheckSum  = (u32)simple_strtoull(Argv[0],&after,16);
-	pr_err("current checksum = %x ,new checksum %x\n",data->ConfigCheckSum,NewCheckSum); 
+	ConfigCheckSum  = (u32)simple_strtoul(Argv[0],&after,16);
+	pr_err("current checksum = %x ,config checksum %x\n",data->ConfigCheckSum,ConfigCheckSum); 
 
-	if(data->ConfigCheckSum == NewCheckSum) 
-		return;
+	if(data->ConfigCheckSum == ConfigCheckSum) {
+		kfree(Argv);
+		return 0;
+	}
 
 	while(CFGSize) {
 		ParseLine(&CFGData,&Size,&Argc,Argv);
-		Type = (u8)simple_strtoull(Argv[0],&after,16);
-		Inst = (u8)simple_strtoull(Argv[1],&after,16);
-		CDSize = (u8)simple_strtoull(Argv[2],&after,16);
+		Type = (u8)simple_strtoul(Argv[0],&after,16);
+		Inst = (u8)simple_strtoul(Argv[1],&after,16);
+		CDSize = (u8)simple_strtoul(Argv[2],&after,16);
 		mxt_dbg("type = %x CDSize = %x argc = %x\n",Type,CDSize,Argc-3);
 		if(CDSize != (Argc-3)) {
 			pr_err("Type = %x Error CFG Data Size not match\n",Type);
 			break;
 		}
-		CData = kmalloc(sizeof(u8)*CDSize, GFP_KERNEL); 
+		CData = kzalloc(sizeof(u8)*CDSize, GFP_KERNEL); 
 		for(i=0;i<CDSize;i++)
-			CData[i] = (u8)simple_strtoull(Argv[3+i],&after,16);		
+			CData[i] = (u8)simple_strtoul(Argv[3+i],&after,16);		
 		
 		CFGObjFound = 0;
 		for(i=0;i<data->ID.NumOfObject;i++) {
@@ -499,14 +766,11 @@ static int mxt_update_config(struct mxt_data *data)
 		}
 		if(!CFGObjFound)
 			pr_err("Warring T%d object not match\n",Type);	
-/*
-        	Print(L"# %x %x %x : ",Type,Inst,CDSize);
-		for(i=0;i<CDSize;i++)
- 			Print(L"%x ",CData[i]);
-	        Print(L"\n");
-*/
 		CFGSize -= Size;
+		kfree(CData);
 	}
+
+	kfree(Argv);
 
 	mxt_dbg("Backup config setting\n");
         //backup setting
@@ -519,7 +783,6 @@ static int mxt_update_config(struct mxt_data *data)
 	mxt_hid_write_config(client,*((UINT16*)&MxtCFGObjs[data->T6_Index].LSB),&Cmd,1);
 	msleep(200);
 
-
 	return 0;
 }
 
@@ -527,7 +790,6 @@ static void mxt_report_handle(struct mxt_data *data)
 {
         struct i2c_client *client = data->client;
         u8  Buf[32];
-        int i;
 	int length;
 	int ret;
 
@@ -554,9 +816,6 @@ static void mxt_report_handle(struct mxt_data *data)
 static irqreturn_t mxt_thread_handler(int id, void *dev)
 {
 	struct mxt_data *data = (struct mxt_data *)dev;
-	struct i2c_client *client = data->client;
-	u8  Buf[32];
-	int i;
 
 	mxt_dbg("mxt_thread_handler\n");
 
@@ -579,7 +838,7 @@ static void hid_set_power(struct hid_device *hid, int power)
         Cmd.ReportTypeID = power;
         Cmd.OpCode = 0x08;
 
-        mxt_write(client,&Cmd,sizeof(struct HIDCommand));
+        mxt_write(client,(u8 *)&Cmd,sizeof(struct HIDCommand));
 
 }
 
@@ -595,7 +854,7 @@ static int hid_reset(struct hid_device *hid)
         Cmd.ReportTypeID = 0x00;
         Cmd.OpCode = 0x01;
 
-	mxt_write(client,&Cmd,sizeof(struct HIDCommand));
+	mxt_write(client,(u8 *)&Cmd,sizeof(struct HIDCommand));
 	set_bit(I2C_HID_RESET_PENDING, &data->flags);
 
 	mxt_dbg("wait\n");
@@ -611,7 +870,6 @@ static int i2chid_parse(struct hid_device *hid)
 {
 	struct i2c_client *client = to_i2c_client(hid->dev.parent);
 	char *rdesc;	
-	unsigned int rsize = 0;
 	int ret;
 
 	mxt_dbg("parse\n");
@@ -621,9 +879,9 @@ static int i2chid_parse(struct hid_device *hid)
 
 	if(ret) return ret;
 
-	rdesc = kmalloc(HIDDS.ReportDescLen, GFP_KERNEL);
+	rdesc = kzalloc(HIDDS.ReportDescLen, GFP_KERNEL);
 
-	mxt_write_read(client,&HIDDS.ReportDescReg,2,rdesc,HIDDS.ReportDescLen);	
+	mxt_write_read(client,(u8 *)&HIDDS.ReportDescReg,2,(u8 *)rdesc,HIDDS.ReportDescLen);	
 
 	ret = hid_parse_report(hid, rdesc, HIDDS.ReportDescLen);
 	kfree(rdesc);
@@ -657,7 +915,7 @@ void i2chid_close(struct hid_device *hid)
 
 static int i2chid_power(struct hid_device *hid, int lvl)
 {
-	mxt_dbg("power\n");
+	mxt_dbg("power lvl = %x\n",lvl);
 	return 0;
 }
 static int i2c_hidinput_input_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
@@ -700,7 +958,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 {
 	int ret;
 	u16 HIDStartAddr = 0x00;
-	u8  Buf[32];	
 	struct mxt_data *data;
 	struct hid_device *hid;
 
@@ -718,9 +975,18 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	data->irq = gpio_to_irq(data->gpio_num);
 
-	mxt_write_read(client,&HIDStartAddr,2,&HIDDS,2);
+	data->bootloader_addr = 0x26;
 
-	mxt_write_read(client,&HIDStartAddr,2,&HIDDS,HIDDS.HIDDescLen);
+	if(mxt_check_bootloader(data) ==0) {
+		ret = mxt_recovery_firmware(data);
+		if(ret)
+			goto err_free_data;
+	}
+
+
+	mxt_write_read(client,(u8 *)&HIDStartAddr,2,(u8 *)&HIDDS,2);
+
+	mxt_write_read(client,(u8 *)&HIDStartAddr,2,(u8 *)&HIDDS,HIDDS.HIDDescLen);
 
 	mxt_dbg("HIDDescLen = %x\n",HIDDS.HIDDescLen);
 	mxt_dbg("bcdVersion = %x\n",HIDDS.bcdVersion);
@@ -737,9 +1003,19 @@ static int __devinit mxt_probe(struct i2c_client *client,
         mxt_dbg("VersionID = %x\n",HIDDS.VersionID);
 
 
-        mxt_init_object(data);
+        ret = mxt_init_object(data);
+	if(ret)
+		goto err_free_data;
 
-        mxt_update_config(data);
+	if(data->ID.Version != 0x10 || data->ID.Build != 0xAC) {
+		ret = mxt_update_firmware(data);
+		if(ret)
+			goto err_free_data_object;
+	}
+
+        ret = mxt_update_config(data);
+        if(ret)
+        	goto err_free_data_object;
 
 
         /* register interrupt */
@@ -750,14 +1026,16 @@ static int __devinit mxt_probe(struct i2c_client *client,
         if (ret) {
                 pr_err("cannot get IRQ:%d\n", data->irq);
                 data->irq = -1;
+		goto err_free_data_object;
         } else {
                 pr_err("IRQ No:%d\n", data->irq);
         }
 
 	hid = hid_allocate_device();
-	if (IS_ERR(hid))
-		return PTR_ERR(hid);
-
+	if (IS_ERR(hid)) {
+		ret =  PTR_ERR(hid);
+		goto err_free_irq;
+	}
 	data->hid = hid;
 
 	hid->ll_driver = &i2c_hid_driver;
@@ -773,13 +1051,25 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	ret = hid_add_device(hid);
 	if (ret) {
-		
 		if (ret != -ENODEV)
 			pr_err("can't add hid device: %d\n", ret);
+		goto err_free_hid;
 	}
-	pr_err("add HID %x\n",ret);
+	pr_err("add HID %s\n",hid->name);
 
 	return 0;
+
+err_free_hid:
+	hid_destroy_device(data->hid);
+err_free_irq:
+	free_irq(data->irq, data);
+err_free_data_object:
+	kfree(data->MxtHIDOut);
+	kfree(data->MxtHIDIn);
+err_free_data:
+	kfree(data);
+
+	return ret;
 }
 
 static int __devexit mxt_remove(struct i2c_client *client)
@@ -790,8 +1080,16 @@ static int __devexit mxt_remove(struct i2c_client *client)
 
 	hid_destroy_device(data->hid);
 	free_irq(data->irq, data);
-	
+
+	kfree(data->MxtHIDOut);
+	kfree(data->MxtHIDIn);
 	kfree(data);	
+
+        if(MxtHIDOut)
+                kfree(MxtHIDOut);
+        if(MxtHIDIn)
+                kfree(MxtHIDIn);
+
 	return 0;
 }
 
