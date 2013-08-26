@@ -148,13 +148,13 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 		intel_dsi->dev.dev_ops->panel_reset(&intel_dsi->dev);
 
 	I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), LP_OUTPUT_HOLD, LP_OUTPUT_HOLD);
-	mdelay(1);
+	usleep_range(1000, 1500);
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), DEVICE_READY |
 			ULPS_STATE_EXIT, DEVICE_READY | ULPS_STATE_MASK);
-	mdelay(2);
+	usleep_range(2000, 2500);
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), DEVICE_READY,
 			DEVICE_READY | ULPS_STATE_MASK);
-	mdelay(2);
+	usleep_range(2000, 2500);
 
 	if (intel_dsi->dev.dev_ops->send_otp_cmds)
 		intel_dsi->dev.dev_ops->send_otp_cmds(&intel_dsi->dev);
@@ -196,6 +196,7 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	temp = I915_READ(MIPI_PORT_CTRL(pipe));
 	temp = temp | intel_dsi->dev.port_bits;
 	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
+	usleep_range(2000, 2500);
 
 	if (intel_dsi->dev.dev_ops->enable)
 		intel_dsi->dev.dev_ops->enable(&intel_dsi->dev);
@@ -216,7 +217,11 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 	DRM_DEBUG_KMS("\n");
 
 	intel_panel_disable_backlight(dev);
-	mdelay(intel_dsi->dev.backlight_off_delay);
+	if (intel_dsi->dev.backlight_off_delay >= 20)
+		msleep(intel_dsi->dev.backlight_off_delay);
+	else
+		usleep_range(intel_dsi->dev.backlight_off_delay * 1000,
+			(intel_dsi->dev.backlight_off_delay * 1000) + 500);
 
 	intr_stat = I915_READ(MIPI_INTR_STAT(pipe));
 	if (intr_stat & SPL_PKT_SENT_INTERRUPT)
@@ -248,14 +253,19 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 						SPL_PKT_SENT_INTERRUPT);
 		}
 
-		mdelay(intel_dsi->dev.shutdown_pkt_delay);
+		if (intel_dsi->dev.shutdown_pkt_delay >= 20)
+			msleep(intel_dsi->dev.shutdown_pkt_delay);
+		else
+			usleep_range(intel_dsi->dev.shutdown_pkt_delay * 1000,
+				(intel_dsi->dev.shutdown_pkt_delay * 1000)
+									+ 500);
 	}
 
 
 	/* If DPI is disabled before sending shutdown command then sending
 	 * shutdown special packet fails */
 	I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), 0, DPI_ENABLE);
-	mdelay(1);
+	usleep_range(1000, 1500);
 
 	/* if disable packets are sent before sending shutdown packet then in
 	 * some next enable sequence send turn on packet error is observed */
@@ -271,13 +281,13 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 	 * DSI commands failed in the next enable sequence. */
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
 							ULPS_STATE_MASK);
-	mdelay(2);
+	usleep_range(2000, 2500);
 
 	I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), 0, LP_OUTPUT_HOLD);
-	mdelay(1);
+	usleep_range(1000, 1500);
 
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), 0x00, DEVICE_READY);
-	mdelay(2);
+	usleep_range(2000, 2500);
 
 	if (intel_dsi->dev.dev_ops->disable_panel_power)
 		intel_dsi->dev.dev_ops->disable_panel_power(&intel_dsi->dev);

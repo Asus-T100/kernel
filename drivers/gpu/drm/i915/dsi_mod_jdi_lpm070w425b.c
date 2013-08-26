@@ -123,9 +123,9 @@ void lpm070w425b_panel_reset(struct intel_dsi_device *dsi)
 
 	intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
-	mdelay(2);
+	usleep_range(2000, 2500);
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
-	mdelay(20);
+	msleep(20);
 }
 
 void  lpm070w425b_disable_panel_power(struct intel_dsi_device *dsi)
@@ -136,7 +136,7 @@ void  lpm070w425b_disable_panel_power(struct intel_dsi_device *dsi)
 
 	intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
-	mdelay(2);
+	usleep_range(2000, 2500);
 }
 
 void lpm070w425b_send_otp_cmds(struct intel_dsi_device *dsi)
@@ -146,10 +146,10 @@ void lpm070w425b_send_otp_cmds(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("\n");
 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);
-	mdelay(50);
+	msleep(50);
 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x01);
-	mdelay(5);
+	usleep_range(5000, 7000);
 	{
 		unsigned char ucData[] = {0xb0, 0x00};
 		dsi_vc_generic_write(intel_dsi, 0, ucData, 2);
@@ -186,7 +186,7 @@ void lpm070w425b_enable(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("\n");
 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);
-	mdelay(120);
+	msleep(120);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);
 }
 
@@ -199,9 +199,9 @@ void lpm070w425b_disable(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("\n");
 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);
-	mdelay(20);
+	msleep(20);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);
-	mdelay(80);
+	msleep(80);
 }
 
 enum drm_connector_status lpm070w425b_detect(struct intel_dsi_device *dsi)

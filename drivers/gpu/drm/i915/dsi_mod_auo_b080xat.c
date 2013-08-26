@@ -125,7 +125,8 @@ void b080xat_panel_reset(struct intel_dsi_device *dsi)
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
 	udelay(500);
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
-	mdelay(10);
+	usleep_range(10000, 12000);
+
 }
 
 void b080xat_disable_panel_power(struct intel_dsi_device *dsi)
@@ -148,7 +149,7 @@ void b080xat_disable(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("\n");
 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);
-	mdelay(20);
+	msleep(20);
 }
 
 enum drm_connector_status b080xat_detect(struct intel_dsi_device *dsi)
