@@ -7942,12 +7942,18 @@ static void intel_setup_outputs(struct drm_device *dev)
 		 * both.
 		 *
 		 * FIXME:
-		 * Support dynamic detection based on VBT and AUX transaction
-		 * later. Also for now eDP is trated as DP and PPS is done by
-		 * GOP.
+		 * Support eDP Vs MIPI detection based on VBT and AUX
+		 * transaction later. As of now if mipi panel id > 0 is
+		 * given as kernel param we treat MIPI is there else we
+		 * always initialize on eDP.
+		 *
+		 * Can be fixed later when VBT or equivalent is available
 		 */
-		intel_dp_init(dev, DP_C, PORT_C);
-		intel_dsi_init(dev);
+		if (i915_mipi_panel_id <= 0)
+			intel_dp_init(dev, DP_C, PORT_C);
+		else
+			intel_dsi_init(dev);
+
 		intel_hdmi_init(dev, SDVOB, PORT_B);
 	} else if (SUPPORTS_DIGITAL_OUTPUTS(dev)) {
 		bool found = false;
