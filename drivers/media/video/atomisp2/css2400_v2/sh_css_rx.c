@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -79,7 +79,7 @@ ia_css_rx_get_irq_info(unsigned int *irq_infos)
 	hrt_data	bits = receiver_port_reg_load(RX0_ID,
 		MIPI_PORT1_ID, _HRT_CSS_RECEIVER_IRQ_STATUS_REG_IDX);
 
-	assert_exit(irq_infos != NULL);
+	assert(irq_infos != NULL);
 
 	if (bits & (1U << _HRT_CSS_RECEIVER_IRQ_OVERRUN_BIT))
 		infos |= IA_CSS_RX_IRQ_INFO_BUFFER_OVERRUN;
@@ -172,7 +172,7 @@ enum ia_css_err sh_css_input_format_type(
 	mipi_predictor_t compression,
 	unsigned int *fmt_type)
 {
-	assert_exit_code(fmt_type != NULL, IA_CSS_ERR_INVALID_ARGUMENTS);
+	assert(fmt_type != NULL);
 
 /*
  * Custom (user defined) modes. Used for compressed
@@ -337,7 +337,7 @@ static void sh_css_rx_set_compression(
 {
 	unsigned int reg = _HRT_CSS_RECEIVER_COMP_PREDICT_REG_IDX;
 
-	assert_exit(comp < N_MIPI_PREDICTOR_TYPES);
+	assert(comp < N_MIPI_PREDICTOR_TYPES);
 
 	receiver_port_reg_store(RX0_ID, port, reg, comp);
 return;
@@ -377,7 +377,7 @@ void sh_css_rx_configure(
 	bool	any_port_enabled = false;
 	mipi_port_ID_t	port;
 
-	assert_exit(config != NULL);
+	assert(config != NULL);
 
 	for (port = (mipi_port_ID_t)0; port < N_MIPI_PORT_ID; port++) {
 		if (is_receiver_port_enabled(RX0_ID, port))

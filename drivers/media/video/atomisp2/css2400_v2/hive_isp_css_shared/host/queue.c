@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -330,7 +330,7 @@ bool sp2host_dequeue_buffer(
 	(void)stage_num;
 	(void)pipe_num;
 
-	assert_exit_code(buffer_ptr != NULL, false);
+	assert(buffer_ptr != NULL);
 	assert(index < SH_CSS_NUM_BUFFER_QUEUES);
 
 	/* This is just the first step of introducing the queue API */
@@ -364,7 +364,7 @@ bool sp2host_dequeue_irq_event(
 	bool is_empty;
 	struct sh_css_circular_buf *offset_to_queue;
 
-	assert_exit_code(event != NULL, false);
+	assert(event != NULL);
 
 	offset_to_queue = (struct sh_css_circular_buf *)
 		offsetof(struct host_sp_queues,
@@ -536,7 +536,7 @@ static void pop_sp_queue(
 	unsigned int entry_to_cb_elem;
 	uint32_t cb_elem;
 
-	assert_exit(elem != NULL);
+	assert(elem != NULL);
 
 #ifndef C_RUN
 	/* get the variable address from the firmware */

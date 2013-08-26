@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -26,6 +26,7 @@
 #ifdef NDEBUG
 
 #define assert(cnd) ((void)0)
+#define OP___assert(cnd) ((void)0)
 
 #else
 
@@ -50,6 +51,7 @@
 //#endif
 
 #elif defined(__KERNEL__) /* a.o. Android builds */
+
 #include <linux/bug.h>
 #include "sh_css_debug.h"
 #define __symbol2value( x ) #x
@@ -67,20 +69,6 @@
 	} while (0)
 
 #define OP___assert(cnd) assert(cnd)
-
-#define assert_exit(exp)						\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return;						\
-	} while (0)
-
-#define assert_exit_code(exp, code)					\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return code;					\
-	} while (0)
 
 #elif defined(__FIST__)
 
