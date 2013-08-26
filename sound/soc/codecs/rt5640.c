@@ -3139,11 +3139,15 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_PREPARE:
 		pr_debug("In case SND_SOC_BIAS_PREPARE:\n");
+		break;
+
+	case SND_SOC_BIAS_STANDBY:
+		pr_debug("In case SND_SOC_BIAS_STANDBY:\n");
 #ifdef USE_ASRC
 		snd_soc_write(codec, RT5640_ASRC_1, 0x00);
 		snd_soc_write(codec, RT5640_ASRC_2, 0x00);
 #endif
-		if (SND_SOC_BIAS_STANDBY == codec->dapm.bias_level) {
+		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
 			snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 					    RT5640_PWR_VREF1 | RT5640_PWR_MB |
 					    RT5640_PWR_BG | RT5640_PWR_VREF2,
@@ -3158,12 +3162,6 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 #else
 			snd_soc_write(codec, RT5640_GEN_CTRL1, 0x3701);
 #endif
-		}
-		break;
-
-	case SND_SOC_BIAS_STANDBY:
-		pr_debug("In case SND_SOC_BIAS_STANDBY:\n");
-		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
 			codec->cache_only = false;
 			codec->cache_sync = 1;
 			snd_soc_cache_sync(codec);
