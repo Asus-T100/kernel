@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -294,6 +294,7 @@ struct ia_css_sp_info {
 	uint32_t request_flash;	/**< inform SP to switch on flash for next frame */
 	uint32_t stop_copy_preview;	/**< suspend copy and preview pipe when capture */
 	uint32_t copy_pack;	/**< use packed memory layout for raw data */
+	uint32_t pack_bits;	/**< use packed memory layout for raw data */
 	uint32_t debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */
 	uint32_t perf_counter_input_system_error; /**< input system perf

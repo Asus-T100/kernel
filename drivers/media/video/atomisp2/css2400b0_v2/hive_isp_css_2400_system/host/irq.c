@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -237,7 +237,8 @@ void irq_controller_get_state(
 	const irq_ID_t				ID,
 	irq_controller_state_t		*state)
 {
-	assert_exit(ID < N_IRQ_ID && state);
+	assert(ID < N_IRQ_ID);
+	assert(state != NULL);
 
 	state->irq_edge = irq_reg_load(ID,
 		_HRT_IRQ_CONTROLLER_EDGE_REG_IDX);
@@ -268,9 +269,10 @@ void cnd_virq_enable_channel(
 	unsigned int	channel_ID;
 	irq_ID_t		ID = virq_get_irq_id(irq_ID, &channel_ID);
 	
-	assert_exit(ID < N_IRQ_ID);
-	for (i = IRQ1_ID; i < N_IRQ_ID; i++) {
-		/* not allowed to enable the pin of a nested IRQ directly */
+	assert(ID < N_IRQ_ID);
+
+	for (i=IRQ1_ID;i<N_IRQ_ID;i++) {
+	/* It is not allowed to enable the pin of a nested IRQ directly */
 		assert(irq_ID != IRQ_NESTING_ID[i]);
 	}
 
@@ -307,7 +309,7 @@ enum hrt_isp_css_irq_status virq_get_channel_signals(
 	enum hrt_isp_css_irq_status irq_status = hrt_isp_css_irq_status_error;
 	irq_ID_t ID;
 
-	assert_exit_code(irq_info, hrt_isp_css_irq_status_error);
+	assert(irq_info != NULL);
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 		if (any_irq_channel_enabled(ID)) {
@@ -336,7 +338,7 @@ void virq_clear_info(
 {
 	irq_ID_t ID;
 
-	assert_exit(irq_info != NULL);
+	assert(irq_info != NULL);
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 			irq_info->irq_status_reg[ID] = 0;
@@ -447,7 +449,7 @@ STORAGE_CLASS_INLINE irq_ID_t virq_get_irq_id(
 {
 	irq_ID_t ID;
 
-	assert_exit_code(channel_ID, N_IRQ_ID);
+	assert(channel_ID != NULL);
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 		if (irq_ID < IRQ_N_ID_OFFSET[ID + 1]) {

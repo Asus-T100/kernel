@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -240,8 +240,8 @@ static ia_css_err_t acquire_resource(ia_css_resource_list_t* pool, uint32_t* res
     bool free_place_found = false;
     uint16_t i = 0;
 
-    assert_exit_code(pool != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
-    assert_exit_code(resource_id != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
+    assert(pool != NULL);
+    assert(resource_id != NULL);
 
     /* loop trough list */
     for (;( i <= pool->size) || (free_place_found == false); i++)
@@ -266,7 +266,7 @@ static ia_css_err_t release_resource(ia_css_resource_list_t* pool, uint32_t reso
     bool resource_found = false;
     uint16_t i = 0;
 
-    assert_exit_code(pool != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
+    assert(pool != NULL);
 
     /* loop trough list */
     for (;( i <= pool->size) || (resource_found == false); i++)

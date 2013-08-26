@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -51,7 +51,7 @@ clear_histogram(struct sh_css_pc_histogram *histogram)
 {
 	unsigned i;
 
-	assert_exit(histogram != NULL);
+	assert(histogram != NULL);
 
 	for (i = 0; i < histogram->length; i++) {
 		histogram->run[i] = 0;
@@ -69,7 +69,7 @@ sh_css_metrics_enable_pc_histogram(bool enable)
 static void
 make_histogram(struct sh_css_pc_histogram *histogram, unsigned length)
 {
-	assert_exit(histogram != NULL);
+	assert(histogram != NULL);
 
 	if (histogram->length)
 		return;
@@ -93,9 +93,9 @@ static void
 insert_binary_metrics(struct sh_css_binary_metrics **l,
 			struct sh_css_binary_metrics *metrics)
 {
-	assert_exit(l != NULL);
-	assert_exit(*l != NULL);
-	assert_exit(metrics != NULL);
+	assert(l != NULL);
+	assert(*l != NULL);
+	assert(metrics != NULL);
 
 	for (; *l; l = &(*l)->next)
 		if (*l == metrics)
@@ -108,7 +108,7 @@ insert_binary_metrics(struct sh_css_binary_metrics **l,
 void
 sh_css_metrics_start_binary(struct sh_css_binary_metrics *metrics)
 {
-	assert_exit(metrics != NULL);
+	assert(metrics != NULL);
 
 	if (!pc_histogram_enabled)
 		return;
