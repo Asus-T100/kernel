@@ -28,5 +28,5 @@
 int intel_configure_dsi_pll(struct intel_dsi *intel_dsi,
 		struct drm_display_mode *mode);
 int intel_enable_dsi_pll(struct intel_dsi *intel_dsi);
-
+int intel_disable_dsi_pll(struct intel_dsi *intel_dsi);
 #endif /* _INTEL_DSI_H */

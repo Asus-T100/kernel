@@ -56,18 +56,6 @@ static void b080xat_get_panel_info(int pipe, struct drm_connector *connector)
 
 bool b080xat_init(struct intel_dsi_device *dsi)
 {
-	/* create private data, slam to dsi->dev_priv. could support many panels
-	 * based on dsi->name. This panal supports both command and video mode,
-	 * so check the type. */
-
-	/* where to get all the board info style stuff:
-	 *
-	 * - gpio numbers, if any (external te, reset)
-	 * - pin config, mipi lanes
-	 * - dsi backlight? (->create another bl device if needed)
-	 * - esd interval, ulps timeout
-	 *
-	 */
 
 	DRM_DEBUG_KMS("\n");
 
@@ -85,6 +73,10 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	dsi->clk_hs_to_lp_count = 0x0F;
 	dsi->video_frmt_cfg_bits = DISABLE_VIDEO_BTA;
 	dsi->dphy_reg = 0x3F10430D;
+
+	dsi->backlight_off_delay = 20;
+	dsi->send_shutdown = false;
+	dsi->shutdown_pkt_delay = 20;
 
 	return true;
 }
@@ -123,30 +115,40 @@ bool b080xat_mode_fixup(struct intel_dsi_device *dsi,
 	return true;
 }
 
-void b080xat_prepare(struct intel_dsi_device *dsi) { }
-
-void b080xat_commit(struct intel_dsi_device *dsi)
-{
-}
-
-void b080xat_mode_set(struct intel_dsi_device *dsi,
-		  struct drm_display_mode *mode,
-		  struct drm_display_mode *adjusted_mode)
+void b080xat_panel_reset(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	static int reset;
 
-	if (!reset) {
-		/* No other better place to do the panel reset */
-		intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
-		intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
-		mdelay(10);
-		intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
-		mdelay(20);
-		reset = 1;
-	}
+	intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
+	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
+	udelay(500);
+	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
+	mdelay(10);
+}
+
+void b080xat_disable_panel_power(struct intel_dsi_device *dsi)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
+	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
+	udelay(500);
+}
+
+void b080xat_disable(struct intel_dsi_device *dsi)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	DRM_DEBUG_KMS("\n");
+
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);
+	mdelay(20);
 }
 
 enum drm_connector_status b080xat_detect(struct intel_dsi_device *dsi)
@@ -208,9 +210,9 @@ struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops = {
 	.dpms = b080xat_dpms,
 	.mode_valid = b080xat_mode_valid,
 	.mode_fixup = b080xat_mode_fixup,
-	.prepare = b080xat_prepare,
-	.commit = b080xat_commit,
-	.mode_set = b080xat_mode_set,
+	.panel_reset = b080xat_panel_reset,
+	.disable_panel_power = b080xat_disable_panel_power,
+	.disable = b080xat_disable,
 	.detect = b080xat_detect,
 	.get_hw_state = b080xat_get_hw_state,
 	.get_modes = b080xat_get_modes,

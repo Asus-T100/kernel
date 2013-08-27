@@ -39,7 +39,6 @@
 #include "intel_dsi_cmd.h"
 #include "dsi_mod_jdi_lpm070w425b.h"
 
-static u8 tcon_reset_done;
 
 static void lpm070w425b_get_panel_info(int pipe,
 				struct drm_connector *connector)
@@ -75,6 +74,10 @@ bool lpm070w425b_init(struct intel_dsi_device *dsi)
 	dsi->clk_hs_to_lp_count = 0x16;
 	dsi->video_frmt_cfg_bits = 0x8;
 	dsi->dphy_reg = 0x2a18681f;
+
+	dsi->backlight_off_delay = 20;
+	dsi->send_shutdown = true;
+	dsi->shutdown_pkt_delay = 20;
 
 	return true;
 }
@@ -112,9 +115,31 @@ bool lpm070w425b_mode_fixup(struct intel_dsi_device *dsi,
 	return true;
 }
 
-void lpm070w425b_prepare(struct intel_dsi_device *dsi) { }
+void lpm070w425b_panel_reset(struct intel_dsi_device *dsi)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
-void lpm070w425b_enable(struct intel_dsi_device *dsi)
+	intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
+	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
+	mdelay(2);
+	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
+	mdelay(20);
+}
+
+void  lpm070w425b_disable_panel_power(struct intel_dsi_device *dsi)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
+	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
+	mdelay(2);
+}
+
+void lpm070w425b_send_otp_cmds(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
@@ -154,7 +179,7 @@ void lpm070w425b_enable(struct intel_dsi_device *dsi)
 
 }
 
-void lpm070w425b_commit(struct intel_dsi_device *dsi)
+void lpm070w425b_enable(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
@@ -165,26 +190,18 @@ void lpm070w425b_commit(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);
 }
 
-void lpm070w425b_mode_set(struct intel_dsi_device *dsi,
-		  struct drm_display_mode *mode,
-		  struct drm_display_mode *adjusted_mode)
+void lpm070w425b_disable(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	/* FIXME: reset the tcon only once because during second mode set
-	 * after pipe is disabled, HS FIFO is not going empty */
-	/* No other better place to do the panel reset */
-	if (tcon_reset_done == 0) {
-		intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
-		intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
-		mdelay(10);
-		intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
-		mdelay(20);
-		tcon_reset_done = 1;
-	}
+	DRM_DEBUG_KMS("\n");
 
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);
+	mdelay(20);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);
+	mdelay(80);
 }
 
 enum drm_connector_status lpm070w425b_detect(struct intel_dsi_device *dsi)
@@ -250,10 +267,11 @@ struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops = {
 	.dpms = lpm070w425b_dpms,
 	.mode_valid = lpm070w425b_mode_valid,
 	.mode_fixup = lpm070w425b_mode_fixup,
-	.prepare = lpm070w425b_prepare,
+	.panel_reset = lpm070w425b_panel_reset,
+	.disable_panel_power = lpm070w425b_disable_panel_power,
+	.send_otp_cmds = lpm070w425b_send_otp_cmds,
 	.enable = lpm070w425b_enable,
-	.commit = lpm070w425b_commit,
-	.mode_set = lpm070w425b_mode_set,
+	.disable = lpm070w425b_disable,
 	.detect = lpm070w425b_detect,
 	.get_hw_state = lpm070w425b_get_hw_state,
 	.get_modes = lpm070w425b_get_modes,

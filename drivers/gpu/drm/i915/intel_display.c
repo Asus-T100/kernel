@@ -3883,7 +3883,9 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	if (dev_priv->is_mipi) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
-				intel_dsi_enable(encoder);
+				intel_enable_dsi_pll(enc_to_intel_dsi(
+						&encoder->base));
+				intel_dsi_device_ready(encoder);
 				break;
 			}
 		}
@@ -3906,6 +3908,7 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_encoder *encoder;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
 	int val;
@@ -3951,7 +3954,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 		}
 	}
 
-	intel_disable_pll(dev_priv, pipe);
+	if (!dev_priv->is_mipi)
+		intel_disable_pll(dev_priv, pipe);
 
 	intel_crtc->active = false;
 	if (dev_priv->disp_pm_in_progress == true)
@@ -4100,19 +4104,6 @@ static void i9xx_crtc_commit(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	/* Enable RefA clock enable bit (bit 29) of DPLL A) for LUT access */
-	if (dev_priv->is_mipi) {
-		if (I915_READ(_DPLL_A) & DPLL_VCO_ENABLE) {
-			I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) &
-					~DPLL_VCO_ENABLE);
-			POSTING_READ(_DPLL_A);
-			udelay(150);
-		}
-		I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) |
-			DPLL_REFA_CLK_ENABLE_VLV);
-		POSTING_READ(_DPLL_A);
-		udelay(150);
-	}
 	i9xx_crtc_enable(crtc);
 }
 
@@ -5231,7 +5222,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		if (is_dsi) {
 			/* enable dsi pll */
 			intel_configure_dsi_pll(intel_dsi, mode);
-			intel_enable_dsi_pll(intel_dsi);
 		} else {
 			refclk = i9xx_get_refclk(crtc, num_connectors);
 			vlv_update_pll(crtc, mode, adjusted_mode, &clock,

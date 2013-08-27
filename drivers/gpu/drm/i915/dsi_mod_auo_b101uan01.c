@@ -82,6 +82,10 @@ bool b101uan01_init(struct intel_dsi_device *dsi)
 	dsi->video_frmt_cfg_bits = 0;
 	dsi->dphy_reg = 0x3c1fc51f;
 
+	dsi->backlight_off_delay = 20;
+	dsi->send_shutdown = true;
+	dsi->shutdown_pkt_delay = 20;
+
 	return true;
 }
 
@@ -120,14 +124,6 @@ bool b101uan01_mode_fixup(struct intel_dsi_device *dsi,
 {
 	return true;
 }
-
-void b101uan01_prepare(struct intel_dsi_device *dsi) { }
-
-void b101uan01_commit(struct intel_dsi_device *dsi) { }
-
-void b101uan01_mode_set(struct intel_dsi_device *dsi,
-		  struct drm_display_mode *mode,
-		  struct drm_display_mode *adjusted_mode) { }
 
 enum drm_connector_status b101uan01_detect(struct intel_dsi_device *dsi)
 {
@@ -198,9 +194,6 @@ struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops = {
 	.dpms = b101uan01_dpms,
 	.mode_valid = b101uan01_mode_valid,
 	.mode_fixup = b101uan01_mode_fixup,
-	.prepare = b101uan01_prepare,
-	.commit = b101uan01_commit,
-	.mode_set = b101uan01_mode_set,
 	.detect = b101uan01_detect,
 	.get_hw_state = b101uan01_get_hw_state,
 	.get_modes = b101uan01_get_modes,

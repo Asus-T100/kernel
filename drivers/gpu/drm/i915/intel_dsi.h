@@ -80,6 +80,10 @@ struct intel_dsi_device {
 	u32 video_frmt_cfg_bits;
 	u32 dphy_reg;
 
+	u8 backlight_off_delay; /*in ms*/
+	bool send_shutdown;
+	u8 shutdown_pkt_delay; /*in ms*/
+
 };
 
 /* XXX: this is just copy-paste from dvo for now */
@@ -99,15 +103,16 @@ struct intel_dsi_dev_ops {
 			   const struct drm_display_mode *mode,
 			   struct drm_display_mode *adjusted_mode);
 
-	void (*prepare)(struct intel_dsi_device *dsi);
+	void (*panel_reset)(struct intel_dsi_device *dsi);
+
+	void (*disable_panel_power)(struct intel_dsi_device *dsi);
+
+	/* send one time programmable commands */
+	void (*send_otp_cmds)(struct intel_dsi_device *dsi);
 
 	void (*enable)(struct intel_dsi_device *dsi);
 
-	void (*commit)(struct intel_dsi_device *dsi);
-
-	void (*mode_set)(struct intel_dsi_device *dsi,
-			 struct drm_display_mode *mode,
-			 struct drm_display_mode *adjusted_mode);
+	void (*disable)(struct intel_dsi_device *dsi);
 
 	enum drm_connector_status (*detect)(struct intel_dsi_device *dsi);
 
@@ -158,8 +163,7 @@ extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
 
 /* external functions */
-void intel_dsi_enable(struct intel_encoder *encoder);
-void intel_dsi_disable(struct intel_encoder *encoder);
+void intel_dsi_device_ready(struct intel_encoder *encoder);
 bool intel_dsi_init(struct drm_device *dev);
 
 #define	MIPI_DSI_RESERVED_PANEL_ID			0x01
