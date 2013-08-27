@@ -530,6 +530,7 @@ static int cpufreq_interactive_speedchange_task(void *data)
 	cpumask_t tmp_mask;
 	unsigned long flags;
 	struct cpufreq_interactive_cpuinfo *pcpu;
+	struct cpufreq_interactive_cpuinfo *pkcpu;
 
 	while (1) {
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -552,7 +553,7 @@ static int cpufreq_interactive_speedchange_task(void *data)
 		spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
 
 		for_each_cpu(cpu, &tmp_mask) {
-			unsigned int j;
+			unsigned int j, k;
 			unsigned int max_freq = 0;
 
 			pcpu = &per_cpu(cpuinfo, cpu);
@@ -569,6 +570,11 @@ static int cpufreq_interactive_speedchange_task(void *data)
 
 				if (pjcpu->target_freq > max_freq)
 					max_freq = pjcpu->target_freq;
+			}
+
+			for_each_cpu(k, pcpu->policy->cpus) {
+				pkcpu = &per_cpu(cpuinfo, k);
+				pkcpu->target_freq = max_freq;
 			}
 
 			if (max_freq != pcpu->policy->cur)
