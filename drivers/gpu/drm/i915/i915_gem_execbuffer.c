@@ -656,10 +656,17 @@ i915_gem_execbuffer_wait_for_flips(struct intel_ring_buffer *ring, u32 flips)
 		if (((flips >> plane) & 1) == 0)
 			continue;
 
-		if (plane)
-			flip_mask = MI_WAIT_FOR_PLANE_B_FLIP;
-		else
-			flip_mask = MI_WAIT_FOR_PLANE_A_FLIP;
+		if ((INTEL_INFO(ring->dev)->gen) < 6) {
+			if (plane)
+				flip_mask = MI_WAIT_FOR_PLANE_B_FLIP;
+			else
+				flip_mask = MI_WAIT_FOR_PLANE_A_FLIP;
+		} else {
+			if (plane)
+				flip_mask = GEN6_MI_WAIT_FOR_PLANE_B_FLIP;
+			else
+				flip_mask = GEN6_MI_WAIT_FOR_PLANE_A_FLIP;
+		}
 
 		ret = intel_ring_begin(ring, 2);
 		if (ret)

@@ -659,4 +659,6 @@ bool is_sprite_enabled(struct drm_i915_private *dev_priv,
 bool is_cursor_enabled(struct drm_i915_private *dev_priv,
 			enum pipe pipe);
 bool is_maxfifo_needed(struct drm_i915_private *dev_priv);
+
+extern void intel_unpin_work_fn(struct work_struct *__work);
 #endif /* __INTEL_DRV_H__ */
