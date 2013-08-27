@@ -65,8 +65,7 @@ void fifo_channel_get_state(
 	const fifo_channel_t		channel_id,
 	fifo_channel_state_t		*state)
 {
-	assert(channel_id < N_FIFO_CHANNEL);
-	assert(state != NULL);
+	assert_exit(state && channel_id < N_FIFO_CHANNEL);
 
 	switch (channel_id) {
 	case FIFO_CHANNEL_ISP0_TO_SP0:
@@ -506,7 +505,7 @@ void fifo_channel_get_state(
 			SP_STR_MON_PORT_ISYS2SP);
 		break;
 	default:
-		assert(0);
+		assert_exit(0);
 		break;
 	}
 
@@ -520,9 +519,9 @@ void fifo_switch_get_state(
 {
 	hrt_data		data = (hrt_data)-1;
 
-	assert(ID == FIFO_MONITOR0_ID);
-	assert(switch_id < N_FIFO_SWITCH);
-	assert(state != NULL);
+	assert_exit(ID == FIFO_MONITOR0_ID);
+	assert_exit(switch_id < N_FIFO_SWITCH);
+	assert_exit(state != NULL);
 
 	(void)ID;
 
@@ -542,8 +541,8 @@ void fifo_monitor_get_state(
 	fifo_channel_t	ch_id;
 	fifo_switch_t	sw_id;
 
-	assert(ID < N_FIFO_MONITOR_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_FIFO_MONITOR_ID);
+	assert_exit(state != NULL);
 
 	for (ch_id = 0; ch_id < N_FIFO_CHANNEL; ch_id++) {
 		fifo_channel_get_state(ID, ch_id,

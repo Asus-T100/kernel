@@ -128,8 +128,7 @@ void input_system_get_state(
 {
 	sub_system_ID_t	sub_id;
 
-	assert(ID < N_INPUT_SYSTEM_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_INPUT_SYSTEM_ID && state);
 
 	state->str_multicastA_sel = input_system_sub_system_reg_load(ID,
 		GPREGS_UNIT0_ID,
@@ -188,8 +187,7 @@ void receiver_get_state(
 	mipi_port_ID_t	port_id;
 	unsigned int	ch_id;
 
-	assert(ID < N_RX_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_RX_ID && state);
 
 	state->fs_to_ls_delay = (uint8_t)receiver_reg_load(ID,
 		_HRT_CSS_RECEIVER_FS_TO_LS_DELAY_REG_IDX);
@@ -278,12 +276,12 @@ void receiver_set_compression(
 	hrt_address			addr;
 	hrt_data			reg;
 
-	assert(ID < N_RX_ID);
-	assert(cfg_ID < N_MIPI_COMPRESSOR_CONTEXT);
-	assert(field_id < N_MIPI_FORMAT_CUSTOM);
-	assert(ch_id < N_RX_CHANNEL_ID);
-	assert(comp < N_MIPI_COMPRESSOR_METHODS);
-	assert(pred < N_MIPI_PREDICTOR_TYPES);
+	assert_exit(ID < N_RX_ID);
+	assert_exit(cfg_ID < N_MIPI_COMPRESSOR_CONTEXT);
+	assert_exit(field_id < N_MIPI_FORMAT_CUSTOM);
+	assert_exit(ch_id < N_RX_CHANNEL_ID);
+	assert_exit(comp < N_MIPI_COMPRESSOR_METHODS);
+	assert_exit(pred < N_MIPI_PREDICTOR_TYPES);
 
 	val = (((uint8_t)pred) << 3) | comp;
 
@@ -298,7 +296,7 @@ void receiver_set_compression(
 		break;
 	default:
 		/* should not happen */
-		assert(false);
+		assert_exit(false);
 		return;
 	}
 
@@ -369,8 +367,8 @@ STORAGE_CLASS_INLINE void capture_unit_get_state(
 	const sub_system_ID_t			sub_id,
 	capture_unit_state_t			*state)
 {
-	assert(/*(sub_id >= CAPTURE_UNIT0_ID) &&*/ (sub_id <= CAPTURE_UNIT2_ID));
-	assert(state != NULL);
+	assert_exit(/*(sub_id >= CAPTURE_UNIT0_ID) &&*/ (sub_id <= CAPTURE_UNIT2_ID));
+	assert_exit(state != NULL);
 
 	state->StartMode = input_system_sub_system_reg_load(ID,
 		sub_id,
@@ -431,8 +429,8 @@ STORAGE_CLASS_INLINE void acquisition_unit_get_state(
 	const sub_system_ID_t			sub_id,
 	acquisition_unit_state_t		*state)
 {
-	assert(sub_id == ACQUISITION_UNIT0_ID);
-	assert(state != NULL);
+	assert_exit(sub_id == ACQUISITION_UNIT0_ID);
+	assert_exit(state != NULL);
 
 	state->Start_Addr = input_system_sub_system_reg_load(ID,
 		sub_id,
@@ -481,8 +479,8 @@ STORAGE_CLASS_INLINE void ctrl_unit_get_state(
 	const sub_system_ID_t			sub_id,
 	ctrl_unit_state_t			*state)
 {
-	assert(sub_id == CTRL_UNIT0_ID);
-	assert(state != NULL);
+	assert_exit(sub_id == CTRL_UNIT0_ID);
+	assert_exit(state != NULL);
 
 	state->captA_start_addr = input_system_sub_system_reg_load(ID,
 		sub_id,
@@ -566,9 +564,9 @@ STORAGE_CLASS_INLINE void mipi_port_get_state(
 {
 	int	i;
 
-	assert(ID < N_RX_ID);
-	assert(port_ID < N_MIPI_PORT_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_RX_ID);
+	assert_exit(port_ID < N_MIPI_PORT_ID);
+	assert_exit(state != NULL);
 
 	state->device_ready = receiver_port_reg_load(ID,
 		port_ID, _HRT_CSS_RECEIVER_DEVICE_READY_REG_IDX);
@@ -602,9 +600,9 @@ STORAGE_CLASS_INLINE void rx_channel_get_state(
 {
 	int	i;
 
-	assert(ID < N_RX_ID);
-	assert(ch_id < N_RX_CHANNEL_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_RX_ID);
+	assert_exit(ch_id < N_RX_CHANNEL_ID);
+	assert_exit(state != NULL);
 
 	switch (ch_id) {
 		case 0:
@@ -656,7 +654,7 @@ static void receiver_rst(
 {
 	mipi_port_ID_t		port_id;
 
-	assert(ID < N_RX_ID);
+	assert_exit(ID < N_RX_ID);
 	
 // Disable all ports.
 	for (port_id = MIPI_PORT0_ID; port_id < N_MIPI_PORT_ID; port_id++) {
@@ -671,7 +669,7 @@ static void receiver_rst(
 //Single function to reset all the devices mapped via GP_DEVICE.
 static void gp_device_rst(const gp_device_ID_t		ID)
 {
-	assert(ID < N_GP_DEVICE_ID);
+	assert_exit(ID < N_GP_DEVICE_ID);
 
 	gp_device_reg_store(ID, _REG_GP_SYNCGEN_ENABLE_ADDR, ZERO);
 	// gp_device_reg_store(ID, _REG_GP_SYNCGEN_FREE_RUNNING_ADDR, ZERO);
@@ -719,7 +717,7 @@ static void gp_device_rst(const gp_device_ID_t		ID)
 
 static void input_selector_cfg_for_sensor(const gp_device_ID_t ID)
 {
-	assert(ID < N_GP_DEVICE_ID);
+	assert_exit(ID < N_GP_DEVICE_ID);
 
 	gp_device_reg_store(ID, _REG_GP_ISEL_SOF_ADDR, ONE);
 	gp_device_reg_store(ID, _REG_GP_ISEL_EOF_ADDR, ONE);
@@ -739,7 +737,7 @@ static void input_switch_rst(const gp_device_ID_t ID)
 {
 	int addr;
 	
-	assert(ID < N_GP_DEVICE_ID);
+	assert_exit(ID < N_GP_DEVICE_ID);
 	
 	// Initialize the data&hsync LUT.
 	for (addr = _REG_GP_IFMT_input_switch_lut_reg0;
@@ -762,12 +760,12 @@ static void input_switch_cfg(
 {
 	int addr_offset;
 	
-	assert(ID < N_GP_DEVICE_ID);
-	assert(cfg != NULL);
+	assert_exit(ID < N_GP_DEVICE_ID);
+	assert_exit(cfg != NULL);
 	
 	// Initialize the data&hsync LUT.
 	for (addr_offset = 0; addr_offset < N_RX_CHANNEL_ID * 2; addr_offset++) {
-		assert(addr_offset * SIZEOF_HRT_REG + _REG_GP_IFMT_input_switch_lut_reg0 <= _REG_GP_IFMT_input_switch_lut_reg7);
+		assert_exit(addr_offset * SIZEOF_HRT_REG + _REG_GP_IFMT_input_switch_lut_reg0 <= _REG_GP_IFMT_input_switch_lut_reg7);
 		gp_device_reg_store(ID,
 			_REG_GP_IFMT_input_switch_lut_reg0 + addr_offset * SIZEOF_HRT_REG,
 			cfg->hsync_data_reg[addr_offset]);
@@ -1041,9 +1039,9 @@ static void capture_unit_configure(
 	const sub_system_ID_t			sub_id,
 	const ib_buffer_t* const		cfg)
 {
-	assert(ID < N_INPUT_SYSTEM_ID);
-	assert(/*(sub_id >= CAPTURE_UNIT0_ID) &&*/ (sub_id <= CAPTURE_UNIT2_ID)); // Commented part is always true.
-	assert(cfg != NULL);
+	assert_exit(ID < N_INPUT_SYSTEM_ID);
+	assert_exit(/*(sub_id >= CAPTURE_UNIT0_ID) &&*/ (sub_id <= CAPTURE_UNIT2_ID)); // Commented part is always true.
+	assert_exit(cfg != NULL);
 
 	input_system_sub_system_reg_store(ID,
 		sub_id,
@@ -1067,9 +1065,9 @@ static void acquisition_unit_configure(
 	const sub_system_ID_t			sub_id,
 	const ib_buffer_t* const		cfg)
 {
-	assert(ID < N_INPUT_SYSTEM_ID);
-	assert(sub_id == ACQUISITION_UNIT0_ID);
-	assert(cfg != NULL);
+	assert_exit(ID < N_INPUT_SYSTEM_ID);
+	assert_exit(sub_id == ACQUISITION_UNIT0_ID);
+	assert_exit(cfg != NULL);
 
 	input_system_sub_system_reg_store(ID,
 		sub_id,
@@ -1093,9 +1091,9 @@ static void ctrl_unit_configure(
 	const sub_system_ID_t			sub_id,
 	const ctrl_unit_cfg_t* const		cfg)
 {
-	assert(ID < N_INPUT_SYSTEM_ID);
-	assert(sub_id == CTRL_UNIT0_ID);
-	assert(cfg != NULL);
+	assert_exit(ID < N_INPUT_SYSTEM_ID);
+	assert_exit(sub_id == CTRL_UNIT0_ID);
+	assert_exit(cfg != NULL);
 
 	input_system_sub_system_reg_store(ID,
 		sub_id,
@@ -1161,8 +1159,8 @@ static void input_system_network_configure(
 {
 	uint32_t sub_id;
 
-	assert(ID < N_INPUT_SYSTEM_ID);
-	assert(cfg != NULL);
+	assert_exit(ID < N_INPUT_SYSTEM_ID);
+	assert_exit(cfg != NULL);
 
 	// Set all 3 multicasts.
 	input_system_sub_system_reg_store(ID,
@@ -1624,7 +1622,8 @@ static input_system_error_t input_system_configure_channel_sensor(
 
 	status = set_csi_cfg(&(config.csi_value[port]), &channel.source_cfg.csi_cfg, &(config.csi_flags[port]));
 	if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
-		
+
+	assert_exit_code(channel.source_cfg.csi_cfg.csi_port < N_CSI_PORTS, INPUT_SYSTEM_ERR_PARAMETER_NOT_SUPPORTED);
 
 	switch (channel.source_cfg.csi_cfg.buffering_mode){
 		case INPUT_SYSTEM_FIFO_CAPTURE:
@@ -1691,9 +1690,8 @@ static input_system_error_t set_source_type(
 		const input_system_source_t 			rhs,
 		input_system_config_flags_t * const	 	flags)
 {
-	// MW: Not enough asserts
-	assert(lhs != NULL);
-	assert(flags != NULL);
+	/* MW: Not enough asserts */
+	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {
 		*flags |= INPUT_SYSTEM_CFG_FLAG_CONFLICT;
@@ -1731,9 +1729,7 @@ static input_system_error_t set_csi_cfg(
 {
 	uint32_t memory_required;
 	uint32_t acq_memory_required;
-
-	assert(lhs != NULL);
-	assert(flags != NULL);
+	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {
 		*flags |= INPUT_SYSTEM_CFG_FLAG_CONFLICT;
@@ -1785,7 +1781,7 @@ static input_system_error_t set_csi_cfg(
 
 	//  FIXIT:	acq_memory_required is not deducted, since it can be allocated multiple times.
 	config.unallocated_ib_mem_words -= memory_required; 
-//assert(config.unallocated_ib_mem_words >=0);
+//assert_exit(config.unallocated_ib_mem_words >=0);
 	*flags |= INPUT_SYSTEM_CFG_FLAG_SET;
 	return INPUT_SYSTEM_ERR_NO_ERROR;
 }
@@ -1797,8 +1793,7 @@ static input_system_error_t input_system_multiplexer_cfg(
 	const input_system_multiplex_t		rhs,
 	input_system_config_flags_t* const	flags)
 {
-	assert(lhs != NULL);
-	assert(flags != NULL);
+	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {
 		*flags |= INPUT_SYSTEM_CFG_FLAG_CONFLICT;

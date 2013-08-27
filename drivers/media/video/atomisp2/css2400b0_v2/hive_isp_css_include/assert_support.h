@@ -70,6 +70,20 @@
 
 #define OP___assert(cnd) assert(cnd)
 
+#define assert_exit(exp)						\
+	do {								\
+		assert(exp);						\
+		if (!(exp))						\
+			return;						\
+	} while (0)
+
+#define assert_exit_code(exp, code)					\
+	do {								\
+		assert(exp);						\
+		if (!(exp))						\
+			return code;					\
+	} while (0)
+
 #elif defined(__FIST__)
 
 #include "assert.h"
