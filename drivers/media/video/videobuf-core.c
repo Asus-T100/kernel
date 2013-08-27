@@ -718,13 +718,13 @@ int videobuf_dqbuf(struct videobuf_queue *q,
 
 	switch (buf->state) {
 	case VIDEOBUF_ERROR:
-		printk("dqbuf: state is error\n");
+		dprintk(1, "dqbuf: state is error\n");
 		break;
 	case VIDEOBUF_DONE:
-		printk("dqbuf: state is done\n");
+		dprintk(1, "dqbuf: state is done\n");
 		break;
 	default:
-		printk("dqbuf: state invalid\n");
+		dprintk(1, "dqbuf: state invalid\n");
 		retval = -EINVAL;
 		goto done;
 	}

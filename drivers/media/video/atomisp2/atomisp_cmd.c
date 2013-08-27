@@ -1599,8 +1599,8 @@ int atomisp_gamma(struct atomisp_sub_device *asd, int flag,
 			return -EINVAL;
 	} else {
 		/* Set gamma table to isp parameters */
-		memcpy(&asd->params.gamma_table.data, config,
-		       sizeof(asd->params.gamma_table.data));
+		memcpy(&asd->params.gamma_table, config,
+		       sizeof(asd->params.gamma_table));
 		atomisp_css_set_gamma_table(asd, &asd->params.gamma_table);
 	}
 
@@ -2097,6 +2097,22 @@ static int __atomisp_set_general_isp_parameters(
 		atomisp_css_set_3a_config(asd, &asd->params.s3a_config);
 	}
 
+	if (arg->macc_config) {
+		if (copy_from_user(&asd->params.macc_table,
+			&arg->macc_config->table,
+			sizeof(struct atomisp_css_macc_table)))
+			return -EFAULT;
+		asd->params.color_effect = arg->macc_config->color_effect;
+		atomisp_css_set_macc_table(asd, &asd->params.macc_table);
+	}
+
+	if (arg->gamma_table) {
+		if (copy_from_user(&asd->params.gamma_table, arg->gamma_table,
+			sizeof(asd->params.gamma_table)))
+			return -EFAULT;
+		atomisp_css_set_gamma_table(asd, &asd->params.gamma_table);
+	}
+
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	if (arg->ecd_config) {
 		if (copy_from_user(&asd->params.ecd_config, arg->ecd_config,
@@ -2212,30 +2228,6 @@ static int __atomisp_set_general_isp_parameters(
 			return -EFAULT;
 		atomisp_css_set_anr_thres(asd, &asd->params.anr_thres);
 	}
-
-	if (asd->stream_env.stream
-		&& asd->run_mode->val
-			== ATOMISP_RUN_MODE_STILL_CAPTURE) {
-		atomisp_css_update_isp_params(asd);
-		asd->params.css_update_params_needed = false;
-	}
-#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	if (arg->macc_config) {
-		if (copy_from_user(&asd->params.macc_table,
-			&arg->macc_config->table,
-			sizeof(struct atomisp_css_macc_table)))
-			return -EFAULT;
-		asd->params.color_effect = arg->macc_config->color_effect;
-		atomisp_css_set_macc_table(asd, &asd->params.macc_table);
-	}
-
-	if (arg->gamma_table) {
-		if (copy_from_user(&asd->params.gamma_table, arg->gamma_table,
-			sizeof(asd->params.gamma_table)))
-			return -EFAULT;
-		atomisp_css_set_gamma_table(asd, &asd->params.gamma_table);
-	}
-
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	return 0;
 }
@@ -2246,13 +2238,13 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 	unsigned int i;
 	unsigned int len_table;
 	struct atomisp_css_shading_table *shading_table;
-	struct atomisp_css_shading_table *old_shading_table;
+	struct atomisp_css_shading_table *old_table;
 	struct atomisp_device *isp = asd->isp;
 
 	if (!user_st)
 		return 0;
 
-	old_shading_table = isp->inputs[asd->input_curr].shading_table;
+	old_table = isp->inputs[asd->input_curr].shading_table;
 
 	/* user config is to disable the shading table. */
 	if (!user_st->enable) {
@@ -2288,6 +2280,33 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 	shading_table->sensor_width = user_st->sensor_width;
 	shading_table->sensor_height = user_st->sensor_height;
 	shading_table->fraction_bits = user_st->fraction_bits;
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	shading_table->enable = user_st->enable;
+
+	/* No need to update shading table if it is the same */
+	if (old_table != NULL &&
+		old_table->sensor_width == shading_table->sensor_width &&
+		old_table->sensor_height == shading_table->sensor_height &&
+		old_table->width == shading_table->width &&
+		old_table->height == shading_table->height &&
+		old_table->fraction_bits == shading_table->fraction_bits &&
+		old_table->enable == shading_table->enable) {
+		bool data_is_same = true;
+
+		for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+			if (memcmp(shading_table->data[i], old_table->data[i],
+				len_table) != 0) {
+				data_is_same = false;
+				break;
+			}
+		}
+
+		if (data_is_same) {
+			atomisp_css_shading_table_free(shading_table);
+			return 0;
+		}
+	}
+#endif
 
 set_lsc:
 	/* set LSC to CSS */
@@ -2295,8 +2314,8 @@ set_lsc:
 	atomisp_css_set_shading_table(asd, shading_table);
 	asd->params.sc_en = shading_table != NULL;
 
-	if (old_shading_table)
-		atomisp_css_shading_table_free(old_shading_table);
+	if (old_table)
+		atomisp_css_shading_table_free(old_table);
 
 	return 0;
 }
@@ -2372,6 +2391,15 @@ int atomisp_set_parameters(struct atomisp_sub_device *asd,
 	/* indicate to CSS that we have parametes to be updated */
 	asd->params.css_update_params_needed = true;
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (asd->stream_env.stream
+		&& (asd->stream_env.stream_state != CSS_STREAM_CREATED
+		|| asd->run_mode->val
+			== ATOMISP_RUN_MODE_STILL_CAPTURE)) {
+		atomisp_css_update_isp_params(asd);
+		asd->params.css_update_params_needed = false;
+	}
+#endif
 	return 0;
 }
 
@@ -2913,6 +2941,9 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
 	int ret;
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
+#endif
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_err(isp->dev, "Wrong v4l2 buf type\n");
@@ -2946,6 +2977,34 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	snr_mbus_fmt.width = f->fmt.pix.width;
 	snr_mbus_fmt.height = f->fmt.pix.height;
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (isp->asd.continuous_mode->val &&
+	    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
+		if (f->fmt.pix.width != 0 && f->fmt.pix.height != 0
+		    && f->fmt.pix.width * f->fmt.pix.height <
+		    3264 * 2448) {
+			snr_mbus_fmt.width = 3264;
+			snr_mbus_fmt.height =
+			    DIV_ROUND_UP(3264 * f->fmt.pix.height,
+					 f->fmt.pix.width);
+			if (snr_mbus_fmt.height > 2448) {
+				snr_mbus_fmt.height = 2448;
+				snr_mbus_fmt.width =
+				    DIV_ROUND_UP(2448 *
+						 f->fmt.pix.width,
+						 f->fmt.pix.height);
+			}
+			/*WORKAROUND: for qvga offline still capture, isp
+			 * would timeout for 8MP output from sensor.
+			 * but won't timeout for 720p sensor output*/
+			if (f->fmt.pix.width == 320
+				&& f->fmt.pix.height == 240) {
+				snr_mbus_fmt.width = 1280;
+				snr_mbus_fmt.height = 720;
+			}
+		}
+	}
+#endif
 	dev_dbg(isp->dev, "try_mbus_fmt: asking for %ux%u\n",
 		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
@@ -3116,7 +3175,7 @@ static int css_input_resolution_changed(struct atomisp_device *isp,
 		struct v4l2_mbus_framefmt *ffmt)
 {
 	struct atomisp_sub_device *asd = &isp->asd;
-	int ret;
+	int ret = 0;
 
 	dev_dbg(isp->dev, "css_input_resolution_changed to %ux%u\n",
 		ffmt->width, ffmt->height);
@@ -3147,12 +3206,13 @@ static int css_input_resolution_changed(struct atomisp_device *isp,
 		}
 	}
 
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	ret = atomisp_css_capture_configure_pp_input(asd, ffmt->width,
 				ffmt->height);
 	if (ret)
 		dev_err(isp->dev, "configure_pp_input %ux%u\n",
 			ffmt->width, ffmt->height);
-
+#endif
 	return ret;
 
 	/*
@@ -3235,9 +3295,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		atomisp_subdev_set_ffmt(&asd->subdev, NULL,
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
-
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		isp->asd.video_out_vf.sh_fmt = CSS_FRAME_FORMAT_NV12;
+#else
 		isp->asd.video_out_vf.sh_fmt = CSS_FRAME_FORMAT_YUV420;
-
+#endif
 		if (isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || isp->asd.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
 			atomisp_css_video_configure_viewfinder(asd,
@@ -3315,11 +3377,24 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	}
 	if (isp->asd.continuous_mode->val &&
 		configure_pp_input == atomisp_css_preview_configure_pp_input) {
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		/* for isp 2.2, configure pp input is available for continuous
+		 * mode */
+		ret = configure_pp_input(asd, isp_sink_crop->width,
+					 isp_sink_crop->height);
+		if (ret) {
+			dev_err(isp->dev, "configure_pp_input %ux%u\n",
+				isp_sink_crop->width,
+				isp_sink_crop->height);
+			return -EINVAL;
+		}
+#else
 		/* See PSI BZ 115124. preview_configure_pp_input()
 		 * API does not work correctly in continuous mode and
 		 * and must be disabled by setting it to (0, 0).
 		 */
 		configure_pp_input(asd, 0, 0);
+#endif
 	} else {
 		ret = configure_pp_input(asd, isp_sink_crop->width,
 					 isp_sink_crop->height);
@@ -3378,7 +3453,8 @@ static void atomisp_get_dis_envelop(struct atomisp_sub_device *asd,
 static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 			  struct v4l2_format *f, unsigned int pixelformat,
 			  unsigned int padding_w, unsigned int padding_h,
-			  unsigned int dvs_env_w, unsigned int dvs_env_h)
+			  unsigned int dvs_env_w, unsigned int dvs_env_h,
+			  uint16_t source_pad)
 {
 	const struct atomisp_format_bridge *format;
 	struct v4l2_mbus_framefmt ffmt;
@@ -3390,6 +3466,33 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 		return -EINVAL;
 
 	v4l2_fill_mbus_format(&ffmt, &f->fmt.pix, format->mbus_code);
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (asd->continuous_mode->val &&
+	    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
+		if (f->fmt.pix.width * f->fmt.pix.height <
+		    2448 * 3264) {
+			ffmt.width = 3264;
+			ffmt.height =
+			    DIV_ROUND_UP(3264 * f->fmt.pix.height,
+					 f->fmt.pix.width);
+			if (ffmt.height > 2448) {
+				ffmt.height = 2448;
+				ffmt.width =
+				    DIV_ROUND_UP(2448 *
+						 f->fmt.pix.width,
+						 f->fmt.pix.height);
+			}
+			/*WORKAROUND: for qvga offline still capture, isp
+			 * would timeout for 8MP output from sensor.
+			 * but won't timeout for 720p sensor output*/
+			if (f->fmt.pix.width == 320
+				&& f->fmt.pix.height == 240) {
+				ffmt.width = 1280;
+				ffmt.height = 720;
+			}
+		}
+	}
+#endif
 	ffmt.height += padding_h + dvs_env_h;
 	ffmt.width += padding_w + dvs_env_w;
 
@@ -3588,7 +3691,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 				    dvs_env_h))) {
 		ret = atomisp_set_fmt_to_snr(asd, f, f->fmt.pix.pixelformat,
 					     padding_w, padding_h,
-					     dvs_env_w, dvs_env_h);
+					     dvs_env_w, dvs_env_h,
+					     source_pad);
 		if (ret)
 			return -EINVAL;
 	}
@@ -3743,10 +3847,12 @@ int atomisp_set_shading_table(struct atomisp_sub_device *asd,
 	if (!user_shading_table)
 		return -EINVAL;
 
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	if (user_shading_table->flags & ATOMISP_SC_FLAG_QUERY) {
 		user_shading_table->enable = asd->params.sc_en;
 		return 0;
 	}
+#endif
 
 	if (!user_shading_table->enable) {
 		atomisp_css_set_shading_table(asd, NULL);
