@@ -100,8 +100,7 @@ void input_formatter_get_switch_state(
 	const input_formatter_ID_t		ID,
 	input_formatter_switch_state_t	*state)
 {
-	assert(ID < N_INPUT_FORMATTER_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_INPUT_FORMATTER_ID && state);
 
 	/* We'll change this into an intelligent function to get switch info per IF */
 	(void)ID;
@@ -124,8 +123,7 @@ void input_formatter_get_state(
 	const input_formatter_ID_t		ID,
 	input_formatter_state_t			*state)
 {
-	assert(ID < N_INPUT_FORMATTER_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_INPUT_FORMATTER_ID && state);
 /*
 	state->reset = input_formatter_reg_load(ID,
 		HIVE_IF_RESET_ADDRESS);
@@ -205,8 +203,7 @@ void input_formatter_bin_get_state(
 	const input_formatter_ID_t		ID,
 	input_formatter_bin_state_t		*state)
 {
-	assert(ID < N_INPUT_FORMATTER_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_INPUT_FORMATTER_ID && state);
 
 	state->reset = input_formatter_reg_load(ID,
 		HIVE_STR2MEM_SOFT_RESET_REG_ADDRESS);

@@ -37,8 +37,7 @@ void dma_get_state(
 	int			i;
 	hrt_data	tmp;
 
-	assert(ID < N_DMA_ID);
-	assert(state != NULL);
+	assert_exit(ID < N_DMA_ID && state);
 
 	tmp = dma_reg_load(ID, DMA_COMMAND_FSM_REG_IDX);
 	//reg  [3:0] : flags error [3], stall, run, idle [0]
