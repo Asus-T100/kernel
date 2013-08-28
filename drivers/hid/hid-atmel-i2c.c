@@ -17,11 +17,11 @@
 #include <linux/hiddev.h>
 #include <linux/hid-debug.h>
 #include <linux/hidraw.h>
-#include "atmel-config.h"
-#include "atmel-firmware.h"
 
 static int debug = 0;
 
+#define MXT_TOUCH_FIRMWARE "atmel/mXT1664TC2U_Production_V1.0.AC.ENC"
+#define MXT_TOUCH_CONFIG "atmel/ASUS_T100_0812_CS.raw"
 
 #define mxt_err(fmt, arg...) pr_err(fmt, ##arg)
 
@@ -132,6 +132,7 @@ struct mxt_data {
 	u32	ConfigVersion;
 
 	u8	bootloader_addr;
+	const struct firmware *fw; 
 };
 
 
@@ -253,8 +254,6 @@ static int mxt_bootloader_write(struct mxt_data *data,u8 *write_buf, u16 write_l
                 return 0;
 
 }
-
-
 
 void parse_line (char  **buf_line,int	*psize, int  *argc,char  **argv)
 {
@@ -598,15 +597,26 @@ static int mxt_check_bootloader(struct mxt_data *data)
 	return ret;
 } 
 
-static void mxt_load_firmware(u8 **FlashData,int *FlashSize)
+static int mxt_load_firmware(struct mxt_data *data,u8 **FlashData,int *FlashSize)
 {
-	u8 *encode_data = atmel_firmware;
-	int encode_size = strlen(atmel_firmware);
+	const u8 *encode_data;
+	int encode_size;
 	u8 *str_data;
 	int str_size;
 	char str[3];
 	int i;
 	char *after;
+        int ret ;
+        const char *fn = MXT_TOUCH_FIRMWARE;
+        struct i2c_client *client = data->client;
+
+        ret = request_firmware(&data->fw, fn, &client->dev);
+        if (ret < 0) {
+                mxt_err("Unable to open firmware %s\n", fn);
+                return ret;
+        }
+        encode_data = data->fw->data;
+        encode_size = data->fw->size;
 
 	str_size = encode_size / 2;
 	str_data = kzalloc(str_size, GFP_KERNEL);	
@@ -619,6 +629,14 @@ static void mxt_load_firmware(u8 **FlashData,int *FlashSize)
 	
 	*FlashData = str_data;
 	*FlashSize = str_size;
+
+	return 0;
+}
+
+static void mxt_unload_firmware(struct mxt_data *data,u8 *FlashData)
+{
+	kfree(FlashData);
+	release_firmware(data->fw);
 }
 
 static int mxt_recovery_firmware(struct mxt_data *data)
@@ -627,17 +645,24 @@ static int mxt_recovery_firmware(struct mxt_data *data)
         int     flash_size;
 	int ret;
 
-	mxt_load_firmware(&flash_data,&flash_size);
+	ret = mxt_load_firmware(data,&flash_data,&flash_size);
+	if(ret) {
+		mxt_err("load fw error\n");
+		return ret;
+	}
 
 	pr_err("Recovery firmware,please wait\n");
 
         ret = mxt_update_frames(data,flash_data,flash_size);
         if(ret) {
                 mxt_err("update frames error\n");
+		mxt_unload_firmware(data,flash_data);
                 return -EINVAL;
         }
 
         msleep(1000);
+
+	mxt_unload_firmware(data,flash_data);
 
         ret = mxt_check_bootloader(data);
         if(ret) {
@@ -659,8 +684,13 @@ static int mxt_update_firmware(struct mxt_data *data)
 	struct mxt_object *object_table = data->object_table;
 	u8	cmd;
 	int ret;
+	int time_out;
 
-	mxt_load_firmware(&flash_data,&flash_size);
+	ret = mxt_load_firmware(data,&flash_data,&flash_size);
+        if(ret) {
+                mxt_err("load fw error\n");
+                return ret;
+        }
 
 	pr_err("Flash firmware,please wait\n");	
 
@@ -669,19 +699,25 @@ static int mxt_update_firmware(struct mxt_data *data)
 	cmd = 0xA5;
        	mxt_hid_write(data,object_table[data->T6_Index].start_address,&cmd,1);
 
-	msleep(6000);
+	time_out = 100;
+	do{
+		ret = mxt_check_bootloader(data);
+		if(!ret)
+			break;
+		msleep(200);
+	}while(--time_out);
 
-	mxt_dbg("check bootloader mode\n");
-	ret = mxt_check_bootloader(data);
-	if(ret) {
-		pr_err("enter boot mode failed\n");
-		return ret;
+	if(!time_out) {
+		pr_err("enter boot mode time out\n");
+		mxt_unload_firmware(data,flash_data);
+		return -EINVAL;
 	}
-
 
 	mxt_update_frames(data,flash_data,flash_size);
 	
 	msleep(1000);
+
+	mxt_unload_firmware(data,flash_data);
 
         ret = mxt_check_bootloader(data);
         if(ret) {
@@ -711,11 +747,19 @@ static int mxt_update_config(struct mxt_data *data)
 	u32		config_check_sum;
 	char		*after;
 	struct mxt_object       *object_table;
-
+	const struct firmware *cfg = NULL;
+	int ret;	
 
 	object_table = data->object_table;
-	config_data = atmel_config;
-  	config_size = strlen(atmel_config);
+	ret = request_firmware(&cfg, MXT_TOUCH_CONFIG, &data->client->dev);
+	if (ret < 0) {
+		mxt_err("Failure to request config file %s\n",MXT_TOUCH_CONFIG);
+		return 0;
+	}
+	
+	config_data = kzalloc(sizeof(char*)*cfg->size, GFP_KERNEL);
+	memcpy(config_data,cfg->data,cfg->size);
+  	config_size = cfg->size;
 
 	mxt_dbg("config size = %x\n",config_size);
 	config_write_len = (data->hid_desc.output_len+2)-sizeof(struct mxt_hid_output);
@@ -733,8 +777,11 @@ static int mxt_update_config(struct mxt_data *data)
 	config_check_sum  = (u32)simple_strtoul(argv[0],&after,16);
 	pr_err("current checksum = %x ,config checksum %x\n",data->ConfigCheckSum,config_check_sum); 
 
+
 	if(data->ConfigCheckSum == config_check_sum) {
 		kfree(argv);
+		kfree(config_data);
+		release_firmware(cfg);
 		return 0;
 	}
 
@@ -789,6 +836,9 @@ static int mxt_update_config(struct mxt_data *data)
 	cmd = 0x01;
 	mxt_hid_write_config(data,object_table[data->T6_Index].start_address,&cmd,1);
 	msleep(200);
+
+	kfree(config_data);
+	release_firmware(cfg);
 
 	return 0;
 }
