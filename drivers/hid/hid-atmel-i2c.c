@@ -21,7 +21,7 @@
 static int debug = 0;
 
 #define MXT_TOUCH_FIRMWARE "atmel/mXT1664TC2U_Production_V1.0.AC.ENC"
-#define MXT_TOUCH_CONFIG "atmel/ASUS_T100_0812_CS.raw"
+#define MXT_TOUCH_CONFIG "atmel/ASUS_T100TA_0820_OI.raw"
 
 #define mxt_err(fmt, arg...) pr_err(fmt, ##arg)
 
