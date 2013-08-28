@@ -796,6 +796,12 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 				intel_prepare_page_flip(dev, pipe);
 				intel_finish_page_flip(dev, pipe);
 			}
+
+			if (pipe_stats[pipe] & SPRITE0_FLIPDONE_INT_ST_VLV) {
+				intel_prepare_sprite_page_flip(dev, pipe);
+				intel_finish_sprite_page_flip(dev, pipe);
+			}
+
 			if (pipe_stats[pipe] & PIPE_DPST_EVENT_STATUS) {
 #ifdef CONFIG_DEBUG_FS
 				dev_priv->dpst.num_interrupt++;
@@ -2455,7 +2461,8 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 	u32 enable_mask;
 	u32 lpe_status_clear;
 	u32 hotplug_en = I915_READ(PORT_HOTPLUG_EN);
-	u32 pipestat_enable = PLANE_FLIP_DONE_INT_EN_VLV;
+	u32 pipestat_enable = PLANE_FLIP_DONE_INT_EN_VLV |
+			SPRITE0_FLIP_DONE_INT_EN_VLV;
 	u32 render_irqs;
 
 	enable_mask = I915_DISPLAY_PORT_INTERRUPT;

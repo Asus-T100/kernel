@@ -2578,6 +2578,15 @@ intel_finish_fb(struct intel_crtc *crtc, struct drm_framebuffer *old_fb)
 			atomic_clear_mask(1 << crtc->plane,
 					  &obj->pending_flip.counter);
 		}
+
+		if (crtc->sprite_unpin_work) {
+			obj = crtc->sprite_unpin_work->old_fb_obj;
+			atomic_clear_mask(1 << crtc->plane,
+						&obj->pending_flip.counter);
+			crtc->sprite_unpin_work = NULL;
+			intel_unpin_sprite_work_fn(
+				&crtc->sprite_unpin_work->work);
+		}
 	}
 
 	/* Big Hammer, we also need to ensure that any pending
@@ -6877,17 +6886,24 @@ static void intel_crtc_destroy(struct drm_crtc *crtc)
 {
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
-	struct intel_unpin_work *work;
+	struct intel_unpin_work *work, *sprite_work;
 	unsigned long flags;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	work = intel_crtc->unpin_work;
+	sprite_work = intel_crtc->sprite_unpin_work;
 	intel_crtc->unpin_work = NULL;
+	intel_crtc->sprite_unpin_work = NULL;
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 	if (work) {
 		cancel_work_sync(&work->work);
 		kfree(work);
+	}
+
+	if (sprite_work) {
+		cancel_work_sync(&sprite_work->work);
+		kfree(sprite_work);
 	}
 
 	drm_crtc_cleanup(crtc);
@@ -6963,7 +6979,7 @@ static void do_intel_finish_page_flip(struct drm_device *dev,
 		e->event.tv_usec = tvbl.tv_usec;
 
 		list_add_tail(&e->base.link,
-			      &e->base.file_priv->event_list);
+			&e->base.file_priv->event_list);
 		wake_up_interruptible(&e->base.file_priv->event_wait);
 	}
 
@@ -7422,7 +7438,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 		kfree(work);
 		drm_vblank_put(dev, intel_crtc->pipe);
-
+		intel_crtc->unpin_work = NULL;
 		DRM_DEBUG_DRIVER("flip queue: crtc already busy\n");
 		return -EBUSY;
 	}
@@ -7789,6 +7805,8 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	}
 
 	drm_crtc_helper_add(&intel_crtc->base, &intel_helper_funcs);
+
+	intel_crtc->sprite_unpin_work = NULL;
 
 }
 
