@@ -336,9 +336,9 @@ static irqreturn_t ec_intr_thread_handler(int id, void *dev)
 	/* query event */
 	for (i = 0; i < BYT_EC_MAX_SCI_QUEUE; i++) {
 		if ((ec_read_status(chip) & BYT_EC_FLAG_SCI)) {
-			mutex_lock(&chip_ptr->io_lock);
+			mutex_lock(&chip->io_lock);
 			ret = byt_ec_query(chip, &val);
-			mutex_unlock(&chip_ptr->io_lock);
+			mutex_unlock(&chip->io_lock);
 			/* Handle SCI query code */
 			if (!ret)
 				blocking_notifier_call_chain(
