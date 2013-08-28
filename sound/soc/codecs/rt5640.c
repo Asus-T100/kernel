@@ -546,11 +546,22 @@ int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 			RT5640_PWR_LDO2, RT5640_PWR_LDO2);
 		snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
 			RT5640_PWR_MB1, RT5640_PWR_MB1);
+		
+		//<asus-baron20130828+>
+		/*modify codec headset detect threshold*/
+		/*
 		snd_soc_update_bits(codec, RT5640_MICBIAS,
 				    RT5640_MIC1_OVCD_MASK | RT5640_MIC1_OVTH_MASK
 				    | RT5640_PWR_CLK25M_MASK,
 				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_1500UA
 				    | RT5640_PWR_CLK25M_PU);
+		*/
+		snd_soc_update_bits(codec, RT5640_MICBIAS,
+				    RT5640_MIC1_OVCD_MASK | RT5640_MIC1_OVTH_MASK
+				    | RT5640_PWR_CLK25M_MASK,
+				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_2000UA
+				    | RT5640_PWR_CLK25M_PU);
+		//<asus-baron20130828->
 		snd_soc_update_bits(codec, RT5640_GEN_CTRL1, 0x1, 0x1);
 		pr_debug("%s:jack inserted", __func__);
 		/* After turning on over current detection, wait for a while before
