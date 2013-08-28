@@ -2606,7 +2606,7 @@ intel_finish_fb(struct intel_crtc *crtc, struct drm_framebuffer *old_fb)
 	int ret;
 
 	if (wait_event_timeout(dev_priv->pending_flip_queue,
-		   atomic_read(&obj->pending_flip), 100) == 0) {
+		   atomic_read(&obj->pending_flip), 5) == 0) {
 		DRM_DEBUG_DRIVER("flip wait timed out.\n");
 
 		/* cleanup */
