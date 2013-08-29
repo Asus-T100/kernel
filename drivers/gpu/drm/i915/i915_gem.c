@@ -4397,8 +4397,10 @@ i915_gem_inactive_shrink(struct shrinker *shrinker, struct shrink_control *sc)
 	int nr_to_scan = sc->nr_to_scan;
 	int cnt;
 
-	if (!mutex_trylock(&dev->struct_mutex))
+	if (!mutex_trylock(&dev->struct_mutex)) {
+		DRM_DEBUG("nr_to_scan:%d ret:0 (mutex)\n", sc->nr_to_scan);
 		return 0;
+	}
 
 	/* "fast-path" to count number of available objects */
 	if (nr_to_scan == 0) {
@@ -4406,9 +4408,10 @@ i915_gem_inactive_shrink(struct shrinker *shrinker, struct shrink_control *sc)
 		list_for_each_entry(obj,
 				    &dev_priv->mm.inactive_list,
 				    mm_list)
-			cnt++;
+			cnt += (obj->base.size >> PAGE_SHIFT);
 		mutex_unlock(&dev->struct_mutex);
-		return cnt / 100 * sysctl_vfs_cache_pressure;
+		DRM_DEBUG("nr_to_scan:%d cnt:%d\n", sc->nr_to_scan, cnt);
+		return cnt * sysctl_vfs_cache_pressure / 100;
 	}
 
 rescan:
@@ -4419,9 +4422,11 @@ rescan:
 				 &dev_priv->mm.inactive_list,
 				 mm_list) {
 		if (i915_gem_object_is_purgeable(obj)) {
-			if (i915_gem_object_unbind(obj) == 0 &&
-			    --nr_to_scan == 0)
-				break;
+			if (i915_gem_object_unbind(obj) == 0) {
+				nr_to_scan -= (obj->base.size >> PAGE_SHIFT);
+				if (nr_to_scan <= 0)
+					break;
+			}
 		}
 	}
 
@@ -4430,14 +4435,14 @@ rescan:
 	list_for_each_entry_safe(obj, next,
 				 &dev_priv->mm.inactive_list,
 				 mm_list) {
-		if (nr_to_scan &&
+		if ((nr_to_scan > 0) &&
 		    i915_gem_object_unbind(obj) == 0)
-			nr_to_scan--;
+			nr_to_scan -= (obj->base.size >> PAGE_SHIFT);
 		else
-			cnt++;
+			cnt += (obj->base.size >> PAGE_SHIFT);
 	}
 
-	if (nr_to_scan && i915_gpu_is_active(dev)) {
+	if ((nr_to_scan > 0) && i915_gpu_is_active(dev)) {
 		/*
 		 * We are desperate for pages, so as a last resort, wait
 		 * for the GPU to finish and discard whatever we can.
@@ -4448,7 +4453,8 @@ rescan:
 			goto rescan;
 	}
 	mutex_unlock(&dev->struct_mutex);
-	return cnt / 100 * sysctl_vfs_cache_pressure;
+	DRM_DEBUG("nr_to_scan:%d cnt:%d\n", sc->nr_to_scan, cnt);
+	return cnt * sysctl_vfs_cache_pressure / 100;
 }
 
 /**
