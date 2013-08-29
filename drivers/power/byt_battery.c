@@ -44,6 +44,51 @@
 #include <linux/power/byt_battery.h>
 #include <linux/delay.h>
 
+#include <linux/fb.h>
+#include <linux/reboot.h>
+
+
+extern struct linux_logo logo_lowbat01_clut224;
+extern struct linux_logo logo_lowbat02_clut224;
+extern struct linux_logo logo_lowbat03_clut224;
+
+
+extern struct linux_logo logo_charger01_clut224;
+extern struct linux_logo logo_charger02_clut224;
+extern struct linux_logo logo_charger03_clut224;
+
+extern struct linux_logo logo_asus01_clut224;
+extern struct linux_logo logo_asus02_clut224;
+extern struct linux_logo logo_asus03_clut224;
+
+
+
+extern struct fb_info *g_fb0_inf;
+extern void fb_show_charge_logo(struct linux_logo *logo);
+extern int fb_show_logo(struct fb_info *info, int rotate);
+
+static struct linux_logo* g_lowbatlogo[3]= {
+        &logo_lowbat01_clut224,&logo_lowbat02_clut224,&logo_lowbat03_clut224
+};
+
+
+static struct linux_logo* g_chargerlogo[3]= {
+        &logo_charger01_clut224,&logo_charger02_clut224,&logo_charger03_clut224
+};
+
+static struct linux_logo* g_asuslogo[3]= {
+        &logo_asus01_clut224,&logo_asus02_clut224,&logo_asus03_clut224
+};
+
+
+static int charger_logo_display(struct linux_logo *logo)
+{
+       fb_show_charge_logo(logo);
+       fb_show_logo(g_fb0_inf, 0);
+       return 0;
+}
+
+
 
 static struct workqueue_struct *byt_wq = NULL;
 
@@ -58,7 +103,8 @@ struct byt_chip_info {
 	struct byt_battery	ecbat;//
 
 	struct delayed_work byt_batt_info_update_work;
-	
+
+	u8 ec_ver[9];
 
 	struct mutex lock;
 	
@@ -258,6 +304,38 @@ static int byt_battery_update( struct byt_chip_info *chip)
 
 }
 
+static int get_EC_version( struct byt_chip_info *chip) 
+{	
+	struct i2c_msg msg[2];	
+	int ret;	
+	int num =2;	
+	u8 write_buf[1];			
+	memset(&chip->ecbat,0,sizeof(struct byt_battery));	
+	memset(&msg,0,sizeof(struct i2c_msg)*2);        
+
+		num = 2;        
+		msg[0].addr = chip->client->addr;        
+		msg[0].flags = !I2C_M_RD;        
+		msg[0].len = 1;        
+		write_buf[0] = 0xEC;        
+		msg[0].buf = write_buf;        
+		msg[1].addr = chip->client->addr;        
+		msg[1].flags = I2C_M_RD;        
+		msg[1].len = 9;        
+		msg[1].buf = chip->ec_ver;	
+
+	ret = i2c_transfer(chip->client->adapter, msg, num);	
+			
+	if(ret <0) {		
+		pr_err("i2c_transfer error\n");		
+		return -EIO;	
+	} else{		
+		printk(KERN_ALERT"EC_version=%s\n", chip->ec_ver);
+		return 0;
+	}
+}
+
+
 static irqreturn_t byt_thread_handler(int id, void *dev)
 {
 	struct byt_chip_info *chip = dev;
@@ -272,7 +350,7 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 	{
 		int i;
 		u8 *p = (u8*)&chip->ecbat;
-		for(i=2;i<sizeof(chip->ecbat)+2;i++,p++){
+		for(i=0;i<sizeof(chip->ecbat);i++,p++){
 			pr_err("%x = %x\n",i,*p);
 		}
 		
@@ -367,17 +445,26 @@ static ssize_t byt_battery_show_current_now(struct device *class,struct device_a
 	return sprintf(buf, "%d\n", mycurrent2);
  
 }
+static ssize_t ec_version_show(struct device *class,struct device_attribute *attr,char *buf){	
+	return sprintf(buf, "%s\n", byt_chip->ec_ver);
+ 
+}
+
 
 
 static DEVICE_ATTR(battery_charge_status, S_IRUGO | S_IWUSR,
 	byt_battery_show_charge_status, NULL);
 static DEVICE_ATTR(battery_current_now, S_IRUGO | S_IWUSR,
 	byt_battery_show_current_now, NULL);
+static DEVICE_ATTR(ec_version, S_IRUGO | S_IWUSR,
+	ec_version_show, NULL);
+
 
 
 static struct attribute *byt_attributes[] = {
 	&dev_attr_battery_charge_status.attr,
 	&dev_attr_battery_current_now.attr,
+	&dev_attr_ec_version.attr,
 	NULL
 };
 
@@ -428,6 +515,9 @@ static int byt_battery_probe(struct i2c_client *client,
 
 //*/
 	
+	mutex_lock(&chip->lock);
+	get_EC_version(chip);
+	mutex_unlock(&chip->lock);
 
 	mutex_lock(&chip->lock);
 	byt_battery_update(chip);
@@ -442,8 +532,35 @@ static int byt_battery_probe(struct i2c_client *client,
 		}
 		
 	}
+	
+	
+	//Logo
+	if(byt_get_capacity(chip)<= 5 && byt_ac_status(chip)==1){
+			int i;
+			for(i=0;i<3;i++) {
+					charger_logo_display(g_chargerlogo[i]);
+					msleep(200);
+			}
+	}
 
-
+	else if(byt_get_capacity(chip)<= 5 && byt_ac_status(chip)==0){
+			int i;
+			for(i=0;i<3;i++) {
+					charger_logo_display(g_lowbatlogo[i]);
+					msleep(200);
+			}
+			kernel_power_off();
+	}
+	/*
+	else{
+		    int i;
+			for(i=0;i<3;i++) {
+					charger_logo_display(g_asuslogo[i]);
+					msleep(200);
+			}
+	}
+	*/
+	
 	chip->ac.name = "byt_ac";
     chip->ac.type = POWER_SUPPLY_TYPE_MAINS;
     chip->ac.properties = byt_ac_props;
@@ -477,6 +594,7 @@ static int byt_battery_probe(struct i2c_client *client,
 	byt_init_irq(chip);
 
 	queue_delayed_work(byt_wq, &chip->byt_batt_info_update_work, 15*HZ);
+
 	
 	
 	return 0;
@@ -543,7 +661,8 @@ static int __init byt_battery_init(void)
 
 	return ret;
 }
-device_initcall(byt_battery_init);
+//device_initcall(byt_battery_init);
+late_initcall(byt_battery_init);
 
 static void __exit byt_battery_exit(void)
 {

@@ -18,6 +18,9 @@ obj-$(CONFIG_LOGO_M32R_CLUT224)		+= logo_m32r_clut224.o
 
 obj-$(CONFIG_SPU_BASE)			+= logo_spe_clut224.o
 
+#ASUS Hollie 20130829  ++ T100TA - black , low battery , charger , asus logo
+obj-$(CONFIG_LOGO_T100TA_CLUT224)		+= logo_t100ta_clut224.o logo_lowbat01_clut224.o logo_lowbat02_clut224.o logo_lowbat03_clut224.o logo_charger01_clut224.o logo_charger02_clut224.o logo_charger03_clut224.o logo_asus01_clut224.o logo_asus02_clut224.o logo_asus03_clut224.o
+
 # How to generate logo's
 
 # Use logo-cfiles to retrieve list of .c files to be built
