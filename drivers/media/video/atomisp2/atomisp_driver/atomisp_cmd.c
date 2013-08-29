@@ -3636,7 +3636,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_format snr_fmt = *f;
 	unsigned int dvs_env_w = 0, dvs_env_h = 0;
 	unsigned int padding_w = pad_w, padding_h = pad_h;
-	bool res_overflow = false;
+	bool res_overflow = false, crop_needs_override = false;
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 	struct v4l2_mbus_framefmt isp_source_fmt = {0};
 	struct v4l2_rect isp_sink_crop;
@@ -3793,14 +3793,16 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 */
 	if (!isp->asd.continuous_mode->val ||
 	    isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
-	    (isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) &&
-	     isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
-				    dvs_env_h))) {
+	    isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) ||
+	    isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
+				    dvs_env_h)) {
 		ret = atomisp_set_fmt_to_snr(asd, f, f->fmt.pix.pixelformat,
 					     padding_w, padding_h,
 					     dvs_env_w, dvs_env_h);
 		if (ret)
 			return -EINVAL;
+
+		crop_needs_override = true;
 	}
 
 	isp_sink_crop = *atomisp_subdev_get_rect(&isp->asd.subdev, NULL,
@@ -3815,8 +3817,24 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	    || (atomisp_subdev_format_conversion(isp, source_pad)
 		&& (isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || isp->asd.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER))) {
-		isp_sink_crop.width = f->fmt.pix.width;
-		isp_sink_crop.height = f->fmt.pix.height;
+		/* for continuous mode, preview size might be smaller than
+		 * still capture size. if preview size still needs crop,
+		 * pick the larger one between crop size of preview and
+		 * still capture */
+		if (isp->asd.continuous_mode->val
+		    && source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW
+		    && !crop_needs_override) {
+			isp_sink_crop.width =
+			    max_t(unsigned int, f->fmt.pix.width,
+				  isp_sink_crop.width);
+			isp_sink_crop.height =
+			    max_t(unsigned int, f->fmt.pix.height,
+				  isp_sink_crop.height);
+		} else {
+			isp_sink_crop.width = f->fmt.pix.width;
+			isp_sink_crop.height = f->fmt.pix.height;
+		}
+
 		atomisp_subdev_set_selection(&isp->asd.subdev, NULL,
 					     V4L2_SUBDEV_FORMAT_ACTIVE,
 					     ATOMISP_SUBDEV_PAD_SINK,
