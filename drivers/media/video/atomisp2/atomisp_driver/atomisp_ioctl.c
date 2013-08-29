@@ -599,6 +599,19 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		goto error;
 	}
 
+	/*
+	 * check whether the request camera:
+	 * 1: already in use
+	 * 2: if in use, whether it is used by other streams
+	 */
+	if (isp->inputs[input].asd != NULL && isp->inputs[input].asd != asd) {
+		dev_err(isp->dev,
+			 "%s, camera is already used by stream: %d\n", __func__,
+			 isp->inputs[input].asd->index);
+		ret = -EBUSY;
+		goto error;
+	}
+
 	camera = isp->inputs[input].camera;
 	if (!camera) {
 		dev_err(isp->dev, "%s, no camera\n", __func__);
@@ -613,12 +626,16 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		goto error;
 	}
 
-	/* power off the current sensor, as it is not used this time */
-	if (asd->input_curr != input) {
+	/* power off the current owned sensor, as it is not used this time */
+	if (isp->inputs[asd->input_curr].asd == asd &&
+	    asd->input_curr != input) {
 		ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 				       core, s_power, 0);
 		if (ret)
-			dev_warn(isp->dev, "Failed to power-off sensor\n");
+			dev_warn(isp->dev,
+				    "Failed to power-off sensor\n");
+		/* clear the asd field to show this camera is not used */
+		isp->inputs[asd->input_curr].asd = NULL;
 	}
 
 	/* powe on the new sensor */
@@ -633,6 +650,8 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 				       init, 1);
 
 	asd->input_curr = input;
+	/* mark this camera is used by the current stream */
+	isp->inputs[input].asd = asd;
 	mutex_unlock(&isp->mutex);
 
 	return 0;

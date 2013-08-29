@@ -362,11 +362,15 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 
 static void atomisp_dev_init_struct(struct atomisp_device *isp)
 {
+	unsigned int i;
+
 	isp->sw_contex.file_input = 0;
 	isp->need_gfx_throttle = true;
 	isp->isp_fatal_error = false;
 	isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
+	for (i = 0; i < isp->input_cnt; i++)
+		isp->inputs[i].asd = NULL;
 	/*
 	 * For Merrifield, frequency is scalable.
 	 * After boot-up, the default frequency is 200MHz.
@@ -577,6 +581,9 @@ static int atomisp_release(struct file *file)
 				       core, s_power, 0);
 	if (ret)
 		dev_warn(isp->dev, "Failed to power-off sensor\n");
+
+	/* clear the asd field to show this camera is not used */
+	isp->inputs[asd->input_curr].asd = NULL;
 
 	if (atomisp_dev_users(isp))
 		goto done;
