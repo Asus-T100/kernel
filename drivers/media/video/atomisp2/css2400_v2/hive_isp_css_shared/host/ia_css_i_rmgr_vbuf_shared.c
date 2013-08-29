@@ -120,7 +120,8 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 			sizeof(struct ia_css_i_host_rmgr_vbuf_handle *) *
 			pool->size;
 		pool->handles = sh_css_malloc(bytes_needed);
-		memset(pool->handles, 0, bytes_needed);
+		if (pool->handles)
+			memset(pool->handles, 0, bytes_needed);
 	}
 	else {
 		/* just in case, set the size to 0 */
@@ -201,7 +202,7 @@ void ia_css_i_host_rmgr_acq_vbuf(
 	struct ia_css_i_host_rmgr_vbuf_pool *pool,
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
-	struct ia_css_i_host_rmgr_vbuf_handle h;
+	uint32_t size;
 	assert_exit(pool && handle && *handle);
 	if (pool->copy_on_write) {
 		/* only one reference, reuse (no new retain) */
@@ -210,11 +211,14 @@ void ia_css_i_host_rmgr_acq_vbuf(
 		/* more than one reference, release current buffer */
 		if ((*handle)->count > 1) {
 			/* store current values */
-			h.vptr = 0x0;
-			h.size = (*handle)->size;
+			size = (*handle)->size;
 			/* release ref to current buffer */
 			ia_css_i_host_refcount_release_vbuf(handle);
-			*handle = &h;
+			if (!(*handle))
+				return;
+			(*handle)->vptr = 0;
+			(*handle)->size = size;
+			(*handle)->count = 0;
 		}
 		/* get new buffer for needed size */
 		if ((*handle)->vptr == 0x0) {
