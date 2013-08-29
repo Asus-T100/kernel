@@ -60,4 +60,6 @@ extern const struct v4l2_ioctl_ops atomisp_ioctl_ops;
 
 extern const struct v4l2_ioctl_ops atomisp_file_ioctl_ops;
 
+unsigned int atomisp_streaming_count(struct atomisp_device *isp);
+
 #endif /* __ATOMISP_IOCTL_H__ */

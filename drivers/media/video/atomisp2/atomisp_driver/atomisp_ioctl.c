@@ -559,11 +559,23 @@ static int atomisp_enum_input(struct file *file, void *fh,
 	return 0;
 }
 
-static unsigned int atomisp_streaming_count(struct atomisp_sub_device *asd)
+static unsigned int atomisp_subdev_streaming_count(
+					struct atomisp_sub_device *asd)
 {
 	return asd->video_out_preview.capq.streaming
 		+ asd->video_out_capture.capq.streaming
 		+ asd->video_in.capq.streaming;
+}
+
+unsigned int atomisp_streaming_count(struct atomisp_device *isp)
+{
+	unsigned int i, sum;
+
+	for (i = 0, sum = 0; i < isp->num_of_streams; i++)
+		sum += isp->asd[i].streaming ==
+		    ATOMISP_DEVICE_STREAMING_ENABLED;
+
+	return sum;
 }
 
 /*
@@ -619,7 +631,7 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		goto error;
 	}
 
-	if (atomisp_streaming_count(asd)) {
+	if (atomisp_subdev_streaming_count(asd)) {
 		dev_err(isp->dev,
 			 "ISP is still streaming, stop first\n");
 		ret = -EINVAL;
@@ -1351,7 +1363,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	if (ret)
 		goto out;
 
-	if (atomisp_streaming_count(asd) > sensor_start_stream) {
+	if (atomisp_subdev_streaming_count(asd) > sensor_start_stream) {
 		/* trigger still capture */
 		if (asd->continuous_mode->val &&
 		    atomisp_subdev_source_pad(vdev)
@@ -1445,7 +1457,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	atomisp_qbuffers_to_css(asd);
 
 	/* Only start sensor when the last streaming instance started */
-	if (atomisp_streaming_count(asd) < sensor_start_stream)
+	if (atomisp_subdev_streaming_count(asd) < sensor_start_stream)
 		goto out;
 
 start_sensor:
@@ -1568,7 +1580,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	}
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (atomisp_streaming_count(asd) == 1)
+	if (atomisp_subdev_streaming_count(asd) == 1)
 		asd->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
 	spin_unlock_irqrestore(&isp->lock, flags);
 
@@ -1624,7 +1636,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	spin_unlock_irqrestore(&pipe->irq_lock, flags);
 
 stopsensor:
-	if (atomisp_streaming_count(asd) + 1
+	if (atomisp_subdev_streaming_count(asd) + 1
 	    != atomisp_sensor_start_stream(asd))
 		return 0;
 
@@ -1636,6 +1648,10 @@ stopsensor:
 		asd->params.num_flash_frames = 0;
 		asd->params.flash_state = ATOMISP_FLASH_IDLE;
 	}
+
+	/* if other streams are running, isp should not be powered off */
+	if (atomisp_streaming_count(isp))
+		return 0;
 
 #ifdef PUNIT_CAMERA_BUSY
 	if (!IS_ISP2400(isp) && isp->need_gfx_throttle) {

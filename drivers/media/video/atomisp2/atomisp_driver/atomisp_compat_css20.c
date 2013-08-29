@@ -30,6 +30,9 @@
 #include "atomisp_compat.h"
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
+#include "atomisp-regs.h"
+#include "atomisp_fops.h"
+#include "atomisp_ioctl.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
@@ -823,7 +826,15 @@ int atomisp_css_start(struct atomisp_sub_device *asd,
 		}
 	}
 
-	if (ia_css_start_sp() != IA_CSS_SUCCESS) {
+	/*
+	 * SP can only be started one time
+	 * if atomisp_subdev_streaming_count() tell there already has some
+	 * subdev at streamming, then SP should already be started previously,
+	 * so need to skip start sp procedure
+	 */
+	if (atomisp_streaming_count(isp)) {
+		dev_dbg(isp->dev, "skip start sp\n");
+	} else if (ia_css_start_sp() != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "start sp error.\n");
 		ret = -EINVAL;
 		goto start_err;
@@ -846,7 +857,13 @@ stream_err:
 	/* css 2.0 API limitation: ia_css_stop_sp() could be only called after
 	 * destroy all pipes
 	 */
-	if (ia_css_isp_has_started() && (ia_css_stop_sp() != IA_CSS_SUCCESS))
+	/*
+	 * SP can not be stop if other streams are in use
+	 */
+	if (atomisp_streaming_count(isp))
+		dev_dbg(isp->dev, "skip stop sp\n");
+	else if (ia_css_isp_has_started() &&
+		 ia_css_stop_sp() != IA_CSS_SUCCESS)
 		dev_err(isp->dev, "stop sp failed.\n");
 
 	return ret;
@@ -1346,8 +1363,13 @@ int atomisp_css_stop(struct atomisp_sub_device *asd,
 	/* if is called in atomisp_reset(), force destroy all pipes */
 	if (__destroy_pipes(asd, true))
 		dev_err(isp->dev, "destroy pipes failed.\n");
-
-	if (ia_css_isp_has_started() && (ia_css_stop_sp() != IA_CSS_SUCCESS)) {
+	/*
+	 * SP can not be stop if other streams are in use
+	 */
+	if (atomisp_streaming_count(isp)) {
+		dev_dbg(isp->dev, "skip stop sp\n");
+	} else if (ia_css_isp_has_started() &&
+		   (ia_css_stop_sp() != IA_CSS_SUCCESS)) {
 		dev_err(isp->dev, "stop sp failed. stop css fatal error.\n");
 		return -EINVAL;
 	}
