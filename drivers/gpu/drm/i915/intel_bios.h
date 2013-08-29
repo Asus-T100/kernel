@@ -620,7 +620,7 @@ int intel_parse_bios(struct drm_device *dev);
 
 /* Block 52 contains MiPi Panel info
  * 6 such enteries will there. Index into correct
- * entery is based on the panle_index in #40 LFP
+ * entery is based on the panel_index in #40 LFP
  */
 #define MAX_MIPI_CONFIGURATIONS	6
 struct _mipi_config {
@@ -749,10 +749,11 @@ struct _mipi_pps_data {
 /* MIPI Sequnece Block definitions */
 enum MIPI_SEQ {
 	MIPI_SEQ_UNDEFINED = 0,
-	MIPI_SEQ_RESET,
+	MIPI_SEQ_ASSERT_RESET,
 	MIPI_SEQ_INIT_OTP,
 	MIPI_SEQ_DISPLAY_ON,
 	MIPI_SEQ_DISPLAY_OFF,
+	MIPI_SEQ_DEASSERT_RESET,
 	MIPI_SEQ_MAX
 
 };
@@ -794,6 +795,7 @@ struct bdb_mipi_sequence {
 
 /* Expand to add more info as we work on mipi code */
 struct mipi_info {
+	u8 seq_version;
 	u16 panel_id;
 	u16 panel_bpp;
 	struct _mipi_config *config;

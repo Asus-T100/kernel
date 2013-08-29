@@ -199,6 +199,11 @@ get_lvds_fp_timing(const struct bdb_header *bdb,
 }
 
 /* Try to find integrated panel data */
+/* We use the data recovered from this section for MIPI as well
+ * It is common for all LFPs. The structure names might confuse
+ * but we will use the panel_fixed_mode parsed here for generic
+ * MIPI design
+ */
 static void
 parse_lfp_panel_data(struct drm_i915_private *dev_priv,
 			    struct bdb_header *bdb)
@@ -573,17 +578,70 @@ parse_edp(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 	}
 }
 
+u8 *goto_next_sequence(u8 *data)
+{
+	u16 len;
+	/* goto first element */
+	data++;
+	while (1) {
+		switch (*data++) {
+		case MIPI_SEQ_ELEM_SEND_PKT:
+			/* skip by this element payload size
+			 * skip command flag and data type */
+			data += 2;
+			len = *((u16 *)data);
+			/* skip by len */
+			data = data + 2 + len;
+			break;
+		case MIPI_SEQ_ELEM_DELAY:
+			data += 4;
+			break;
+		case MIPI_SEQ_ELEM_GPIO:
+			data += 2;
+			break;
+		default:
+			DRM_ERROR("Unknown element\n");
+			break;
+		}
+
+		/* end of sequence ? */
+		if (*data == 0)
+			break;
+	}
+	/* goto next sequence or end of block byte */
+	data++;
+	return data;
+}
+
 static void
 parse_mipi(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 {
-	struct bdb_mipi_config *mipi;
-	u8 *sequence;
+	struct bdb_mipi_config *start;
+	struct bdb_mipi_sequence *sequence;
+	struct _mipi_config *config;
+	struct _mipi_pps_data *pps;
+	char *data, *seq_data, *seq_start;
+	int i, panel_id, seq_size;
 
-	mipi = find_section(bdb, BDB_MIPI_CONFIG);
-	if (!mipi) {
-		DRM_DEBUG_KMS("No MIPI BDB found");
+	/* Initialize this to undefined indicating no generic MIPI support */
+	dev_priv->mipi.panel_id = MIPI_DSI_UNDEFINED_PANEL_ID;
+
+	/* Block #40 is already parsed and panel_fixed_mode is
+	 * stored in dev_priv->lfp_lvds_vbt_mode
+	 * resuse this when needed
+	 */
+
+	/* Parse #52 for panel index used from panel_type already
+	 * parsed
+	 */
+	start = find_section(bdb, BDB_MIPI_CONFIG);
+	if (!start) {
+		DRM_DEBUG_KMS("No MIPI config BDB found");
 		return;
 	}
+
+	DRM_DEBUG_DRIVER("Found MIPI Config block, panel index = %d\n",
+								panel_type);
 
 	/* found the mipi configuration block, check that we also
 	 * have the sequence block
@@ -594,10 +652,112 @@ parse_mipi(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 		return;
 	}
 
-	/* TBD:
-	 * parse the sequnec block for individual sequences
+	DRM_DEBUG_DRIVER("Found MIPI sequence block\n");
+	/*
+	 * get hold of the correct configuration block and pps data as per
+	 * the panel_type as index
 	 */
-	dev_priv->mipi.panel_id = MIPI_DSI_RESERVED_PANEL_ID;
+	config = &start->config[panel_type];
+	pps = (struct _mipi_pps_data *) &start->config[MAX_MIPI_CONFIGURATIONS];
+
+	/*
+	 * parse the sequence block for individual sequences
+	 */
+	dev_priv->mipi.seq_version = sequence->version;
+
+	seq_data = (char *)((char *)sequence + 1);
+
+	/* sequnec block is variable length and hence we need to parse and
+	 * get the sequnece data for specific panel id */
+	for (i = 0; i < MAX_MIPI_CONFIGURATIONS; i++) {
+		panel_id = *seq_data;
+		seq_size = *((u16 *) (seq_data + 1));
+		if (panel_id == panel_type) {
+			seq_start = (char *) (seq_data + 3);
+			break;
+		}
+
+		/* skip the sequence including seq header of 3 bytes */
+		seq_data = seq_data + 3 + seq_size;
+	}
+
+	if (i == MAX_MIPI_CONFIGURATIONS)
+		return;
+
+	/*
+	 * store as of now full data. Trim when we realise all is not needed
+	 * also need to check if vbt memory is reclaimed or not. For now
+	 * allocate new memory and copy all data
+	 */
+	dev_priv->mipi.config =
+			kzalloc(sizeof(struct _mipi_config), GFP_KERNEL);
+	if (!dev_priv->mipi.config)
+		return;
+
+	dev_priv->mipi.pps = kzalloc(sizeof(struct _mipi_pps_data), GFP_KERNEL);
+	if (!dev_priv->mipi.pps) {
+		kfree(dev_priv->mipi.config);
+		return;
+	}
+
+	dev_priv->mipi.data = kzalloc(seq_size, GFP_KERNEL);
+	if (!dev_priv->mipi.data) {
+		kfree(dev_priv->mipi.config);
+		kfree(dev_priv->mipi.pps);
+		return;
+	}
+
+	memcpy(dev_priv->mipi.config, config, sizeof(*config));
+	memcpy(dev_priv->mipi.pps, pps, sizeof(*pps));
+	memcpy(dev_priv->mipi.data, seq_start, seq_size);
+
+	/*
+	 * loop into the sequence data and split into multiple sequneces
+	 * There are only 5 types of sequences as of now
+	 */
+	data = dev_priv->mipi.data;
+	dev_priv->mipi.size = seq_size;
+
+	/* two consecutive 0x00 inidcate end of all sequences */
+	while (1) {
+		switch (*data) {
+		case MIPI_SEQ_ASSERT_RESET:
+			dev_priv->mipi.sequence[MIPI_SEQ_ASSERT_RESET] = data;
+			DRM_DEBUG_DRIVER("Found MIPI_SEQ_ASSERT_RESET\n");
+			break;
+		case MIPI_SEQ_INIT_OTP:
+			dev_priv->mipi.sequence[MIPI_SEQ_INIT_OTP] = data;
+			DRM_DEBUG_DRIVER("Found MIPI_SEQ_INIT_OTP\n");
+			break;
+		case MIPI_SEQ_DISPLAY_ON:
+			dev_priv->mipi.sequence[MIPI_SEQ_DISPLAY_ON] = data;
+			DRM_DEBUG_DRIVER("Found MIPI_SEQ_DISPLAY_ON\n");
+			break;
+		case MIPI_SEQ_DISPLAY_OFF:
+			dev_priv->mipi.sequence[MIPI_SEQ_DISPLAY_OFF] = data;
+			DRM_DEBUG_DRIVER("Found MIPI_SEQ_DISPLAY_OFF\n");
+			break;
+		case MIPI_SEQ_DEASSERT_RESET:
+			dev_priv->mipi.sequence[MIPI_SEQ_DEASSERT_RESET] = data;
+			DRM_DEBUG_DRIVER("Found MIPI_SEQ_DEASSERT_RESET\n");
+			break;
+		case MIPI_SEQ_UNDEFINED:
+		default:
+			DRM_ERROR("undefined sequnce\n");
+			continue;
+		}
+
+		/* partial parsing to skip elements */
+		data = goto_next_sequence(data);
+
+		if (*data == 0)
+			break; /* end of sequence reached */
+	}
+
+	/* We have all mipi related blocks. initialize as generic panel */
+	dev_priv->mipi.panel_id = MIPI_DSI_GENERIC_PANEL_ID;
+
+	DRM_DEBUG_DRIVER("MIPI related vbt parsing complete\n");
 }
 
 static void

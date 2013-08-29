@@ -167,10 +167,11 @@ void intel_dsi_device_ready(struct intel_encoder *encoder);
 void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 bool intel_dsi_init(struct drm_device *dev);
 
-#define	MIPI_DSI_RESERVED_PANEL_ID			0x01
+#define	MIPI_DSI_UNDEFINED_PANEL_ID			0x00
+#define	MIPI_DSI_GENERIC_PANEL_ID			0x01
 #define	MIPI_DSI_AUO_B101UAN01_PANEL_ID			0x02
 #define	MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID	0x03
 #define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
-#define MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
+#define	MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
 
 #endif /* _INTEL_DSI_H */
