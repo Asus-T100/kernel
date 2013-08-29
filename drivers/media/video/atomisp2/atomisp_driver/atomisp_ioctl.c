@@ -1563,9 +1563,12 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	spin_unlock_irqrestore(&isp->lock, flags);
 
 	if (first_streamoff) {
+		/* if other streams are running, should not disable watch dog */
 		mutex_unlock(&isp->mutex);
-		del_timer_sync(&isp->wdt);
-		cancel_work_sync(&isp->wdt_work);
+		if (!atomisp_streaming_count(isp)) {
+			del_timer_sync(&isp->wdt);
+			cancel_work_sync(&isp->wdt_work);
+		}
 
 		/*
 		 * must stop sending pixels into GP_FIFO before stop
