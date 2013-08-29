@@ -92,6 +92,9 @@ enum {
 	FBCON_LOGO_DONTSHOW	= -3	/* do not show the logo */
 };
 
+struct fb_info *g_fb0_inf = NULL; //ASUS Hollie 20130829
+
+
 static struct display fb_display[MAX_NR_CONSOLES];
 
 static signed char con2fb_map[MAX_NR_CONSOLES];
@@ -1174,6 +1177,8 @@ static void fbcon_init(struct vc_data *vc, int init)
 	} else
 		vc_resize(vc, new_cols, new_rows);
 
+	g_fb0_inf = info; //ASUS Hollie 20130829
+	
 	if (logo)
 		fbcon_prepare_logo(vc, info, cols, rows, new_cols, new_rows);
 

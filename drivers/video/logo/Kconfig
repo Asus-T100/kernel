@@ -82,4 +82,10 @@ config LOGO_M32R_CLUT224
 	depends on M32R
 	default y
 
+# ASUS Hollie 20130828
+config LOGO_T100TA_CLUT224
+	bool "224-color T100TA LOWBAT CHARGER ASUS logo"
+	default y
+
+	
 endif # LOGO

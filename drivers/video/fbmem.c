@@ -495,6 +495,7 @@ static int fb_show_logo_line(struct fb_info *info, int rotate,
 
 	image.dx = 0;
 	image.dy = y;
+	
 	image.width = logo->width;
 	image.height = logo->height;
 
@@ -654,6 +655,14 @@ int fb_prepare_logo(struct fb_info *info, int rotate)
 
 	return fb_prepare_extra_logos(info, fb_logo.logo->height, yres);
 }
+
+//ASUS Hollie 20130829
+void fb_show_charge_logo(struct linux_logo *logo)
+{
+       fb_logo.logo = logo;
+       return;
+}
+
 
 int fb_show_logo(struct fb_info *info, int rotate)
 {
