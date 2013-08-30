@@ -49,6 +49,9 @@
 
 #include <linux/input.h>
 
+#define EC_SET_AUTO_WAKEUP_REG        0x9E
+#define EC_SET_AUTO_WAKEUP_CMD_FLAG   0x06
+#define EC_SET_AUTO_WAKEUP_CMD_TIMER  0x08
 
 
 extern struct linux_logo logo_lowbat01_clut224;
@@ -138,6 +141,17 @@ static enum power_supply_property byt_battery_props[] = {
 static enum power_supply_property byt_ac_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 };
+
+static inline struct byt_chip_info *
+to_byt_chip_info(struct power_supply *psy)
+{
+	return container_of(psy, struct byt_chip_info, bat);  //chip
+}
+
+static inline struct power_supply *to_power_supply(struct device *dev)
+{
+	return dev_get_drvdata(dev);    //&chip->bat
+}
 
 static int byt_ac_status(struct byt_chip_info *chip)
 {
@@ -540,6 +554,67 @@ static ssize_t ec_version_show(struct device *class,struct device_attribute *att
  
 }
 
+static ssize_t byt_ec_set_wakeup_flag(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+//write "1" to sys file "set_wakeup_flag"        
+	struct power_supply *psy = to_power_supply(dev);
+	struct byt_chip_info *chip = to_byt_chip_info(psy);
+	struct i2c_msg msg;
+	int ret;
+	int num;
+	u8 write_buf[2];	
+
+	memset(&msg, 0, sizeof(struct i2c_msg));
+
+        num = 1;
+        msg.addr = chip->client->addr;
+        msg.flags = !I2C_M_RD;
+        msg.len = 2;
+        write_buf[0] = EC_SET_AUTO_WAKEUP_REG;
+        write_buf[1] = EC_SET_AUTO_WAKEUP_CMD_FLAG;
+        msg.buf = write_buf;
+
+	ret = i2c_transfer(chip->client->adapter, &msg, num);
+
+	if(ret <0) {
+            pr_err("%s: i2c_transfer error.\n", __func__);
+            return -EIO;
+	} else {
+            return count;
+        }
+}
+
+static ssize_t byt_ec_set_wakeup_timer(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+//write a BYTE to sys file "set_wakeup_timer", wakeup time = 0~255 sec        
+	struct power_supply *psy = to_power_supply(dev);
+	struct byt_chip_info *chip = to_byt_chip_info(psy);
+	struct i2c_msg msg;
+	int ret;
+	int num;
+	u8 write_buf[3];	
+
+	memset(&msg, 0, sizeof(struct i2c_msg));
+
+        num = 1;
+        msg.addr = chip->client->addr;
+        msg.flags = !I2C_M_RD;
+        msg.len = 3;
+        write_buf[0] = EC_SET_AUTO_WAKEUP_REG;
+        write_buf[1] = EC_SET_AUTO_WAKEUP_CMD_TIMER;
+        write_buf[2] = buf[0];    //wake up time
+        msg.buf = write_buf;
+
+	ret = i2c_transfer(chip->client->adapter, &msg, num);
+
+	if(ret <0) {
+            pr_err("%s: i2c_transfer error.\n", __func__);
+            return -EIO;
+	} else {
+            return count;
+        }
+
+}
 
 static DEVICE_ATTR(battery_charge_status, S_IRUGO | S_IWUSR,
 	byt_battery_show_charge_status, NULL);
@@ -547,14 +622,18 @@ static DEVICE_ATTR(battery_current_now, S_IRUGO | S_IWUSR,
 	byt_battery_show_current_now, NULL);
 static DEVICE_ATTR(ec_version, S_IRUGO | S_IWUSR,
 	ec_version_show, NULL);
-
+static DEVICE_ATTR(set_wakeup_flag, S_IRUGO | S_IWUSR,
+	NULL, byt_ec_set_wakeup_flag);
+static DEVICE_ATTR(set_wakeup_timer, S_IRUGO | S_IWUSR,
+	NULL, byt_ec_set_wakeup_timer);
 
 
 static struct attribute *byt_attributes[] = {
 	&dev_attr_battery_charge_status.attr,
 	&dev_attr_battery_current_now.attr,
 	&dev_attr_ec_version.attr,
-
+	&dev_attr_set_wakeup_flag.attr,
+	&dev_attr_set_wakeup_timer.attr,
 	NULL
 };
 
