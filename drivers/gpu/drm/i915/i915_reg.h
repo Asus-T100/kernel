@@ -192,8 +192,6 @@
 #define   MI_WAIT_FOR_PLANE_B_FLIP      (1<<6)
 #define   MI_WAIT_FOR_PLANE_A_FLIP      (1<<2)
 #define   MI_WAIT_FOR_PLANE_A_SCANLINES (1<<1)
-#define   GEN6_MI_WAIT_FOR_PLANE_B_FLIP      (1<<9)
-#define   GEN6_MI_WAIT_FOR_PLANE_A_FLIP      (1<<1)
 #define MI_FLUSH		MI_INSTR(0x04, 0)
 #define   MI_READ_FLUSH		(1 << 0)
 #define   MI_EXE_FLUSH		(1 << 1)
