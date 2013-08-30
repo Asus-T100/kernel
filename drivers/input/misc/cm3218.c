@@ -39,8 +39,7 @@
 //<ASUS-Bob20130820+>
 //====== Porting from Board ====== Start
 //#define CM3218_INT_N		acpi_get_gpio("\\_SB.GPO0", 95)
-//#define IRQ_TRIGGER_TYPE	IRQF_TRIGGER_LOW
-#define	IRQ_TRIGGER_TYPE	IRQF_TRIGGER_FALLING
+//#define	IRQ_TRIGGER_TYPE	IRQF_TRIGGER_FALLING
 
 static struct cm3218_platform_data cm3218_pdata = {
 //	.intr = CM3218_INT_N,
@@ -51,18 +50,13 @@ static struct cm3218_platform_data cm3218_pdata = {
 	.is_cmd = CM3218_ALS_SM_2 | CM3218_ALS_IT_250ms |CM3218_ALS_PERS_1 | CM3218_ALS_RES_1,
 };
 //====== Porting from Board ====== End
-//<ASUS-Bob20130820->
-
-//<asus-ych20130830>#define D(x...) pr_info(x)
-
-//<ASUS-Bob20130820+>
 #define ALStraceOn 0
 
 #if ALStraceOn == 1
-#define D(x...) pr_info(x)	//<asus-ych20130830>
+#define D(x...) pr_info(x)
 #define ALSBG(fmt...) printk(fmt)
 #else
-#define D(x...)	//<asus-ych20130830>
+#define D(x...)
 #define ALSBG(fmt...)
 #endif
 //<ASUS-Bob20130820->
@@ -592,7 +586,18 @@ static ssize_t ls_adc_show(struct device *dev,
 {
 	int ret;
 	struct cm3218_info *lpi = lp_info;
-
+//<ASUS-Bob20130830+>sync v0.4.3 - reports real-time lux value when queried through sysfs.
+	uint16_t adc_value = 0;
+	uint32_t lux_level;
+	
+	if (lpi->als_enable)
+	{
+		get_ls_adc_value(&adc_value, 0);
+		lux_level = (uint32_t)(adc_value * lpi->als_gadc * lpi->cal_data / lpi->als_kadc / 1000);		
+		lpi->current_lux_level = lux_level;
+		lpi->current_adc = adc_value;
+	}		
+//<ASUS-Bob20130830->	
 	D("[LS][CM3218] %s: ADC = 0x%04X, Lux Level = %d \n",
 		__func__, lpi->current_adc, lpi->current_lux_level);
 	ret = sprintf(buf, "ADC[0x%04X] => lux level %d\n",
@@ -1033,7 +1038,7 @@ static int cm3218_setup(struct cm3218_info *lpi)
 	ls_initial_cmd(lpi);
 
 //<ASUS-Bob20130820+>
-	ALSBG("{Bob}[CM3218.c]IRQ_TRIGGER_TYPE: %d\n", IRQ_TRIGGER_TYPE);
+//	ALSBG("{Bob}[CM3218.c]IRQ_TRIGGER_TYPE: %d\n", IRQ_TRIGGER_TYPE);
 
 	ret = request_any_context_irq(lpi->irq,
 			cm3218_irq_handler,

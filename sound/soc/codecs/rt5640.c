@@ -43,6 +43,7 @@
 #define HEADSET_DET_DELAY    200 /* Delay(ms) before reading over current
 				    status for headset detection */
 /*#define USE_EQ*/
+#define USE_EQ 1 //realtek EQ control //<asus-baron20130830+> 
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
 static int delay_work = 500;
@@ -84,7 +85,8 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_STO_DAC_MIXER, 0x0404},	/*Dig inf 1 -> Sto DAC mixer -> DACL */
 	{RT5640_OUT_L3_MIXER, 0x01fe},	/*DACL1 -> OUTMIXL */
 	{RT5640_OUT_R3_MIXER, 0x01fe},	/*DACR1 -> OUTMIXR */
-	{RT5640_HP_VOL, 0x8888},	/*OUTMIX -> HPVOL */
+//	{RT5640_HP_VOL, 0x8888},	/*OUTMIX -> HPVOL */  //<asus-baron20130823-> realtek
+	{RT5640_HP_VOL, 0x8b8b},	/*OUTMIX -> HPVOL */  //<asus-baron20130823+> realtek
 	{RT5640_HPO_MIXER, 0xc000},	/*HPVOL -> HPOLMIX */
 /*	{RT5640_HPO_MIXER	, 0xa000},//DAC1 -> HPOLMIX*/
 /*	{RT5640_CHARGE_PUMP	, 0x0f00},*/
@@ -95,7 +97,8 @@ static struct rt5640_init_reg init_list[] = {
 /*	{RT5640_HP_CALIB_AMP_DET, 0x0420},*/
 	{RT5640_SPK_L_MIXER, 0x0036},	/*DACL1 -> SPKMIXL */
 	{RT5640_SPK_R_MIXER, 0x0036},	/*DACR1 -> SPKMIXR */
-	{RT5640_SPK_VOL, 0x8b8b},	/*SPKMIX -> SPKVOL */
+//	{RT5640_SPK_VOL, 0x8b8b},	/*SPKMIX -> SPKVOL */  //<asus-baron20130823-> realtek
+	{RT5640_SPK_VOL, 0x8a8a},	/*SPKMIX -> SPKVOL */  //<asus-baron20130823+> realtek
 	{RT5640_SPO_CLSD_RATIO, 0x0001},
 	{RT5640_SPO_L_MIXER, 0xe800},	/*SPKVOLL -> SPOLMIX */
 	{RT5640_SPO_R_MIXER, 0x2800},	/*SPKVOLR -> SPORMIX */
@@ -116,13 +119,20 @@ static struct rt5640_init_reg init_list[] = {
 //	{RT5640_MONO_ADC_MIXER, 0x1010},  //<asus-baron20130823->
 	{RT5640_STO_ADC_MIXER, 0x3020},  //<asus-baron20130823+>
 	{RT5640_MONO_ADC_MIXER, 0x3030},  //<asus-baron20130823+>
-	{RT5640_ADC_DIG_VOL, 0xe2e2},
+//	{RT5640_ADC_DIG_VOL, 0xe2e2},  //<asus-baron20130830->
+	{RT5640_ADC_DIG_VOL, 0xcfcf}, //realtek change it to windows setting  //<asus-baron20130830+>
 /*	{RT5640_MONO_MIXER, 0xcc00},*/	/*OUTMIX -> MONOMIX */
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
 	{RT5640_DSP_PATH2, 0x0000},
 #else
 	{RT5640_DSP_PATH2, 0x0c00},
 #endif
+//<asus-baron20130830+>
+	/* DRC parameters */
+	{RT5640_DRC_AGC_1, 0x4206},
+	{RT5640_DRC_AGC_2, 0x1f04},
+	{RT5640_DRC_AGC_3, 0x0052},
+//<asus-baron20130830->
 #if RT5640_DET_EXT_MIC
 	{RT5640_MICBIAS, 0x3a10},	/* enable MICBIAS short current;
 					 chopper(b5) circuit disabled */
@@ -1848,7 +1858,7 @@ static int rt5640_hp_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 #ifdef USE_EQ
-		rt5640_update_eqmode(codec, HP);
+//		rt5640_update_eqmode(codec, HP);  //eq just for speaker now. //<asus-baron20130830->
 #endif
 		rt5640_pmu_depop(codec);
 		break;
