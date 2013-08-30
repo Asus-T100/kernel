@@ -47,6 +47,9 @@
 #include <linux/fb.h>
 #include <linux/reboot.h>
 
+#include <linux/input.h>
+
+
 
 extern struct linux_logo logo_lowbat01_clut224;
 extern struct linux_logo logo_lowbat02_clut224;
@@ -105,6 +108,9 @@ struct byt_chip_info {
 	struct delayed_work byt_batt_info_update_work;
 
 	u8 ec_ver[9];
+	int ec_status;
+
+	struct input_dev *lid_dev;
 
 	struct mutex lock;
 	
@@ -271,6 +277,43 @@ i2c_read_err:
 	return ret;
 }
 
+static int get_lid_status( struct byt_chip_info *chip) 
+{
+	struct i2c_msg msg[2];
+	int ret;
+	int num =2;
+	u8 write_buf[1];	
+	u8 read_buf[1];
+	
+	memset(&msg,0,sizeof(struct i2c_msg)*2);
+
+        num = 2;
+        msg[0].addr = chip->client->addr;
+        msg[0].flags = !I2C_M_RD;
+        msg[0].len = 1;
+        write_buf[0] = 0x83;
+        msg[0].buf = write_buf;
+
+        msg[1].addr = chip->client->addr;
+        msg[1].flags = I2C_M_RD;
+        msg[1].len = 1;
+        msg[1].buf = read_buf;
+
+
+	ret = i2c_transfer(chip->client->adapter, msg, num);
+
+	if(ret <0) {
+		pr_err("i2c_transfer error\n");
+		return -EIO;
+	} else{
+		printk(KERN_ALERT"get_lid_status=%d\n", read_buf[0]);
+		return read_buf[0];
+	}
+
+}
+
+
+
 static int byt_battery_update( struct byt_chip_info *chip) 
 {
 	struct i2c_msg msg[2];
@@ -310,7 +353,7 @@ static int get_EC_version( struct byt_chip_info *chip)
 	int ret;	
 	int num =2;	
 	u8 write_buf[1];			
-	memset(&chip->ecbat,0,sizeof(struct byt_battery));	
+
 	memset(&msg,0,sizeof(struct i2c_msg)*2);        
 
 		num = 2;        
@@ -335,33 +378,80 @@ static int get_EC_version( struct byt_chip_info *chip)
 	}
 }
 
+static int get_event_ID( struct byt_chip_info *chip) 
+{
+	struct i2c_msg msg[2];
+	int ret;
+	int num =2;
+	u8 write_buf[1];
+	u8 read_buf[1];
+	
+	memset(&msg,0,sizeof(struct i2c_msg)*2);
+
+        num = 2;
+        msg[0].addr = chip->client->addr;
+        msg[0].flags = !I2C_M_RD;
+        msg[0].len = 1;
+        write_buf[0] = 0x84;
+        msg[0].buf = write_buf;
+
+        msg[1].addr = chip->client->addr;
+        msg[1].flags = I2C_M_RD;
+        msg[1].len = 1;
+        msg[1].buf = read_buf;
+
+
+	ret = i2c_transfer(chip->client->adapter, msg, num);
+
+	if(ret <0) {
+		pr_err("i2c_transfer error\n");
+		return -EIO;
+	} else{
+		printk(KERN_ALERT"get_event_ID = %x\n", read_buf[0]);
+		return read_buf[0];
+	}
+}
+
 
 static irqreturn_t byt_thread_handler(int id, void *dev)
 {
 	struct byt_chip_info *chip = dev;
-	int ret;
+	int ret, event_id, lid_value;
 	printk(KERN_ALERT"sleep 100 ms..\n");
 	msleep(100);
-	
-	mutex_lock(&chip->lock);
-	byt_battery_update(chip);
-	
-	printk(KERN_ALERT"Charger interrupt, update battery info\n");
-	{
-		int i;
-		u8 *p = (u8*)&chip->ecbat;
-		for(i=0;i<sizeof(chip->ecbat);i++,p++){
-			pr_err("%x = %x\n",i,*p);
+	//LID_Open 0x82 ;  LID_Close 0x83 ; Ac In Out 0xA0 ; Battery Charge 0xA3
+	event_id = get_event_ID(chip);
+	printk(KERN_ALERT"byt_thread_handler: event_ID = %x\n", event_id);
+
+	if(event_id ==0x82 || event_id == 0x83){
+		lid_value=get_lid_status(chip);
+		input_report_switch(chip->lid_dev, SW_LID, !lid_value);
+		input_sync(chip->lid_dev);
+		printk(KERN_ALERT"handler :LID = %s \n", lid_value ? "opened" : "closed");
 		}
+	//*/
+	else{
+		mutex_lock(&chip->lock);
+		byt_battery_update(chip);
+     	
+	    printk(KERN_ALERT"Charger interrupt, update battery info\n");
+		{
+			int i;
+			u8 *p = (u8*)&chip->ecbat;
+			for(i=0;i<sizeof(chip->ecbat);i++,p++){
+				pr_err("%x = %x\n",i,*p);
+			}
 		
-	}
+		}
 
 	
-	mutex_unlock(&chip->lock);
+		mutex_unlock(&chip->lock);
 
-	power_supply_changed(&chip->ac);
-	power_supply_changed(&chip->bat);
-
+		power_supply_changed(&chip->ac);
+		power_supply_changed(&chip->bat);
+	}
+	
+	
 	
 	return IRQ_HANDLED;
 }
@@ -451,7 +541,6 @@ static ssize_t ec_version_show(struct device *class,struct device_attribute *att
 }
 
 
-
 static DEVICE_ATTR(battery_charge_status, S_IRUGO | S_IWUSR,
 	byt_battery_show_charge_status, NULL);
 static DEVICE_ATTR(battery_current_now, S_IRUGO | S_IWUSR,
@@ -465,6 +554,7 @@ static struct attribute *byt_attributes[] = {
 	&dev_attr_battery_charge_status.attr,
 	&dev_attr_battery_current_now.attr,
 	&dev_attr_ec_version.attr,
+
 	NULL
 };
 
@@ -473,6 +563,13 @@ static const struct attribute_group byt_attr_group = {
 };
 
 //*/
+
+static void byt_set_lid_bit(struct input_dev *dev){	
+	dev->evbit[0] = BIT_MASK(EV_SW);	
+	set_bit(SW_LID, dev->swbit);
+
+	printk(KERN_ALERT"byt_set_lid_bit() done.\n");
+}
 
 
 
@@ -505,19 +602,35 @@ static int byt_battery_probe(struct i2c_client *client,
 	
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
+	
 	i2c_set_clientdata(client, chip);
 
 	byt_chip = chip;
 	mutex_init(&chip->lock);
-//
+
 	byt_wq = create_singlethread_workqueue("byt_battery_work_queue");
 	INIT_DELAYED_WORK(&chip->byt_batt_info_update_work, byt_batt_info_update_work_func);
 
-//*/
+	//Hall sensor LID
+	chip->lid_dev = input_allocate_device();
+	if (!chip->lid_dev) {
+		dev_err(&client->dev, "input_allocate_device fail\n");
+	}
+
+	chip->lid_dev->name = "asus_byt_lid";	
+	chip->lid_dev->phys = "/dev/input/asus_byt_lid";	
+	chip->lid_dev->dev.parent = &client->dev;
+
+
+	byt_set_lid_bit(chip->lid_dev);
+
+	if (input_register_device(chip->lid_dev)) {
+			dev_err(&client->dev, "input_allocate_device fail\n");
+	}
 	
-	mutex_lock(&chip->lock);
+	
 	get_EC_version(chip);
-	mutex_unlock(&chip->lock);
+	
 
 	mutex_lock(&chip->lock);
 	byt_battery_update(chip);
