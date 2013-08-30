@@ -53,14 +53,16 @@ static struct cm3218_platform_data cm3218_pdata = {
 //====== Porting from Board ====== End
 //<ASUS-Bob20130820->
 
-#define D(x...) pr_info(x)
+//<asus-ych20130830>#define D(x...) pr_info(x)
 
 //<ASUS-Bob20130820+>
 #define ALStraceOn 0
 
 #if ALStraceOn == 1
+#define D(x...) pr_info(x)	//<asus-ych20130830>
 #define ALSBG(fmt...) printk(fmt)
 #else
+#define D(x...)	//<asus-ych20130830>
 #define ALSBG(fmt...)
 #endif
 //<ASUS-Bob20130820->

@@ -201,5 +201,10 @@ config LPC32XX_ADC
 	  LPC32XX SoC. Note that this feature uses the same hardware as the
 	  touchscreen driver, so you can only select one of the two drivers
 	  (lpc32xx_adc or lpc32xx_ts). Provides direct access via sysfs.
-
+#//<asus-bob20130830>
+config IIO_BASINCOVE_GPADC
+	tristate "IIO Basincove GPADC driver"
+	depends on IIO
+	help
+	  Say yes here to build support for the IIO basincove GPADC driver.
 endmenu
