@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -748,6 +749,7 @@ struct ia_css_env {
  */
 struct ia_css_buffer {
 	enum ia_css_buffer_type type; /**< Buffer type. */
+	unsigned int exp_id; /**< exposure id for this buffer; 0 = not available; currently only implemented for buffered sensor mode */
 	union {
 		struct ia_css_isp_3a_statistics  *stats_3a; /**< 3A statistics & optionally RGBY statistics. */
 		struct ia_css_isp_dvs_statistics *stats_dvs;/**< DVS statistics. */
@@ -840,7 +842,7 @@ ia_css_unload_firmware(void);
  * @param[in]	env		Environment, provides functions to access the
  *				environment in which the CSS code runs. This is
  *				used for host side memory access and message
- *				printing.
+ *				printing. May not be NULL.
  * @param[in]	fw		Firmware package containing the firmware for all
  *				predefined ISP binaries.
  *				if fw is NULL the firmware must be loaded before
@@ -1684,5 +1686,24 @@ ia_css_mipi_frame_specify(const unsigned int	size_mem_words,
  */
 void
 ia_css_dequeue_param_buffers(void);
+
+/** @brief allocate continuous raw frames for continuous capture
+ *
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the allocation part
+ *  and next one is update part
+ */
+enum ia_css_err
+ia_css_alloc_continuous_frame_remain(struct ia_css_stream *stream);
+
+/** @brief allocate continuous raw frames for continuous capture
+ *
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the update part
+ */
+void
+ia_css_update_continuous_frames(struct ia_css_stream *stream);
 
 #endif /* _IA_CSS_H_ */

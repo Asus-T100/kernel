@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -24,6 +25,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #endif
+
 #include "input_formatter.h"
 #include "gp_device.h"
 
@@ -61,7 +63,7 @@ void input_formatter_rst(
 	hrt_address	addr;
 	hrt_data	rst;
 
-assert(ID < N_INPUT_FORMATTER_ID);
+	assert(ID < N_INPUT_FORMATTER_ID);
 
 	addr = HIVE_IF_SRST_ADDRESS[ID];
 	rst = HIVE_IF_SRST_MASK[ID];
@@ -69,28 +71,29 @@ assert(ID < N_INPUT_FORMATTER_ID);
 	input_formatter_reg_store(ID,
 		 addr, rst);
 
-return;
+	return;
 }
 
 unsigned int input_formatter_get_alignment(
 	const input_formatter_ID_t		ID)
 {
-assert(ID < N_INPUT_FORMATTER_ID);
+	assert(ID < N_INPUT_FORMATTER_ID);
 
-return input_formatter_alignment[ID];
+	return input_formatter_alignment[ID];
 }
 
 void input_formatter_set_fifo_blocking_mode(
 	const input_formatter_ID_t		ID,
 	const bool						enable)
 {
-assert(ID < N_INPUT_FORMATTER_ID);
-/* cnd_input_formatter_reg_store() */
-if (!HIVE_IF_BIN_COPY[ID]) {
-	input_formatter_reg_store(ID,
-		 HIVE_IF_BLOCK_FIFO_NO_REQ_ADDRESS, enable);
-}
-return;
+	assert(ID < N_INPUT_FORMATTER_ID);
+
+	/* cnd_input_formatter_reg_store() */
+	if (!HIVE_IF_BIN_COPY[ID]) {
+		input_formatter_reg_store(ID,
+			 HIVE_IF_BLOCK_FIFO_NO_REQ_ADDRESS, enable);
+	}
+	return;
 }
 
 void input_formatter_get_switch_state(
@@ -112,7 +115,7 @@ void input_formatter_get_switch_state(
 	state->if_input_switch_fsync_lut = gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_fsync_lut);
 	state->if_input_switch_ch_id_fmt_type = gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_ch_id_fmt_type);
 
-return;
+	return;
 }
 
 void input_formatter_get_state(
@@ -192,7 +195,7 @@ void input_formatter_get_state(
 	state->sensor_data_lost = input_formatter_reg_load(ID,
 		HIVE_IF_FIFO_SENSOR_STATUS);
 
-return;
+	return;
 }
 
 void input_formatter_bin_get_state(
@@ -219,5 +222,5 @@ void input_formatter_bin_get_state(
 		HIVE_STR2MEM_DUAL_BYTE_INPUTS_ENABLED_REG_ADDRESS);
 	state->en_status_update = input_formatter_reg_load(ID,
 		HIVE_STR2MEM_EN_STAT_UPDATE_ADDRESS);
-return;
+	return;
 }

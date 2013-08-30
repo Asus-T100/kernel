@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -125,7 +126,7 @@ sh_css_update_host2sp_mipi_frame(
  * @param[in] num_frames The number of raw frames to use.
  */
 void
-sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames);
+sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames, bool set_avail);
 
 /**
  * @brief Update the nr of mipi frames to use in host_sp_communication.

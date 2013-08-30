@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -26,9 +27,7 @@
 #ifdef __KERNEL__
 #include <linux/types.h>
 #else
-#include <stdint.h>
-#include "stddef.h"			/* size_t */
-#include <stdbool.h>		/* bool */
+#include "stdbool.h"
 #endif
 
 /*! Read the control registers of IRQ[ID]

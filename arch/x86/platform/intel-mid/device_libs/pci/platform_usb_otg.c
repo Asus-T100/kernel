@@ -137,3 +137,10 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRFLD_OTG,
 			otg_pci_early_quirks);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_OTG,
 			otg_pci_early_quirks);
+
+static void quirk_byt_otg_d3_delay(struct pci_dev *dev)
+{
+	dev->d3_delay = 10;
+}
+DECLARE_PCI_FIXUP_ENABLE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_OTG,
+			quirk_byt_otg_d3_delay);

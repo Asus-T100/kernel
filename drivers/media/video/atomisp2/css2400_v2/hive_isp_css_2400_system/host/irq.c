@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -66,11 +67,10 @@ void irq_clear_all(
 {
 	hrt_data	mask = 0xFFFFFFFF;
 
-assert(ID < N_IRQ_ID);
-assert(IRQ_N_CHANNEL[ID] <= HRT_DATA_WIDTH);
+	assert(ID < N_IRQ_ID);
+	assert(IRQ_N_CHANNEL[ID] <= HRT_DATA_WIDTH);
 
 	if (IRQ_N_CHANNEL[ID] < HRT_DATA_WIDTH) {
-/* */
 		mask = ~((~(hrt_data)0)>>IRQ_N_CHANNEL[ID]);
 	}
 
@@ -94,8 +94,8 @@ void irq_enable_channel(
 		_HRT_IRQ_CONTROLLER_EDGE_REG_IDX);
 	unsigned int me = 1U << irq_id;
 
-assert(ID < N_IRQ_ID);
-assert(irq_id < IRQ_N_CHANNEL[ID]);
+	assert(ID < N_IRQ_ID);
+	assert(irq_id < IRQ_N_CHANNEL[ID]);
 
 	mask |= me;
 	enable |= me;
@@ -129,6 +129,7 @@ void irq_enable_pulse(
 	bool 			pulse)
 {
 	unsigned int edge_out = 0x0;
+
 	if (pulse) {
 		edge_out = 0xffffffff;
 	}
@@ -148,8 +149,8 @@ void irq_disable_channel(
 		_HRT_IRQ_CONTROLLER_ENABLE_REG_IDX);
 	unsigned int me = 1U << irq_id;
 
-assert(ID < N_IRQ_ID);
-assert(irq_id < IRQ_N_CHANNEL[ID]);
+	assert(ID < N_IRQ_ID);
+	assert(irq_id < IRQ_N_CHANNEL[ID]);
 
 	mask &= ~me;
 	enable &= ~me;
@@ -178,8 +179,8 @@ enum hrt_isp_css_irq_status irq_get_channel_id(
 	unsigned int idx;
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_success;
 
-assert(ID < N_IRQ_ID);
-assert(irq_id != NULL);
+	assert(ID < N_IRQ_ID);
+	assert(irq_id != NULL);
 
 /* find the first irq bit */
 	for (idx = 0; idx < IRQ_N_CHANNEL[ID]; idx++) {
@@ -214,11 +215,11 @@ void irq_raise(
 {
 	hrt_address		addr;
 
-OP___assert(ID == IRQ0_ID);
-OP___assert(IRQ_BASE[ID] != (hrt_address)-1);
-OP___assert(irq_id < N_IRQ_SW_CHANNEL_ID);
+	OP___assert(ID == IRQ0_ID);
+	OP___assert(IRQ_BASE[ID] != (hrt_address)-1);
+	OP___assert(irq_id < N_IRQ_SW_CHANNEL_ID);
 
-(void)ID;
+	(void)ID;
 
 	addr = IRQ_REQUEST_ADDR[irq_id];
 /* The SW IRQ pins are remapped to offset zero */
@@ -255,6 +256,7 @@ bool any_virq_signal(void)
 {
 	unsigned int irq_status = irq_reg_load(IRQ0_ID,
 		_HRT_IRQ_CONTROLLER_STATUS_REG_IDX);
+
 return (irq_status != 0);
 }
 
@@ -292,8 +294,8 @@ return;
 void virq_clear_all(void)
 {
 	irq_ID_t	irq_id;
+
 	for (irq_id = (irq_ID_t)0; irq_id < N_IRQ_ID; irq_id++) {
-/* */
 		irq_clear_all(irq_id);
 	}
 return;
@@ -333,8 +335,10 @@ void virq_clear_info(
 	virq_info_t					*irq_info)
 {
 	irq_ID_t ID;
+
+	assert_exit(irq_info != NULL);
+
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
-/* */
 			irq_info->irq_status_reg[ID] = 0;
 	}
 return;
@@ -349,6 +353,7 @@ enum hrt_isp_css_irq_status virq_get_channel_id(
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_success;
 	irq_ID_t ID;
 
+	assert(irq_id != NULL);
 
 /* find the first irq bit on device 0 */
 	for (idx = 0; idx < IRQ_N_CHANNEL[IRQ0_ID]; idx++) {
@@ -412,8 +417,9 @@ return status;
 STORAGE_CLASS_INLINE void irq_wait_for_write_complete(
 	const irq_ID_t		ID)
 {
-assert(ID < N_IRQ_ID);
-assert(IRQ_BASE[ID] != (hrt_address)-1);
+	assert(ID < N_IRQ_ID);
+	assert(IRQ_BASE[ID] != (hrt_address)-1);
+
 	(void)device_load_uint32(IRQ_BASE[ID] +
 		_HRT_IRQ_CONTROLLER_ENABLE_REG_IDX*sizeof(hrt_data));
 #ifdef HRT_CSIM
@@ -427,7 +433,7 @@ STORAGE_CLASS_INLINE bool any_irq_channel_enabled(
 {
 	hrt_data	en_reg;
 
-assert(ID < N_IRQ_ID);
+	assert(ID < N_IRQ_ID);
 
 	en_reg = irq_reg_load(ID,
 		_HRT_IRQ_CONTROLLER_ENABLE_REG_IDX);
@@ -445,7 +451,6 @@ STORAGE_CLASS_INLINE irq_ID_t virq_get_irq_id(
 
 	for (ID = (irq_ID_t)0 ; ID < N_IRQ_ID; ID++) {
 		if (irq_ID < IRQ_N_ID_OFFSET[ID + 1]) {
-/* */
 			break;
 		}
 	}

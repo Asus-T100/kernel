@@ -835,6 +835,22 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 	/* Data errors */
 	if (!brq->stop.error) {
 		/*
+		 * If data error caused by SD v3.0 Ncrc timing issue,
+		 * then not retry and disable DDR50.
+		 * This Ncrc timing issue only triggered by write request
+		 * and will caused SDHC host controller timeout error.
+		 */
+		if ((card->host->caps2 & MMC_CAP2_FIXED_NCRC) &&
+					(card->scr.sda_spec3) &&
+				(rq_data_dir(req) == WRITE) &&
+				(brq->data.error == -ETIMEDOUT)) {
+			pr_info("%s: 2+ Ncrc SD card! will disable DDR50.\n",
+				req->rq_disk->disk_name);
+			card->sw_caps.sd3_bus_mode &= ~(SD_MODE_UHS_DDR50 |
+					SD_MODE_UHS_SDR104);
+			return ERR_CONTINUE;
+		}
+		/*
 		 * Didn't re-send stop command, and if card status
 		 * is already in transfer state, let's have
 		 * a retry.

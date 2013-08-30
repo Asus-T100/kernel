@@ -747,7 +747,8 @@ static u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd)
 static void sdhci_set_transfer_irqs(struct sdhci_host *host)
 {
 	u32 pio_irqs = SDHCI_INT_DATA_AVAIL | SDHCI_INT_SPACE_AVAIL;
-	u32 dma_irqs = SDHCI_INT_DMA_END | SDHCI_INT_ADMA_ERROR;
+	u32 dma_irqs = SDHCI_INT_DMA_END | SDHCI_INT_ADMA_ERROR |
+		SDHCI_INT_TAR_RSP_ERR;
 
 	if (host->flags & SDHCI_REQ_USE_DMA)
 		sdhci_clear_set_irqs(host, pio_irqs, dma_irqs);
@@ -1717,8 +1718,9 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	else
 		ctrl &= ~SDHCI_CTRL_HISPD;
 
-	if ((host->version >= SDHCI_SPEC_300) ||
-			(host->quirks2 & SDHCI_QUIRK2_V2_0_SUPPORT_DDR50)) {
+	if (((host->version >= SDHCI_SPEC_300) ||
+			(host->quirks2 & SDHCI_QUIRK2_V2_0_SUPPORT_DDR50)) &&
+			ios->timing != MMC_TIMING_LEGACY) {
 		u16 clk, ctrl_2;
 		unsigned int clock;
 
@@ -1933,11 +1935,9 @@ static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	struct sdhci_host *host = mmc_priv(mmc);
 	unsigned long flags;
 
-	sdhci_runtime_pm_get(host);
 	spin_lock_irqsave(&host->lock, flags);
 	sdhci_enable_sdio_irq_nolock(host, enable);
 	spin_unlock_irqrestore(&host->lock, flags);
-	sdhci_runtime_pm_put(host);
 }
 
 static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
@@ -2587,7 +2587,6 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 		sdhci_finish_command(host);
 }
 
-#ifdef CONFIG_MMC_DEBUG
 static void sdhci_show_adma_error(struct sdhci_host *host)
 {
 	const char *name = mmc_hostname(host->mmc);
@@ -2603,7 +2602,7 @@ static void sdhci_show_adma_error(struct sdhci_host *host)
 		len = (__le16 *)(desc + 2);
 		attr = *desc;
 
-		DBG("%s: %p: DMA 0x%08x, LEN 0x%04x, Attr=0x%02x\n",
+		pr_err("%s: %p: DMA 0x%08x, LEN 0x%04x, Attr=0x%02x\n",
 		    name, desc, le32_to_cpu(*dma), le16_to_cpu(*len), attr);
 
 		desc += 8;
@@ -2612,9 +2611,6 @@ static void sdhci_show_adma_error(struct sdhci_host *host)
 			break;
 	}
 }
-#else
-static void sdhci_show_adma_error(struct sdhci_host *host) { }
-#endif
 
 static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 {
@@ -2687,9 +2683,22 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 					host->mrq->cmd->retries);
 		}
 	} else if (intmask & SDHCI_INT_ADMA_ERROR) {
-		pr_err("%s: ADMA error\n", mmc_hostname(host->mmc));
+		pr_err("%s: ADMA error, int 0x%08x\n",
+				mmc_hostname(host->mmc), intmask);
 		sdhci_show_adma_error(host);
 		host->data->error = -EIO;
+	}
+
+	if (intmask & SDHCI_INT_TAR_RSP_ERR) {
+		pr_err("%s: Target response error, int 0x%08x\n",
+				mmc_hostname(host->mmc), intmask);
+		sdhci_show_adma_error(host);
+		if (!host->data->error) {
+			host->data->error = -EIO;
+		} else
+			pr_err("%s: data error is set already, error %d\n",
+					mmc_hostname(host->mmc),
+					host->data->error);
 	}
 
 	if (host->data->error)

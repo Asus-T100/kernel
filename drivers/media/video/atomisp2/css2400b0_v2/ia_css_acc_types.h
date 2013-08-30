@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -291,7 +292,8 @@ struct ia_css_sp_info {
 	uint32_t sleep_mode;  /**< different mode to halt SP */
 	uint32_t invalidate_tlb;		/**< inform SP to invalidate mmu TLB */
 	uint32_t request_flash;	/**< inform SP to switch on flash for next frame */
-	uint32_t stop_copy_preview;
+	uint32_t stop_copy_preview;	/**< suspend copy and preview pipe when capture */
+	uint32_t copy_pack;	/**< use packed memory layout for raw data */
 	uint32_t debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */
 	uint32_t perf_counter_input_system_error; /**< input system perf
@@ -302,6 +304,7 @@ struct ia_css_sp_info {
 	uint32_t debug_stripe; /**< thread/pipe post mortem debug */
 #endif
 	uint32_t curr_binary_id;        /**< current binary id */
+	uint32_t raw_copy_line_count;   /**< raw copy line counter */
 	uint32_t ddr_parameter_address; /**< acc param ddrptr, sp dmem */
 	uint32_t ddr_parameter_size;    /**< acc param size, sp dmem */
 	/* Entry functions */

@@ -2144,7 +2144,7 @@ void i915_hangcheck_sample(unsigned long data)
 	uint32_t cur_seqno = 0;
 	uint32_t last_seqno = 0;
 	struct intel_ring_buffer *ring;
-	bool err = false, idle;
+	bool idle;
 	int instdone_cmp;
 	int pending_work = 1;
 	int resched_timer = 1;

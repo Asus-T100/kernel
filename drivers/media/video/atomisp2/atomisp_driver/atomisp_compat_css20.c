@@ -1315,13 +1315,18 @@ int atomisp_css_set_black_frame(struct atomisp_sub_device *asd,
 	return 0;
 }
 
-int atomisp_css_allocate_continuous_frames(bool init_time)
+int atomisp_css_allocate_continuous_frames(bool init_time,
+				struct atomisp_sub_device *asd)
 {
+	if (ia_css_alloc_continuous_frame_remain(asd->stream_env.stream)
+			!= IA_CSS_SUCCESS)
+		return -EINVAL;
 	return 0;
 }
 
-void atomisp_css_update_continuous_frames(void)
+void atomisp_css_update_continuous_frames(struct atomisp_sub_device *asd)
 {
+	ia_css_update_continuous_frames(asd->stream_env.stream);
 }
 
 int atomisp_css_stop(struct atomisp_sub_device *asd,

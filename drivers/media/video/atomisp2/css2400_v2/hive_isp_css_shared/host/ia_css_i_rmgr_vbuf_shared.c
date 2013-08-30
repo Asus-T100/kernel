@@ -20,6 +20,7 @@
  */
 
 #include "ia_css_i_rmgr.h"
+
 #ifndef __KERNEL__
 #include <stdbool.h>
 #endif
@@ -94,7 +95,8 @@ void ia_css_i_host_refcount_release_vbuf(
 		struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
 	assert_exit(handle && *handle);
-	assert((*handle)->count != 0);
+	assert_exit((*handle)->count != 0);
+
 	/* decrease reference count */
 	(*handle)->count--;
 	/* remove from admin */
@@ -130,26 +132,30 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 void ia_css_i_host_rmgr_uninit_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 {
 	uint32_t i;
+
+	assert_exit(pool );
+
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_i_host_rmgr_uninit_vbuf()\n");
-	assert_exit(pool);
-	/* free the hmm buffers */
-	for (i = 0; i < pool->size; i++) {
-		if (pool->handles[i] != NULL) {
-			sh_css_dtrace(SH_DBG_TRACE,
-				"   freeing/releasing %x (count=%d)\n",
-				pool->handles[i]->vptr,
-				pool->handles[i]->count);
-			/* free memory */
-			mmgr_free(pool->handles[i]->vptr);
-			/* remove from refcount admin*/
-			ia_css_i_host_refcount_release_vbuf(
-					&pool->handles[i]);
+	if (pool->handles != NULL) {
+		/* free the hmm buffers */
+		for (i = 0; i < pool->size; i++) {
+			if (pool->handles[i] != NULL) {
+				sh_css_dtrace(SH_DBG_TRACE,
+					"   freeing/releasing %x (count=%d)\n",
+					pool->handles[i]->vptr,
+					pool->handles[i]->count);
+				/* free memory */
+				mmgr_free(pool->handles[i]->vptr);
+				/* remove from refcount admin*/
+				ia_css_i_host_refcount_release_vbuf(
+						&pool->handles[i]);
+			}
 		}
+		/* now free the pool handles list */
+		sh_css_free(pool->handles);
+		pool->handles = NULL;
 	}
-	/* now free the pool handles list */
-	sh_css_free(pool->handles);
-	pool->handles = NULL;
 }
 
 static
@@ -168,7 +174,7 @@ void ia_css_i_host_rmgr_push_handle(
 			break;
 		}
 	}
-	assert(succes);
+	assert_exit(succes);
 }
 
 static
@@ -252,4 +258,3 @@ void ia_css_i_host_rmgr_rel_vbuf(
 	ia_css_i_host_refcount_release_vbuf(handle);
 	*handle = NULL;
 }
-

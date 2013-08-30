@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -160,6 +161,8 @@ sh_css_init_binary_infos(void)
 
 	all_binaries = sh_css_malloc(num_of_isp_binaries *
 						sizeof(*all_binaries));
+	if (all_binaries == NULL)
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 
 	for (i = 0; i < num_of_isp_binaries; i++) {
 		enum ia_css_err ret;
@@ -553,41 +556,71 @@ enum ia_css_err
 sh_css_binary_find(struct sh_css_binary_descr *descr,
 		   struct sh_css_binary *binary)
 {
-	int mode = descr->mode;
-	bool online = descr->online;
-	bool two_ppc = descr->two_ppc;
-	enum ia_css_stream_format stream_format = descr->stream_format;
-	const struct ia_css_frame_info *req_in_info = descr->in_info,
-				       *req_out_info = descr->out_info,
-				       *req_vf_info = descr->vf_info;
+	int mode;
+	bool online;
+	bool two_ppc;
+	enum ia_css_stream_format stream_format;
+	const struct ia_css_frame_info *req_in_info,
+				       *req_out_info,
+				       *req_vf_info;
 
-	struct ia_css_frame_info *cc_in_info
-				= sh_css_malloc(sizeof(*req_in_info));
-	struct ia_css_frame_info *cc_out_info
-				= sh_css_malloc(sizeof(*req_out_info));
-	struct ia_css_frame_info *cc_vf_info
-				= sh_css_malloc(sizeof(*req_vf_info));
+	struct ia_css_frame_info *cc_in_info;
+	struct ia_css_frame_info *cc_out_info;
+	struct ia_css_frame_info *cc_vf_info;
 
 	struct ia_css_binary_info *candidate;
-	bool need_ds = false,
-	     need_dz = false,
-	     need_dvs = false,
-	     need_outputdeci = false;
-	bool enable_yuv_ds = descr->enable_yuv_ds;
-	bool enable_high_speed = descr->enable_high_speed;
-	bool enable_dvs_6axis  = descr->enable_dvs_6axis;
-	bool enable_reduced_pipe = descr->enable_reduced_pipe;
+	bool need_ds, need_dz, need_dvs, need_outputdeci;
+	bool enable_yuv_ds;
+	bool enable_high_speed;
+	bool enable_dvs_6axis;
+	bool enable_reduced_pipe;
 	enum ia_css_err err = IA_CSS_ERR_INTERNAL_ERROR;
-	bool continuous = descr->continuous;
-	unsigned int isp_pipe_version = descr->isp_pipe_version;
+	bool continuous;
+	unsigned int isp_pipe_version;
 	struct ia_css_resolution dvs_env;
-
-	dvs_env.width = 0;
-	dvs_env.height = 0;
 
 	assert_exit_code(descr, IA_CSS_ERR_INTERNAL_ERROR);
 /* MW: used after an error check, may accept NULL, but doubtfull */
 	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
+
+	mode = descr->mode;
+	online = descr->online;
+	two_ppc = descr->two_ppc;
+	stream_format = descr->stream_format;
+	req_in_info = descr->in_info;
+	req_out_info = descr->out_info;
+	req_vf_info = descr->vf_info;
+
+	cc_in_info = sh_css_malloc(sizeof(*req_in_info));
+	if (cc_in_info == NULL)
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	cc_out_info = sh_css_malloc(sizeof(*req_out_info));
+	if (cc_out_info == NULL)
+	{
+		sh_css_free(cc_in_info);
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	}
+	cc_vf_info = sh_css_malloc(sizeof(*req_vf_info));
+	if (cc_vf_info == NULL)
+	{
+		sh_css_free(cc_in_info);
+		sh_css_free(cc_out_info);
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	}
+
+	need_ds = false;
+	need_dz = false;
+	need_dvs = false;
+	need_outputdeci = false;
+	enable_yuv_ds = descr->enable_yuv_ds;
+	enable_high_speed = descr->enable_high_speed;
+	enable_dvs_6axis  = descr->enable_dvs_6axis;
+	enable_reduced_pipe = descr->enable_reduced_pipe;
+	continuous = descr->continuous;
+	isp_pipe_version = descr->isp_pipe_version;
+
+	dvs_env.width = 0;
+	dvs_env.height = 0;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_binary_find() enter: "

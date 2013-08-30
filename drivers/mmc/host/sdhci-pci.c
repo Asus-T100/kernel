@@ -615,6 +615,9 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 			INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
 		sdhci_alloc_panic_host(slot->host);
 
+	slot->host->mmc->caps2 |= MMC_CAP2_FIXED_NCRC |
+		MMC_CAP2_PWOFF_DELAY;
+
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	/*
 	 * change GPIOC_7 to alternate function 2
@@ -759,6 +762,7 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 		break;
 	case INTEL_MRFL_SD:
 		slot->host->quirks2 |= SDHCI_QUIRK2_WAIT_FOR_IDLE;
+		slot->host->mmc->caps2 |= MMC_CAP2_FIXED_NCRC;
 		break;
 	case INTEL_MRFL_SDIO:
 		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;

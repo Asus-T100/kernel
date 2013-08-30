@@ -268,7 +268,6 @@ ssize_t i915_cb_adjust_write(struct file *filp,
 		  loff_t *ppos)
 {
 	int ret = count;
-	u32 val = 0;
 	struct drm_device *dev = filp->private_data;
 	struct ContBrightlut *cb_ptr = NULL;
 	drm_i915_private_t *dev_priv = dev->dev_private;
@@ -3035,6 +3034,9 @@ i915_read_rc6_api(struct file *filp,
 		len = snprintf(buf, sizeof(buf),
 				"RENDER WELL C0 COUNTER: 0x%x & ",
 				(unsigned int) I915_READ(GEN6_GT_GFX_RC6));
+		if (len < 0)
+			return len;
+
 		len += snprintf(&buf[len], (sizeof(buf) - len),
 				"MEDIA WELL C1 COUNTER: 0x%x\n",
 				(unsigned int) I915_READ(GEN6_GT_GFX_RC6p));
@@ -3043,6 +3045,10 @@ i915_read_rc6_api(struct file *filp,
 		len = snprintf(buf, sizeof(buf),
 				"RENDER WELL C1 COUNTER: 0x%x & ",
 				(unsigned int)I915_READ(GEN6_GT_GFX_RC6pp));
+
+		if (len < 0)
+			return len;
+
 		len += snprintf(&buf[len], (sizeof(buf) - len),
 				"MEDIA WELL C1 COUNTER: 0x%x\n",
 				(unsigned int)
@@ -3053,6 +3059,10 @@ i915_read_rc6_api(struct file *filp,
 				"RENDER WELL C6 COUNTER: 0x%x & ",
 				(unsigned int)
 					I915_READ(VLV_RENDER_C0_COUNT_REG));
+
+		if (len < 0)
+			return len;
+
 		len += snprintf(&buf[len], (sizeof(buf) - len),
 				"MEDIA WELL C6 COUNTER: 0x%x\n",
 				(unsigned int)
@@ -3152,6 +3162,9 @@ i915_read_turbo_api(struct file *filp,
 		len = snprintf(buf, sizeof(buf),
 				"Turbo Enabled: %s\n",
 				yesno(pval & GEN6_RP_ENABLE));
+
+		if (len < 0)
+			return len;
 
 		len += snprintf(&buf[len], (sizeof(buf) - len),
 				"Max Gpu Freq _max_delay_: %d\n",
@@ -3468,6 +3481,10 @@ i915_read_dpst_api(struct file *filp,
 		len = snprintf(buf, sizeof(buf),
 				"DPST Current User Level: 0x%x\n",
 				(dev_priv->backlight_level));
+
+		if (len < 0)
+			return len;
+
 		len += snprintf(&buf[len], (sizeof(buf) - len),
 				"DPST Current Backlight Level: 0x%x\n",
 				dpst_set_level);
@@ -3539,6 +3556,8 @@ i915_read_rc6_status(struct file *filp,
 		"RC6 is %s\n",
 		(is_rc6_enabled(dev)) ?
 				"enabled" : "disabled");
+	if (len < 0)
+		return len;
 
 	len += snprintf(&buf[len], (sizeof(buf) - len),
 		"Render well is %s & Media well is %s\n",

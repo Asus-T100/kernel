@@ -78,13 +78,13 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	dsi->port_bits = BANDGAP_LNC_CIRCUIT | LP_OUTPUT_HOLD;
 	dsi->turn_arnd_val = 0x3f;
 	dsi->rst_timer_val = 0xff;
-	dsi->hs_to_lp_count = 0x1b;
+	dsi->hs_to_lp_count = 0x46;
 	dsi->lp_byte_clk = 4;
 	dsi->bw_timer = 0;
-	dsi->clk_lp_to_hs_count = 0x1b;
-	dsi->clk_hs_to_lp_count = 0x0c;
+	dsi->clk_lp_to_hs_count = 0x24;
+	dsi->clk_hs_to_lp_count = 0x0F;
 	dsi->video_frmt_cfg_bits = IP_TG_CONFIG;
-	dsi->dphy_reg = 0x1B104315;
+	dsi->dphy_reg = 0x3F10430D;
 
 	return true;
 }
@@ -136,13 +136,17 @@ void b080xat_mode_set(struct intel_dsi_device *dsi,
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	static int reset;
 
-	/* No other better place to do the panel reset */
-	intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
-	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
-	mdelay(10);
-	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
-	mdelay(20);
+	if (!reset) {
+		/* No other better place to do the panel reset */
+		intel_gpio_nc_write32(dev_priv, 0x4160, 0x2000CC00);
+		intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
+		mdelay(10);
+		intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
+		mdelay(20);
+		reset = 1;
+	}
 }
 
 enum drm_connector_status b080xat_detect(struct intel_dsi_device *dsi)

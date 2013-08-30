@@ -1585,6 +1585,31 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		goto out_mtrrfree;
 	}
 
+	/* Creating our own private workqueue for handling the
+	 * MMIO based flips, so as to avoid the block of the
+	 * HWC thread (who issued the flip ioctl), due to the
+	 * synchronization needed between the Rendering & flip stages.
+	 * The synchronization will require a sw wait for the ongoing
+	 * rendering operation, if any, to complete, before issuing the
+	 * flip call. Because of this work queue, the wait would be done by
+	 * the worker thread.
+	 *
+	 * Also since the flip work has to be processed at earliest, HIGHPRI
+	 * flag is used here.
+	 * Also we need serialized execution, hence using max_active = 1
+	 * and NON_REENTRANT.
+	 */
+	dev_priv->flipwq = alloc_workqueue("i915_flip",
+				WQ_UNBOUND | WQ_NON_REENTRANT | WQ_HIGHPRI,
+				1);
+
+	if (dev_priv->flipwq == NULL) {
+		DRM_ERROR("Failed to create flip workqueue.\n");
+		ret = -ENOMEM;
+		destroy_workqueue(dev_priv->wq);
+		goto out_mtrrfree;
+	}
+
 	/* Creating our own private workqueue for the unregistration of
 	   MMU notfifiers used with vmap objects. The notfifier
 	   unregistration is done when vmap objects are freed,
@@ -1603,6 +1628,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	if (dev_priv->vmap_mn_unregister_wq == NULL) {
 		DRM_ERROR("Failed to create mn_unregister workqueue.\n");
 		ret = -ENOMEM;
+		destroy_workqueue(dev_priv->flipwq);
+		destroy_workqueue(dev_priv->wq);
 		goto out_mtrrfree;
 	}
 
@@ -1712,6 +1739,8 @@ out_gem_unload:
 
 	intel_teardown_gmbus(dev);
 	intel_teardown_mchbar(dev);
+	destroy_workqueue(dev_priv->vmap_mn_unregister_wq);
+	destroy_workqueue(dev_priv->flipwq);
 	destroy_workqueue(dev_priv->wq);
 out_mtrrfree:
 	if (dev_priv->mm.gtt_mtrr >= 0) {
@@ -1827,6 +1856,8 @@ int i915_driver_unload(struct drm_device *dev)
 	/* No need to explicitly flush the pending work items
 	   will be taken care by the destroy wq function itself */
 	destroy_workqueue(dev_priv->vmap_mn_unregister_wq);
+
+	destroy_workqueue(dev_priv->flipwq);
 
 	pci_dev_put(dev_priv->bridge_dev);
 	kfree(dev->dev_private);
@@ -1984,6 +2015,8 @@ struct drm_ioctl_desc i915_ioctls[] = {
 							DRM_AUTH|DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_PERFMON, i915_perfmon_ioctl, DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_DPST_CONTEXT, i915_dpst_context, DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_GEM_ACCESS_DATATYPE, i915_gem_access_datatype, \
+							DRM_UNLOCKED),
 };
 
 int i915_max_ioctl = DRM_ARRAY_SIZE(i915_ioctls);

@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130820_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -213,7 +214,7 @@ typedef enum {
  * and put in the address maps of other devices we cannot
  * enumerate them as that assumes the instrances are the
  * same.
- * 
+ *
  * We define a single GP_DEVICE containing all gp_regs
  * w.r.t. a single base address
  *

@@ -1993,7 +1993,7 @@ i915_gem_check_olr(struct intel_ring_buffer *ring, u32 seqno)
  * Returns 0 if the seqno was found within the alloted time. Else returns the
  * errno with remaining time filled in timeout argument.
  */
-static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
+int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 			bool interruptible, struct timespec *timeout)
 {
 	struct timespec before, now, wait_time = {1, 0};
@@ -4449,4 +4449,31 @@ rescan:
 	}
 	mutex_unlock(&dev->struct_mutex);
 	return cnt / 100 * sysctl_vfs_cache_pressure;
+}
+
+/**
+ * Reads/writes datatype for the object.
+ */
+int
+i915_gem_access_datatype(struct drm_device *dev, void *data,
+		   struct drm_file *file)
+{
+	struct drm_i915_gem_access_datatype *args = data;
+	struct drm_i915_gem_object *obj;
+
+	obj = to_intel_bo(drm_gem_object_lookup(dev, file, args->handle));
+	if (&obj->base == NULL)
+		return -ENOENT;
+
+	mutex_lock(&dev->struct_mutex);
+
+	if (args->write)
+		obj->datatype = args->datatype;
+	else
+		args->datatype = obj->datatype;
+
+	drm_gem_object_unreference(&obj->base);
+	mutex_unlock(&dev->struct_mutex);
+
+	return 0;
 }

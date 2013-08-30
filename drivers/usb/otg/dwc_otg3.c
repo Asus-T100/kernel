@@ -917,13 +917,13 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 
 		if (otg->otg_data->is_byt) {
 			otg_dbg(otg, "cancel discon work\n");
-			cancel_delayed_work(&otg->suspend_discon_work);
+			__cancel_delayed_work(&otg->suspend_discon_work);
 		}
 		return 0;
 	} else if (mA == OTG_DEVICE_RESET) {
 		if (otg->otg_data->is_byt) {
 			otg_dbg(otg, "cancel discon work\n");
-			cancel_delayed_work(&otg->suspend_discon_work);
+			__cancel_delayed_work(&otg->suspend_discon_work);
 		}
 		return 0;
 	}
@@ -1413,7 +1413,7 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 
 		if (otg->otg_data->is_byt) {
 			otg_dbg(otg, "cancel discon work\n");
-			cancel_delayed_work(&otg->suspend_discon_work);
+			__cancel_delayed_work(&otg->suspend_discon_work);
 		}
 		return DWC_STATE_INIT;
 	}
@@ -2138,34 +2138,15 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 
 	return 0;
 }
-
-static bool is_dwc_otg_on(struct dwc_otg2 *otg)
-{
-	u32 data = 0;
-	data = otg_read(otg, GUSB2PHYCFG0);
-	if (data & GUSB2PHYCFG_SUS_PHY) {
-		printk(KERN_ERR "%s:err\n", __func__);
-		return false;
-	} else
-		return true;
-}
-
 static int dwc_otg_runtime_resume(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
-REINIT:
 	pci_set_power_state(pci_dev, PCI_D0);
 
 	if (!otg)
 		return -ENODEV;
-	if (otg->otg_data && otg->otg_data->is_byt) {
-		if (!is_dwc_otg_on(otg)) {
-			pci_set_power_state(pci_dev, PCI_D3hot);
-			goto REINIT;
-		}
-	}
 
 	/* This is one WA for silicon BUG.
 	 * Without this WA, the USB2 phy will enter low power
@@ -2188,7 +2169,6 @@ REINIT:
 		stop_main_thread(otg);
 		return -EIO;
 	}
-
 	set_sus_phy(otg, 0);
 
 	if (otg->otg_data && otg->otg_data->is_byt) {
@@ -2235,8 +2215,6 @@ static int dwc_otg_resume(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
-
-	pci_set_power_state(pci_dev, PCI_D0);
 
 	if (!otg)
 		return -ENODEV;
