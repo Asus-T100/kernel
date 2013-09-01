@@ -24,6 +24,7 @@
 #include <asm/intel-mid.h>
 #include <linux/init.h>
 #include <linux/pci.h>
+#include <linux/pm_qos.h>
 
 
 /* Chip ID of Intel Atom SOC*/
@@ -108,6 +109,8 @@ enum s3_parts {
 	MAX_S3_PARTS
 };
 
+#define PCI_DEVICE_ID_IUNIT_BYT		0x0f38
+
 #ifdef CONFIG_ATOM_SOC_POWER
 #define LOG_PMU_EVENTS
 
@@ -188,6 +191,59 @@ extern void dump_nc_power_history(void);
 extern bool mid_pmu_is_wake_source(u32 lss_number);
 
 extern void (*nc_report_power_state) (u32, int);
+
+/*
+ * following changes for BYT I-Unit is due to sighting 4591287,
+ * accessing to PCI registers after power off I-Unit would cause hang
+ */
+static inline int byt_pci_power_manageable(struct pci_dev *dev)
+{
+	return (dev->vendor == PCI_VENDOR_ID_INTEL &&
+		dev->device == PCI_DEVICE_ID_IUNIT_BYT);
+}
+
+static inline pci_power_t byt_pci_choose_state(struct pci_dev *dev)
+{
+	if (!byt_pci_power_manageable(dev))
+		return PCI_POWER_ERROR;
+
+	/*
+	 * Use D3cold for ATOMISP as after power off, kernel
+	 * wouldn't access PCI space.
+	 */
+	return PCI_D3cold;
+}
+
+static inline int byt_pci_set_power_state(struct pci_dev *dev,
+					  pci_power_t state)
+{
+	int error = -EINVAL;
+
+	if (!byt_pci_power_manageable(dev))
+		return error;
+
+
+	switch (state) {
+	case PCI_D0:
+		error = pmu_nc_set_power_state(TNG_ISP_ISLAND,
+				OSPM_ISLAND_UP, 0x39);
+		break;
+	case PCI_D1:
+	case PCI_D2:
+	case PCI_D3cold:
+		if (dev_pm_qos_flags(&dev->dev, PM_QOS_FLAG_NO_POWER_OFF) ==
+				PM_QOS_FLAGS_ALL) {
+			error = -EBUSY;
+			break;
+		}
+	case PCI_D3hot:
+		error = pmu_nc_set_power_state(TNG_ISP_ISLAND,
+				OSPM_ISLAND_DOWN, 0x39);
+		break;
+	}
+	return error;
+}
+
 #else
 
 /*
@@ -230,7 +286,14 @@ static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };
 static inline int pmu_set_emmc_to_d0i0_atomic(void) { return -ENOSYS; }
 static inline void pmu_power_off(void) { return; }
-static inline bool mid_pmu_is_wake_source(u32 lss_number) { return false; }
+static inline bool mid_pmu_is_wake_source(u32 lss_number)
+					{ return false; }
+static inline int byt_pci_power_manageable(struct pci_dev *dev)
+					{ return false; }
+static inline pci_power_t byt_pci_choose_state(struct pci_dev *dev)
+					{ return PCI_POWER_ERROR; }
+static inline int byt_pci_set_power_state(struct pci_dev *dev,
+					pci_power_t state) { return -EINVAL; }
 #endif /* #ifdef CONFIG_ATOM_SOC_POWER */
 
 #endif /* #ifndef INTEL_MID_PM_H */
