@@ -195,10 +195,14 @@ int mei_io_cb_alloc_resp_buf(struct mei_cl_cb *cb, size_t length)
  */
 int mei_cl_flush_queues(struct mei_cl *cl)
 {
+	struct mei_device *dev;
+
 	if (WARN_ON(!cl || !cl->dev))
 		return -EINVAL;
 
-	dev_dbg(&cl->dev->pdev->dev, "remove list entry belonging to cl\n");
+	dev = cl->dev;
+
+	cl_dbg(dev, cl, "remove list entry belonging to cl\n");
 	mei_io_list_flush(&cl->dev->read_list, cl);
 	mei_io_list_flush(&cl->dev->write_list, cl);
 	mei_io_list_flush(&cl->dev->write_waiting_list, cl);
@@ -304,7 +308,7 @@ int mei_cl_link(struct mei_cl *cl, int id)
 
 	cl->state = MEI_FILE_INITIALIZING;
 
-	dev_dbg(&dev->pdev->dev, "link cl host id = %d\n", cl->host_client_id);
+	cl_dbg(dev, cl, "link cl\n");
 	return 0;
 }
 
@@ -330,7 +334,7 @@ int mei_cl_unlink(struct mei_cl *cl)
 
 	list_for_each_entry_safe(pos, next, &dev->file_list, link) {
 		if (cl->host_client_id == pos->host_client_id) {
-			dev_dbg(&dev->pdev->dev, "remove host client = %d, ME client = %d\n",
+			cl_dbg(dev, cl, "remove host client = %d, ME client = %d\n",
 				pos->host_client_id, pos->me_client_id);
 			list_del_init(&pos->link);
 			break;
@@ -402,6 +406,8 @@ int mei_cl_disconnect(struct mei_cl *cl)
 
 	dev = cl->dev;
 
+	cl_dbg(dev, cl, "disconnecting");
+
 	if (cl->state != MEI_FILE_DISCONNECTING)
 		return 0;
 
@@ -414,7 +420,7 @@ int mei_cl_disconnect(struct mei_cl *cl)
 	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
 		pm_runtime_put_noidle(&dev->pdev->dev);
-		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
+		cl_err(dev, cl, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
@@ -422,13 +428,13 @@ int mei_cl_disconnect(struct mei_cl *cl)
 		dev->hbuf_is_ready = false;
 		if (mei_hbm_cl_disconnect_req(dev, cl)) {
 			rets = -ENODEV;
-			dev_err(&dev->pdev->dev, "failed to disconnect.\n");
+			cl_err(dev, cl, "failed to disconnect.\n");
 			goto free;
 		}
 		mdelay(10); /* Wait for hardware disconnection ready */
 		list_add_tail(&cb->list, &dev->ctrl_rd_list.list);
 	} else {
-		dev_dbg(&dev->pdev->dev, "add disconnect cb to control write list\n");
+		cl_dbg(dev, cl, "add disconnect cb to control write list\n");
 		list_add_tail(&cb->list, &dev->ctrl_wr_list.list);
 
 	}
@@ -442,24 +448,23 @@ int mei_cl_disconnect(struct mei_cl *cl)
 	mutex_lock(&dev->device_lock);
 	if (MEI_FILE_DISCONNECTED == cl->state) {
 		rets = 0;
-		dev_dbg(&dev->pdev->dev, "successfully disconnected from FW client.\n");
+		cl_dbg(dev, cl, "successfully disconnected from FW client.\n");
 	} else {
 		rets = -ENODEV;
 		if (MEI_FILE_DISCONNECTED != cl->state)
-			dev_dbg(&dev->pdev->dev, "wrong status client disconnect.\n");
+			cl_dbg(dev, cl, "wrong status client disconnect.\n");
 
 		if (err)
-			dev_dbg(&dev->pdev->dev,
-				"wait failed disconnect err=%08x\n", err);
+			cl_dbg(dev, cl, "wait failed disconnect err=%d\n", err);
 
-		dev_dbg(&dev->pdev->dev, "failed to disconnect from FW client.\n");
+		cl_dbg(dev, cl, "failed to disconnect from FW client.\n");
 	}
 
 	mei_io_list_flush(&dev->ctrl_rd_list, cl);
 	mei_io_list_flush(&dev->ctrl_wr_list, cl);
 free:
 
-	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	cl_dbg(dev, cl, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
 
@@ -528,7 +533,7 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
 		pm_runtime_put_noidle(&dev->pdev->dev);
-		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
+		cl_err(dev, cl, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
@@ -564,7 +569,7 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 	rets = cl->status;
 
 out:
-	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	cl_dbg(dev, cl, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
 
@@ -678,21 +683,22 @@ int mei_cl_read_start(struct mei_cl *cl, size_t length)
 	if (dev->dev_state != MEI_DEV_ENABLED)
 		return -ENODEV;
 
+	cl_dbg(dev, cl, "length=%zu\n", length);
+
 	if (cl->read_cb) {
-		dev_dbg(&dev->pdev->dev, "read is pending.\n");
+		cl_dbg(dev, cl, "read is pending.\n");
 		return -EBUSY;
 	}
 	i = mei_me_cl_by_id(dev, cl->me_client_id);
 	if (i < 0) {
-		dev_err(&dev->pdev->dev, "no such me client %d\n",
-			cl->me_client_id);
+		cl_err(dev, cl, "no such me client %d\n", cl->me_client_id);
 		return  -ENODEV;
 	}
 
 	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
 		pm_runtime_put_noidle(&dev->pdev->dev);
-		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
+		cl_err(dev, cl, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
@@ -724,7 +730,7 @@ int mei_cl_read_start(struct mei_cl *cl, size_t length)
 	}
 
 out:
-	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	cl_dbg(dev, cl, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
 
@@ -772,7 +778,7 @@ int mei_cl_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 		return 0;
 	}
 
-	dev_dbg(&dev->pdev->dev, "buf: size = %d idx = %lu\n",
+	cl_dbg(dev, cl, "buf: size = %d idx = %lu\n",
 			cb->request_buffer.size, cb->buf_idx);
 	dev_dbg(&dev->pdev->dev, MEI_HDR_FMT, MEI_HDR_PRM(&mei_hdr));
 
@@ -826,12 +832,12 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 
 	buf = &cb->request_buffer;
 
-	dev_dbg(&dev->pdev->dev, "mei_cl_write %d\n", buf->size);
+	cl_dbg(dev, cl, "size=%d\n", buf->size);
 
 	rets = pm_runtime_get(&dev->pdev->dev);
 	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
 		pm_runtime_put_noidle(&dev->pdev->dev);
-		dev_err(&dev->pdev->dev, "rpm: get failed %d\n", rets);
+		cl_err(dev, cl, "rpm: get failed %d\n", rets);
 		return rets;
 	}
 
@@ -844,7 +850,7 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 	mei_hdr.msg_complete = 0;
 
 	if (!pm_runtime_active(&dev->pdev->dev)) {
-		dev_dbg(&dev->pdev->dev, "device not active queue for later\n");
+		cl_dbg(dev, cl, "device not active queue for later\n");
 		rets = buf->size;
 		goto out;
 	}
@@ -910,7 +916,7 @@ out:
 		mutex_lock(&dev->device_lock);
 	}
 err:
-	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	cl_dbg(dev, cl, "rpm: autosuspend\n");
 	pm_runtime_mark_last_busy(&dev->pdev->dev);
 	pm_runtime_put_autosuspend(&dev->pdev->dev);
 
@@ -973,7 +979,7 @@ void mei_cl_all_read_wakeup(struct mei_device *dev)
 	struct mei_cl *cl, *next;
 	list_for_each_entry_safe(cl, next, &dev->file_list, link) {
 		if (waitqueue_active(&cl->rx_wait)) {
-			dev_dbg(&dev->pdev->dev, "Waking up client!\n");
+			cl_dbg(dev, cl, "Waking up reading client!\n");
 			wake_up_interruptible(&cl->rx_wait);
 		}
 	}
