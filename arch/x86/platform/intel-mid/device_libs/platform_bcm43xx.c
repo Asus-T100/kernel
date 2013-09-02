@@ -105,7 +105,7 @@ static struct fixed_voltage_config bcm43xx_vwlan = {
 	.microvolts		= 1800000,
 	.gpio			= -EINVAL,
 	.startup_delay		= 1000 * DELAY_ONOFF,
-	.enable_high		= 1,
+	.enable_high		= 0, //asus-ethan20130902+ Modified WL_EN (GPIO_S5[20]) to Low Enable
 	.enabled_at_boot	= 0,
 	.init_data		= &bcm43xx_vmmc3,
 };
