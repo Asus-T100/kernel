@@ -53,6 +53,9 @@
 #define EC_SET_AUTO_WAKEUP_CMD_FLAG   0x06
 #define EC_SET_AUTO_WAKEUP_CMD_TIMER  0x08
 
+#define GUAGE_CMD_CNTL                          0x00
+#define GUAGE_CMD_TEMP                          0x06
+
 
 extern struct linux_logo logo_lowbat01_clut224;
 extern struct linux_logo logo_lowbat02_clut224;
@@ -122,6 +125,167 @@ struct byt_chip_info {
 static struct byt_chip_info *byt_chip;
 
 
+static int asusec_write_read(struct byt_chip_info *chip,u8 *write_buf, u16 write_len,u8 *read_buf, u16 read_len)
+{
+        struct i2c_msg msg[2];
+        int ret;
+        int num =2;
+
+        memset(msg,0,sizeof(struct i2c_msg)*2);
+
+        num = 2;
+        msg[0].addr = chip->client->addr;
+        msg[0].flags = !I2C_M_RD;
+        msg[0].len = write_len;
+        msg[0].buf = write_buf;
+        msg[1].addr = chip->client->addr;
+        msg[1].flags = I2C_M_RD;
+        msg[1].len = read_len;
+        msg[1].buf = read_buf;
+
+        ret = i2c_transfer(chip->client->adapter, msg, num);
+
+        if(ret <0) {
+                pr_err("i2c transfer error\n");
+                return -EIO;
+        } else
+                return 0;
+}
+
+static int asusec_write(struct byt_chip_info *chip,u8 *write_buf, u16 write_len)
+{
+        struct i2c_msg msg[2];
+        int ret;
+        int num =2;
+
+        memset(msg,0,sizeof(struct i2c_msg)*2);
+
+        num = 1;
+        msg[0].addr = chip->client->addr;
+        msg[0].flags = !I2C_M_RD;
+        msg[0].len = write_len;
+        msg[0].buf = write_buf;
+
+        ret = i2c_transfer(chip->client->adapter, msg, num);
+
+        if(ret <0) {
+                pr_err("i2c transfer error\n");
+                return -EIO;
+        } else
+                return 0;
+}
+
+static int asusec_read(struct byt_chip_info *chip, u8 *read_buf, u16 read_len)
+{
+        struct i2c_msg msg[2];
+        int ret;
+        int num =2;
+
+        memset(msg,0,sizeof(struct i2c_msg)*2);
+
+        num = 1;
+
+        msg[0].addr = chip->client->addr;
+        msg[0].flags = I2C_M_RD;
+        msg[0].len = read_len;
+        msg[0].buf = read_buf;
+
+        ret = i2c_transfer(chip->client->adapter, msg, num);
+
+        if(ret <0) {
+                pr_err("i2c transfer error\n");
+                return -EIO;
+        } else
+                return 0;
+
+}
+
+static int asusec_read_guage(struct byt_chip_info *chip,u8 command, u8 *read_buf, u8 read_len)
+{
+	u8	 guage_i2c_buf[5];
+	u8	guage_status[2];
+	u8 status;
+	int time_out;
+	int ret;
+
+	guage_i2c_buf[0] = 0xC0;
+	guage_i2c_buf[1] = 0x02;
+	guage_i2c_buf[2] = 0xAA;
+	guage_i2c_buf[3] = command;
+	guage_i2c_buf[4] = read_len;
+
+	ret = asusec_write(chip,guage_i2c_buf,5);
+
+	if(ret)
+		return -EIO;
+
+	guage_status[0] = 0xC0;
+	guage_status[1] = 0x01;
+
+	time_out = 1000;
+	do{
+		asusec_write_read(chip,guage_status,2,&status,1);
+		if(status == 0x02) //read success
+			break;
+		msleep(1);
+	}while(--time_out);
+
+        if(!time_out) {
+                pr_err("time out\n");
+		return -EIO;
+	}
+	asusec_write_read(chip,guage_i2c_buf,2,read_buf,read_len);
+
+	return 0;
+}
+
+static int asusec_write_guage(struct byt_chip_info *chip,u8 command, u8 *write_buf, u8 write_len)
+{
+        u8       *guage_i2c_buf;
+        u8      guage_status[2];
+        u8 status;
+	int i=0;
+	int time_out = 10;
+	int ret;
+
+	guage_i2c_buf = kzalloc(5+write_len, GFP_KERNEL);
+
+        guage_i2c_buf[0] = 0xC0;
+        guage_i2c_buf[1] = 0x03;
+        guage_i2c_buf[2] = 0xAA;
+        guage_i2c_buf[3] = command;
+        guage_i2c_buf[4] = write_len;
+
+	for(i=0;i<write_len;i++)
+	{
+		guage_i2c_buf[5+i] = write_buf[i];
+	}
+
+        ret = asusec_write(chip,guage_i2c_buf,5+write_len);
+	
+	kfree(guage_i2c_buf);	
+
+	if(ret) 
+		return -EIO;
+
+        guage_status[0] = 0xC0;
+        guage_status[1] = 0x01;
+
+	time_out = 1000;
+        do{
+                asusec_write_read(chip,guage_status,2,&status,1);
+                if(status == 0x01) //write success
+                        break;
+                msleep(1);
+        }while(--time_out);
+
+	if(!time_out) {
+		pr_err("time out\n");
+		return -EIO;
+	}
+
+        return 0;
+}
 
 static enum power_supply_property byt_battery_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
@@ -291,38 +455,19 @@ i2c_read_err:
 	return ret;
 }
 
+//TODO error handle
 static int get_lid_status( struct byt_chip_info *chip) 
 {
-	struct i2c_msg msg[2];
-	int ret;
-	int num =2;
-	u8 write_buf[1];	
-	u8 read_buf[1];
-	
-	memset(&msg,0,sizeof(struct i2c_msg)*2);
+	u8	offset;
+	u8	lid_status = 0x00;
 
-        num = 2;
-        msg[0].addr = chip->client->addr;
-        msg[0].flags = !I2C_M_RD;
-        msg[0].len = 1;
-        write_buf[0] = 0x83;
-        msg[0].buf = write_buf;
+	offset = 0x83;
 
-        msg[1].addr = chip->client->addr;
-        msg[1].flags = I2C_M_RD;
-        msg[1].len = 1;
-        msg[1].buf = read_buf;
+	asusec_write_read(chip,&offset,1,&lid_status,1);
 
+	printk(KERN_ALERT"get_lid_status=%d\n", lid_status);
 
-	ret = i2c_transfer(chip->client->adapter, msg, num);
-
-	if(ret <0) {
-		pr_err("i2c_transfer error\n");
-		return -EIO;
-	} else{
-		printk(KERN_ALERT"get_lid_status=%d\n", read_buf[0]);
-		return read_buf[0];
-	}
+	return lid_status;
 
 }
 
@@ -330,102 +475,51 @@ static int get_lid_status( struct byt_chip_info *chip)
 
 static int byt_battery_update( struct byt_chip_info *chip) 
 {
-	struct i2c_msg msg[2];
+	u8 offset;
 	int ret;
-	int num =2;
-	u8 write_buf[1];	
-	
+		
 	memset(&chip->ecbat,0,sizeof(struct byt_battery));
-	memset(&msg,0,sizeof(struct i2c_msg)*2);
 
-        num = 2;
-        msg[0].addr = chip->client->addr;
-        msg[0].flags = !I2C_M_RD;
-        msg[0].len = 1;
-        write_buf[0] = 0x81;
-        msg[0].buf = write_buf;
+	offset = 0x81;
 
-        msg[1].addr = chip->client->addr;
-        msg[1].flags = I2C_M_RD;
-        msg[1].len = sizeof(chip->ecbat);
-        msg[1].buf = &chip->ecbat;
+	ret = asusec_write_read(chip,&offset,1,&chip->ecbat,sizeof(chip->ecbat));
 
-
-	ret = i2c_transfer(chip->client->adapter, msg, num);
-
-	if(ret <0) {
-		pr_err("i2c_transfer error\n");
-		return -EIO;
-	} else
-		return 0;
+	return ret;
 
 }
 
 static int get_EC_version( struct byt_chip_info *chip) 
 {	
-	struct i2c_msg msg[2];	
-	int ret;	
-	int num =2;	
-	u8 write_buf[1];			
+        u8 offset;
+        int ret;
 
-	memset(&msg,0,sizeof(struct i2c_msg)*2);        
+	offset = 0xEC;
 
-		num = 2;        
-		msg[0].addr = chip->client->addr;        
-		msg[0].flags = !I2C_M_RD;        
-		msg[0].len = 1;        
-		write_buf[0] = 0xEC;        
-		msg[0].buf = write_buf;        
-		msg[1].addr = chip->client->addr;        
-		msg[1].flags = I2C_M_RD;        
-		msg[1].len = 9;        
-		msg[1].buf = chip->ec_ver;	
-
-	ret = i2c_transfer(chip->client->adapter, msg, num);	
-			
-	if(ret <0) {		
-		pr_err("i2c_transfer error\n");		
-		return -EIO;	
-	} else{		
+	ret = asusec_write_read(chip,&offset,1,chip->ec_ver,9);
+	
+	if(!ret)
 		printk(KERN_ALERT"EC_version=%s\n", chip->ec_ver);
-		return 0;
-	}
+	
+	return ret;
 }
 
+//TODO error handle
 static int get_event_ID( struct byt_chip_info *chip) 
 {
-	struct i2c_msg msg[2];
-	int ret;
-	int num =2;
-	u8 write_buf[1];
-	u8 read_buf[1];
-	
-	memset(&msg,0,sizeof(struct i2c_msg)*2);
+        u8      offset;
+        u8      event_id = 0x00;
+	int 	ret;
 
-        num = 2;
-        msg[0].addr = chip->client->addr;
-        msg[0].flags = !I2C_M_RD;
-        msg[0].len = 1;
-        write_buf[0] = 0x84;
-        msg[0].buf = write_buf;
+        offset = 0x84;
 
-        msg[1].addr = chip->client->addr;
-        msg[1].flags = I2C_M_RD;
-        msg[1].len = 1;
-        msg[1].buf = read_buf;
+        ret = asusec_write_read(chip,&offset,1,&event_id,1);
 
+	if(!ret)
+        	printk(KERN_ALERT"get_event_ID = %x\n", event_id);
 
-	ret = i2c_transfer(chip->client->adapter, msg, num);
+        return event_id;
 
-	if(ret <0) {
-		pr_err("i2c_transfer error\n");
-		return -EIO;
-	} else{
-		printk(KERN_ALERT"get_event_ID = %x\n", read_buf[0]);
-		return read_buf[0];
-	}
 }
-
 
 static irqreturn_t byt_thread_handler(int id, void *dev)
 {
@@ -559,29 +653,17 @@ static ssize_t byt_ec_set_wakeup_flag(struct device *dev, struct device_attribut
 //write "1" to sys file "set_wakeup_flag"        
 	struct power_supply *psy = to_power_supply(dev);
 	struct byt_chip_info *chip = to_byt_chip_info(psy);
-	struct i2c_msg msg;
 	int ret;
-	int num;
 	u8 write_buf[2];	
 
-	memset(&msg, 0, sizeof(struct i2c_msg));
-
-        num = 1;
-        msg.addr = chip->client->addr;
-        msg.flags = !I2C_M_RD;
-        msg.len = 2;
         write_buf[0] = EC_SET_AUTO_WAKEUP_REG;
         write_buf[1] = EC_SET_AUTO_WAKEUP_CMD_FLAG;
-        msg.buf = write_buf;
+	ret = asusec_write(chip,write_buf,2);
 
-	ret = i2c_transfer(chip->client->adapter, &msg, num);
-
-	if(ret <0) {
-            pr_err("%s: i2c_transfer error.\n", __func__);
-            return -EIO;
-	} else {
-            return count;
-        }
+	if(ret)
+		return 0;
+	else
+		return count;
 }
 
 static ssize_t byt_ec_set_wakeup_timer(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
@@ -589,31 +671,19 @@ static ssize_t byt_ec_set_wakeup_timer(struct device *dev, struct device_attribu
 //write a BYTE to sys file "set_wakeup_timer", wakeup time = 0~255 sec        
 	struct power_supply *psy = to_power_supply(dev);
 	struct byt_chip_info *chip = to_byt_chip_info(psy);
-	struct i2c_msg msg;
 	int ret;
-	int num;
 	u8 write_buf[3];	
 
-	memset(&msg, 0, sizeof(struct i2c_msg));
-
-        num = 1;
-        msg.addr = chip->client->addr;
-        msg.flags = !I2C_M_RD;
-        msg.len = 3;
         write_buf[0] = EC_SET_AUTO_WAKEUP_REG;
         write_buf[1] = EC_SET_AUTO_WAKEUP_CMD_TIMER;
         write_buf[2] = buf[0];    //wake up time
-        msg.buf = write_buf;
+	
+	ret = asusec_write(chip,write_buf,3);
 
-	ret = i2c_transfer(chip->client->adapter, &msg, num);
-
-	if(ret <0) {
-            pr_err("%s: i2c_transfer error.\n", __func__);
-            return -EIO;
-	} else {
-            return count;
-        }
-
+        if(ret)
+                return 0;
+        else
+                return count;
 }
 
 static DEVICE_ATTR(battery_charge_status, S_IRUGO | S_IWUSR,
@@ -706,7 +776,14 @@ static int byt_battery_probe(struct i2c_client *client,
 	if (input_register_device(chip->lid_dev)) {
 			dev_err(&client->dev, "input_allocate_device fail\n");
 	}
-	
+
+{
+	u16	sub_command = 0x0002;
+	u16	fw_version;
+	asusec_write_guage(chip,GUAGE_CMD_CNTL,&sub_command,2);
+	asusec_read_guage(chip,GUAGE_CMD_CNTL,&fw_version,2);
+	pr_err("guage version = %x\n",fw_version);
+}	
 	
 	get_EC_version(chip);
 	
@@ -724,8 +801,8 @@ static int byt_battery_probe(struct i2c_client *client,
 		}
 		
 	}
-	
-	
+
+
 	//Logo
 	if(byt_get_capacity(chip)<= 5 && byt_ac_status(chip)==1){
 			int i;
@@ -752,7 +829,7 @@ static int byt_battery_probe(struct i2c_client *client,
 			}
 	}
 	*/
-	
+
 	chip->ac.name = "byt_ac";
     chip->ac.type = POWER_SUPPLY_TYPE_MAINS;
     chip->ac.properties = byt_ac_props;
@@ -830,6 +907,7 @@ static void byt_battery_shutdown(struct i2c_client *client)
 
 static const struct i2c_device_id asus_id[] = {
 	{ "asus_byt", 0 },
+        { },
 };
 MODULE_DEVICE_TABLE(i2c, asus_id);
 
