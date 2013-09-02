@@ -266,10 +266,17 @@ struct atomisp_de_config {
 };
 
 /* Chroma enhancement */
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
 struct atomisp_ce_config {
 	unsigned char uv_level_min;
 	unsigned char uv_level_max;
 };
+#else
+struct atomisp_ce_config {
+	unsigned int uv_level_min;
+	unsigned int uv_level_max;
+};
+#endif
 
 /* Defect pixel correction configuration */
 struct atomisp_dp_config {
