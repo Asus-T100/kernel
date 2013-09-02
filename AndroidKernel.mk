@@ -59,7 +59,7 @@ KERNEL_CCSLOP := $(filter-out time_macros,$(subst $(comma), ,$(CCACHE_SLOPPINESS
 KERNEL_CCSLOP := $(subst $(space),$(comma),$(KERNEL_CCSLOP))
 
 KERNEL_OUT_DIR := $(PRODUCT_OUT)/linux/kernel
-KERNEL_OUT_DIR_KDUMP := $(PRODUCT_OUT)/linux/kdump
+KERNEL_OUT_DIR_KDUMP := $(PRODUCT_OUT)/linux_kdump/kernel/
 KERNEL_MODULES_ROOT := $(PRODUCT_OUT)/root/lib/modules
 KERNEL_CONFIG := $(KERNEL_OUT_DIR)/.config
 KERNEL_CONFIG_KDUMP := $(KERNEL_OUT_DIR_KDUMP)/.config
