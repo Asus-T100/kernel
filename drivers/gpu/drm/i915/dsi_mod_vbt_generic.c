@@ -39,6 +39,160 @@
 #include "intel_dsi_cmd.h"
 #include "dsi_mod_vbt_generic.h"
 
+struct gpio_table gtable[] = {
+	{ GPI0_NC_0_HV_DDI0_HPD, GPIO_NC_0_HV_DDI0_PAD, 0 },
+	{ GPIO_NC_1_HV_DDI0_DDC_SDA, GPIO_NC_1_HV_DDI0_DDC_SDA_PAD, 0 },
+	{ GPIO_NC_2_HV_DDI0_DDC_SCL, GPIO_NC_2_HV_DDI0_DDC_SCL_PAD, 0 },
+	{ GPIO_NC_3_PANEL0_VDDEN, GPIO_NC_3_PANEL0_VDDEN_PAD, 0 },
+	{ GPIO_NC_4_PANEL0_BLKEN, GPIO_NC_4_PANEL0_BLKEN_PAD, 0 },
+	{ GPIO_NC_5_PANEL0_BLKCTL, GPIO_NC_5_PANEL0_BLKCTL_PAD, 0 }
+};
+
+static u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi, u8 *data)
+{
+	u8 type, byte, mode, vc, port;
+	u16 len;
+
+	DRM_DEBUG_DRIVER("MIPI: Executing sene packet element\n");
+
+	byte = *data++;
+	mode = (byte >> MIPI_TRANSFER_MODE_SHIFT) & 0x1;
+	vc = (byte >> MIPI_VIRTUAL_CHANNEL_SHIFT) & 0x3;
+	port = (byte >> MIPI_PORT_SHIFT) & 0x3;
+
+	/* get packet type and increment the pointer */
+	type = *data++;
+
+	len = *data;
+	data += 2;
+
+	switch (type) {
+	case MIPI_GENERIC_SHORT_WRITE_0_PARAM:
+		dsi_vc_generic_write_0(intel_dsi, vc);
+		break;
+	case MIPI_GENERIC_SHORT_WRITE_1_PARAM:
+		dsi_vc_generic_write_1(intel_dsi, vc, *data);
+		data++;
+		break;
+	case MIPI_GENERIC_SHORT_WRITE_2_PARAM:
+		dsi_vc_generic_write_2(intel_dsi, vc, *data, *(data + 1));
+		data += 2;
+		break;
+	case MIPI_GENERIC_READ_0_PARAM:
+	case MIPI_GENERIC_READ_1_PARAM:
+	case MIPI_GENERIC_READ_2_PARAM:
+		DRM_DEBUG_DRIVER("Generic Read not yet implemented or used\n");
+		break;
+	case MIPI_GENERIC_LONG_WRITE:
+		dsi_vc_generic_write(intel_dsi, vc, data, len);
+		data += len;
+		break;
+	case MIPI_MAN_DCS_SHORT_WRITE_0_PARAM:
+		dsi_vc_dcs_write_0(intel_dsi, vc, *data);
+		data++;
+		break;
+	case MIPI_MAN_DCS_SHORT_WRITE_1_PARAM:
+		dsi_vc_dcs_write_1(intel_dsi, vc, *data, *(data + 1));
+		data += 2;
+		break;
+	case MIPI_MAN_DCS_READ_0_PARAM:
+		DRM_DEBUG_DRIVER("DCS Read not yet implemented or used\n");
+		break;
+	case MIPI_MAN_DCS_LONG_WRITE:
+		dsi_vc_dcs_write(intel_dsi, vc, data, len);
+		data += len;
+		break;
+	};
+
+	return data;
+}
+
+static u8 *mipi_exec_delay(struct intel_dsi *intel_dsi, u8 *data)
+{
+	u32 delay = *data;
+
+	DRM_DEBUG_DRIVER("MIPI: executing delay element\n");
+	usleep_range(delay, delay + 10);
+	data += 4;
+
+	return data;
+}
+
+static u8 *mipi_exec_gpio(struct intel_dsi *intel_dsi, u8 *data)
+{
+	u8 gpio, action;
+	u16 function, pad;
+	u32 val;
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	DRM_DEBUG_DRIVER("MIPI: executing gpio element\n");
+	gpio = *data++;
+
+	/* pull up/down */
+	action = *data++;
+
+	function = gtable[gpio].function_reg;
+	pad = gtable[gpio].pad_reg;
+
+	if (!gtable[gpio].init) {
+		/* program the function */
+		intel_gpio_nc_write32(dev_priv, function, 0x2000CC00);
+		gtable[gpio].init = 1;
+	}
+
+	val = 0x4 | action;
+
+	/* pull up/down */
+	intel_gpio_nc_write32(dev_priv, pad, val);
+
+	return data;
+}
+
+FN_MIPI_ELEM_EXEC exec_elem[] = {
+	NULL, /* reserved */
+	mipi_exec_send_packet,
+	mipi_exec_delay,
+	mipi_exec_gpio,
+	NULL, /* status read; later */
+};
+
+/*
+ * MIPI Sequence from VBT #53 parsing logic
+ * We have already separated each seqence during bios parsing
+ * Following is generic execution function for any sequence
+ */
+static void generic_exec_sequence(struct intel_dsi *intel_dsi, char *sequence)
+{
+	u8 *data = sequence;
+	FN_MIPI_ELEM_EXEC mipi_elem_exec;
+	int index;
+
+	DRM_DEBUG_DRIVER("Starting MIPI sequence - %d\n", *data);
+
+	/* go to the first element of the sequence */
+	data++;
+
+	/* parse each byte till we reach end of sequence byte - 0x00 */
+	while (1) {
+		index = *data;
+		mipi_elem_exec = exec_elem[index];
+
+		/* goto element payload */
+		data++;
+
+		/* execute the element specifc rotines */
+		data = mipi_elem_exec(intel_dsi, data);
+
+		/*
+		 * After processing the element, data should point to
+		 * next element or end of sequence
+		 * check if have we reached end of sequence
+		 */
+		if (*data == 0x00)
+			break;
+	}
+}
 
 static void generic_get_panel_info(int pipe, struct drm_connector *connector)
 {
