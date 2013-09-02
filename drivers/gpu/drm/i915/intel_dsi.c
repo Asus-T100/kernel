@@ -97,6 +97,13 @@
 /* the panel drivers are here */
 static const struct intel_dsi_device intel_dsi_devices[] = {
 	{
+		.panel_id = MIPI_DSI_GENERIC_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "vbt-generic-dsi-vid-mode-display",
+		.dev_ops = &vbt_generic_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
+	{
 		.panel_id = MIPI_DSI_AUO_B101UAN01_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "auo-b101uan01-dsi-vid-mode-display",
