@@ -882,6 +882,7 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 			otg_dbg(otg, "schedule discon work\n");
 			schedule_delayed_work(&otg->suspend_discon_work,
 				SUSPEND_DISCONNECT_TIMEOUT);
+			return 0;
 		}
 
 		/* mA is zero mean D+/D- opened cable.
@@ -925,6 +926,11 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 			otg_dbg(otg, "cancel discon work\n");
 			__cancel_delayed_work(&otg->suspend_discon_work);
 		}
+		return 0;
+	}
+
+	if (otg->otg_data->is_byt) {
+		otg_dbg(otg, "BYT: don't do notification to EM\n");
 		return 0;
 	}
 
