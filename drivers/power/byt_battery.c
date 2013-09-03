@@ -48,8 +48,22 @@
 #include <linux/reboot.h>
 
 #include <linux/input.h>
+#include <linux/firmware.h>
 
 #define TAG "<asus-hollie>"
+#define ASUS_EC_FIRMWARE "asusec/t2bt0036.EC"
+#define ECSIZE	65536
+#define EFLASH_CMD_BYTE_PROGRAM	 	0x02
+#define EFLASH_CMD_WRITE_DISABLE 	0x04
+#define EFLASH_CMD_READ_STATUS	 	0x05
+#define EFLASH_CMD_WRITE_ENABLE		0x06
+#define EFLASH_CMD_FAST_READ		0x0B
+#define EFLASH_CMD_CHIP_ERASE	 	0x60
+#define EFLASH_CMD_READ_ID		0x9F
+#define EFLASH_CMD_AAI_WORD_PROGRAM 	0xAD
+#define EFLASH_CMD_SECTOR_ERASE	 	0xD7
+
+#define MAX_RETRY_COUNT		5
 
 #define EC_SET_AUTO_WAKEUP_REG        0x9E
 #define EC_SET_AUTO_WAKEUP_CMD_FLAG   0x06
@@ -127,6 +141,9 @@ struct byt_chip_info {
 
 	struct mutex lock;
 
+	u16	ec_fw_addr;
+	int 	ec_fw_mode;
+	const struct firmware *ec_fw;
 };
 
 static struct byt_chip_info *byt_chip;
@@ -137,15 +154,16 @@ static int asusec_write_read(struct byt_chip_info *chip,u8 *write_buf, u16 write
 	struct i2c_msg msg[2];
 	int ret;
 	int num =2;
+	u16 addr = (chip->ec_fw_mode == 0)?chip->client->addr:chip->ec_fw_addr;
 
 	memset(msg,0,sizeof(struct i2c_msg)*2);
 
 	num = 2;
-	msg[0].addr = chip->client->addr;
+	msg[0].addr = addr;
 	msg[0].flags = !I2C_M_RD;
 	msg[0].len = write_len;
 	msg[0].buf = write_buf;
-	msg[1].addr = chip->client->addr;
+	msg[1].addr = addr;
 	msg[1].flags = I2C_M_RD;
 	msg[1].len = read_len;
 	msg[1].buf = read_buf;
@@ -164,11 +182,12 @@ static int asusec_write(struct byt_chip_info *chip,u8 *write_buf, u16 write_len)
 	struct i2c_msg msg[2];
 	int ret;
 	int num =2;
+	u16 addr = (chip->ec_fw_mode == 0)?chip->client->addr:chip->ec_fw_addr;
 
 	memset(msg,0,sizeof(struct i2c_msg)*2);
 
 	num = 1;
-	msg[0].addr = chip->client->addr;
+	msg[0].addr = addr;
 	msg[0].flags = !I2C_M_RD;
 	msg[0].len = write_len;
 	msg[0].buf = write_buf;
@@ -187,12 +206,13 @@ static int asusec_read(struct byt_chip_info *chip, u8 *read_buf, u16 read_len)
 	struct i2c_msg msg[2];
 	int ret;
 	int num =2;
+	u16 addr = (chip->ec_fw_mode == 0)?chip->client->addr:chip->ec_fw_addr;
 
 	memset(msg,0,sizeof(struct i2c_msg)*2);
 
 	num = 1;
 
-	msg[0].addr = chip->client->addr;
+	msg[0].addr = addr;
 	msg[0].flags = I2C_M_RD;
 	msg[0].len = read_len;
 	msg[0].buf = read_buf;
@@ -204,7 +224,409 @@ static int asusec_read(struct byt_chip_info *chip, u8 *read_buf, u16 read_len)
 		return -EIO;
 	} else
 		return 0;
+}
 
+//payload under 256 can call this function
+// S 0x5B [W] [A] 0x17 [A] S 0x5B [W] [A] 0x18 [A] cmd1 [A] payload[0] [A] ...
+// ... payload[N] [NA] [P]
+
+int ite_i2c_pre_define_cmd_write(struct byt_chip_info *chip,unsigned char cmdl,unsigned int payload_len,unsigned char payload[])
+{
+	int ret;
+	u8 CSH_cmd = 0x17;           //CS High
+	u16 cmd = 0x0018;
+	u8	*buf;
+
+	asusec_write(chip,&CSH_cmd,1);
+
+	cmd  = cmd | (cmdl<<8);
+	buf =  kzalloc(payload_len+2, GFP_KERNEL);
+	memcpy(buf,&cmd,2);
+	memcpy(buf+2,payload,payload_len);
+	ret = asusec_write(chip,buf,payload_len+2);
+	kfree(buf);
+
+	return ret;
+}
+
+int ite_i2c_pre_define_cmd_read(struct byt_chip_info *chip,unsigned char cmdl,unsigned int payload_len,unsigned char payload[])
+{
+	int ret;
+	u8 CSH_cmd = 0x17;           //CS High
+	u16 cmd = 0x0018;
+
+	asusec_write(chip,&CSH_cmd,1);
+
+	cmd  = cmd | (cmdl<<8);
+	ret = asusec_write_read(chip,(u8 *)&cmd,2,payload,payload_len);
+
+	return ret;
+}
+
+
+
+// S 0x5B [W] [A] 0x17 [A] S 0x5B [W] [A] 0x18 [A] 0x0B [A] S 0x5B [R] payload[0] [A] ...
+// ... payload[N] [NA] [P]
+int ite_i2c_pre_define_cmd_fastread(struct byt_chip_info *chip,unsigned char addr[],unsigned int payload_len,unsigned char payload[])
+{
+	int ret;
+	u8 CSH_cmd = 0x17;           //CS High
+	u8	cmdl = 0x0B;
+	u8	Addrbuf[4]; // 0x0b => Fast Read
+
+	Addrbuf[0] = addr[3]; // Address H
+	Addrbuf[1] = addr[2]; // Address M
+	Addrbuf[2] = addr[1]; // Address L
+	Addrbuf[3] = addr[0]; // Dummy
+
+	asusec_write(chip,&CSH_cmd,1);
+
+	ite_i2c_pre_define_cmd_write(chip,cmdl,4,Addrbuf);
+
+	//ret = asusec_write_read(chip,&NULLcmd,1,payload,payload_len);
+
+	ret = asusec_read(chip,payload,payload_len);
+
+	return ret;
+}
+
+int i2ec_writebyte(struct byt_chip_info *chip,unsigned int address,unsigned char data)
+{
+	int ret;
+	u8 buf[3];
+	u8 cmd;
+
+	//I2EC ADDR WRITE
+	cmd = 0x10;
+	buf[0] = cmd;
+	buf[1] = (address >> 8) & 0xFF;
+	buf[2] = (address) & 0xFF; 
+	asusec_write(chip,buf,3);
+
+	cmd = 0x11;
+	buf[0] = cmd;
+	buf[1] = data;
+	ret = asusec_write(chip,buf,2);
+
+	return ret;
+}
+
+int i2ec_readbyte(struct byt_chip_info *chip,unsigned int address)
+{
+	int ret;
+	u8 buf[3];
+	u8 cmd;
+	u8 data;	
+
+	//I2EC ADDR WRITE
+	cmd = 0x10;
+	buf[0] = cmd;
+	buf[1] = (address >> 8) & 0xFF;
+	buf[2] = (address) & 0xFF;
+	asusec_write(chip,buf,3);
+
+	cmd = 0x11;
+	ret = asusec_write_read(chip,&cmd,1,&data,1);
+
+	return (int)data;
+}
+
+int cmd_write_enable(struct byt_chip_info *chip)
+{
+	int result;
+
+	result = ite_i2c_pre_define_cmd_write(chip,EFLASH_CMD_WRITE_ENABLE,0,NULL);
+	return result;
+}
+
+int cmd_write_disable(struct byt_chip_info *chip)
+{
+	int result;
+
+	result = ite_i2c_pre_define_cmd_write(chip,EFLASH_CMD_WRITE_DISABLE,0,NULL);
+	return result;
+}
+
+int cmd_erase_all(struct byt_chip_info *chip)
+{
+	int result;
+
+	result = ite_i2c_pre_define_cmd_write(chip,EFLASH_CMD_CHIP_ERASE,0,NULL);
+	return result;
+}
+
+unsigned char cmd_check_status(struct byt_chip_info *chip)
+{
+	unsigned char status[2];
+
+	ite_i2c_pre_define_cmd_read(chip,EFLASH_CMD_READ_STATUS,2,status);
+	return status[1];
+}
+
+int do_erase_all(struct byt_chip_info *chip)
+{
+	pr_err("[EC_update]: ERASE.................\n");
+
+	cmd_write_enable(chip);
+	while((cmd_check_status(chip) & 0x02)!=0x02);
+	cmd_erase_all(chip);
+	while(cmd_check_status(chip) & 0x01);
+	cmd_write_disable(chip);	
+
+	pr_err("OK\n");
+
+	return 0;
+}
+
+int do_program(struct byt_chip_info *chip,UINT8 *data)
+{
+	int i, result=0;
+	unsigned char payload[5]={0,0,0,0,0};//A2,A1,A0,Data0,Data1
+
+	cmd_write_enable(chip);
+	while((cmd_check_status(chip) & 0x02)!=0x02);
+
+	payload[3]=data[0]; //Data 0
+	payload[4]=data[1]; //Data 1
+
+	result = ite_i2c_pre_define_cmd_write(chip,EFLASH_CMD_AAI_WORD_PROGRAM,5,payload);
+	do
+	{
+		result=cmd_check_status(chip);
+	}while(result & 0x01);	
+
+	pr_err("[EC_update]: Program................. ");
+
+	for(i=2;i<65536;)
+	{	
+		//while(cmd_check_status() & 0x01);
+		result = ite_i2c_pre_define_cmd_write(chip,EFLASH_CMD_AAI_WORD_PROGRAM,2,&data[i]);
+		do
+		{
+			result=cmd_check_status(chip);
+		}while(result & 0x01);
+
+		if((i%4096)==0)
+		{
+			pr_err("[EC_update]: Program i=0x%04x \n",i);
+		}
+
+		i+=2;
+	}
+
+	cmd_write_disable(chip);
+	pr_err("[EC_update]: Program...............OK! \n");
+
+	return 0;	
+}
+
+int do_check(struct byt_chip_info *chip)
+{
+	int i, result=0;
+	unsigned char address[4] = {0,0,0,0}; // Dummy , L , M , H
+	unsigned char *gcbuffer;
+
+	gcbuffer = kzalloc(ECSIZE, GFP_KERNEL);
+
+	for(i=0;i<0x100;i++)
+	{
+		address[2]=i;
+		ite_i2c_pre_define_cmd_fastread(chip,address,0x100,&gcbuffer[0x100*i]);
+	}
+
+	for(i=0;i<65536;i++)
+	{
+		if(gcbuffer[i]!=0xFF)	
+		{
+			pr_err("[EC_update]: Check Error on offset[%x]; EFLASH=%02x",i,gcbuffer[i]);
+			result=-1;
+			break;
+		}
+	}
+
+	if(result==0)
+	{
+		pr_err("[EC_update]: Check...............");
+	}
+
+	return result;
+}
+
+int do_verify(struct byt_chip_info *chip)
+{
+	int i, result=0;
+	unsigned char address[4] = {0,0,0,0}; // Dummy , L , M , H
+	unsigned char *gvbuffer;	
+	int retry_count=0;
+	const u8  *data;
+
+	data = chip->ec_fw->data;	
+
+	gvbuffer = kzalloc(ECSIZE, GFP_KERNEL);
+
+	for(i=0;i<0x100;i++)
+	{
+		address[2]=i;
+		result = ite_i2c_pre_define_cmd_fastread(chip,address,0x100,&gvbuffer[0x100*i]);
+		while(result==-1) {
+			result = ite_i2c_pre_define_cmd_fastread(chip,address,0x100,&gvbuffer[0x100*i]);
+			retry_count++;
+			if(retry_count > MAX_RETRY_COUNT) {
+				pr_err("[EC_update]: Do verify over MAX_RETRY_COUNT on address %02x%02x%02x \n",address[3],address[2],address[1]);
+				result = -1;
+				goto out;
+			}	 
+		}	 
+
+	}
+
+	for(i=0;i<65536;i++)
+	{
+		if(gvbuffer[i]!=data[i])
+		{
+			pr_err("[EC_update]: Verify Error on offset[%x] ; file=%02x EFLASH=%02x \n",i,data[i],gvbuffer[i]);
+			result=-1;
+			break;
+		}
+	}
+
+	if(result==0)
+	{
+		pr_err("[EC_update]: Verify................OK!\n");
+	}
+
+	kfree(gvbuffer);
+
+out:
+
+	return result;
+}
+
+int get_flash_id(struct byt_chip_info *chip,u8 *flash_id)
+{
+	int result = 0;
+
+	result = ite_i2c_pre_define_cmd_read(chip,EFLASH_CMD_READ_ID,3,flash_id);
+
+	return result;
+}
+
+void do_reset(struct byt_chip_info *chip)
+{
+	unsigned char tmp1;
+
+	tmp1 = i2ec_readbyte(chip,0x1F01);
+	i2ec_writebyte(chip,0x1F01,0x20);
+	i2ec_writebyte(chip,0x1F07,0x01);
+	i2ec_writebyte(chip,0x1F01,tmp1);
+}
+
+int cmd_enter_flash_mode(struct byt_chip_info *chip)
+{
+	int ret;
+	u8 cmd = 0xEF;
+
+	ret = asusec_write(chip,&cmd,1);
+
+	return ret;
+}
+
+int Flash(struct byt_chip_info *chip,u8 *data)
+{
+	int result, retry_count=0;
+retry:	
+	if(retry_count > MAX_RETRY_COUNT) {
+		pr_err("[ITE_update]: Over MAX_RETRY_COUNT: retry_count=%d \n",retry_count);
+		goto err;
+	}
+	pr_err(" ======= Start Erase ======= \n");		
+	do_erase_all(chip);
+	pr_err(" ======= Start Check ======= \n");
+	result = do_check(chip);
+	pr_err(" ======= Check Done ======= \n");
+	if(result == -1)
+	{
+		result = 0;
+		retry_count++;
+		goto retry;
+	}
+	pr_err(" ======= Start Program ======= \n");	
+	do_program(chip,data);
+
+	pr_err(" ======= Start Verify ======= \n");
+	result = do_verify(chip);
+	if(result == -1)
+	{
+		result=0;
+		retry_count++;
+		goto retry;
+	}
+
+	pr_err(" ======= Start reset ======= \n");
+	do_reset(chip);
+	pr_err("reset ok\n");	
+
+	goto out;
+
+err:
+	result=-1;
+out:
+	return result;
+}
+
+static int ec_firmware_update(struct byt_chip_info *chip)
+{
+	int i;
+	u8	DataArray[3] = {0};
+	u32	IDDATA = 0x0;
+	const char *fn = ASUS_EC_FIRMWARE;
+	struct i2c_client *client = chip->client;
+	int ret;
+
+	ret = request_firmware(&chip->ec_fw, fn, &client->dev);
+	if (ret < 0) {
+		pr_err("Unable to open firmware %s\n", fn);
+		return ret;
+	}
+
+
+	cmd_enter_flash_mode(chip);	
+
+	chip->ec_fw_mode = 1;
+
+	msleep(500); //Delay 500ms
+	pr_err("enter flash mode\n");
+
+	i =4;
+	do
+	{
+		if(get_flash_id(chip,DataArray) == 0)			   
+		{
+			IDDATA = *(u32*)DataArray &0x00ffffff;
+			pr_err("Read ID Success");
+			break;
+		}
+		else
+		{
+			msleep(500); //Delay 500ms
+		}
+		i--;
+	}while(i>0);
+
+	if(IDDATA==0xFEFFFF)
+	{
+		pr_err("Start to update EC firmware.\n");
+		Flash(chip,chip->ec_fw->data);
+	}
+	else
+	{
+		pr_err("Check ID error. %x\n",IDDATA);
+		return 0;
+	}
+
+	chip->ec_fw_mode = 0;
+
+	return 0;
 }
 
 static int asusec_read_guage(struct byt_chip_info *chip,u8 command, u8 *read_buf, u8 read_len)
@@ -475,7 +897,7 @@ static int get_lid_status( struct byt_chip_info *chip)
 	asusec_write_read(chip,&offset,1,&lid_status,1);
 
 	dev_info(&chip->client->dev,"%s get_lid_status=%d\n", TAG, lid_status);
-	
+
 	return lid_status;
 
 }
@@ -539,9 +961,9 @@ static int get_chargerIC_current(struct byt_chip_info *chip)
 	/*
 	   dev_info(&chip->client->dev,"%s charge:\n", TAG);
 	   for(i=0;i<11;i++) {
-	   	dev_info(&chip->client->dev,"%s chargerIC[%x]=%x", TAG,i,charge_reg[i]);
+	   dev_info(&chip->client->dev,"%s chargerIC[%x]=%x", TAG,i,charge_reg[i]);
 	   }
-	*/
+	 */
 	if(!ret){
 		dev_info(&chip->client->dev,"%s chargerIC[0]=%x\n", TAG, charge_reg[0]);
 	}
@@ -549,7 +971,7 @@ static int get_chargerIC_current(struct byt_chip_info *chip)
 	u8 current_ii = charge_reg[0] & 0x07;
 	int current_mA=0;
 	dev_info(&chip->client->dev,"%s shift & : current_ii=%x\n", TAG, current_ii);
-	
+
 	switch(current_ii){
 		case 0x00:
 			current_mA = 100;
@@ -581,7 +1003,7 @@ static int get_chargerIC_current(struct byt_chip_info *chip)
 
 	chip ->chargerIC_current = current_mA;
 
-	
+
 	return ret;
 }
 
@@ -608,11 +1030,16 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 {
 	struct byt_chip_info *chip = dev;
 	int ret, event_id, lid_value;
+
+	if(chip->ec_fw_mode == 1)
+		return IRQ_HANDLED;
+
+
 	dev_info(&chip->client->dev,"%s sleep 100 ms..\n", TAG);
 	msleep(100);
 	//LID_Open 0x82 ;  LID_Close 0x83 ; Ac In Out 0xA0 ; Battery Charge 0xA3
 	event_id = get_event_ID(chip);
-	
+
 	dev_info(&chip->client->dev,"%s byt_thread_handler: event_ID = %x\n", TAG, event_id);
 
 	if(event_id ==0x82 || event_id == 0x83){
@@ -694,6 +1121,9 @@ static void byt_batt_info_update_work_func(struct work_struct *work)
 	struct byt_chip_info *chip;
 	chip = container_of(work, struct byt_chip_info, byt_batt_info_update_work.work);
 
+	if(chip->ec_fw_mode == 1)
+		return;
+
 	mutex_lock(&chip->lock);
 	byt_battery_update(chip);
 	mutex_unlock(&chip->lock);
@@ -749,10 +1179,10 @@ static ssize_t gaugeIC_FW_show(struct device *class,struct device_attribute *att
 }
 
 static ssize_t chargeIC_current_show(struct device *class,struct device_attribute *attr,char *buf){		
-/*
-	get_chargerIC_current(byt_chip);
-	return sprintf(buf, "%d\n", byt_chip->chargerIC_current); 
-*/
+	/*
+	   get_chargerIC_current(byt_chip);
+	   return sprintf(buf, "%d\n", byt_chip->chargerIC_current); 
+	 */
 	short mycurrent2 = byt_chip->ecbat.AverageCurrent;
 	if(mycurrent2>0){
 		return sprintf(buf, "%d\n", mycurrent2);
@@ -836,6 +1266,17 @@ static ssize_t byt_ec_set_wakeup_timer(struct device *dev, struct device_attribu
 		return count;
 }
 
+static ssize_t byt_ec_fw_update(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct power_supply *psy = to_power_supply(dev);
+	struct byt_chip_info *chip = to_byt_chip_info(psy);
+
+	ec_firmware_update(chip);
+
+	return count;
+}
+
+
 static DEVICE_ATTR(battery_charge_status, S_IRUGO | S_IWUSR,
 		byt_battery_show_charge_status, NULL);
 static DEVICE_ATTR(battery_current_now, S_IRUGO | S_IWUSR,
@@ -864,6 +1305,8 @@ static DEVICE_ATTR(set_wakeup_flag, S_IRUGO | S_IWUSR,
 		NULL, byt_ec_set_wakeup_flag);
 static DEVICE_ATTR(set_wakeup_timer, S_IRUGO | S_IWUSR,
 		NULL, byt_ec_set_wakeup_timer);
+static DEVICE_ATTR(ec_fw_update, S_IRUGO | S_IWUSR,
+		NULL, byt_ec_fw_update);
 
 
 static struct attribute *byt_attributes[] = {
@@ -878,6 +1321,7 @@ static struct attribute *byt_attributes[] = {
 	&dev_attr_chargerIC_status.attr,
 	&dev_attr_set_wakeup_flag.attr,
 	&dev_attr_set_wakeup_timer.attr,
+	&dev_attr_ec_fw_update.attr,
 	NULL
 };
 
@@ -923,6 +1367,9 @@ static int byt_battery_probe(struct i2c_client *client,
 
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
+
+	chip->ec_fw_mode = 0;
+	chip->ec_fw_addr = 0x5B;
 
 	i2c_set_clientdata(client, chip);
 

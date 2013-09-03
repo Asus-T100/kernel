@@ -142,6 +142,7 @@ fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 fw-shipped-$(CONFIG_INTEL_MID_REMOTEPROC) += intel_mid/intel_mid_remoteproc.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_ATMEL_MXT_I2CHID) += atmel/mXT1664TC2U_Production_V1.0.AC.ENC atmel/ASUS_T100TA_0820_OI.raw
+fw-shipped-$(CONFIG_BYT_BATTERY) += asusec/t2bt0036.EC       
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
