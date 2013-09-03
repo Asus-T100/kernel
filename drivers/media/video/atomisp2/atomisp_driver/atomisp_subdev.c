@@ -404,7 +404,16 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			dvs_h = rounddown(crop[pad]->height / 5,
 					  ATOM_ISP_STEP_HEIGHT);
 		} else {
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 			dvs_w = dvs_h = 0;
+#else
+			/*
+			 * For CSS2.0, digital zoom uses dvs working flow.
+			 * So still need to set the dvs envelop
+			 */
+			dvs_w = ffmt[pad]->width - crop[pad]->width - 2;
+			dvs_h = ffmt[pad]->height - crop[pad]->height - 2;
+#endif
 		}
 
 		atomisp_css_video_set_dis_envelope(isp_sd, dvs_w, dvs_h);
