@@ -45,9 +45,9 @@
 #define DSI_VIDEO_MODE		0
 #define DSI_CMD_MODE		1
 
-#define DSI_VIDEO_NBURST_SPULSE		0
-#define DSI_VIDEO_NBURST_SEVENT		1
-#define DSI_VIDEO_BURST				2
+#define DSI_VIDEO_NBURST_SPULSE		1
+#define DSI_VIDEO_NBURST_SEVENT		2
+#define DSI_VIDEO_BURST			3
 
 #define DSI_HSS_PACKET_SIZE 4
 #define DSI_HSE_PACKET_SIZE 4
@@ -66,11 +66,17 @@ struct intel_dsi_device {
 	const struct intel_dsi_dev_ops *dev_ops;
 	void *dev_priv;
 	u8 eotp_pkt;
+	u16 dsi_clock_freq;
 	u8 operation_mode;
 	u8 video_mode_type;
 	u32 pixel_format;
+	u32 data_width;
+	u8 dither;
 	u32 port_bits;
+	u8 escape_clk_div;
+	u32 lp_rx_timeout;
 	u8 turn_arnd_val;
+	u16 init_count;
 	u16 rst_timer_val;
 	u16 hs_to_lp_count;
 	u16 lp_byte_clk;

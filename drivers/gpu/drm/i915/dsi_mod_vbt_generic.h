@@ -60,6 +60,17 @@
 #define GPIO_NC_5_PANEL0_BLKCTL		0x4160
 #define GPIO_NC_5_PANEL0_BLKCTL_PAD	0x4168
 
+#define NS_MHZ_RATIO 1000000
+
+static inline u32 ceil_div(u32 numerator, u32 denominator)
+{
+	u32 result = numerator / denominator;
+	if (numerator % denominator)
+		result += 1;
+
+	return result;
+}
+
 typedef u8 * (*FN_MIPI_ELEM_EXEC)(struct intel_dsi *intel_dsi, u8 *data);
 
 struct gpio_table {

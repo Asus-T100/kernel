@@ -63,12 +63,15 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("\n");
 
 	dsi->eotp_pkt = 1;
+	dsi->dsi_clock_freq = 513;
 	dsi->operation_mode = DSI_VIDEO_MODE;
 	dsi->video_mode_type = DSI_VIDEO_BURST;
 	dsi->pixel_format = VID_MODE_FORMAT_RGB666_LOOSE;
-	dsi->port_bits = 0;
+	dsi->escape_clk_div = ESCAPE_CLOCK_DIVIDER_1;
+	dsi->lp_rx_timeout = 0xffff;
 	dsi->turn_arnd_val = 0x3f;
 	dsi->rst_timer_val = 0xff;
+	dsi->init_count = 0x7d0;
 	dsi->hs_to_lp_count = 0x46;
 	dsi->lp_byte_clk = 4;
 	dsi->bw_timer = 0;
