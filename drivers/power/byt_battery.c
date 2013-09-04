@@ -143,7 +143,9 @@ struct byt_chip_info {
 
 	u16	ec_fw_addr;
 	int 	ec_fw_mode;
-	const struct firmware *ec_fw;
+	struct bin_attribute ec_firmware_attr;
+	u8	*ec_firmware;	
+	int 	ec_firmware_size;
 };
 
 static struct byt_chip_info *byt_chip;
@@ -460,7 +462,7 @@ int do_verify(struct byt_chip_info *chip)
 	int retry_count=0;
 	const u8  *data;
 
-	data = chip->ec_fw->data;	
+	data = chip->ec_firmware;	
 
 	gvbuffer = kzalloc(ECSIZE, GFP_KERNEL);
 
@@ -519,6 +521,22 @@ void do_reset(struct byt_chip_info *chip)
 	i2ec_writebyte(chip,0x1F01,0x20);
 	i2ec_writebyte(chip,0x1F07,0x01);
 	i2ec_writebyte(chip,0x1F01,tmp1);
+
+#if 0
+/*
+	watchdog reset 
+	Windows using this method to wait OS shutdown
+*/
+	unsigned char tmp = 15*1024;
+
+	i2ec_writebyte(chip,0x1F02,0x01);	//Select 1.024kHz
+
+	i2ec_writebyte(chip,0x1F01, 0x10);
+
+	i2ec_writebyte(chip,0x1F09,(tmp>>8)&0xFF);	//Select 
+
+	i2ec_writebyte(chip,0x1F06,tmp&0xFF);
+#endif
 }
 
 int cmd_enter_flash_mode(struct byt_chip_info *chip)
@@ -579,17 +597,14 @@ static int ec_firmware_update(struct byt_chip_info *chip)
 	int i;
 	u8	DataArray[3] = {0};
 	u32	IDDATA = 0x0;
-	const char *fn = ASUS_EC_FIRMWARE;
 	struct i2c_client *client = chip->client;
 	int ret;
 
-	ret = request_firmware(&chip->ec_fw, fn, &client->dev);
-	if (ret < 0) {
-		pr_err("Unable to open firmware %s\n", fn);
-		return ret;
+	if(chip->ec_firmware == NULL || (chip->ec_firmware_size != ECSIZE)) {
+		pr_err("load EC firmware error\n");
+		return 0;
 	}
-
-
+		
 	cmd_enter_flash_mode(chip);	
 
 	chip->ec_fw_mode = 1;
@@ -616,7 +631,7 @@ static int ec_firmware_update(struct byt_chip_info *chip)
 	if(IDDATA==0xFEFFFF)
 	{
 		pr_err("Start to update EC firmware.\n");
-		Flash(chip,chip->ec_fw->data);
+		Flash(chip,chip->ec_firmware);
 	}
 	else
 	{
@@ -929,7 +944,7 @@ static int get_EC_version( struct byt_chip_info *chip)
 	ret = asusec_write_read(chip,&offset,1,chip->ec_ver,9);
 
 	if(!ret){
-		dev_info(&chip->client->dev,"%s get_EC_version=%s\n", TAG, chip->ec_ver);
+		dev_err(&chip->client->dev,"%s get_EC_version=%s\n", TAG, chip->ec_ver);
 	}
 	return ret;
 }
@@ -1266,13 +1281,30 @@ static ssize_t byt_ec_set_wakeup_timer(struct device *dev, struct device_attribu
 		return count;
 }
 
-static ssize_t byt_ec_fw_update(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t ec_firmware_write(struct file *filp, struct kobject *kobj,
+	struct bin_attribute *bin_attr, char *buf, loff_t off,
+	size_t count)
 {
-	struct power_supply *psy = to_power_supply(dev);
-	struct byt_chip_info *chip = to_byt_chip_info(psy);
-
-	ec_firmware_update(chip);
-
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct byt_chip_info *chip = dev_get_drvdata(dev);
+	
+	if(chip->ec_firmware_size < ECSIZE) {
+		if(chip->ec_firmware_size == 0) {
+			pr_err("current ec version = %s\n",chip->ec_ver);
+			chip->ec_firmware = kzalloc(ECSIZE, GFP_KERNEL);
+			chip->ec_firmware_size = 0;		
+		}
+		if(chip->ec_firmware) {
+			pr_err("count = %x off = %lx \n",count,off);
+			memcpy(chip->ec_firmware+off,buf,count);
+			chip->ec_firmware_size += count;
+			if(chip->ec_firmware_size == ECSIZE) {
+				ec_firmware_update(chip);
+				kfree(chip->ec_firmware);
+			}
+		}
+	}
+	
 	return count;
 }
 
@@ -1298,16 +1330,10 @@ static DEVICE_ATTR(gaugeIC_status, S_IRUGO | S_IWUSR,
 static DEVICE_ATTR(chargerIC_status, S_IRUGO | S_IWUSR,	
 		chargerIC_status_show, NULL);
 
-
-
-
 static DEVICE_ATTR(set_wakeup_flag, S_IRUGO | S_IWUSR,
 		NULL, byt_ec_set_wakeup_flag);
 static DEVICE_ATTR(set_wakeup_timer, S_IRUGO | S_IWUSR,
 		NULL, byt_ec_set_wakeup_timer);
-static DEVICE_ATTR(ec_fw_update, S_IRUGO | S_IWUSR,
-		NULL, byt_ec_fw_update);
-
 
 static struct attribute *byt_attributes[] = {
 	&dev_attr_battery_charge_status.attr,
@@ -1321,7 +1347,6 @@ static struct attribute *byt_attributes[] = {
 	&dev_attr_chargerIC_status.attr,
 	&dev_attr_set_wakeup_flag.attr,
 	&dev_attr_set_wakeup_timer.attr,
-	&dev_attr_ec_fw_update.attr,
 	NULL
 };
 
@@ -1370,6 +1395,8 @@ static int byt_battery_probe(struct i2c_client *client,
 
 	chip->ec_fw_mode = 0;
 	chip->ec_fw_addr = 0x5B;
+	chip->ec_firmware = NULL;
+	chip->ec_firmware_size = 0;
 
 	i2c_set_clientdata(client, chip);
 
@@ -1475,6 +1502,19 @@ static int byt_battery_probe(struct i2c_client *client,
 
 	queue_delayed_work(byt_wq, &chip->byt_batt_info_update_work, 15*HZ);
 
+
+	sysfs_bin_attr_init(&chip->ec_firmware_attr);
+	chip->ec_firmware_attr.attr.name = "ec_firmware";
+	chip->ec_firmware_attr.attr.mode = S_IRUGO | S_IWUSR;
+	chip->ec_firmware_attr.read = NULL;
+	chip->ec_firmware_attr.write = ec_firmware_write;
+	chip->ec_firmware_attr.size = 0;
+
+	if (sysfs_create_bin_file(&client->dev.kobj,
+				  &chip->ec_firmware_attr) < 0) {
+		dev_err(&client->dev, "Failed to create %s\n",
+			chip->ec_firmware_attr.attr.name);
+	}
 
 
 	return 0;
