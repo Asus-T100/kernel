@@ -37,6 +37,8 @@
 #include "i915_drm.h"
 #include "i915_drv.h"
 #include "i915_debugfs.h"
+#include <linux/moduleparam.h>
+#include "linux/mfd/intel_mid_pmic.h"
 
 #define DRM_I915_RING_DEBUG 1
 
@@ -3302,7 +3304,6 @@ static const struct file_operations i915_turbo_fops = {
 static int
 i915_dpst_status(struct drm_device *dev, char *buf, int *len)
 {
-	int ret;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 
 	if (!(IS_VALLEYVIEW(dev)))
@@ -3317,7 +3318,6 @@ i915_dpst_status(struct drm_device *dev, char *buf, int *len)
 static int
 i915_dpst_irq_count(struct drm_device *dev, char *buf, int *len)
 {
-	int ret;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 
 	if (!(IS_VALLEYVIEW(dev)))
@@ -3325,24 +3325,6 @@ i915_dpst_irq_count(struct drm_device *dev, char *buf, int *len)
 
 	*len = snprintf(buf, MAX_BUFFER_STR_LEN, "DPST Interrupt Count: %d\n",
 					dev_priv->dpst.num_interrupt);
-
-	return 0;
-}
-
-static int
-i915_dpst_enable_disable(struct drm_device *dev, unsigned int val)
-{
-	int ret;
-
-	if (!(IS_VALLEYVIEW(dev)))
-		return -ENODEV;
-
-	/* 1=> Enable DPST, else disable. */
-
-	if (val == 1)
-		i915_dpst_enable_hist_interrupt(dev, true);
-	else
-		i915_dpst_enable_hist_interrupt(dev, false);
 
 	return 0;
 }
@@ -3376,7 +3358,7 @@ static int
 i915_dpst_get_bin_data(struct drm_device *dev, char *buf, int *len)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
-	int ret, index;
+	int index;
 
 	if (!(IS_VALLEYVIEW(dev)))
 		return -ENODEV;
@@ -3396,7 +3378,7 @@ static int
 i915_dpst_get_luma_data(struct drm_device *dev, char *buf, int *len)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
-	int ret, index;
+	int index;
 
 	if (!(IS_VALLEYVIEW(dev)))
 		return -ENODEV;
@@ -3424,7 +3406,7 @@ i915_read_dpst_api(struct file *filp,
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	char buf[200], control[10], operation[20], val[20], format[20];
 	int len = 0, ret, noOfTokens;
-	u32 pval = 0, dpst_set_level;
+	u32 dpst_set_level;
 
 	if (!(IS_VALLEYVIEW(dev)))
 		return -ENODEV;
@@ -3449,17 +3431,25 @@ i915_read_dpst_api(struct file *filp,
 
 	} else if (strcmp(operation, ENABLE_TOKEN) == 0) {
 
-		/* 1 => Enable DPST. */
-		ret = i915_dpst_enable_disable(dev, 1);
-		if (ret)
-			return ret;
-
+		/* 1 => Enable DPST only for video playback scenarios
+		 * when source content is 18 bpp, for higher bpp source
+		 * content DPST is enabled always */
+		if (!dev_priv->bpp18_video_dpst) {
+			ret = i915_dpst_enable_disable(dev, 1);
+			if (ret)
+				return ret;
+		} else if (dev_priv->is_video_playing) {
+			ret = i915_dpst_enable_disable(dev, 1);
+			if (ret)
+				return ret;
+		}
+		dev_priv->dpst_feature_control = true;
 		i915_dpst_status(dev, buf, &len);
 
 	} else if (strcmp(operation, DISABLE_TOKEN) == 0) {
 
 		/* 0 => Disable DPST */
-
+		dev_priv->dpst_feature_control = false;
 		ret = i915_dpst_enable_disable(dev, 0);
 		if (ret)
 			return ret;
@@ -3488,15 +3478,27 @@ i915_read_dpst_api(struct file *filp,
 				VLV_DISPLAY_BASE + DPST_VLV_BPCR_REG) & 0xffff;
 
 		len = snprintf(buf, sizeof(buf),
-				"DPST Current User Level: 0x%x\n",
-				(dev_priv->backlight_level));
+					"User Applied Backlight Level: 0x%x\n",
+					(dev_priv->backlight_level));
 
 		if (len < 0)
 			return len;
 
-		len += snprintf(&buf[len], (sizeof(buf) - len),
-				"DPST Current Backlight Level: 0x%x\n",
-				dpst_set_level);
+		if (dev_priv->is_mipi) {
+
+#ifdef CONFIG_CRYSTAL_COVE
+			len += snprintf(&buf[len], (sizeof(buf) - len),
+					"DPST Applied Backlight Level: 0x%x\n",
+					intel_mid_pmic_readb(0x4E));
+#else
+			len += snprintf(&buf[len], (sizeof(buf) - len),
+					"DPST Applied Backlight not supported\n");
+#endif
+		} else {
+			len += snprintf(&buf[len], (sizeof(buf) - len),
+					"DPST Applied Backlight Level: 0x%x\n",
+					dpst_set_level);
+		}
 	} else
 		len = snprintf(buf, sizeof(buf), "NOTSUPPORTED\n");
 

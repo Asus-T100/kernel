@@ -117,6 +117,12 @@ MODULE_PARM_DESC(mipi_panel_id,
 		"MIPI Panel selection in case MIPI block is not present in VBT "
 		"(-1=auto [default], mipi panel id)");
 
+int i915_bpp18_video_dpst __read_mostly = -1;
+module_param_named(bpp18_video_dpst, i915_bpp18_video_dpst, int, 0600);
+MODULE_PARM_DESC(bpp18_video_dpst,
+		"DPST Selection only for Video playback on 18BPP panels"
+		"(-1/0=Enable DPST Always[default], 1=Enable only for Video)");
+
 static bool i915_try_reset __read_mostly = true;
 module_param_named(reset, i915_try_reset, bool, 0600);
 MODULE_PARM_DESC(reset, "Attempt GPU resets (default: true)");
