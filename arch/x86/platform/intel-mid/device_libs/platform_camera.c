@@ -56,8 +56,6 @@ int camera_sensor_gpio(int gpio, char *name, int dir, int value)
 {
 	int ret, pin;
 
-        printk("[ASUS] camera_sensor_gpio [in]\n");
-
 	if (gpio == -1) {
 		pin = get_gpio_by_name(name);
 		if (pin == -1) {
@@ -309,18 +307,10 @@ static void atomisp_unregister_acpi_devices(struct atomisp_platform_data *pdata)
 #endif
 const struct atomisp_platform_data *atomisp_get_platform_data(void)
 {
-    printk("[ASUS] atomisp_get_platform_data\n");
 	if (atomisp_platform_data) {
 #ifdef CONFIG_ACPI
 		atomisp_unregister_acpi_devices(atomisp_platform_data);
 #endif
-        printk("[ASUS] atomisp_get_platform_data, spid->customer_id= %d\n", spid.customer_id);
-        printk("[ASUS] atomisp_get_platform_data, spid->vendor_id = %d\n", spid.vendor_id);
-        printk("[ASUS] atomisp_get_platform_data, spid->manufacturer_id = %d\n", spid.manufacturer_id);
-        printk("[ASUS] atomisp_get_platform_data, spid->platform_family_id = %d\n", spid.platform_family_id);
-        printk("[ASUS] atomisp_get_platform_data, spid->product_line_id = %d\n", spid.product_line_id);
-        printk("[ASUS] atomisp_get_platform_data, spid->hardware_id = %d\n", spid.hardware_id);
-
 		atomisp_platform_data->spid = &spid;
 		return atomisp_platform_data;
 	} else {

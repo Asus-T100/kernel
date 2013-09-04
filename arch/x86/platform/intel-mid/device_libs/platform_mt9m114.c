@@ -58,12 +58,8 @@ static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret;
 	int pin;
-    int acpi_int;
-
-        printk("[ASUS] Platform_mt9m114 mt9m114_gpio_ctrl [in], intel_mid_identify_cpu = %d\n", intel_mid_identify_cpu());
     
 	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-printk("[ASUS] if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)\n");
                 if (camera_reset < 0) {
 			ret = camera_sensor_gpio(-1, GP_CAMERA_1_RESET,
 					GPIOF_DIR_OUT, 1);
@@ -77,10 +73,8 @@ printk("[ASUS] if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)\n
 		 * The GPIO value would be provided by ACPI table, which is
 		 * not implemented currently.
 		 */
-printk("[ASUS] if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)\n");		 
-                acpi_int = acpi_get_gpio("\\_SB.GPO1", 10);
-printk("[ASUS] acpi_int = %d\n", acpi_int);
-                pin = CAMERA_1_RESET;
+
+                  pin = CAMERA_1_RESET;
 		if (camera_reset < 0) {
 			ret = gpio_request(pin, "camera_1_reset");
 			if (ret) {
@@ -100,11 +94,9 @@ printk("[ASUS] acpi_int = %d\n", acpi_int);
 	}
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
-printk("[ASUS] CONFIG_BOARD_CTP, gpio_set_value(camera_reset, 0);\n");
 		gpio_set_value(camera_reset, 0);
 		msleep(60);
 #endif
-printk("[ASUS] CONFIG_BOARD_CTP, gpio_set_value(camera_reset, 1);\n");
 		gpio_set_value(camera_reset, 1);
 	} else
 		gpio_set_value(camera_reset, 0);
@@ -137,8 +129,6 @@ static int mt9e013_reset_value;
 static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret = 0;
-
-    printk("[ASUS] Platform_mt9m114 mt9m114_power_ctrl [in], flag = %d\n", flag);
 
 	if (flag) {
 		if (!camera_vprog1_on) {
