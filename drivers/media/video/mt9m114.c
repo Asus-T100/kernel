@@ -453,14 +453,12 @@ static int mt9m114_init_common(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
-        printk("[ASUS] mt9m114_init_common [in]\n");
 
 	ret = mt9m114_write_reg_array(client, mt9m114_common, PRE_POLLING);
 	if (ret)
 		return ret;
 //	ret = mt9m114_write_reg_array(client, mt9m114_iq, NO_POLLING);
 
-        printk("[ASUS] mt9m114_init_common [out]\n");
 
 	return ret;
 }
@@ -470,8 +468,6 @@ static int power_up(struct v4l2_subdev *sd)
 	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
-
-        printk("[ASUS] power_up [in]\n");
 
 	if (NULL == dev->platform_data) {
 		dev_err(&client->dev, "no camera_sensor_platform_data");
@@ -515,7 +511,6 @@ static int power_down(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
-        printk("[ASUS] power_down [in]\n");
 
 	if (NULL == dev->platform_data) {
 		dev_err(&client->dev, "no camera_sensor_platform_data");
@@ -544,8 +539,6 @@ static int power_down(struct v4l2_subdev *sd)
 
 static int mt9m114_s_power(struct v4l2_subdev *sd, int power)
 {
-    printk("[ASUS] mt9m114_s_power [in], power = %d\n", power);
-
         if (power == 0)
 		return power_down(sd);
 	else {
@@ -914,10 +907,9 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return -EINVAL;
 
-	//<ASUS-Ian20130823>
-	//ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg, POST_POLLING);
-	//if (ret < 0)
-	//	return ret;
+	ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg, POST_POLLING);
+	if (ret < 0)
+		return ret;
 
 	if (mt9m114_set_suspend(sd))
 		return -EINVAL;
@@ -1371,8 +1363,6 @@ mt9m114_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
-        printk("[ASUS] mt9m114_s_config [in]\n");
-
 	if (NULL == platform_data)
 		return -ENODEV;
 
@@ -1380,7 +1370,6 @@ mt9m114_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 	    (struct camera_sensor_platform_data *)platform_data;
 
 	if (dev->platform_data->platform_init) {
-    printk("[ASUS] if (dev->platform_data->platform_init) [in]\n");
 		ret = dev->platform_data->platform_init(client);
 		if (ret) {
 			v4l2_err(client, "mt9m114 platform init err\n");
@@ -1811,8 +1800,6 @@ static int mt9m114_probe(struct i2c_client *client,
 	struct mt9m114_device *dev;
 	int ret;
 
-        printk("[ASUS] mt9m114_probe [in]\n");
-
 	/* Setup sensor configuration structure */
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
@@ -1823,7 +1810,6 @@ static int mt9m114_probe(struct i2c_client *client,
 	v4l2_i2c_subdev_init(&dev->sd, client, &mt9m114_ops);
 	if (client->dev.platform_data) {
         
-    printk("[ASUS] if (client->dev.platform_data) [in]\n");
     
 		ret = mt9m114_s_config(&dev->sd, client->irq,
 				       client->dev.platform_data);
@@ -1850,7 +1836,6 @@ static int mt9m114_probe(struct i2c_client *client,
 	/* set res index to be invalid */
 	dev->res = -1;
 
-    printk("[ASUS] mt9m114_probe [out]\n");
 
 	return 0;
 }
