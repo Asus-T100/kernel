@@ -559,11 +559,11 @@ static int atomisp_enum_input(struct file *file, void *fh,
 	return 0;
 }
 
-static unsigned int atomisp_streaming_count(struct atomisp_device *isp)
+static unsigned int atomisp_streaming_count(struct atomisp_sub_device *asd)
 {
-	return isp->asd.video_out_preview.capq.streaming
-		+ isp->asd.video_out_capture.capq.streaming
-		+ isp->asd.video_in.capq.streaming;
+	return asd->video_out_preview.capq.streaming
+		+ asd->video_out_capture.capq.streaming
+		+ asd->video_in.capq.streaming;
 }
 
 /*
@@ -606,8 +606,9 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		goto error;
 	}
 
-	if (atomisp_streaming_count(isp)) {
-		dev_err(isp->dev, "ISP is still streaming, stop first\n");
+	if (atomisp_streaming_count(asd)) {
+		dev_err(isp->dev,
+			 "ISP is still streaming, stop first\n");
 		ret = -EINVAL;
 		goto error;
 	}
@@ -1232,17 +1233,17 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	return 0;
 }
 
-enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
+enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_sub_device *asd)
 {
-	if (isp->asd.continuous_mode->val &&
-	    isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
+	if (asd->continuous_mode->val &&
+	    asd->run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return CSS_PIPE_ID_PREVIEW;
 
 	/*
 	 * Disable vf_pp and run CSS in video mode. This allows using ISP
 	 * scaling but it has one frame delay due to CSS internal buffering.
 	 */
-	if (isp->asd.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
+	if (asd->vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
 		return CSS_PIPE_ID_VIDEO;
 
 	/*
@@ -1250,10 +1251,10 @@ enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 	 * CSS does not cause extra latency with buffering, but scaling
 	 * is not available.
 	 */
-	if (isp->asd.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT)
+	if (asd->vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT)
 		return CSS_PIPE_ID_CAPTURE;
 
-	switch (isp->asd.run_mode->val) {
+	switch (asd->run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:
 		return CSS_PIPE_ID_PREVIEW;
 	case ATOMISP_RUN_MODE_VIDEO:
@@ -1265,17 +1266,17 @@ enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 	}
 }
 
-static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
+static unsigned int atomisp_sensor_start_stream(struct atomisp_sub_device *asd)
 {
-	if (isp->asd.vfpp->val != ATOMISP_VFPP_ENABLE)
+	if (asd->vfpp->val != ATOMISP_VFPP_ENABLE)
 		return 1;
 
-	if (isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
-	    (isp->asd.run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
+	if (asd->run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
+	    (asd->run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
 	     !atomisp_is_mbuscode_raw(
-		     isp->asd.fmt[
-			     isp->asd.capture_pad].fmt.code) &&
-	     !isp->asd.continuous_mode->val))
+		     asd->fmt[
+			     asd->capture_pad].fmt.code) &&
+	     !asd->continuous_mode->val))
 		return 2;
 	else
 		return 1;
@@ -1316,7 +1317,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	 * The number of streaming video nodes is based on which
 	 * binary is going to be run.
 	 */
-	sensor_start_stream = atomisp_sensor_start_stream(isp);
+	sensor_start_stream = atomisp_sensor_start_stream(asd);
 
 	spin_lock_irqsave(&pipe->irq_lock, irqflags);
 	if (list_empty(&(pipe->capq.stream))) {
@@ -1331,12 +1332,12 @@ static int atomisp_streamon(struct file *file, void *fh,
 	if (ret)
 		goto out;
 
-	if (atomisp_streaming_count(isp) > sensor_start_stream) {
+	if (atomisp_streaming_count(asd) > sensor_start_stream) {
 		/* trigger still capture */
-		if (isp->asd.continuous_mode->val &&
+		if (asd->continuous_mode->val &&
 		    atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
-		    isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+		    asd->run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			dev_dbg(isp->dev,
 				"ZSL last preview raw buffer id: %u\n",
 				isp->latest_preview_exp_id);
@@ -1380,9 +1381,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 #endif
 
-	css_pipe_id = atomisp_get_css_pipe_id(isp);
+	css_pipe_id = atomisp_get_css_pipe_id(asd);
 
-	ret = atomisp_acc_load_extensions(isp);
+	ret = atomisp_acc_load_extensions(asd);
 	if (ret < 0) {
 		dev_err(isp->dev, "acc extension failed to load\n");
 		goto out;
@@ -1391,11 +1392,11 @@ static int atomisp_streamon(struct file *file, void *fh,
 	if (ret)
 		goto out;
 
-	if (isp->asd.continuous_mode->val &&
-	    isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+	if (asd->continuous_mode->val &&
+	    asd->run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 		struct v4l2_mbus_framefmt *sink;
 
-		sink = atomisp_subdev_get_ffmt(&isp->asd.subdev, NULL,
+		sink = atomisp_subdev_get_ffmt(&asd->subdev, NULL,
 				       V4L2_SUBDEV_FORMAT_ACTIVE,
 				       ATOMISP_SUBDEV_PAD_SINK);
 
@@ -1425,7 +1426,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	atomisp_qbuffers_to_css(asd);
 
 	/* Only start sensor when the last streaming instance started */
-	if (atomisp_streaming_count(isp) < sensor_start_stream)
+	if (atomisp_streaming_count(asd) < sensor_start_stream)
 		goto out;
 
 start_sensor:
@@ -1496,8 +1497,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	 * do only videobuf_streamoff for capture & vf pipes in
 	 * case of continuous capture
 	 */
-	if (isp->asd.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->asd.continuous_mode->val && atomisp_subdev_source_pad(vdev)
+	if (asd->run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
+	    asd->continuous_mode->val && atomisp_subdev_source_pad(vdev)
 	    != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
 
 		/* stop continuous still capture if needed */
@@ -1544,11 +1545,11 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 					video, s_stream, 0);
 
 		mutex_lock(&isp->mutex);
-		atomisp_acc_unload_extensions(isp);
+		atomisp_acc_unload_extensions(asd);
 	}
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (atomisp_streaming_count(isp) == 1)
+	if (atomisp_streaming_count(asd) == 1)
 		asd->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
 	spin_unlock_irqrestore(&isp->lock, flags);
 
@@ -1570,22 +1571,22 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 	}
 
-	css_pipe_id = atomisp_get_css_pipe_id(isp);
+	css_pipe_id = atomisp_get_css_pipe_id(asd);
 	ret = atomisp_css_stop(asd, css_pipe_id, false);
 	if (ret)
 		return ret;
 
 	/* cancel work queue*/
-	if (isp->asd.video_out_capture.users) {
-		capture_pipe = &isp->asd.video_out_capture;
+	if (asd->video_out_capture.users) {
+		capture_pipe = &asd->video_out_capture;
 		wake_up_interruptible(&capture_pipe->capq.wait);
 	}
-	if (isp->asd.video_out_vf.users) {
-		vf_pipe = &isp->asd.video_out_vf;
+	if (asd->video_out_vf.users) {
+		vf_pipe = &asd->video_out_vf;
 		wake_up_interruptible(&vf_pipe->capq.wait);
 	}
-	if (isp->asd.video_out_preview.users) {
-		preview_pipe = &isp->asd.video_out_preview;
+	if (asd->video_out_preview.users) {
+		preview_pipe = &asd->video_out_preview;
 		wake_up_interruptible(&preview_pipe->capq.wait);
 	}
 	ret = videobuf_streamoff(&pipe->capq);
@@ -1604,8 +1605,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	spin_unlock_irqrestore(&pipe->irq_lock, flags);
 
 stopsensor:
-	if (atomisp_streaming_count(isp) + 1
-	    != atomisp_sensor_start_stream(isp))
+	if (atomisp_streaming_count(asd) + 1
+	    != atomisp_sensor_start_stream(asd))
 		return 0;
 
 	if (!isp->sw_contex.file_input)
@@ -1996,7 +1997,7 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 			mutex_unlock(&isp->mutex);
 			break;
 		default:
-			ctr = v4l2_ctrl_find(&isp->asd.ctrl_handler, ctrl.id);
+			ctr = v4l2_ctrl_find(&asd->ctrl_handler, ctrl.id);
 			if (ctr)
 				ret = v4l2_ctrl_s_ctrl(ctr, ctrl.value);
 			else
@@ -2045,6 +2046,7 @@ static int atomisp_g_parm(struct file *file, void *fh,
 	struct v4l2_streamparm *parm)
 {
 	struct video_device *vdev = video_devdata(file);
+	struct atomisp_sub_device *asd = atomisp_to_video_pipe(vdev)->asd;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
@@ -2053,7 +2055,7 @@ static int atomisp_g_parm(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
-	parm->parm.capture.capturemode = isp->asd.run_mode->val;
+	parm->parm.capture.capturemode = asd->run_mode->val;
 	mutex_unlock(&isp->mutex);
 
 	return 0;
@@ -2104,7 +2106,7 @@ static int atomisp_s_parm(struct file *file, void *fh,
 		goto out;
 	}
 
-	rval = v4l2_ctrl_s_ctrl(isp->asd.run_mode, mode);
+	rval = v4l2_ctrl_s_ctrl(asd->run_mode, mode);
 
 out:
 	mutex_unlock(&isp->mutex);
@@ -2312,11 +2314,11 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		break;
 
 	case ATOMISP_IOC_ACC_START:
-		err = atomisp_acc_start(isp, arg);
+		err = atomisp_acc_start(asd, arg);
 		break;
 
 	case ATOMISP_IOC_ACC_WAIT:
-		err = atomisp_acc_wait(isp, arg);
+		err = atomisp_acc_wait(asd, arg);
 		break;
 
 	case ATOMISP_IOC_ACC_MAP:

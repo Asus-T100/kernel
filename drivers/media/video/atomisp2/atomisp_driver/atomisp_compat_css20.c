@@ -638,11 +638,14 @@ void atomisp_css_unload_firmware(struct atomisp_device *isp)
 
 void atomisp_css_uninit(struct atomisp_device *isp)
 {
-	/* FIXME: only has one subdev at resent */
-	struct atomisp_sub_device *asd = &isp->asd;
+	struct atomisp_sub_device *asd;
+	unsigned int i;
 
-	atomisp_isp_parameters_clean_up(&asd->params.config);
-	asd->params.css_update_params_needed = false;
+	for (i = 0; i < isp->num_of_streams; i++) {
+		asd = &isp->asd[i];
+		atomisp_isp_parameters_clean_up(&asd->params.config);
+		asd->params.css_update_params_needed = false;
+	}
 
 	ia_css_uninit();
 }

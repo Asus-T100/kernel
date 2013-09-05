@@ -399,7 +399,7 @@ static int atomisp_suspend(struct device *dev)
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
 	/* FIXME: only has one isp_subdev at present */
-	struct atomisp_sub_device *asd = &isp->asd;
+	struct atomisp_sub_device *asd = &isp->asd[0];
 	unsigned long flags;
 	int ret;
 
@@ -407,7 +407,7 @@ static int atomisp_suspend(struct device *dev)
 	 * FIXME: Suspend is not supported by sensors. Abort if any video
 	 * node was opened.
 	 */
-	if (atomisp_users(isp))
+	if (atomisp_dev_users(isp))
 		return -EBUSY;
 
 	spin_lock_irqsave(&isp->lock, flags);
@@ -645,7 +645,8 @@ static void atomisp_unregister_entities(struct atomisp_device *isp)
 {
 	unsigned int i;
 
-	atomisp_subdev_unregister_entities(&isp->asd);
+	for (i = 0; i < isp->num_of_streams; i++)
+		atomisp_subdev_unregister_entities(&isp->asd[i]);
 	atomisp_tpg_unregister_entities(&isp->tpg);
 	atomisp_file_input_unregister_entities(&isp->file_dev);
 	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++)
@@ -658,6 +659,7 @@ static void atomisp_unregister_entities(struct atomisp_device *isp)
 static int atomisp_register_entities(struct atomisp_device *isp)
 {
 	int ret = 0;
+	unsigned int subdev_registered = 0;
 	unsigned int i;
 
 	isp->media_dev.dev = isp->dev;
@@ -714,10 +716,16 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		goto tpg_register_failed;
 	}
 
-	ret = atomisp_subdev_register_entities(&isp->asd, &isp->v4l2_dev);
-	if (ret < 0) {
-		dev_err(isp->dev, "atomisp_subdev_register_entities fail\n");
-		goto subdev_register_failed;
+	for (subdev_registered = 0; subdev_registered < isp->num_of_streams;
+	     subdev_registered++) {
+		ret = atomisp_subdev_register_entities(
+					&isp->asd[subdev_registered],
+					&isp->v4l2_dev);
+		if (ret < 0) {
+			dev_err(isp->dev,
+				"atomisp_subdev_register_entities fail\n");
+			goto subdev_register_failed;
+		}
 	}
 
 	for (i = 0; i < isp->input_cnt; i++) {
@@ -767,8 +775,10 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	return ret;
 
 link_failed:
-	atomisp_subdev_unregister_entities(&isp->asd);
 subdev_register_failed:
+	for (; subdev_registered > 0; subdev_registered--)
+		atomisp_subdev_unregister_entities(
+					&isp->asd[subdev_registered - 1]);
 	atomisp_tpg_unregister_entities(&isp->tpg);
 tpg_register_failed:
 	atomisp_file_input_unregister_entities(&isp->file_dev);
@@ -785,7 +795,7 @@ v4l2_device_failed:
 static int atomisp_initialize_modules(struct atomisp_device *isp)
 {
 	int ret;
-	unsigned int i;
+	unsigned int i, j;
 
 	ret = atomisp_mipi_csi2_init(isp);
 	if (ret < 0) {
@@ -814,20 +824,21 @@ static int atomisp_initialize_modules(struct atomisp_device *isp)
 
 	/* connet submoduels */
 	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++) {
-		ret = media_entity_create_link(
+		for (j = 0; j < isp->num_of_streams; j++) {
+			ret = media_entity_create_link(
 				&isp->csi2_port[i].subdev.entity,
 				CSI2_PAD_SOURCE,
-				&isp->asd.subdev.entity,
+				&isp->asd[j].subdev.entity,
 				ATOMISP_SUBDEV_PAD_SINK,
 				0);
-		if (ret < 0)
-			goto error_link;
+			if (ret < 0)
+				goto error_link;
+		}
 	}
 	return 0;
 
 error_link:
 error_isp_subdev:
-	atomisp_subdev_cleanup(isp);
 error_tpg:
 	atomisp_tpg_cleanup(isp);
 error_file_input:

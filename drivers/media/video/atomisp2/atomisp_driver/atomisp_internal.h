@@ -231,8 +231,18 @@ struct atomisp_device {
 	} acc;
 
 
-	/* ISP modules */
-	struct atomisp_sub_device asd;
+	/*
+	 * ISP modules
+	 * Multiple streams are represents by multiple
+	 * atomisp_sub_device instances
+	 */
+	struct atomisp_sub_device *asd;
+	/*
+	 * this will be assiged dyanamically.
+	 * For CTP(ISP2300), only 1 stream is supported.
+	 * For Merr/BTY(ISP2400), 2 streams are supported.
+	 */
+	unsigned int num_of_streams;
 	/*
 	 * MRFLD has 3 CSI ports, while MFLD has only 2.
 	 */

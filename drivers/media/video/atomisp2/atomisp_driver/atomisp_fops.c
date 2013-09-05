@@ -360,17 +360,27 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 	return 0;
 }
 
-int atomisp_init_struct(struct atomisp_device *isp)
+static void atomisp_dev_init_struct(struct atomisp_device *isp)
 {
-	struct atomisp_sub_device *asd;
+	isp->sw_contex.file_input = 0;
+	isp->need_gfx_throttle = true;
+	isp->isp_fatal_error = false;
+	isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
-	if (isp == NULL)
-		return -EINVAL;
+	/*
+	 * For Merrifield, frequency is scalable.
+	 * After boot-up, the default frequency is 200MHz.
+	 * For Medfield/Clovertrail, all running at 320MHz
+	 */
+	if (IS_ISP2400(isp))
+		isp->sw_contex.running_freq = ISP_FREQ_200MHZ;
+	else
+		isp->sw_contex.running_freq = ISP_FREQ_320MHZ;
+}
 
-	/* FIXME: only has one isp_subdev at present */
-	asd = &isp->asd;
-
-	v4l2_ctrl_s_ctrl(isp->asd.run_mode, ATOMISP_RUN_MODE_STILL_CAPTURE);
+static void atomisp_subdev_init_struct(struct atomisp_sub_device *asd)
+{
+	v4l2_ctrl_s_ctrl(asd->run_mode, ATOMISP_RUN_MODE_STILL_CAPTURE);
 	asd->params.color_effect = V4L2_COLORFX_NONE;
 	asd->params.bad_pixel_en = 1;
 	asd->params.gdc_cac_en = 0;
@@ -387,39 +397,29 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	asd->params.offline_parm.num_captures = 1;
 	asd->params.offline_parm.skip_frames = 0;
 	asd->params.offline_parm.offset = 0;
-	isp->sw_contex.file_input = 0;
-	isp->need_gfx_throttle = true;
-	isp->isp_fatal_error = false;
-	isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
-
-	/*
-	 * For Merrifield, frequency is scalable.
-	 * After boot-up, the default frequency is 200MHz.
-	 * For Medfield/Clovertrail, all running at 320MHz
-	 */
-	if (IS_ISP2400(isp))
-		isp->sw_contex.running_freq = ISP_FREQ_200MHZ;
-	else
-		isp->sw_contex.running_freq = ISP_FREQ_320MHZ;
-
 	/* Add for channel */
-	if (isp->inputs[0].camera)
-		asd->input_curr = 0;
+	asd->input_curr = 0;
 
 	atomisp_css_init_struct(asd);
-
-	return 0;
 }
-
 /*
  * file operation functions
  */
-unsigned int atomisp_users(struct atomisp_device *isp)
+unsigned int atomisp_subdev_users(struct atomisp_sub_device *asd)
 {
-	return isp->asd.video_out_preview.users +
-	       isp->asd.video_out_vf.users +
-	       isp->asd.video_out_capture.users +
-	       isp->asd.video_in.users;
+	return asd->video_out_preview.users +
+	       asd->video_out_vf.users +
+	       asd->video_out_capture.users +
+	       asd->video_in.users;
+}
+
+unsigned int atomisp_dev_users(struct atomisp_device *isp)
+{
+	unsigned int i, sum;
+	for (i = 0, sum = 0; i < isp->num_of_streams; i++)
+		sum += atomisp_subdev_users(&isp->asd[i]);
+
+	return sum;
 }
 
 static int atomisp_open(struct file *file)
@@ -427,6 +427,7 @@ static int atomisp_open(struct file *file)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
+	struct atomisp_sub_device *asd = pipe->asd;
 	int ret;
 
 	dev_dbg(isp->dev, "open device %s\n", vdev->name);
@@ -446,9 +447,10 @@ static int atomisp_open(struct file *file)
 	if (ret)
 		goto error;
 
-	if (atomisp_users(isp)) {
+
+	if (atomisp_dev_users(isp)) {
 		dev_err(isp->dev, "skip init isp in open\n");
-		goto done;
+		goto init_subdev;
 	}
 
 	/* runtime power management, turn on ISP */
@@ -475,13 +477,19 @@ static int atomisp_open(struct file *file)
 	 */
 	sh_css_set_dtrace_level(CSS_DTRACE_VERBOSITY_LEVEL);
 
-	atomisp_init_struct(isp);
+	atomisp_dev_init_struct(isp);
 
 	ret = v4l2_subdev_call(isp->flash, core, s_power, 1);
 	if (ret < 0 && ret != -ENODEV && ret != -ENOIOCTLCMD) {
 		dev_err(isp->dev, "Failed to power-on flash\n");
 		goto error;
 	}
+
+init_subdev: /* For CTP CSS1.5, below init depends on css global init */
+	if (atomisp_subdev_users(asd))
+		goto done;
+
+	atomisp_subdev_init_struct(asd);
 
 done:
 	pipe->users++;
@@ -544,30 +552,38 @@ static int atomisp_release(struct file *file)
 	 * The sink pad setting can only be cleared when all device nodes
 	 * get released.
 	 */
-	if (!isp->sw_contex.file_input && isp->asd.fmt_auto->val) {
+	if (!isp->sw_contex.file_input && asd->fmt_auto->val) {
 		struct v4l2_mbus_framefmt isp_sink_fmt = { 0 };
 		atomisp_subdev_set_ffmt(
-			&isp->asd.subdev, NULL,
+			&asd->subdev, NULL,
 			V4L2_SUBDEV_FORMAT_ACTIVE, ATOMISP_SUBDEV_PAD_SINK,
 			&isp_sink_fmt);
 	}
 
-	if (atomisp_users(isp))
+	if (atomisp_subdev_users(asd))
 		goto done;
 
 	/* clear the sink pad for file input */
-	if (isp->sw_contex.file_input && isp->asd.fmt_auto->val) {
+	if (isp->sw_contex.file_input && asd->fmt_auto->val) {
 		struct v4l2_mbus_framefmt isp_sink_fmt = { 0 };
-		atomisp_subdev_set_ffmt(&isp->asd.subdev, NULL,
-				V4L2_SUBDEV_FORMAT_ACTIVE,
-				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
+		atomisp_subdev_set_ffmt(&asd->subdev, NULL,
+					V4L2_SUBDEV_FORMAT_ACTIVE,
+					ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 	}
+
+	atomisp_free_3a_dis_buffers(asd);
+	atomisp_free_internal_buffers(asd);
+	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
+				       core, s_power, 0);
+	if (ret)
+		dev_warn(isp->dev, "Failed to power-off sensor\n");
+
+	if (atomisp_dev_users(isp))
+		goto done;
 
 	del_timer_sync(&isp->wdt);
 	atomisp_acc_release(isp);
-	atomisp_free_3a_dis_buffers(asd);
 	atomisp_free_all_shading_tables(isp);
-	atomisp_free_internal_buffers(asd);
 	atomisp_css_uninit(isp);
 #ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	hrt_isp_css_mm_clear();
@@ -577,11 +593,6 @@ static int atomisp_release(struct file *file)
 	ret = v4l2_subdev_call(isp->flash, core, s_power, 0);
 	if (ret < 0 && ret != -ENODEV && ret != -ENOIOCTLCMD)
 		dev_warn(isp->dev, "Failed to power-off flash\n");
-
-	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
-				       core, s_power, 0);
-	if (ret)
-		dev_warn(isp->dev, "Failed to power-off sensor\n");
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		dev_err(isp->dev, "Failed to power off device\n");
