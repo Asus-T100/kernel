@@ -314,19 +314,15 @@ static ssize_t sst_debug_sram_lpe_ia_mbox_read(struct file *file,
 {
 
 	struct intel_sst_drv *drv = file->private_data;
-	unsigned int mailbox_offset;
 	int ret = 0;
+
 	ret = is_fw_running(drv);
 	if (ret)
 		return ret;
 
-	if (drv->pci_id == SST_MRFLD_PCI_ID)
-		mailbox_offset = SST_MAILBOX_RCV_MRFLD;
-	else
-		mailbox_offset = SST_MAILBOX_RCV;
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, LPE_IA_MAILBOX_DUMP_SZ,
-				       (u32 *)(drv->mailbox + mailbox_offset),
-				       mailbox_offset);
+				       (u32 *)(drv->mailbox + drv->mailbox_recv_offset),
+				       drv->mailbox_recv_offset);
 	sst_pm_runtime_put(drv);
 	return ret;
 }

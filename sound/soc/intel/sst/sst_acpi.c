@@ -32,6 +32,8 @@
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_qos.h>
+#include <asm/platform_byt_audio.h>
+#include <asm/platform_sst.h>
 #include <acpi/acpi_bus.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
@@ -39,6 +41,109 @@
 #include "sst.h"
 
 extern struct miscdevice lpe_ctrl;
+
+static const struct sst_platform_config_data sst_byt_pdata = {
+	.sst_sram_buff_base	= 0xffffffff,
+	.sst_dma_base[0]	= SST_BYT_DMA0_PHY_ADDR,
+	.sst_dma_base[1]	= SST_BYT_DMA1_PHY_ADDR,
+};
+
+/* use array[0] for ssp_platform_data even though SSP2 is used */
+static const struct sst_board_config_data sst_byt_ffrd10_bdata = {
+	.active_ssp_ports = 1,
+	.platform_id = 3,
+	.board_id = 1,
+	.ihf_num_chan = 2,
+	.osc_clk_freq = 25000000,
+	.ssp_platform_data = {
+		[0] = {
+			.ssp_cfg_sst = 1,
+			.port_number = 2,
+			.is_master = 1,
+			.pack_mode = 1,
+			.num_slots_per_frame = 2,
+			.num_bits_per_slot = 24,
+			.active_tx_map = 3,
+			.active_rx_map = 3,
+			.ssp_frame_format = 3,
+			.frame_polarity = 1,
+			.serial_bitrate_clk_mode = 0,
+			.frame_sync_width = 24,
+			.dma_handshake_interface_tx = 5,
+			.dma_handshake_interface_rx = 4,
+			.network_mode = 0,
+			.start_delay = 1,
+			.ssp_base_add = SST_BYT_SSP2_PHY_ADDR,
+		},
+	},
+};
+
+static const struct sst_board_config_data sst_byt_ffrd8_bdata = {
+	.active_ssp_ports = 1,
+	.platform_id = 3,
+	.board_id = 1,
+	.ihf_num_chan = 2,
+	.osc_clk_freq = 25000000,
+	.ssp_platform_data = {
+		[0] = {
+			.ssp_cfg_sst = 1,
+			.port_number = 0,
+			.is_master = 1,
+			.pack_mode = 1,
+			.num_slots_per_frame = 2,
+			.num_bits_per_slot = 24,
+			.active_tx_map = 3,
+			.active_rx_map = 3,
+			.ssp_frame_format = 3,
+			.frame_polarity = 1,
+			.serial_bitrate_clk_mode = 0,
+			.frame_sync_width = 24,
+			.dma_handshake_interface_tx = 1,
+			.dma_handshake_interface_rx = 0,
+			.network_mode = 0,
+			.start_delay = 1,
+			.ssp_base_add = SST_BYT_SSP0_PHY_ADDR,
+		},
+	},
+};
+
+static const struct sst_info byt_fwparse_info = {
+	.use_elf	= true,
+	.max_streams	= 4,
+	.dma_max_len	= SST_MAX_DMA_LEN_MRFLD,
+	.iram_start	= SST_BYT_IRAM_PHY_START,
+	.iram_end	= SST_BYT_IRAM_PHY_END,
+	.iram_use	= true,
+	.dram_start	= SST_BYT_DRAM_PHY_START,
+	.dram_end	= SST_BYT_DRAM_PHY_END,
+	.dram_use	= true,
+	.imr_start	= SST_BYT_IMR_VIRT_START,
+	.imr_end	= SST_BYT_IMR_VIRT_END,
+	.imr_use	= true,
+	.num_probes	= 0,
+};
+
+static const struct sst_ipc_info byt_ipc_info = {
+	.use_32bit_ops = true,
+	.ipc_offset = 4,
+	.mbox_recv_off = 0x400,
+};
+
+struct sst_platform_info byt_ffrd10_platform_data = {
+	.probe_data = &byt_fwparse_info,
+	.ssp_data = NULL,
+	.bdata = &sst_byt_ffrd10_bdata,
+	.pdata = &sst_byt_pdata,
+	.ipc_info = &byt_ipc_info,
+};
+
+struct sst_platform_info byt_ffrd8_platform_data = {
+	.probe_data = &byt_fwparse_info,
+	.ssp_data = NULL,
+	.bdata = &sst_byt_ffrd8_bdata,
+	.pdata = &sst_byt_pdata,
+	.ipc_info = &byt_ipc_info,
+};
 
 int sst_workqueue_init(struct intel_sst_drv *ctx)
 {
@@ -140,6 +245,8 @@ static int sst_platform_get_resources(struct intel_sst_drv *ctx,
 		pr_err("unable to map SHIM");
 		return -EIO;
 	}
+	/* reassign physical address to LPE viewpoint address */
+	ctx->shim_phy_add = SST_BYT_SHIM_PHY_ADDR;
 
 	/* Get mailbox addr from platform resource table */
 	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 2);
@@ -155,6 +262,8 @@ static int sst_platform_get_resources(struct intel_sst_drv *ctx,
 		pr_err("unable to map mailbox");
 		return -EIO;
 	}
+	/* reassign physical address to LPE viewpoint address */
+	ctx->mailbox_add = SST_BYT_MBOX_PHY_ADDR;
 
 	/* Get iram/iccm addr from platform resource table */
 	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 3);
@@ -207,7 +316,6 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	struct acpi_device *device;
 	const char *hid;
 	int i, ret = 0;
-	struct sst_probe_info *info;
 	struct intel_sst_drv *ctx;
 
 	ret = acpi_bus_get_device(handle, &device);
@@ -236,9 +344,6 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	if (!ctx->shim_regs64)
 		return -ENOMEM;
 
-
-	ctx->use_32bit_ops = true;
-
 	ret = sst_driver_ops(ctx);
 	if (ret != 0)
 		return -EINVAL;
@@ -253,14 +358,17 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	if (sst_workqueue_init(ctx))
 		goto do_free_wq;
 
-	info = sst_get_acpi_driver_data(hid);
-	if (!info)
+	ctx->pdata = sst_get_acpi_driver_data(hid);
+	if (!ctx->pdata)
 		return -EINVAL;
 
-	memcpy(&ctx->info, info, sizeof(ctx->info));
+	ctx->use_32bit_ops = ctx->pdata->ipc_info->use_32bit_ops;
+	ctx->mailbox_recv_offset = ctx->pdata->ipc_info->mbox_recv_off;
 
-	ctx->ipc_reg.ipcx = SST_PRH_IPCX;
-	ctx->ipc_reg.ipcd = SST_PRH_IPCD;
+	memcpy(&ctx->info, ctx->pdata->probe_data, sizeof(ctx->info));
+
+	ctx->ipc_reg.ipcx = SST_IPCX + ctx->pdata->ipc_info->ipc_offset;
+	ctx->ipc_reg.ipcd = SST_IPCD + ctx->pdata->ipc_info->ipc_offset;
 
 	pr_debug("Got drv data max stream %d\n",
 				ctx->info.max_streams);

@@ -21,22 +21,26 @@
 #define CTP_SSP_BASE 0xffa23000
 #define CTP_DMA_BASE 0xffaf8000
 #define CTP_MAX_CONFIG_SIZE 500
-struct sst_pci_info sst_data;
 
-struct sst_ssp_info ssp_inf = {
+#define SST_V1_MAILBOX_RECV	0x800
+#define SST_V2_MAILBOX_RECV	0x400
+
+struct sst_platform_info sst_data;
+
+static struct sst_ssp_info ssp_inf = {
 	.gpio = {
 		.alt_function = LNW_ALT_2,
 	},
 	.in_use = true,
 };
 
-static struct sst_platform_config_data sst_ctp_pdata = {
+static const struct sst_platform_config_data sst_ctp_pdata = {
 	.sst_sram_buff_base = 0xfffc0000,
 	.sst_dma_base[0] = CTP_DMA_BASE,
 	.sst_dma_base[1] = 0x0,
 };
 
-static struct sst_board_config_data sst_ctp_bdata = {
+static const struct sst_board_config_data sst_ctp_bdata = {
 	.active_ssp_ports = 4,
 	.platform_id = 2,/*FIXME: Once the firmware fix is available*/
 	.board_id = 1,/*FIXME: Once the firmware fix is available*/
@@ -58,14 +62,11 @@ static struct sst_board_config_data sst_ctp_bdata = {
 				.frame_sync_width = 24,
 				.dma_handshake_interface_tx = 5,
 				.dma_handshake_interface_rx = 4,
-				.reserved[0] = 0xff,
-				.reserved[1] = 0xff,
-				.sst_ssp_base_add = 0xFFA23000,
+				.ssp_base_add = 0xFFA23000,
 		},
 		[SST_SSP_MODEM] = {0},
 		[SST_SSP_BT] = {0},
 		[SST_SSP_FM] = {0},
-
 	},
 };
 
@@ -85,8 +86,13 @@ struct sst_info ctp_sst_info = {
 	.num_probes = 1,
 };
 
+static const struct sst_ipc_info ctp_ipc_info = {
+	.use_32bit_ops = true,
+	.ipc_offset = 0,
+	.mbox_recv_off = SST_V1_MAILBOX_RECV,
+};
 
-struct sst_info mrfld_sst_info = {
+static const struct sst_info mrfld_sst_info = {
 	.iram_start = 0,
 	.iram_end = 0,
 	.iram_use = false,
@@ -102,7 +108,13 @@ struct sst_info mrfld_sst_info = {
 	.num_probes = 16,
 };
 
-static int set_ctp_sst_config(struct sst_pci_info *sst_info)
+static const struct sst_ipc_info mrfld_ipc_info = {
+	.use_32bit_ops = false,
+	.ipc_offset = 0,
+	.mbox_recv_off = SST_V2_MAILBOX_RECV,
+};
+
+static int set_ctp_sst_config(struct sst_platform_info *sst_info)
 {
 	unsigned int conf_len;
 
@@ -119,14 +131,15 @@ static int set_ctp_sst_config(struct sst_pci_info *sst_info)
 	sst_info->pdata = &sst_ctp_pdata;
 	sst_info->bdata = &sst_ctp_bdata;
 	sst_info->probe_data = &ctp_sst_info;
+	sst_info->ipc_info = &ctp_ipc_info;
 
 	return 0;
 }
 
-static struct sst_pci_info *get_sst_platform_data(struct pci_dev *pdev)
+static struct sst_platform_info *get_sst_platform_data(struct pci_dev *pdev)
 {
 	int ret;
-	struct sst_pci_info *sst_pinfo = NULL;
+	struct sst_platform_info *sst_pinfo = NULL;
 
 	switch (pdev->device) {
 	case PCI_DEVICE_ID_INTEL_SST_CLV:
@@ -137,9 +150,10 @@ static struct sst_pci_info *get_sst_platform_data(struct pci_dev *pdev)
 		break;
 	case PCI_DEVICE_ID_INTEL_SST_MRFLD:
 		sst_data.ssp_data = NULL;
+		sst_data.probe_data = &mrfld_sst_info;
 		sst_data.pdata = NULL;
 		sst_data.bdata = NULL;
-		sst_data.probe_data = &mrfld_sst_info;
+		sst_data.ipc_info = &mrfld_ipc_info;
 		sst_pinfo = &sst_data;
 		break;
 	default:

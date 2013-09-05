@@ -27,5 +27,19 @@ enum {
 	BYT_AUD_PROBE_DEV,
 };
 
-extern void __init *byt_audio_platform_data(void *info) __attribute__((weak));
+/* LPE viewpoint addresses */
+/* TODO: move to DSDT */
+#define SST_BYT_IRAM_PHY_START	0xff2c0000
+#define SST_BYT_IRAM_PHY_END	0xff2d4000
+#define SST_BYT_DRAM_PHY_START	0xff300000
+#define SST_BYT_DRAM_PHY_END	0xff320000
+#define SST_BYT_IMR_VIRT_START	0xc0000000 /* virtual addr in LPE */
+#define SST_BYT_IMR_VIRT_END	0xc01fffff
+#define SST_BYT_SHIM_PHY_ADDR	0xff340000
+#define SST_BYT_MBOX_PHY_ADDR	0xff344000
+#define SST_BYT_DMA0_PHY_ADDR	0xff298000
+#define SST_BYT_DMA1_PHY_ADDR	0xff29c000
+#define SST_BYT_SSP0_PHY_ADDR	0xff2a0000
+#define SST_BYT_SSP2_PHY_ADDR	0xff2a2000
+
 #endif
