@@ -48,6 +48,8 @@
 #include "gp_device.h"
 #include "irq.h"
 
+#define MAX_STREAM_NUM	2
+
 #define ATOMISP_PCI_DEVICE_SOC_MASK	0xfff8
 /* MRFLD with 0x1178: ISP freq can burst to 457MHz */
 #define ATOMISP_PCI_DEVICE_SOC_MRFLD	0x1178

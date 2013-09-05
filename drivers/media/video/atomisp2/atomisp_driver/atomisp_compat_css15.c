@@ -19,6 +19,7 @@
  *
  */
 
+#include <linux/kfifo.h>
 #include <media/videobuf-vmalloc.h>
 #include <media/v4l2-dev.h>
 
@@ -1481,6 +1482,73 @@ int atomisp_css_load_acc_binary(struct atomisp_sub_device *asd,
 	if (sh_css_pipeline_add_acc_stage(
 	    isp->acc.pipeline, fw) != sh_css_success)
 		return -EBADSLT;
+
+	return 0;
+}
+
+int atomisp_css_isr_thread(struct atomisp_device *isp,
+			   bool *frame_done_found,
+			   bool *css_pipe_done,
+			   bool *reset_wdt_timer)
+{
+	struct atomisp_css_event current_event;
+	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
+	/* ISP1.5 has only 1 stream */
+	struct atomisp_sub_device *asd = &isp->asd[0];
+
+	while (!atomisp_css_dequeue_event(&current_event)) {
+		switch (current_event.event.type) {
+		case CSS_EVENT_PIPELINE_DONE:
+			css_pipe_done[asd->index] = true;
+			break;
+		case CSS_EVENT_OUTPUT_FRAME_DONE:
+		case CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+			*reset_wdt_timer = true; /* ISP running */
+			/* fall through */
+		case CSS_EVENT_3A_STATISTICS_DONE:
+		case CSS_EVENT_DIS_STATISTICS_DONE:
+			break;
+		default:
+			dev_err(isp->dev, "unknown event 0x%x pipe:%d\n",
+				current_event.event.type, current_event.pipe);
+			break;
+		}
+		kfifo_in(&events, &current_event, 1);
+	}
+
+	while (kfifo_out(&events, &current_event, 1)) {
+		atomisp_css_temp_pipe_to_pipe_id(&current_event);
+		switch (current_event.event.type) {
+		case CSS_EVENT_OUTPUT_FRAME_DONE:
+			frame_done_found[asd->index] = true;
+			atomisp_buf_done(asd, 0, CSS_BUFFER_TYPE_OUTPUT_FRAME,
+					 current_event.pipe, true);
+			break;
+		case CSS_EVENT_3A_STATISTICS_DONE:
+			atomisp_buf_done(asd, 0,
+					 CSS_BUFFER_TYPE_3A_STATISTICS,
+					 current_event.pipe,
+					 css_pipe_done[asd->index]);
+			break;
+		case CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+			atomisp_buf_done(asd, 0,
+					 CSS_BUFFER_TYPE_VF_OUTPUT_FRAME,
+					 current_event.pipe, true);
+			break;
+		case CSS_EVENT_DIS_STATISTICS_DONE:
+			atomisp_buf_done(asd, 0,
+					 CSS_BUFFER_TYPE_DIS_STATISTICS,
+					 current_event.pipe,
+					 css_pipe_done[asd->index]);
+			break;
+		case CSS_EVENT_PIPELINE_DONE:
+			break;
+		default:
+			dev_err(isp->dev, "unhandled css stored event: 0x%x\n",
+					current_event.event.type);
+			break;
+		}
+	}
 
 	return 0;
 }

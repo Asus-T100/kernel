@@ -515,7 +515,6 @@ static void clear_irq_reg(struct atomisp_device *isp)
 irqreturn_t atomisp_isr(int irq, void *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)dev;
-	/* FIXME! Only support subdev0 at present */
 	struct atomisp_sub_device *asd = &isp->asd[0];
 	unsigned int irq_infos = 0;
 	unsigned long flags;
@@ -537,8 +536,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 
 	clear_irq_reg(isp);
 
-	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED &&
-	    !isp->acc.pipeline)
+	if (!atomisp_streaming_count(isp) && !isp->acc.pipeline)
 		goto out_nowake;
 
 	if (irq_infos & CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
@@ -792,10 +790,10 @@ static struct atomisp_video_pipe *__atomisp_get_pipe(
 	return &asd->video_out_vf;
 }
 
-static void atomisp_buf_done(struct atomisp_sub_device *asd, int error,
-			     enum atomisp_css_buffer_type buf_type,
-			     enum atomisp_css_pipe_id css_pipe_id,
-			     bool q_buffers)
+void atomisp_buf_done(struct atomisp_sub_device *asd, int error,
+		      enum atomisp_css_buffer_type buf_type,
+		      enum atomisp_css_pipe_id css_pipe_id,
+		      bool q_buffers)
 {
 	struct videobuf_buffer *vb = NULL;
 	struct atomisp_video_pipe *pipe = NULL;
@@ -1267,113 +1265,90 @@ void atomisp_setup_flash(struct atomisp_sub_device *asd)
 irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 {
 	struct atomisp_device *isp = isp_ptr;
-	struct atomisp_css_event current_event;
 	unsigned long flags;
-	bool frame_done_found = false;
-	bool css_pipe_done = false;
+	bool frame_done_found[MAX_STREAM_NUM] = {0};
+	bool css_pipe_done[MAX_STREAM_NUM] = {0};
 	bool reset_wdt_timer = false;
-	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
-	/* FIXME! only support 1 isp_subdev at present */
+	unsigned int i;
 	struct atomisp_sub_device *asd = &isp->asd[0];
 
 	dev_dbg(isp->dev, ">%s\n", __func__);
 	mutex_lock(&isp->mutex);
 
 	spin_lock_irqsave(&isp->lock, flags);
-	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED &&
-		!isp->acc.pipeline) {
+
+	if (!atomisp_streaming_count(isp) && !isp->acc.pipeline) {
 		spin_unlock_irqrestore(&isp->lock, flags);
 		goto out;
 	}
 	spin_unlock_irqrestore(&isp->lock, flags);
+	/*
+	 * The standard CSS2.0 API tells the following calling sequence of
+	 * dequeue ready buffers:
+	 * while (ia_css_dequeue_event(...)) {
+	 *	switch (event.type) {
+	 *	...
+	 *	ia_css_pipe_dequeue_buffer()
+	 *	}
+	 * }
+	 * That is, dequeue event and buffer are one after another.
+	 *
+	 * But the following implementation is to first deuque all the event
+	 * to a FIFO, then process the event in the FIFO.
+	 * This will not have issue in single stream mode, but it do have some
+	 * issue in multiple stream case. The issue is that
+	 * ia_css_pipe_dequeue_buffer() will not return the corrent buffer in
+	 * a specific pipe.
+	 *
+	 * This is due to ia_css_pipe_dequeue_buffer() does not take the
+	 * ia_css_pipe parameter.
+	 *
+	 * So:
+	 * For CSS2.0: we change the way to not dequeue all the event at one
+	 * time, instead, dequue one and process one, then another
+	 *
+	 * For CSS1.5: still keep previous implementation.
+	 */
+	if (atomisp_css_isr_thread(isp, frame_done_found, css_pipe_done,
+				   &reset_wdt_timer))
+		goto out;
 
-	while (!atomisp_css_dequeue_event(&current_event)) {
-		switch (current_event.event.type) {
-		case CSS_EVENT_PIPELINE_DONE:
-			css_pipe_done = true;
-			break;
-		case CSS_EVENT_OUTPUT_FRAME_DONE:
-		case CSS_EVENT_VF_OUTPUT_FRAME_DONE:
-			reset_wdt_timer = true; /* ISP running */
-			/* fall through */
-		case CSS_EVENT_3A_STATISTICS_DONE:
-		case CSS_EVENT_DIS_STATISTICS_DONE:
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-		case CSS_EVENT_PORT_EOF:
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-			break;
-		default:
-			dev_err(isp->dev, "unknown event 0x%x pipe:%d\n",
-				current_event.event.type, current_event.pipe);
-			break;
+	for (i = 0; i < isp->num_of_streams; i++) {
+		asd = &isp->asd[i];
+		if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+			continue;
+		if (frame_done_found[asd->index] &&
+		    asd->params.css_update_params_needed) {
+			atomisp_css_update_isp_params(asd);
+			asd->params.css_update_params_needed = false;
+			frame_done_found[asd->index] = false;
 		}
-		kfifo_in(&events, &current_event, 1);
-	}
+		atomisp_setup_flash(asd);
 
-	while (kfifo_out(&events, &current_event, 1)) {
-		atomisp_css_temp_pipe_to_pipe_id(&current_event);
-		switch (current_event.event.type) {
-		case CSS_EVENT_OUTPUT_FRAME_DONE:
-			frame_done_found = true;
-			atomisp_buf_done(asd, 0, CSS_BUFFER_TYPE_OUTPUT_FRAME,
-					 current_event.pipe, true);
-			break;
-		case CSS_EVENT_3A_STATISTICS_DONE:
-			atomisp_buf_done(asd, 0,
-					 CSS_BUFFER_TYPE_3A_STATISTICS,
-					 current_event.pipe, css_pipe_done);
-			break;
-		case CSS_EVENT_VF_OUTPUT_FRAME_DONE:
-			atomisp_buf_done(asd, 0,
-					 CSS_BUFFER_TYPE_VF_OUTPUT_FRAME,
-					 current_event.pipe, true);
-			break;
-		case CSS_EVENT_DIS_STATISTICS_DONE:
-			atomisp_buf_done(asd, 0,
-					 CSS_BUFFER_TYPE_DIS_STATISTICS,
-					 current_event.pipe, css_pipe_done);
-			break;
-		case CSS_EVENT_PIPELINE_DONE:
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-		case CSS_EVENT_PORT_EOF:
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-			break;
-		default:
-			dev_err(isp->dev, "unhandled css stored event: 0x%x\n",
-					current_event.event.type);
-			break;
-		}
-	}
-
-	if (frame_done_found && asd->params.css_update_params_needed) {
-		atomisp_css_update_isp_params(asd);
-		asd->params.css_update_params_needed = false;
-		frame_done_found = false;
-	}
-	atomisp_setup_flash(asd);
-
-	/* If there are no buffers queued then delete wdt timer. */
-	if (!atomisp_buffers_queued(asd)) {
-		del_timer(&isp->wdt);
-	} else {
-		/* SOF irq should not reset wdt timer. */
-		if (reset_wdt_timer) {
-			mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
+		/* If there are no buffers queued then
+		 * delete wdt timer. */
+		if (!atomisp_buffers_queued(asd)) {
+			del_timer(&isp->wdt);
+		} else if (reset_wdt_timer) {
+			/* SOF irq should not reset wdt timer. */
+			mod_timer(&isp->wdt, jiffies +
+				  isp->wdt_duration);
 			atomic_set(&isp->wdt_count, 0);
 		}
 	}
 out:
 	mutex_unlock(&isp->mutex);
-
-	if (asd->streaming == ATOMISP_DEVICE_STREAMING_ENABLED
-		&& css_pipe_done
-		&& isp->sw_contex.file_input)
-		v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
-				video, s_stream, 1);
-
-	if (isp->acc.pipeline && css_pipe_done)
-		atomisp_css_acc_done(asd);
-
+	for (i = 0; i < isp->num_of_streams; i++) {
+		asd = &isp->asd[i];
+		if (asd->streaming == ATOMISP_DEVICE_STREAMING_ENABLED
+		    && css_pipe_done[asd->index]
+		    && isp->sw_contex.file_input)
+			v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
+					 video, s_stream, 1);
+		/* FIXME! FIX ACC implementation */
+		if (isp->acc.pipeline && css_pipe_done[asd->index])
+			atomisp_css_acc_done(asd);
+	}
 	dev_dbg(isp->dev, "<%s\n", __func__);
 
 	return IRQ_HANDLED;
