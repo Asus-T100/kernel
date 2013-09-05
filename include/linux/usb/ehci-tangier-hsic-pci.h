@@ -28,7 +28,7 @@
 /* Port Inactivity Duratoin is default value for L2 suspend */
 #define HSIC_PORT_INACTIVITYDURATION              500
 /* This is the default value for L2 autosuspend enable */
-#define HSIC_AUTOSUSPEND                          1
+#define HSIC_AUTOSUSPEND                          0
 #define HSIC_BUS_INACTIVITYDURATION               500
 #define HSIC_REMOTEWAKEUP                         1
 
@@ -52,6 +52,7 @@ struct hsic_tangier_priv {
 	unsigned             port_inactivityDuration;
 	unsigned             bus_inactivityDuration;
 	spinlock_t           hsic_lock;
+	struct	wake_lock    wake_lock;
 	/* Root hub device */
 	struct usb_device           *rh_dev;
 	struct usb_device           *modem_dev;

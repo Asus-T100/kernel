@@ -1539,6 +1539,9 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		goto put_gmch;
 	}
 
+	spin_lock_init(&dev_priv->gt_lock);
+	mutex_init(&dev_priv->rps.rps_mutex);
+
 	/* RS state has to be initialized to pull render/media power wells out
 	 * of sleep. This is required before initializing gem, which touches
 	 * render/media registers
@@ -1578,6 +1581,27 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 				       1);
 	if (dev_priv->wq == NULL) {
 		DRM_ERROR("Failed to create our workqueue.\n");
+		ret = -ENOMEM;
+		goto out_mtrrfree;
+	}
+
+	/* Creating our own private workqueue for the unregistration of
+	   MMU notfifiers used with vmap objects. The notfifier
+	   unregistration is done when vmap objects are freed,
+	   but this has a considerable overhead (> 140 ms) causing
+	   the CTS tests with RenderScript/OCL driver to fail. So
+	   offloading the step of notifier unregistration to a separate
+	   worker thread (as a part of workqueue), this will relieve the
+	   main execution path of this overhead.
+	   Also we need serialized execution of notifier unregistration
+	   functions, hence using max_active = 1 and NON_REENTRANT.
+	 */
+	dev_priv->vmap_mn_unregister_wq = alloc_workqueue(
+					   "i915_vmap_mn_unregister_wq",
+				       WQ_UNBOUND | WQ_NON_REENTRANT,
+				       1);
+	if (dev_priv->vmap_mn_unregister_wq == NULL) {
+		DRM_ERROR("Failed to create mn_unregister workqueue.\n");
 		ret = -ENOMEM;
 		goto out_mtrrfree;
 	}
@@ -1664,9 +1688,11 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		dev_priv->hangcheck[i].dev = dev;
 
 		setup_timer(&dev_priv->hangcheck[i].timer,
-			i915_hangcheck_elapsed,
+			i915_hangcheck_sample,
 			(unsigned long) &dev_priv->hangcheck[i]);
 	}
+
+	i915_init_watchdog(dev);
 
 	if (IS_GEN5(dev))
 		intel_gpu_ips_init(dev_priv);
@@ -1798,6 +1824,10 @@ int i915_driver_unload(struct drm_device *dev)
 
 	destroy_workqueue(dev_priv->wq);
 
+	/* No need to explicitly flush the pending work items
+	   will be taken care by the destroy wq function itself */
+	destroy_workqueue(dev_priv->vmap_mn_unregister_wq);
+
 	pci_dev_put(dev_priv->bridge_dev);
 	kfree(dev->dev_private);
 
@@ -1819,6 +1849,8 @@ int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 	INIT_LIST_HEAD(&file_priv->mm.request_list);
 
 	idr_init(&file_priv->context_idr);
+
+	i915_perfmon_init(file);
 
 #ifdef CONFIG_DRM_VXD_BYT
 	drm_i915_private_t *dev_priv = dev->dev_private;
@@ -1872,6 +1904,7 @@ void i915_driver_lastclose(struct drm_device * dev)
 
 void i915_driver_preclose(struct drm_device * dev, struct drm_file *file_priv)
 {
+	i915_perfmon_close(dev, file_priv);
 	i915_gem_context_close(dev, file_priv);
 	i915_gem_release(dev, file_priv);
 }

@@ -1,9 +1,7 @@
 /*
- * Support for Medfield PNW Camera Imaging ISP subsystem.
+ * Support for Intel Camera Imaging ISP subsystem.
  *
- * Copyright (c) 2010 Intel Corporation. All Rights Reserved.
- *
- * Copyright (c) 2010 Silicon Hive www.siliconhive.com.
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version

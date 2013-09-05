@@ -845,7 +845,7 @@ err_kfree:
 	put_device(&pdev->dev);
 	kfree(dev);
 err_iounmap:
-	iounmap(dev->base);
+	iounmap(base);
 err_release_region:
 	pci_release_region(pdev, 0);
 exit:

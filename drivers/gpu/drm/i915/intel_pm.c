@@ -32,10 +32,10 @@
 #include <linux/module.h>
 /* HDMI Audio OSPM handling */
 #include <psb_powermgmt.h>
+static struct drm_device *gdev;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	#include <linux/earlysuspend.h>
-	static struct drm_device *gdev;
 #endif
 
 /* FBC, or Frame Buffer Compression, is a technique employed to compress the
@@ -1242,6 +1242,9 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
 		*plane_dl = (64 * (*plane_prec_mult) * 4) / ((clock / 1000) *
 						     pixel_size);
+		/* Temp hack - Try raising priority to high to w/a
+		latency problems */
+		*plane_dl = 0;
 		latencyprogrammed = true;
 	}
 
@@ -1251,6 +1254,9 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
 		*cursor_dl = (64 * (*cursor_prec_mult) * 4) / ((clock / 1000) *
 							4);
+		/* Temp hack - Try raising priority to high to w/a
+		latency problems */
+		*cursor_dl = 0;
 		latencyprogrammed = true;
 	}
 
@@ -1260,6 +1266,9 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
 		*sprite_dl = (64 * (*sprite_prec_mult) * 4) / ((clock / 1000) *
 						sprite_pixel_size);
+		/* Temp hack - Try raising priority to high to w/a
+		latency problems */
+		*sprite_dl = 0;
 		latencyprogrammed = true;
 	}
 
@@ -1282,59 +1291,68 @@ static void vlv_update_drain_latency(struct drm_device *dev)
 	int plane_prec_mult = 0, cursor_prec_mult = 0;
 	/* Precision multiplier is either 64 or 32 */
 	struct vlv_MA_component_enabled enable;
-	u32 val;
-
-	/* compute & update drain latency only if plane enabled */
 
 	enable.EnPlane = is_plane_enabled(dev_priv, 0);
-	enable.EnCursor = is_cursor_enabled(dev_priv, 0);
+	enable.EnCursor = false;
 	enable.EnSprite = false;
 
-	/* For plane A, Cursor A */
+	/* For plane A*/
 	if (vlv_compute_drain_latency(dev, 0, &plane_prec_mult,
-		&planea_dl, &cursor_prec_mult, &cursora_dl, NULL,
-		NULL, 0, enable)) {
-		cursora_prec = (cursor_prec_mult ==
-				DRAIN_LATENCY_PRECISION_32) ?
-				DDL_CURSORA_PRECISION_32 :
-				DDL_CURSORA_PRECISION_64;
+		&planea_dl, NULL, NULL, NULL, NULL, 0, enable)) {
+
 		planea_prec = (plane_prec_mult ==
 				DRAIN_LATENCY_PRECISION_32) ?
 				DDL_PLANEA_PRECISION_32 :
 				DDL_PLANEA_PRECISION_64;
 
-		val = I915_READ(VLV_DDL1);
-		I915_WRITE(VLV_DDL1, val | cursora_prec |
-			(cursora_dl << DDL_CURSORA_SHIFT) |
-			planea_prec | planea_dl);
-	} else {
-		I915_WRITE(VLV_DDL1, 0);
-	}
+		I915_WRITE_BITS(VLV_DDL1, planea_prec | planea_dl, 0x000000ff);
+	} else
+		I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x000000ff);
 
-	enable.EnPlane = is_plane_enabled(dev_priv, 1);
-	enable.EnCursor = is_cursor_enabled(dev_priv, 1);
-	enable.EnSprite = false;
+	/* Cursor A */
+	enable.EnPlane = false;
+	enable.EnCursor = is_cursor_enabled(dev_priv, 0);
 
-	/* For plane B, Cursor B */
-	if (vlv_compute_drain_latency(dev, 1, &plane_prec_mult,
-		&planeb_dl, &cursor_prec_mult, &cursorb_dl, NULL,
-		NULL, 0, enable)) {
-		cursorb_prec = (cursor_prec_mult ==
+	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, &cursor_prec_mult,
+			&cursora_dl, NULL, NULL, 0, enable)) {
+		cursora_prec = (cursor_prec_mult ==
 				DRAIN_LATENCY_PRECISION_32) ?
-				DDL_CURSORB_PRECISION_32 :
-				DDL_CURSORB_PRECISION_64;
+				DDL_CURSORA_PRECISION_32 :
+				DDL_CURSORA_PRECISION_64;
+
+		I915_WRITE_BITS(VLV_DDL1, cursora_prec |
+			(cursora_dl << DDL_CURSORA_SHIFT), 0xff000000);
+	} else
+		I915_WRITE_BITS(VLV_DDL1, 0x0000, 0xff000000);
+
+	/* For plane B */
+	enable.EnPlane = is_plane_enabled(dev_priv, 1);
+	enable.EnCursor = false;
+	if (vlv_compute_drain_latency(dev, 1, &plane_prec_mult,
+		&planeb_dl, NULL, NULL, NULL, NULL, 0, enable)) {
+
 		planeb_prec = (plane_prec_mult ==
 				DRAIN_LATENCY_PRECISION_32) ?
 				DDL_PLANEB_PRECISION_32 :
 				DDL_PLANEB_PRECISION_64;
+		I915_WRITE_BITS(VLV_DDL2, planeb_prec | planeb_dl, 0x000000ff);
+	} else
+		I915_WRITE_BITS(VLV_DDL2, 0x0000, 0x000000ff);
 
-		val = I915_READ(VLV_DDL2);
-		I915_WRITE(VLV_DDL2, val | cursorb_prec |
-			(cursorb_dl << DDL_CURSORB_SHIFT) |
-			planeb_prec | planeb_dl);
-	} else {
-		I915_WRITE(VLV_DDL1, 0);
-	}
+	/* Cursor B */
+	enable.EnPlane = false;
+	enable.EnCursor = is_cursor_enabled(dev_priv, 1);
+	if (vlv_compute_drain_latency(dev, 1, NULL, NULL, &cursor_prec_mult,
+			&cursorb_dl, NULL, NULL, 0, enable)) {
+		cursorb_prec = (cursor_prec_mult ==
+				DRAIN_LATENCY_PRECISION_32) ?
+				DDL_CURSORB_PRECISION_32 :
+				DDL_CURSORB_PRECISION_64;
+
+		I915_WRITE_BITS(VLV_DDL2, cursorb_prec | (cursorb_dl <<
+				DDL_CURSORB_SHIFT), 0xff000000);
+	} else
+		I915_WRITE_BITS(VLV_DDL2, 0x0000, 0xff000000);
 }
 
 #define single_plane_enabled(mask) is_power_of_2(mask)
@@ -2139,12 +2157,13 @@ static void valleyview_update_sprite_wm(struct drm_device *dev, int pipe,
 	int sprite_prec = 0, sprite_dl = 0;
 	int sprite_prec_mult = 0;
 	struct vlv_MA_component_enabled enable;
-	u32 val;
+
+	enable.EnPlane = false;
+	enable.EnCursor = false;
 
 	/* Sprite A */
 	enable.EnSprite = is_sprite_enabled(dev_priv, 0, 0);
 
-	val = I915_READ(VLV_DDL1);
 	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
 		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
 		sprite_prec = (sprite_prec_mult ==
@@ -2152,17 +2171,15 @@ static void valleyview_update_sprite_wm(struct drm_device *dev, int pipe,
 				DDL_SPRITEA_PRECISION_32 :
 				DDL_SPRITEA_PRECISION_64;
 
-		I915_WRITE(VLV_DDL1, val |
-			(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+		I915_WRITE_BITS(VLV_DDL1, sprite_prec | (sprite_dl
+				<< DDL_SPRITEA_SHIFT), 0x0000ff00);
 	} else {
-		I915_WRITE(VLV_DDL1, val &
-			(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+		I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x0000ff00);
 	}
 
 	/* Sprite B */
 	enable.EnSprite = is_sprite_enabled(dev_priv, 0, 1);
 
-	val = I915_READ(VLV_DDL1);
 	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
 		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
 		sprite_prec = (sprite_prec_mult ==
@@ -2170,47 +2187,42 @@ static void valleyview_update_sprite_wm(struct drm_device *dev, int pipe,
 				DDL_SPRITEB_PRECISION_32 :
 				DDL_SPRITEB_PRECISION_64;
 
-		I915_WRITE(VLV_DDL1, val |
-			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
-	}  else {
-		I915_WRITE(VLV_DDL1, val &
-			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
+		I915_WRITE_BITS(VLV_DDL1, sprite_prec | (sprite_dl
+				<< DDL_SPRITEB_SHIFT), 0x00ff0000);
+	} else {
+		I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x00ff0000);
 	}
 
 	/* Sprite C */
 	enable.EnSprite = is_sprite_enabled(dev_priv, 1, 0);
 
-	val = I915_READ(VLV_DDL2);
-	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
+	if (vlv_compute_drain_latency(dev, 1, NULL, NULL, NULL, NULL,
 		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
 		sprite_prec = (sprite_prec_mult ==
 				DRAIN_LATENCY_PRECISION_32) ?
 				DDL_SPRITEA_PRECISION_32 :
 				DDL_SPRITEA_PRECISION_64;
 
-		I915_WRITE(VLV_DDL2, val |
-			(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+		I915_WRITE_BITS(VLV_DDL2, sprite_prec | (sprite_dl
+				<< DDL_SPRITEA_SHIFT), 0x0000ff00);
 	} else {
-		I915_WRITE(VLV_DDL2, val &
-		(sprite_prec | (sprite_dl << DDL_SPRITEA_SHIFT)));
+		I915_WRITE_BITS(VLV_DDL2, 0x0000, 0x0000ff00);
 	}
 
 	/* Sprite D */
 	enable.EnSprite = is_sprite_enabled(dev_priv, 1, 1);
 
-	val = I915_READ(VLV_DDL2);
-	if (vlv_compute_drain_latency(dev, 0, NULL, NULL, NULL, NULL,
+	if (vlv_compute_drain_latency(dev, 1, NULL, NULL, NULL, NULL,
 		&sprite_prec_mult, &sprite_dl, pixel_size, enable)) {
 		sprite_prec = (sprite_prec_mult ==
 				DRAIN_LATENCY_PRECISION_32) ?
 				DDL_SPRITEB_PRECISION_32 :
 				DDL_SPRITEB_PRECISION_64;
 
-		I915_WRITE(VLV_DDL2, val |
-			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
+		I915_WRITE_BITS(VLV_DDL2, sprite_prec | (sprite_dl
+				<< DDL_SPRITEB_SHIFT), 0x00ff0000);
 	} else {
-		I915_WRITE(VLV_DDL2, val &
-			(sprite_prec | (sprite_dl << DDL_SPRITEB_SHIFT)));
+		I915_WRITE_BITS(VLV_DDL2, 0x0000, 0x00ff0000);
 	}
 
 	I915_WRITE(DSPFW4, (DSPFW4_SPRITEB_VAL << DSPFW4_SPRITEB_SHIFT) |
@@ -2485,7 +2497,7 @@ void gen6_set_rps(struct drm_device *dev, u8 val)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 limits = gen6_rps_limits(dev_priv, &val);
 
-	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.rps_mutex));
 
 	if (val == dev_priv->rps.cur_delay)
 		return;
@@ -2593,7 +2605,7 @@ static void gen6_enable_rps(struct drm_device *dev)
 	int rc6_mode;
 	int i;
 
-	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.rps_mutex));
 
 	/* Here begins a magic sequence of register writes to enable
 	 * auto-downclocking.
@@ -2824,60 +2836,60 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 
 	I915_WRITE(0xa800, 0x00000000);
 	I915_WRITE(0xa804, 0x00000000);
-	I915_WRITE(0xa808, 0x0000ff0A);
-	I915_WRITE(0xa80c, 0x1D000000);
-	I915_WRITE(0xa810, 0xAC004800);
-	I915_WRITE(0xa814, 0x000F0000);
-	I915_WRITE(0xa818, 0x5A000000);
-	I915_WRITE(0xa81c, 0x2600001F);
+	I915_WRITE(0xa808, 0x0000ff0a);
+	I915_WRITE(0xa80c, 0x1d000000);
+	I915_WRITE(0xa810, 0xac004900);
+	I915_WRITE(0xa814, 0x000f0000);
+	I915_WRITE(0xa818, 0x5a000000);
+	I915_WRITE(0xa81c, 0x2600001f);
 	I915_WRITE(0xa820, 0x00090000);
 	I915_WRITE(0xa824, 0x2000ff00);
-	I915_WRITE(0xa828, 0xff090017);
+	I915_WRITE(0xa828, 0xff090016);
 	I915_WRITE(0xa82c, 0x00000000);
 	I915_WRITE(0xa830, 0x00000100);
-	I915_WRITE(0xa834, 0x009C0F51);
-	I915_WRITE(0xa838, 0x000B0000);
-	I915_WRITE(0xa83c, 0x007D3307);
-	I915_WRITE(0xa840, 0xff3C0000);
-	I915_WRITE(0xa844, 0xffff00ff);
+	I915_WRITE(0xa834, 0x00a00f51);
+	I915_WRITE(0xa838, 0x000b0000);
+	I915_WRITE(0xa83c, 0xcb7d3307);
+	I915_WRITE(0xa840, 0x003C0000);
+	I915_WRITE(0xa844, 0xffff0000);
 	I915_WRITE(0xa848, 0x00220000);
 	I915_WRITE(0xa84c, 0x43000000);
 	I915_WRITE(0xa850, 0x00000800);
-	I915_WRITE(0xa854, 0x00000100);
-	I915_WRITE(0xa858, 0x00000000);
+	I915_WRITE(0xa854, 0x00000f00);
+	I915_WRITE(0xa858, 0x00000021);
 	I915_WRITE(0xa85c, 0x00000000);
-	I915_WRITE(0xa860, 0x00ff0000);
+	I915_WRITE(0xa860, 0x00190000);
 	I915_WRITE(0xa900, 0x00000000);
-	I915_WRITE(0xa904, 0x00001c00);
+	I915_WRITE(0xa904, 0x00000000);
 	I915_WRITE(0xa908, 0x00000000);
-	I915_WRITE(0xa90c, 0x06000000);
-	I915_WRITE(0xa910, 0x09000200);
-	I915_WRITE(0xa914, 0x00000000);
-	I915_WRITE(0xa918, 0x00590000);
-	I915_WRITE(0xa91c, 0x00000000);
-	I915_WRITE(0xa920, 0x04002501);
-	I915_WRITE(0xa924, 0x00000100);
-	I915_WRITE(0xa928, 0x03000410);
+	I915_WRITE(0xa90c, 0x1d000000);
+	I915_WRITE(0xa910, 0xac005000);
+	I915_WRITE(0xa914, 0x000f0000);
+	I915_WRITE(0xa918, 0x5a000000);
+	I915_WRITE(0xa91c, 0x2600001f);
+	I915_WRITE(0xa920, 0x00090000);
+	I915_WRITE(0xa924, 0x2000ff00);
+	I915_WRITE(0xa928, 0xff090016);
 	I915_WRITE(0xa92c, 0x00000000);
-	I915_WRITE(0xa930, 0x00020000);
-	I915_WRITE(0xa934, 0x02070106);
-	I915_WRITE(0xa938, 0x00010100);
-	I915_WRITE(0xa93c, 0x00401c00);
-	I915_WRITE(0xa940, 0x00000000);
-	I915_WRITE(0xa944, 0x00000000);
-	I915_WRITE(0xa948, 0x10000e00);
-	I915_WRITE(0xa94c, 0x02000004);
-	I915_WRITE(0xa950, 0x00000001);
-	I915_WRITE(0xa954, 0x00000004);
-	I915_WRITE(0xa960, 0x00060000);
-	I915_WRITE(0xaa3c, 0x00001c00);
-	I915_WRITE(0xaa54, 0x00000004);
-	I915_WRITE(0xaa60, 0x00060000);
-	I915_WRITE(0xaa80, 0x00B5005A);
+	I915_WRITE(0xa930, 0x00000100);
+	I915_WRITE(0xa934, 0x00a00f51);
+	I915_WRITE(0xa938, 0x000b0000);
+	I915_WRITE(0xa93c, 0xcb7d3307);
+	I915_WRITE(0xa940, 0x003c0000);
+	I915_WRITE(0xa944, 0xffff0000);
+	I915_WRITE(0xa948, 0x00220000);
+	I915_WRITE(0xa94c, 0x43000000);
+	I915_WRITE(0xa950, 0x00000800);
+	I915_WRITE(0xa954, 0x00000000);
+	I915_WRITE(0xa960, 0x00000000);
+	I915_WRITE(0xaa3c, 0x00000000);
+	I915_WRITE(0xaa54, 0x00000000);
+	I915_WRITE(0xaa60, 0x00000000);
+	I915_WRITE(0xaa80, 0x00ff00ff);
 	I915_WRITE(0xaa84, 0x00000000);
 	I915_WRITE(0x1300a4, 0x00000000);
 	I915_WRITE(0xa248, 0x00000058);
-	intel_punit_write32(dev_priv, 0xd2, 0x1EF53);
+	intel_punit_write32(dev_priv, 0xd2, 0xcf08);
 }
 
 /* vlv_rps_timer_work: Set the frequency to Rpe if Gfx clocks are down
@@ -2897,7 +2909,7 @@ static void vlv_rps_timer_work(struct work_struct *work)
 	drm_i915_private_t *dev_priv = container_of(work, drm_i915_private_t,
 							rps.rps_timer_work);
 
-	mutex_lock(&dev_priv->dev->struct_mutex);
+	mutex_lock(&dev_priv->rps.rps_mutex);
 
 	if (I915_READ(VLV_GTLC_SURVIVABILITY_REG) & VLV_GFX_CLK_STATUS_BIT) {
 		/* GT is not power gated. Cancel any pending ones
@@ -2919,7 +2931,7 @@ static void vlv_rps_timer_work(struct work_struct *work)
 		if (wait_for(((VLV_GFX_CLK_STATUS_BIT &
 		     I915_READ(VLV_GTLC_SURVIVABILITY_REG)) != 0), 500)) {
 			DRM_ERROR("GFX_CLK_ON request timed out\n");
-			mutex_unlock(&dev_priv->dev->struct_mutex);
+			mutex_unlock(&dev_priv->rps.rps_mutex);
 			return;
 		}
 
@@ -2944,7 +2956,7 @@ static void vlv_rps_timer_work(struct work_struct *work)
 			I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
 	}
 
-	mutex_unlock(&dev_priv->dev->struct_mutex);
+	mutex_unlock(&dev_priv->rps.rps_mutex);
 }
 
 bool vlv_turbo_initialize(struct drm_device *dev)
@@ -3117,7 +3129,7 @@ void valleyview_enable_rps(struct drm_device *dev)
 	/* Setup Gfx Turbo */
 	if (i915_enable_turbo > 0) {
 		vlv_turbo_initialize(dev);
-		if (dev_priv->max_frequency_mode) {
+		if (dev_priv->max_freq_enable_count) {
 			vlv_turbo_disable(dev);
 			valleyview_set_rps(dev, dev_priv->rps.max_delay);
 		}
@@ -3190,7 +3202,7 @@ static void ironlake_enable_rc6(struct drm_device *dev)
 	if (!intel_enable_rc6(dev))
 		return;
 
-	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.rps_mutex));
 
 	ret = ironlake_setup_rc6(dev);
 	if (ret)
@@ -4436,12 +4448,14 @@ static void display_early_suspend(struct early_suspend *h)
 {
 	struct drm_device *drm_dev = gdev;
 	struct drm_i915_private *dev_priv = gdev->dev_private;
-	int ret = display_runtime_suspend(drm_dev);
+	int ret;
+	DRM_DEBUG_PM("Early suspend called\n");
+	ret = display_runtime_suspend(drm_dev);
 	if (ret)
-		DRM_ERROR("Display suspend failure\n");
+		DRM_ERROR("Early suspend failure\n");
 	else {
 		dev_priv->early_suspended = true;
-		DRM_DEBUG_DRIVER("Display suspend Success\n");
+		DRM_DEBUG_PM("Early suspend finished\n");
 	}
 }
 
@@ -4449,12 +4463,14 @@ static void display_late_resume(struct early_suspend *h)
 {
 	struct drm_device *drm_dev = gdev;
 	struct drm_i915_private *dev_priv = gdev->dev_private;
-	int ret = display_runtime_resume(drm_dev);
+	int ret;
+	DRM_DEBUG_PM("Late Resume called\n");
+	ret = display_runtime_resume(drm_dev);
 	if (ret)
-		DRM_ERROR("Display Resume failure\n");
+		DRM_ERROR("Late Resume failure\n");
 	else {
 		dev_priv->early_suspended = false;
-		DRM_DEBUG_DRIVER("Display Resume Success\n");
+		DRM_DEBUG_PM("Late Resume finished\n");
 	}
 }
 
@@ -4466,7 +4482,6 @@ static struct early_suspend intel_display_early_suspend = {
 
 void intel_display_pm_init(struct drm_device *dev)
 {
-	gdev = dev;
 	register_early_suspend(&intel_display_early_suspend);
 }
 #endif
@@ -4475,13 +4490,16 @@ void intel_display_pm_init(struct drm_device *dev)
  * Will be updated once S0iX code is integrated */
 bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 {
-	return 1;
+	struct drm_dev *drm_dev = gdev;
+	i915_rpm_get_disp(drm_dev);
+	return i915_is_device_active(drm_dev);
 }
 EXPORT_SYMBOL(ospm_power_using_hw_begin);
 
 void ospm_power_using_hw_end(int hw_island)
 {
-
+	struct drm_dev *drm_dev = gdev;
+	i915_rpm_put_disp(drm_dev);
 }
 EXPORT_SYMBOL(ospm_power_using_hw_end);
 
@@ -4489,6 +4507,7 @@ EXPORT_SYMBOL(ospm_power_using_hw_end);
 void intel_init_pm(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	gdev = dev;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	intel_display_pm_init(dev);
@@ -4877,7 +4896,6 @@ void intel_gt_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	spin_lock_init(&dev_priv->gt_lock);
 
 	if (IS_VALLEYVIEW(dev)) {
 		dev_priv->gt.force_wake_get = __vlv_force_wake_get;
@@ -4897,11 +4915,11 @@ void intel_gt_init(struct drm_device *dev)
 			 * (correctly) interpreted by the test below as MT
 			 * forcewake being disabled.
 			 */
-			mutex_lock(&dev->struct_mutex);
+			mutex_lock(&dev_priv->rps.rps_mutex);
 			__gen6_gt_force_wake_mt_get(dev_priv, FORCEWAKE_ALL);
 			ecobus = I915_READ_NOTRACE(ECOBUS);
 			__gen6_gt_force_wake_mt_put(dev_priv, FORCEWAKE_ALL);
-			mutex_unlock(&dev->struct_mutex);
+			mutex_unlock(&dev_priv->rps.rps_mutex);
 
 			if (ecobus & FORCEWAKE_MT_ENABLE) {
 				DRM_DEBUG_KMS("Using MT version of forcewake\n");
@@ -4947,11 +4965,13 @@ void vlv_force_wake_put(struct drm_i915_private *dev_priv,
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 
 	if (FORCEWAKE_RENDER & fw_engine) {
+		WARN_ON(dev_priv->fw_rendercount == 0);
 		if (--dev_priv->fw_rendercount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_RENDER);
 	}
 
 	if (FORCEWAKE_MEDIA & fw_engine) {
+		WARN_ON(dev_priv->fw_mediacount == 0);
 		if (--dev_priv->fw_mediacount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_MEDIA);
 	}
@@ -4992,6 +5012,7 @@ void vlv_rs_sleepstateinit(struct drm_device *dev,
 	u32 rs_powerwell_status = 0;
 	u32 regdata = 0;
 	u32 isRenderWellFWreq = 0, isMediaWellFWreq = 0;
+	unsigned long irqflags = 0;
 
 	if ((I915_READ(VLV_POWER_CONTEXT_BASE_REG) >> 20) == 0) {
 
@@ -5063,7 +5084,9 @@ void vlv_rs_sleepstateinit(struct drm_device *dev,
 	 * Render and Media engines are awake at this point. Update the
 	 * FW counters to reflect the same
 	 */
+	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 	dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
+	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 
 	/*
 	 * Disable HW RC if requested. Will be requested during boot as
@@ -5165,7 +5188,7 @@ void vlv_rs_setstate(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 regdata = 0;
-
+	unsigned long irqflags = 0;
 	regdata = I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG);
 
 	if (enable) {
@@ -5185,7 +5208,9 @@ void vlv_rs_setstate(struct drm_device *dev,
 		/* Forcewake all engines first */
 		vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
+		spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 		dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
+		spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 
 		regdata &= ~(1 << 28);
 		regdata &= ~(1 << 24);

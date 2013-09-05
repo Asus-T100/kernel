@@ -22,6 +22,8 @@ static int __init ulpmc_i2c_init(void)
 	ulpmc_pdata.cc_lim1 = 2000;	/* 2000mA */
 	ulpmc_pdata.cc_lim2 = 1500;	/* 1500mA */
 	ulpmc_pdata.cc_lim3 = 500;	/* 500mA */
+	ulpmc_pdata.temp_ul = 50;	/* 50 degrees */
+	ulpmc_pdata.temp_ll = 0;	/* 0 degrees */
 	/*
 	 * In BYT FFRD10 we have two batteries with
 	 * each battery has an internal resistance (Rbatt)

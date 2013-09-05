@@ -1,25 +1,23 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
 #include "gdc_device.h"		/* gdc_lut_store(), ... */
 #include "isp.h"			/* ISP_VEC_ELEMBITS */
@@ -122,6 +120,8 @@
 	(SH_CSS_MORPH_TABLE_ELEM_BYTES * (binary)->morph_tbl_aligned_width * \
 	 (binary)->morph_tbl_height)
 
+#define PIX_SHIFT_FILTER_RUN_IN_X 12
+#define PIX_SHIFT_FILTER_RUN_IN_Y 12
 
 /* We keep a second copy of the ptr struct for the SP to access.
    Again, this would not be necessary on the chip. */
@@ -781,8 +781,9 @@ static const struct ia_css_anr_thres default_anr_thres = {
 };
 #endif
 
-/* multiple axis color correction table,
- * 64values = 2x2matrix for 16area, [s2.11].
+/* Multi-Axes Color Correction table for ISP1.
+ * 	64values = 2x2matrix for 16area, [s2.13]
+ * 	ineffective: 16 of "identity 2x2 matix" {8192,0,0,8192}
  */
 static const struct ia_css_macc_table default_macc_table = {
 		{ 8192, 0, 0, 8192, 8192, 0, 0, 8192,
@@ -793,6 +794,21 @@ static const struct ia_css_macc_table default_macc_table = {
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192 }
+};
+
+/* Multi-Axes Color Correction table for ISP2.
+ * 	64values = 2x2matrix for 16area, [s1.12]
+ * 	ineffective: 16 of "identity 2x2 matix" {4096,0,0,4096}
+ */
+static const struct ia_css_macc_table default_macc2_table = {
+	      { 4096, 0, 0, 4096, 4096, 0, 0, 4096,
+		4096, 0, 0, 4096, 4096, 0, 0, 4096,
+		4096, 0, 0, 4096, 4096, 0, 0, 4096,
+		4096, 0, 0, 4096, 4096, 0, 0, 4096,
+		4096, 0, 0, 4096, 4096, 0, 0, 4096,
+		4096, 0, 0, 4096, 4096, 0, 0, 4096,
+		4096, 0, 0, 4096, 4096, 0, 0, 4096,
+		4096, 0, 0, 4096, 4096, 0, 0, 4096 }
 };
 
 /* Digital Zoom lookup table. See documentation for more details about the
@@ -1433,23 +1449,23 @@ static const struct ia_css_fc_config default_fc_config = {
 	(1 << (ISP_VEC_ELEMBITS - 2)),		/* 0.5 */
 	(1 << (ISP_VEC_ELEMBITS - 1)) - 1,	/* 1 */
 	(1 << (ISP_VEC_ELEMBITS - 1)) - 1,	/* 1 */
-	(uint16_t)-(1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
-	(uint16_t)-(1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
+	(int16_t)- (1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
+	(int16_t)- (1 << (ISP_VEC_ELEMBITS - 1)),	/* -1 */
 };
 
 static const struct ia_css_cnr_config default_cnr_config = {
 	0,
 	0,
-	0,
-	0,
-	0,
-	0,
-	0,
-	0
+	100,
+	100,
+	100,
+	50,
+	50,
+	50
 };
 
 static const struct ia_css_macc_config default_macc_config = {
-	0,
+	1,
 };
 
 static const struct ia_css_ctc_config default_ctc_config = {
@@ -1466,11 +1482,16 @@ static const struct ia_css_ctc_config default_ctc_config = {
 	SH_CSS_BAYER_MAXVAL * 4 / 5,	/* To be implemented */
 };
 
+/* YUV Anti-Aliasing configuration. */
 static const struct ia_css_aa_config default_aa_config = {
-	8191,
+	8191 /* default should be 0 */
 };
 
-/*static const struct ia_css_yuv2rgb_cc_config */
+/* Bayer Anti-Aliasing configuration. */
+static const struct ia_css_aa_config default_baa_config = {
+	8191 /* default should be 0 */
+};
+
 static const struct ia_css_cc_config default_yuv2rgb_cc_config = {
 	12,
 	{4096, -4096, 4096, 4096, 4096, 0, 4096, -4096, -4096}
@@ -2912,10 +2933,23 @@ sh_css_process_aa(struct ia_css_isp_parameters *params)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_aa() enter:\n");
 
 #if SH_CSS_ISP_PARAMS_VERSION == 2
-	params->isp_parameters.aa_scale = params->aa_config.scale;
+	params->isp_parameters.aaf_strength = params->aa_config.strength;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_aa() leave:\n");
+}
+
+static void
+sh_css_process_baa(struct ia_css_isp_parameters *params)
+{
+	(void) params;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_baa() enter:\n");
+
+#if SH_CSS_ISP_PARAMS_VERSION == 2
+	params->isp_parameters.baf_strength = params->baa_config.strength;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_baa() leave:\n");
 }
 
 static void
@@ -3240,18 +3274,47 @@ ia_css_get_3a_statistics(struct ia_css_3a_statistics           *host_stats,
 		host_stats, isp_stats);
 
 	if (host_stats->grid.use_dmem) {
+		sh_css_dtrace(SH_DBG_TRACE, "3A: DMEM\n");
 		get_3a_stats_from_dmem(host_stats,
 				       isp_stats->data.dmem.s3a_tbl);
 	} else {
+		sh_css_dtrace(SH_DBG_TRACE, "3A: VMEM\n");
 		get_3a_stats_from_vmem(host_stats,
 				       isp_stats->data.vmem.s3a_tbl_hi,
 				       isp_stats->data.vmem.s3a_tbl_lo);
 	}
 #if !defined(HAS_NO_HMEM)
+		sh_css_dtrace(SH_DBG_TRACE, "3A: HMEM\n");
 		get_3a_stats_from_hmem(host_stats,
 				       isp_stats->data_hmem.rgby_tbl);
 #endif
 
+#if 0
+	/* The code below is written to dump the host_stats.
+	 * It is not intended to be used in daily operation
+	 * but it might be useful to debug problems so it is
+	 * proposed to leave it in
+	 */
+	{
+		int w, h;
+		int width = host_stats->grid.width;
+		int height = host_stats->grid.height;
+
+		for (h = 0; h < height; h++)
+		{
+			for (w = 0; w < width; w++)
+			{
+				sh_css_dtrace(SH_DBG_TRACE, "3A: (%2d,%2d) %10d %10d %10d %10d %10d\n",
+						h, w,
+						host_stats->data[h*width + w].awb_r,
+						host_stats->data[h*width + w].awb_gr,
+						host_stats->data[h*width + w].awb_gb,
+						host_stats->data[h*width + w].awb_b,
+						host_stats->data[h*width + w].awb_cnt);
+			}
+		}
+	}
+#endif
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_get_3a_statistics() leave: return_void\n");
 }
@@ -3790,7 +3853,7 @@ sh_css_get_ecd_config(const struct ia_css_isp_parameters *params,
 
 	*config = params->ecd_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ecd_config() enter: "
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ecd_config() enter: "
 		"config.zip_strength=%d, "
 		"config.fc_strength=%d, config.fc_debias=%d\n",
 		config->zip_strength,
@@ -4014,8 +4077,8 @@ sh_css_set_aa_config(struct ia_css_isp_parameters *params,
 {
 	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_aa_config() enter: "
-		"config.scale=%d\n",
-		config->scale);
+		"config.strength=%d\n",
+		config->strength);
 
 	params->aa_config = *config;
 	params->aa_config_changed = true;
@@ -4037,8 +4100,41 @@ sh_css_get_aa_config(const struct ia_css_isp_parameters *params,
 	*config = params->aa_config;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config() leave: "
-		"config.scale=%d\n",
-		config->scale);
+		"config.strength=%d\n",
+		config->strength);
+}
+
+static void
+sh_css_set_baa_config(struct ia_css_isp_parameters *params,
+			const struct ia_css_aa_config *config)
+{
+	assert (config != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_baa_config() enter: "
+		"config.strength=%d\n",
+		config->strength);
+
+	params->baa_config = *config;
+	params->baa_config_changed = true;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_set_baa_config() leave: "
+		"return_void\n");
+}
+
+static void
+sh_css_get_baa_config(const struct ia_css_isp_parameters *params,
+			struct ia_css_aa_config *config)
+{
+	assert(config != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_baa_config() enter: "
+		"config=%p\n",config);
+
+	*config = params->baa_config;
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_baa_config() leave: "
+		"config.strength=%d\n",
+		config->strength);
 }
 
 static void
@@ -4129,7 +4225,7 @@ sh_css_get_b_gamma_table(const struct ia_css_isp_parameters *params,
 
 	*table = params->b_gamma_table;
 	
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_g_gamma_table() leave: "
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_b_gamma_table() leave: "
 		"*table=%p\n",*table);
 }
 
@@ -4175,7 +4271,7 @@ sh_css_get_yuv2rgb_cc_config(
 /*	*config = params->yuv2rgb_cc_config; */
 	*config = params->cc_config[CSC_KERNEL_PARAM_SET2];
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() leave: "
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_yuv2rgb_cc_config() leave: "
 		"config.m[0]=%d, "
 		"config.m[1]=%d, config.m[2]=%d, "
 		"config.m[3]=%d, config.m[4]=%d, "
@@ -4353,6 +4449,8 @@ ia_css_stream_set_isp_config(
 		sh_css_set_ctc_config(params, config->ctc_config);
 	if (config->aa_config)
 		sh_css_set_aa_config(params, config->aa_config);
+	if (config->baa_config)
+		sh_css_set_baa_config(params, config->baa_config);
 	if (config->ce_config)
 		sh_css_set_ce_config(params, config->ce_config);
 	if (config->dvs_6axis_config)
@@ -4452,6 +4550,8 @@ ia_css_stream_get_isp_config(
 		sh_css_get_ctc_config(params, config->ctc_config);
 	if (config->aa_config)
 		sh_css_get_aa_config(params, config->aa_config);
+	if (config->baa_config)
+		sh_css_get_baa_config(params, config->baa_config);
 	if (config->ce_config)
 		sh_css_get_ce_config(params, config->ce_config);
 	if (config->dvs_6axis_config)
@@ -4755,18 +4855,31 @@ enum ia_css_err
 ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 {
 	bool succ = true;
+	unsigned isp_pipe_version = 1;
 	unsigned i;
 	struct sh_css_ddr_address_map *ddr_ptrs;
 	struct sh_css_ddr_address_map_size *ddr_ptrs_size;
 	struct ia_css_isp_parameters *params;
 
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_stream_isp_parameters_init() enter: void\n");
 	/* TMP: tracking of paramsets */
 	g_param_buffer_dequeue_count = 0;
 	g_param_buffer_enqueue_count = 0;
-       
+
+	isp_pipe_version = ia_css_pipe_get_isp_pipe_version(stream->pipes[0]);
+	// this code assuemes that all the pipes have the same pipeversion.
+	for(i=1; i< (unsigned)stream->num_pipes; i++) {
+	  assert(isp_pipe_version == ia_css_pipe_get_isp_pipe_version(stream->pipes[i]));
+	}
+
 	stream->isp_params_configs = sh_css_malloc(sizeof(*stream->isp_params_configs));
 	if (!stream->isp_params_configs)
+	{
+		sh_css_dtrace(SH_DBG_TRACE,
+			"ia_css_stream_isp_parameters_init() leave: "
+			"return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	}
 
 	params = stream->isp_params_configs;
 	ddr_ptrs = &params->ddr_ptrs;
@@ -4840,7 +4953,10 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	sh_css_set_gc_config(params, &default_gc_config);
 	sh_css_set_anr_config(params, &default_anr_config);
 	sh_css_set_ce_config(params, &default_ce_config);
-	sh_css_set_macc_table(params, &default_macc_table);
+	if (isp_pipe_version == 1)
+		sh_css_set_macc_table(params, &default_macc_table);
+	else
+		sh_css_set_macc_table(params, &default_macc2_table);
 	sh_css_set_gamma_table(params, &default_gamma_table);
 	sh_css_set_ctc_table(params, &default_ctc_table);
 	sh_css_set_xnr_table(params, &default_xnr_table);
@@ -4852,6 +4968,7 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	sh_css_set_macc_config(params, &default_macc_config);
 	sh_css_set_ctc_config(params, &default_ctc_config);
 	sh_css_set_aa_config(params, &default_aa_config);
+	sh_css_set_baa_config(params, &default_baa_config);
 	sh_css_set_r_gamma_table(params, &default_r_gamma_table);
 	sh_css_set_g_gamma_table(params, &default_g_gamma_table);
 	sh_css_set_b_gamma_table(params, &default_b_gamma_table);
@@ -4897,7 +5014,7 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_params_init() leave: "
+		"ia_css_stream_isp_parameters_init() leave: "
 		"return_err=%d\n",IA_CSS_SUCCESS);
 
 	return IA_CSS_SUCCESS;
@@ -4923,14 +5040,24 @@ sh_css_params_init(void)
 					    sizeof(struct sh_css_sp_stage)));
 /* MW: memory leak, if you don't want a nice object_free(), then assert */
 			if (xmem_sp_stage_ptrs[p][i] == mmgr_NULL)
+			{
+				sh_css_dtrace(SH_DBG_TRACE,
+					"sh_css_params_init() leave: "
+					"return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
 				return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+			}
 			xmem_isp_stage_ptrs[p][i] =
 					sh_css_refcount_retain(-1,
 					    mmgr_calloc(1,
 					    sizeof(struct sh_css_isp_stage)));
 /* MW: memory leak, if you don't want a nice object_free(), then assert */
 			if (xmem_isp_stage_ptrs[p][i] == mmgr_NULL)
+			{
+				sh_css_dtrace(SH_DBG_TRACE,
+					"sh_css_params_init() leave: "
+					"return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
 				return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+			}
 		}
 	}
 
@@ -4981,8 +5108,14 @@ sh_css_params_init(void)
 	if ((sp_ddr_ptrs == mmgr_NULL) ||
 	    (xmem_sp_group_ptrs == mmgr_NULL)) {
 		ia_css_uninit();
-		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_params_init() leave: "
+			"return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
+			return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_params_init() leave: "
+		"return_err=%d\n",IA_CSS_SUCCESS);
 	return IA_CSS_SUCCESS;
 }
 
@@ -5377,12 +5510,9 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 		sh_css_process_ctc(params);
 	if (params->aa_config_changed)
 		sh_css_process_aa(params);
-/*
-	if (params->yuv2rgb_cc_config_changed)
-		sh_css_process_yuv2rgb_cc(params);
-	if (params->rgb2yuv_cc_config_changed)
-		sh_css_process_rgb2yuv_cc(params);
-*/
+	if (params->baa_config_changed)
+		sh_css_process_baa(params);
+
 	/* now make the map available to the sp */
 	if (!commit) {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_update_isp_params() leave:\n");
@@ -5422,15 +5552,6 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 							pipeline->stages);
 		}
 
-		/* update isp_params to pipe specific copies */
-		if (params->isp_params_changed) {
-			reallocate_buffer(&cur_map->isp_param,
-				  &cur_map_size->isp_param,
-				  cur_map_size->isp_param,
-				  true,
-				  &err);
-			sh_css_update_isp_params_to_ddr(params, cur_map->isp_param);
-		}
 		/* update the other buffers to the pipe specific copies */
 		for (stage = pipeline->stages; stage;
 			stage = stage->next) {
@@ -5445,6 +5566,18 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 					break;
 			}
 		}
+
+		/* update isp_params to pipe specific copies */
+		if (params->isp_params_changed) {
+			reallocate_buffer(&cur_map->isp_param,
+				  &cur_map_size->isp_param,
+				  cur_map_size->isp_param,
+				  true,
+				  &err);
+			sh_css_update_isp_params_to_ddr(params,
+					cur_map->isp_param);
+		}
+
 		/* last make referenced copy */
 		err = ref_sh_css_ddr_address_map(
 					cur_map,
@@ -5508,6 +5641,7 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 	params->macc_config_changed = false;
 	params->ctc_config_changed = false;
 	params->aa_config_changed = false;
+	params->baa_config_changed = false;
 	params->r_gamma_table_changed = false;
 	params->g_gamma_table_changed = false;
 	params->b_gamma_table_changed = false;
@@ -5629,7 +5763,7 @@ static enum ia_css_err sh_css_params_write_to_ddr_internal(
 				     &(params->anr_thres.data),
 				     ddr_map_size->anr_thres);
 	}
-	if (params->macc_table_changed) {
+	if (params->macc_table_changed && binary->info->enable.macc) {
 		unsigned int i, j, idx;
 		unsigned int idx_map[] = {
 			0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8};
@@ -5638,18 +5772,29 @@ static enum ia_css_err sh_css_params_write_to_ddr_internal(
 			idx = 4*idx_map[i];
 			j   = 4*i;
 
-			converted_macc_table.data[idx] =
-			    sDIGIT_FITTING(params->macc_table.data[j], 13,
-			    SH_CSS_MACC_COEF_SHIFT-params->isp_parameters.exp);
-			converted_macc_table.data[idx+1] =
-			    sDIGIT_FITTING(params->macc_table.data[j+1], 13,
-			    SH_CSS_MACC_COEF_SHIFT-params->isp_parameters.exp);
-			converted_macc_table.data[idx+2] =
-			    sDIGIT_FITTING(params->macc_table.data[j+2], 13,
-			    SH_CSS_MACC_COEF_SHIFT-params->isp_parameters.exp);
-			converted_macc_table.data[idx+3] =
-			    sDIGIT_FITTING(params->macc_table.data[j+3], 13,
-			    SH_CSS_MACC_COEF_SHIFT-params->isp_parameters.exp);
+			if (binary->info->isp_pipe_version == 1) {
+				converted_macc_table.data[idx] =
+				  sDIGIT_FITTING(params->macc_table.data[j],
+				  13, SH_CSS_MACC_COEF_SHIFT);
+				converted_macc_table.data[idx+1] =
+				  sDIGIT_FITTING(params->macc_table.data[j+1],
+				  13, SH_CSS_MACC_COEF_SHIFT);
+				converted_macc_table.data[idx+2] =
+				  sDIGIT_FITTING(params->macc_table.data[j+2],
+				  13, SH_CSS_MACC_COEF_SHIFT);
+				converted_macc_table.data[idx+3] =
+				  sDIGIT_FITTING(params->macc_table.data[j+3],
+				  13, SH_CSS_MACC_COEF_SHIFT);
+			} else {
+				converted_macc_table.data[idx] =
+					params->macc_table.data[j];
+				converted_macc_table.data[idx+1] =
+					params->macc_table.data[j+1];
+				converted_macc_table.data[idx+2] =
+					params->macc_table.data[j+2];
+				converted_macc_table.data[idx+3] =
+					params->macc_table.data[j+3];
+			}
 		}
 		reallocate_buffer(&ddr_map->macc_tbl,
 				  &ddr_map_size->macc_tbl,
@@ -5674,17 +5819,17 @@ static enum ia_css_err sh_css_params_write_to_ddr_internal(
 			return err;
 		if (params->dvs_6axis_config_changed || buff_realloced) {
 			if(params->dvs_6axis_config == NULL) /* Generate default DVS unity table on start up*/
-			{				
+			{
 				struct ia_css_resolution dvs_offset;
-				dvs_offset.width  = binary->dvs_envelope.width / 2;
-				dvs_offset.height = binary->dvs_envelope.height / 2;
+				dvs_offset.width  = (PIX_SHIFT_FILTER_RUN_IN_X + binary->dvs_envelope.width) / 2;
+				dvs_offset.height = (PIX_SHIFT_FILTER_RUN_IN_Y + binary->dvs_envelope.height) / 2;
 
 				params->dvs_6axis_config = generate_dvs_6axis_table(&binary->out_frame_info.res,
 										    &dvs_offset);
 				if(params->dvs_6axis_config == NULL)
 					return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 			}
-			
+
 			store_dvs_6axis_config(params,
 						binary,
 						ddr_map->dvs_6axis_params_y);

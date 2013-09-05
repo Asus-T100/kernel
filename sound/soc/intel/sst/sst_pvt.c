@@ -218,8 +218,12 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 	 */
 	pr_err("Audio: Intel SST engine encountered an unrecoverable error\n");
 	pr_err("Audio: trying to reset the dsp now\n");
-	mutex_lock(&sst->sst_lock);
 
+	if (sst->sst_state == SST_FW_RUNNING &&
+		sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		dump_sst_crash_area();
+
+	mutex_lock(&sst->sst_lock);
 	sst->sst_state = SST_UN_INIT;
 	sst_stream_recovery(sst);
 
@@ -228,7 +232,6 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 	dump_stack();
 	dump_sst_shim(sst);
 	reset_sst_shim(sst);
-	dump_sst_crash_area();
 
 	if (sst_drv_ctx->ops->set_bypass) {
 
@@ -272,7 +275,10 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 
 	dump_stack();
 	dump_sst_shim(sst);
-	dump_sst_crash_area();
+
+	if (sst->sst_state == SST_FW_RUNNING &&
+		sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		dump_sst_crash_area();
 
 	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
 	if (list_empty(&sst->ipc_dispatch_list))

@@ -250,6 +250,13 @@ struct cxsr_latency {
 #define DIP_LEN_AVI     13
 #define DIP_AVI_PR_1    0
 #define DIP_AVI_PR_2    1
+#define DIP_AVI_RGB_QUANT_RANGE_DEFAULT	(0 << 2)
+#define DIP_AVI_RGB_QUANT_RANGE_LIMITED	(1 << 2)
+#define DIP_AVI_RGB_QUANT_RANGE_FULL	(2 << 2)
+#define DIP_AVI_IT_CONTENT	(1 << 7)
+#define DIP_AVI_BAR_BOTH	(3 << 2)
+#define DIP_AVI_COLOR_ITU601	(1 << 6)
+#define DIP_AVI_COLOR_ITU709	(2 << 6)
 
 #define DIP_TYPE_SPD	0x83
 #define DIP_VERSION_SPD	0x1
@@ -266,6 +273,47 @@ struct cxsr_latency {
 #define DIP_SPD_PC	0x9
 #define DIP_SPD_BD	0xa
 #define DIP_SPD_SCD	0xb
+
+/* CSC correction */
+#define CSC_MAX_COEFF_COUNT		6
+#define CLR_MGR_PARSE_MAX		128
+#define PIPECONF_GAMMA			(1<<24)
+#define GAMMA_CORRECT_MAX_COUNT 256
+#define GAMMA_SP_MAX_COUNT 6
+/* Gamma correction defines */
+#define GAMMA_MAX_VAL			1024
+#define SHIFTBY6(val) (val<<6)
+#define PIPEA_GAMMA_MAX_RED		0x70010
+#define PIPEA_GAMMA_MAX_GREEN	0x70014
+#define PIPEA_GAMMA_MAX_BLUE		0x70018
+/* Sprite gamma correction regs */
+#define GAMMA_SPA_GAMC0			0x721F4
+#define GAMMA_SPA_GAMC1			0x721F0
+#define GAMMA_SPA_GAMC2			0x721EC
+#define GAMMA_SPA_GAMC3			0x721E8
+#define GAMMA_SPA_GAMC4			0x721E4
+#define GAMMA_SPA_GAMC5			0x721E0
+
+#define GAMMA_SPB_GAMC0			0x721F4
+#define GAMMA_SPB_GAMC1			0x721F0
+#define GAMMA_SPB_GAMC2			0x721EC
+#define GAMMA_SPB_GAMC3			0x721E8
+#define GAMMA_SPB_GAMC4			0x721E4
+#define GAMMA_SPB_GAMC5			0x721E0
+
+#define GAMMA_SPA_CNTRL			0x72180
+#define GAMMA_SPB_CNTRL			0x72280
+#define GAMMA_ENABLE_SPR			(1<<30)
+#define GAMMA_SP_MAX_COUNT		6
+
+
+/* Color manager features */
+enum ClrMgrFeatures {
+	ClrMgrCsc = 1,
+	ClrMgrGamma,
+	ClrMgrContrBright,
+	ClrMgrHueSat,
+};
 
 struct dip_infoframe {
 	uint8_t type;		/* HB0 */
@@ -302,6 +350,7 @@ struct dip_infoframe {
 
 struct intel_hdmi {
 	struct intel_encoder base;
+	struct edid *edid;
 	u32 sdvox_reg;
 	int ddc_bus;
 	int ddi_port;
@@ -314,6 +363,7 @@ struct intel_hdmi {
 				struct dip_infoframe *frame);
 	void (*set_infoframes)(struct drm_encoder *encoder,
 			       struct drm_display_mode *adjusted_mode);
+	uint32_t edid_mode_count;
 };
 
 /*VLV clock bending*/
@@ -399,6 +449,8 @@ struct intel_fbc_work {
 };
 
 int intel_ddc_get_modes(struct drm_connector *c, struct i2c_adapter *adapter);
+void intel_cleanup_modes(struct drm_connector *connector);
+
 
 extern void intel_attach_force_audio_property(struct drm_connector *connector);
 extern void intel_attach_broadcast_rgb_property(struct drm_connector *connector);
@@ -606,4 +658,5 @@ bool is_sprite_enabled(struct drm_i915_private *dev_priv,
 			enum pipe pipe, enum plane plane);
 bool is_cursor_enabled(struct drm_i915_private *dev_priv,
 			enum pipe pipe);
+bool is_maxfifo_needed(struct drm_i915_private *dev_priv);
 #endif /* __INTEL_DRV_H__ */

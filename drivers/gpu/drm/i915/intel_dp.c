@@ -841,7 +841,10 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	struct drm_crtc *crtc = intel_dp->base.base.crtc;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
+	/* FIXME - Just in case this function */
+	/* gets called when device is in D0i3? */
 	i915_rpm_get_callback(dev);
+
 	/* Turn on the eDP PLL if needed */
 	if (is_edp(intel_dp)) {
 		if (!is_pch_edp(intel_dp))
@@ -1050,6 +1053,7 @@ static void ironlake_edp_panel_vdd_on(struct intel_dp *intel_dp)
 
 	if (!is_edp(intel_dp))
 		return;
+
 	DRM_DEBUG_KMS("Turn eDP VDD on\n");
 
 	if (intel_dp->want_panel_vdd)
@@ -1079,7 +1083,7 @@ static void ironlake_edp_panel_vdd_on(struct intel_dp *intel_dp)
 	 * If the panel wasn't on, delay before accessing aux channel
 	 */
 	if (!ironlake_edp_have_panel_power(intel_dp)) {
-		DRM_DEBUG_KMS("eDP was not running\n");
+		DRM_DEBUG_KMS("eDP was not running; waiting for VDD on\n");
 		msleep(intel_dp->panel_power_up_delay);
 	}
 }
@@ -1130,6 +1134,7 @@ static void ironlake_edp_panel_vdd_off(struct intel_dp *intel_dp, bool sync)
 		return;
 
 	DRM_DEBUG_KMS("Turn eDP VDD off %d\n", intel_dp->want_panel_vdd);
+
 	if (!intel_dp->want_panel_vdd)
 		DRM_DEBUG_KMS("eDP VDD not forced on");
 
@@ -1208,9 +1213,9 @@ static void ironlake_edp_panel_off(struct intel_dp *intel_dp)
 	WARN(!intel_dp->want_panel_vdd, "Need VDD to turn off panel\n");
 
 	pp = ironlake_get_pp_control(intel_dp);
-	/* We need to switch off panel power _and_ force vdd, for otherwise some
+	/* We need to switch off panel power, for otherwise some
 	 * panels get very unhappy and cease to work. */
-	pp &= ~(POWER_TARGET_ON | EDP_FORCE_VDD | PANEL_POWER_RESET | EDP_BLC_ENABLE);
+	pp &= ~(POWER_TARGET_ON | PANEL_POWER_RESET | EDP_BLC_ENABLE);
 
 	pp_ctrl_reg = IS_VALLEYVIEW(dev) ? PIPEA_PP_CONTROL : PCH_PP_CONTROL;
 
@@ -1231,8 +1236,6 @@ static void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 
 	if (!is_edp(intel_dp))
 		return;
-
-	/*intel_panel_disable_backlight(dev);*/
 
 	DRM_DEBUG_KMS("\n");
 	/*
@@ -1341,10 +1344,7 @@ static void intel_dp_prepare(struct drm_encoder *encoder)
 	ironlake_edp_panel_vdd_on(intel_dp);
 	ironlake_edp_backlight_off(intel_dp);
 	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
-	/* Some of the FFRD10 PR1.1B boards doesnt like when edp panel power
-	 * is off */
-	if (!i915_bytffrd_support)
-		ironlake_edp_panel_off(intel_dp);
+	ironlake_edp_panel_off(intel_dp);
 	intel_dp_link_down(intel_dp);
 }
 
@@ -1632,15 +1632,16 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t dp_reg = I915_READ(intel_dp->output_reg);
 
+	/* FIXME - Just in case this function */
+	/* gets called when device is in D0i3? */
+	i915_rpm_get_callback(dev);
+
 	if (mode != DRM_MODE_DPMS_ON) {
 		/* Switching the panel off requires vdd. */
 		ironlake_edp_panel_vdd_on(intel_dp);
 		ironlake_edp_backlight_off(intel_dp);
 		intel_dp_sink_dpms(intel_dp, mode);
-		/* Some of the FFRD10 PR1.1B boards doesnt like when edp
-		 * panel power is off */
-		if (!i915_bytffrd_support)
-			ironlake_edp_panel_off(intel_dp);
+		ironlake_edp_panel_off(intel_dp);
 		intel_dp_link_down(intel_dp);
 
 		if (is_cpu_edp(intel_dp))
@@ -1661,6 +1662,8 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 		ironlake_edp_backlight_on(intel_dp);
 	}
 	intel_dp->dpms_mode = mode;
+
+	i915_rpm_put_callback(dev);
 }
 
 /*
@@ -2411,7 +2414,6 @@ intel_dp_link_down(struct intel_dp *intel_dp)
 static bool
 intel_dp_get_dpcd(struct intel_dp *intel_dp)
 {
-	ironlake_edp_panel_vdd_on(intel_dp);
 	if (intel_dp_aux_native_read_retry(intel_dp, 0x000, intel_dp->dpcd,
 			sizeof(intel_dp->dpcd)) &&
 			(intel_dp->dpcd[DP_DPCD_REV] != 0)) {
@@ -2425,11 +2427,9 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 			DRM_DEBUG_KMS("Detected EDP PSR Panel.\n");
 			intel_dp_aux_native_write_1(intel_dp, DP_PSR_ESI, 0x1);
 		}
-		ironlake_edp_panel_vdd_off(intel_dp, false);
 		return true;
 	}
 
-	ironlake_edp_panel_vdd_off(intel_dp, false);
 	return false;
 }
 
@@ -2577,7 +2577,6 @@ g4x_dp_detect(struct intel_dp *intel_dp)
 
 	val1 = I915_READ(PORT_HOTPLUG_EN);
 	val2 = I915_READ(PORT_HOTPLUG_STAT);
-	DRM_ERROR("hotplug_en = 0x%x, hotplug_hpd = 0x%x\n", val1, val2);
 
 	/* HOTPLUG Detect is not working in some of VLV A0
 	 * boards. For those boards enable this WA
@@ -2651,6 +2650,11 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 
 	intel_dp->has_audio = false;
 
+	/* Fix panel, No need to detect again If force on */
+	if (force && dev_priv->is_edp)
+		return connector->status;
+
+
 	if (HAS_PCH_SPLIT(dev))
 		status = ironlake_dp_detect(intel_dp);
 	else
@@ -2676,7 +2680,10 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		if (edid) {
 			intel_dp->has_audio = drm_detect_monitor_audio(edid);
 			connector->display_info.raw_edid = NULL;
-			kfree(edid);
+
+			/* Free the previously saved EDID if any */
+			kfree(intel_dp->edid);
+			intel_dp->edid = edid;
 		}
 	}
 
@@ -2685,13 +2692,23 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 
 static int intel_dp_get_modes(struct drm_connector *connector)
 {
+	u32 count = 0;
+	struct drm_display_mode *mode = NULL;
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 
-	/* We should parse the EDID data and find out if it has an audio sink
-	 */
+	/* Fix panel, No need to read modes again If we already
+	have modes with connector */
+	list_for_each_entry(mode, &connector->modes, head) {
+		mode->status = MODE_OK;
+		count++;
+	}
+
+	/* If we have modes, just return */
+	if (count)
+		return intel_dp->edid_mode_count;
 
 	ret = intel_dp_get_edid_modes(connector, &intel_dp->adapter);
 	if (ret) {
@@ -2706,6 +2723,7 @@ static int intel_dp_get_modes(struct drm_connector *connector)
 				}
 			}
 		}
+		intel_dp->edid_mode_count = ret;
 		return ret;
 	}
 
@@ -2724,9 +2742,12 @@ static int intel_dp_get_modes(struct drm_connector *connector)
 			struct drm_display_mode *mode;
 			mode = drm_mode_duplicate(dev, intel_dp->panel_fixed_mode);
 			drm_mode_probed_add(connector, mode);
+			intel_dp->edid_mode_count = 1;
 			return 1;
 		}
 	}
+
+	intel_dp->edid_mode_count = 0;
 	return 0;
 }
 
@@ -2971,8 +2992,6 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	drm_connector_init(dev, connector, &intel_dp_connector_funcs, type);
 	drm_connector_helper_add(connector, &intel_dp_connector_helper_funcs);
 
-	connector->polled = DRM_CONNECTOR_POLL_HPD;
-
 	intel_encoder->cloneable = false;
 
 	INIT_DELAYED_WORK(&intel_dp->panel_vdd_work,
@@ -3062,6 +3081,14 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 		intel_dp->backlight_off_delay = get_delay(t9);
 		intel_dp->panel_power_down_delay = get_delay(t10);
 		intel_dp->panel_power_cycle_delay = get_delay(t11_t12);
+
+		/* Currrently the delays are set at 200ms.
+		 * It is a very conservative value. EDP panel can
+		 * come up within 100ms. Hard coding it to 100ms for now.
+		 * ToDo : Work with IAFW team and get it programmed correctly.
+		 */
+		intel_dp->panel_power_up_delay = 100;
+		intel_dp->backlight_off_delay = 100;
 
 		DRM_DEBUG_KMS("panel power up delay %d, power down delay %d, power cycle delay %d\n",
 			      intel_dp->panel_power_up_delay, intel_dp->panel_power_down_delay,

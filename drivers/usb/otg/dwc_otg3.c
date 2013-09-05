@@ -456,6 +456,20 @@ static int dwc_otg_get_chr_status(struct usb_phy *x, void *data)
 	return 0;
 }
 
+static void dwc_otg_suspend_discon_work(struct work_struct *work)
+{
+	struct dwc_otg2	*otg = the_transceiver;
+	unsigned long flags;
+
+	otg_dbg(otg, "start suspend_disconn work\n");
+
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->otg_events |= OEVT_A_DEV_SESS_END_DET_EVNT;
+	otg->otg_events &= ~OEVT_B_DEV_SES_VLD_DET_EVNT;
+	wakeup_main_thread(otg);
+	spin_unlock_irqrestore(&otg->lock, flags);
+}
+
 static int ulpi_read(struct usb_phy *phy, u32 reg)
 {
 	struct dwc_otg2 *otg = container_of(phy, struct dwc_otg2, phy);
@@ -844,7 +858,11 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 	unsigned long flags;
 	struct dwc_otg2 *otg = the_transceiver;
 	struct power_supply_cable_props cap;
-
+#if 0 //<asus-ych20130904>
+	if (otg->otg_data->is_byt)
+		otg_dbg(otg, "BYT: no need to conside charger type\n");
+	else 
+#endif //<asus-ych20130904>
 	if (otg->charging_cap.chrg_type ==
 			POWER_SUPPLY_CHARGER_TYPE_USB_CDP)
 		return 0;
@@ -861,7 +879,13 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 		cap.mA = otg->charging_cap.mA;
 		cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_SUSPEND;
 		spin_unlock_irqrestore(&otg->lock, flags);
-
+#if 0 //<asus-ych20130904>
+		if (otg->otg_data->is_byt) {
+			otg_dbg(otg, "schedule discon work\n");
+			schedule_delayed_work(&otg->suspend_discon_work,
+				SUSPEND_DISCONNECT_TIMEOUT);
+		}
+#endif //<asus-ych20130904>
 		/* mA is zero mean D+/D- opened cable.
 		 * If SMIP set, then notify 500mA.
 		 * Otherwise, notify 0mA.
@@ -892,10 +916,21 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 			"POWER_SUPPLY_CHARGER_EVENT_CONNECT\n");
 		dwc_otg_notify_charger_type(otg,
 				POWER_SUPPLY_CHARGER_EVENT_CONNECT);
+#if 0 //<asus-ych20130904>
+		if (otg->otg_data->is_byt) {
+			otg_dbg(otg, "cancel discon work\n");
+			cancel_delayed_work(&otg->suspend_discon_work);
+		}
 
 		return 0;
+	} else if (mA == OTG_DEVICE_RESET) {
+		if (otg->otg_data->is_byt) {
+			otg_dbg(otg, "cancel discon work\n");
+			cancel_delayed_work(&otg->suspend_discon_work);
+		}
+		return 0;
+#endif //<asus-ych20130904>
 	}
-
 
 	/* For SMIP set case, only need to report 500/900mA */
 	if (otg->otg_data->charging_compliance) {
@@ -1130,7 +1165,8 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	otg->charging_cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
-	dwc_otg_charger_hwdet(false);
+	//<asus-ych20130904>if (!otg->otg_data->is_byt)
+		dwc_otg_charger_hwdet(false);
 
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
@@ -1378,6 +1414,12 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
 		dwc_otg_notify_charger_type(otg, \
 				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT);
+#if 0 //<asus-ych20130904>
+		if (otg->otg_data->is_byt) {
+			otg_dbg(otg, "cancel discon work\n");
+			cancel_delayed_work(&otg->suspend_discon_work);
+		}
+#endif //<asus-ych20130904>
 		return DWC_STATE_INIT;
 	}
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
@@ -1452,6 +1494,7 @@ static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 			gpio_direction_output(otg->otg_data->gpio_reset, 0);
 			usleep_range(200, 500);
 			gpio_set_value(otg->otg_data->gpio_reset, 1);
+			msleep(30);
 		} else {
 			/* Turn OFF phy via CS pin */
 			gpio_direction_output(otg->otg_data->gpio_cs, 0);
@@ -1845,7 +1888,8 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
-
+	INIT_DELAYED_WORK(&otg->suspend_discon_work,
+					dwc_otg_suspend_discon_work);
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
 	init_waitqueue_head(&otg->main_wq);
@@ -1861,7 +1905,12 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	}
 
 	/* gpio request for BYT */
+#if 0 //<asus-ych20130904>
+	if (otg->otg_data->is_byt && otg->otg_data->gpio_cs
+		&& otg->otg_data->gpio_reset) {
+#endif
 	if (otg->otg_data->is_byt) {
+//<asus-ych20130904>
 		retval = gpio_request(otg->otg_data->gpio_reset,
 					"tusb1211_reset");
 		if (retval < 0) {
@@ -2098,14 +2147,35 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 
 	return 0;
 }
+
+static bool is_dwc_otg_on(struct dwc_otg2 *otg)
+{
+	u32 data = 0;
+	data = otg_read(otg, GUSB2PHYCFG0);
+	if (data & GUSB2PHYCFG_SUS_PHY) {
+		printk(KERN_ERR "%s:err\n", __func__);
+		return false;
+	} else
+		return true;
+}
+
 static int dwc_otg_runtime_resume(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
+//<asus-ych20130904>REINIT:
 	pci_set_power_state(pci_dev, PCI_D0);
-
-
+#if 0 //<asus-ych20130904>
+	if (!otg)
+		return -ENODEV;
+	if (otg->otg_data && otg->otg_data->is_byt) {
+		if (!is_dwc_otg_on(otg)) {
+			pci_set_power_state(pci_dev, PCI_D3hot);
+			goto REINIT;
+		}
+	}
+#endif //<asus-ych20130904>
 	/* This is one WA for silicon BUG.
 	 * Without this WA, the USB2 phy will enter low power
 	 * mode during hibernation resume flow. and met
@@ -2127,9 +2197,10 @@ static int dwc_otg_runtime_resume(struct device *dev)
 		stop_main_thread(otg);
 		return -EIO;
 	}
+
 	set_sus_phy(otg, 0);
 
-	if (otg && otg->otg_data && otg->otg_data->is_byt) {
+	if (otg->otg_data && otg->otg_data->is_byt) {
 		u32	u1power;
 
 		u1power = otg_read(otg, PHY_U1POWER_STATE);
@@ -2175,7 +2246,10 @@ static int dwc_otg_resume(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
 	pci_set_power_state(pci_dev, PCI_D0);
-
+#if 0 //<asus-ych20130904>
+	if (!otg)
+		return -ENODEV;
+#endif //<asus-ych20130904>
 	/* This is one WA for silicon BUG.
 	 * Without this WA, the USB2 phy will enter low power
 	 * mode during hibernation resume flow. and met
@@ -2199,7 +2273,7 @@ static int dwc_otg_resume(struct device *dev)
 	}
 	set_sus_phy(otg, 0);
 
-	if (otg && otg->otg_data && otg->otg_data->is_byt) {
+	if (otg->otg_data && otg->otg_data->is_byt) {
 		u32	u1power;
 
 		u1power = otg_read(otg, PHY_U1POWER_STATE);

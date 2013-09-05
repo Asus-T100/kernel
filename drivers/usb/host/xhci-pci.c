@@ -120,6 +120,11 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 		 * so add this quirks here.
 		 */
 		xhci->quirks |= XHCI_PORT_DISABLE_QUIRK;
+		/**
+		 * We found two USB Disk cannot pass Enumeration with LPM
+		 * token sent on BYT, so disable LPM here.
+		 */
+		xhci->quirks |= XHCI_LPM_DISABLE_QUIRK;
 	}
 }
 

@@ -34,7 +34,6 @@
 #include <linux/kernel_stat.h>
 #include <linux/rpmsg.h>
 #include <linux/nmi.h>
-#include <linux/platform_device.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel-mid.h>
@@ -230,6 +229,15 @@ static int watchdog_set_appropriate_timeouts(void)
 	return watchdog_set_timeouts_and_start(pre_timeout, timeout);
 }
 
+#ifndef CONFIG_CRASH_DUMP
+int kexec_crash_reset_timeouts(int reset_timeout)
+{
+	if (disable_kernel_watchdog != 1)
+		return watchdog_set_timeouts_and_start(pre_timeout,
+						reset_timeout);
+}
+#endif
+
 /* Keep alive  */
 static int watchdog_keepalive(void)
 {
@@ -273,16 +281,18 @@ static int watchdog_stop(void)
 
 	return error;
 }
+EXPORT_SYMBOL(watchdog_stop);
 
 /* warning interrupt handler */
 static irqreturn_t watchdog_warning_interrupt(int irq, void *dev_id)
 {
+#ifndef CONFIG_CRASH_DUMP
 	pr_warn("[SHTDWN] %s, WATCHDOG TIMEOUT!\n", __func__);
 
 	/* Let's reset the platform after dumping some data */
 	trigger_all_cpu_backtrace();
 	panic("Kernel Watchdog");
-
+#endif
 	/* This code should not be reached */
 	return IRQ_HANDLED;
 }
@@ -1179,71 +1189,6 @@ static int handle_mrfl_dev_ioapic(int irq)
 	return ret;
 }
 
-/* Platfrom device functionality */
-static int watchdog_probe(struct platform_device *pdev)
-{
-	dev_info(&pdev->dev, "Probed watchdog pm device\n");
-	return 0;
-}
-
-static int watchdog_remove(struct platform_device *pdev)
-{
-	return 0;
-}
-
-static int watchdog_resume(struct device *dev)
-{
-	pr_info("%s\n", __func__);
-
-	return 0;
-}
-
-static int watchdog_suspend(struct device *dev)
-{
-	int ret = 0;
-	pr_info("%s\n", __func__);
-
-	if (watchdog_device.started) {
-		/* kick timers before suspending */
-		ret = watchdog_keepalive();
-
-		if (ret)
-			pr_err("Error executing keepalive: %x\n", ret);
-	}
-
-	return ret;
-}
-
-static const struct dev_pm_ops watchdog_pm_ops = {
-	.suspend = watchdog_suspend,
-	.resume = watchdog_resume,
-};
-
-static struct platform_driver watchdog_driver = {
-	.driver = {
-		.name = "watchdog_pm",
-		.owner = THIS_MODULE,
-		.pm = &watchdog_pm_ops,
-	},
-	.probe = watchdog_probe,
-	.remove = watchdog_remove,
-};
-
-static struct platform_device *watchdog_pm_pdev;
-
-static int watchdog_module_init(void)
-{
-	pr_info("%s\n", __func__);
-	return platform_driver_register(&watchdog_driver);
-}
-
-static void watchdog_module_exit(void)
-{
-	platform_driver_unregister(&watchdog_driver);
-	platform_device_del(watchdog_pm_pdev);
-	platform_device_put(watchdog_pm_pdev);
-}
-
 /* Init code */
 static int intel_scu_watchdog_init(void)
 {
@@ -1331,25 +1276,6 @@ static int intel_scu_watchdog_init(void)
 		goto error_sysfs_entry;
 	}
 
-	ret = watchdog_module_init();
-	if (ret) {
-		pr_err("%s: Error initializing pm\n", __func__);
-		goto error_sysfs_entry;
-	}
-
-	watchdog_pm_pdev = platform_device_alloc("watchdog_pm", -1);
-	if (!watchdog_pm_pdev) {
-		pr_err("%s: watchdog_pm allocation failed\n", __func__);
-		ret = -ENODEV;
-		goto error_sysfs_entry;
-	}
-	ret = platform_device_add(watchdog_pm_pdev);
-	if (ret) {
-		pr_err("%s: watchdog_pm add failed\n", __func__);
-		platform_device_put(watchdog_pm_pdev);
-	}
-	pr_info("platform watchdog_pm allocated\n");
-
 	return ret;
 
 error_sysfs_entry:
@@ -1390,8 +1316,6 @@ static void intel_scu_watchdog_exit(void)
 
 	misc_deregister(&watchdog_device.miscdev);
 	unregister_reboot_notifier(&watchdog_device.reboot_notifier);
-
-	watchdog_module_exit();
 }
 
 static int watchdog_rpmsg_probe(struct rpmsg_channel *rpdev)

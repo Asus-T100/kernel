@@ -689,8 +689,7 @@ int videobuf_dqbuf(struct videobuf_queue *q,
 		   struct v4l2_buffer *b, int nonblocking)
 {
 	struct videobuf_buffer *buf = NULL;
-	int retval, i;
-        unsigned int *addr;
+	int retval;
 
 	MAGIC_CHECK(q->int_ops->magic, MAGIC_QTYPE_OPS);
 
@@ -702,19 +701,6 @@ int videobuf_dqbuf(struct videobuf_queue *q,
 		dprintk(1, "dqbuf: next_buffer error: %i\n", retval);
 		goto done;
 	}
-
-	// <ASUS-Ian20130822+>
-	/*
-    printk("[ASUS] videobuf_dqbuf, index = %d, size = %d, baddr = %x", buf->i, buf->size, buf->baddr);
-    addr = buf->baddr;
-    for(i = 0; i < 100; i++){
-        printk("%x ", addr[i]);
-        if((i + 1)%10 == 0){
-            printk("\n");
-        }
-    }
-	*/
-	// <ASUS-Ian20130822->
 
 	switch (buf->state) {
 	case VIDEOBUF_ERROR:
@@ -739,7 +725,7 @@ done:
 }
 EXPORT_SYMBOL_GPL(videobuf_dqbuf);
 
- int videobuf_streamon(struct videobuf_queue *q)
+int videobuf_streamon(struct videobuf_queue *q)
 {
 	struct videobuf_buffer *buf;
 	unsigned long flags = 0;

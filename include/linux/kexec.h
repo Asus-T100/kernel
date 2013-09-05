@@ -127,6 +127,9 @@ extern asmlinkage long sys_kexec_load(unsigned long entry,
 					struct kexec_segment __user *segments,
 					unsigned long flags);
 extern int kernel_kexec(void);
+#ifndef CONFIG_CRASH_DUMP
+extern int kexec_crash_reset_timeouts(int reset_timeout);
+#endif
 #ifdef CONFIG_COMPAT
 extern asmlinkage long compat_sys_kexec_load(unsigned long entry,
 				unsigned long nr_segments,

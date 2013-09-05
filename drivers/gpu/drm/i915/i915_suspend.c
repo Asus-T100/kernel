@@ -606,6 +606,33 @@ static void i915_restore_modeset_reg(struct drm_device *dev)
 	return;
 }
 
+/*
+Simulate like a hpd event at sleep/resume
+hpd_on =0 >  while suspend, this will clear the modes
+hpd_on =1 >  only at resume  */
+void i915_simulate_hpd(struct drm_device *dev, int hpd_on)
+{
+	struct drm_connector *connector = NULL;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+		if (connector->polled == DRM_CONNECTOR_POLL_HPD) {
+			if (hpd_on) {
+				/* Resuming, detect and read modes again */
+				connector->funcs->fill_modes(connector,
+				dev->mode_config.max_width,
+				dev->mode_config.max_height);
+			} else {
+				/* Suspend, reset previous detects and modes */
+				if (connector->funcs->reset)
+					connector->funcs->reset(connector);
+			}
+			DRM_DEBUG_KMS("Simulated HPD %s for connector %s\n",
+			(hpd_on ? "On" : "Off"),
+			drm_get_connector_name(connector));
+		}
+	}
+}
+
 static void i915_save_display(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -616,6 +643,9 @@ static void i915_save_display(struct drm_device *dev)
 	/* This is only meaningful in non-KMS mode */
 	/* Don't save them in KMS mode */
 	i915_save_modeset_reg(dev);
+
+	/* Force a re-detection on Hot-pluggable displays */
+	i915_simulate_hpd(dev, false);
 
 	/* CRT state */
 	if (HAS_PCH_SPLIT(dev)) {
@@ -720,6 +750,9 @@ static void i915_restore_display(struct drm_device *dev)
 	/* This is only meaningful in non-KMS mode */
 	/* Don't restore them in KMS mode */
 	i915_restore_modeset_reg(dev);
+
+	/* Re-detect hot pluggable displays */
+	i915_simulate_hpd(dev, true);
 
 	/* CRT state */
 	if (HAS_PCH_SPLIT(dev))
@@ -933,7 +966,7 @@ static int i915_drm_freeze(struct drm_device *dev)
 	return 0;
 }
 
-static int i915_drm_thaw(struct drm_device *dev)
+static int i915_drm_thaw(struct drm_device *dev, bool is_hibernate_restore)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int error = 0;
@@ -1145,6 +1178,28 @@ static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
 			OSPM_ISLAND_UP, VLV_IOSFSB_PWRGT_CNT_CTRL);
 }
 
+
+static void display_cancel_works(struct drm_device *drm_dev)
+{
+	struct drm_i915_private *dev_priv = drm_dev->dev_private;
+	struct drm_crtc *crtc;
+	struct intel_encoder *intel_encoder;
+
+	cancel_work_sync(&dev_priv->hotplug_work);
+	cancel_work_sync(&dev_priv->rps.work);
+	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
+		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
+			if (intel_encoder->type == INTEL_OUTPUT_EDP) {
+				struct intel_dp *intel_dp = container_of(\
+					intel_encoder, struct intel_dp, base);
+				cancel_delayed_work_sync(\
+					&intel_dp->panel_vdd_work);
+			}
+		}
+	}
+}
+
+
 /* follow the sequence below for VLV suspend*/
 /* ===========================================================================
  * D0 - Dx Power Transition
@@ -1194,6 +1249,9 @@ static int valleyview_freeze(struct drm_device *dev)
 		}
 		drm_irq_uninstall(dev);
 	}
+
+	/*cancel works to avoid device access after suspended*/
+	display_cancel_works(dev);
 
 	/* iii) Save state */
 	i915_save_gunit_regs(dev_priv);
@@ -1263,16 +1321,19 @@ static int valleyview_freeze(struct drm_device *dev)
  * viii)Clear Global Force Wake set in Step v and allow the wells to go down
  * ix)  Release Graphics Clocks
 */
-static int valleyview_thaw(struct drm_device *dev)
+static int valleyview_thaw(struct drm_device *dev, bool is_hibernate_restore)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int error = 0;
 	u32 reg;
 
-	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
-		mutex_lock(&dev->struct_mutex);
-		i915_gem_restore_gtt_mappings(dev);
-		mutex_unlock(&dev->struct_mutex);
+	/* Only restore if it is resuming from hibernate */
+	if (is_hibernate_restore) {
+		if (drm_core_check_feature(dev, DRIVER_MODESET)) {
+			mutex_lock(&dev->struct_mutex);
+			i915_gem_restore_gtt_mappings(dev);
+			mutex_unlock(&dev->struct_mutex);
+		}
 	}
 
 	/* i) Set Graphics Clocks to Forced ON */
@@ -1301,8 +1362,9 @@ static int valleyview_thaw(struct drm_device *dev)
 				"ALLOW_WAKE_SET timed out, resume might fail\n");
 	}
 
-	/* v) Set Global Force Wake */
+	/* v) Set Global Force Wake and Wake up all wells explicitly */
 	vlv_rs_sleepstateinit(dev, false);
+	vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	/* vi)  Restore required registers and do the D0ix work */
 	i915_restore_state(dev);
@@ -1324,11 +1386,6 @@ static int valleyview_thaw(struct drm_device *dev)
 		intel_modeset_init_hw(dev);
 		drm_mode_config_reset(dev);
 		drm_irq_install(dev);
-
-		/* Resume the modeset for every activated CRTC */
-		mutex_lock(&dev->mode_config.mutex);
-		drm_helper_resume_force_mode(dev);
-		mutex_unlock(&dev->mode_config.mutex);
 	}
 
 	intel_opregion_init(dev);
@@ -1365,6 +1422,7 @@ void i915_pm_init(struct drm_device *dev)
 		dev_priv->pm.drm_freeze = i915_drm_freeze;
 		dev_priv->pm.drm_thaw = i915_drm_thaw;
 	}
+	dev_priv->shut_down_state = 0;
 	i915_rpm_init(dev);
 }
 

@@ -68,7 +68,8 @@
 #define EDID_QUIRK_DETAILED_SYNC_PP		(1 << 6)
 /* Force reduced-blanking timings for detailed modes */
 #define EDID_QUIRK_FORCE_REDUCED_BLANKING	(1 << 7)
-
+/*For vendor specific data block read*/
+#define VSDB_SIZE 5
 struct detailed_mode_closure {
 	struct drm_connector *connector;
 	struct edid *edid;
@@ -1520,6 +1521,35 @@ u8 *drm_find_cea_extension(struct edid *edid)
 }
 EXPORT_SYMBOL(drm_find_cea_extension);
 
+/**
+ * drm_match_cea_mode - look for a CEA mode matching given mode
+ * @to_match: display mode
+ *
+ * Returns the CEA Video ID (VIC) of the mode or 0 if it isn't a CEA-861
+ * mode.
+ */
+u8 drm_match_cea_mode(struct drm_display_mode *to_match)
+{
+	struct drm_display_mode *cea_mode;
+	u8 mode;
+
+	for (mode = 0; mode < ARRAY_SIZE(edid_cea_modes); mode++) {
+		cea_mode = (struct drm_display_mode *)&edid_cea_modes[mode];
+
+		if (drm_mode_equal(to_match, cea_mode))
+			return mode + 1;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(drm_match_cea_mode);
+
+enum hdmi_picture_aspect drm_get_cea_aspect_ratio(u8 vic)
+{
+	/*return Aspect Ratio for VIC-1 to access the right array element*/
+	return edid_cea_modes[vic-1].picture_aspect_ratio;
+}
+EXPORT_SYMBOL(drm_get_cea_aspect_ratio);
+
 static int
 do_cea_modes (struct drm_connector *connector, u8 *db, u8 len)
 {
@@ -1532,7 +1562,7 @@ do_cea_modes (struct drm_connector *connector, u8 *db, u8 len)
 		if (cea_mode < drm_num_cea_modes) {
 			struct drm_display_mode *newmode;
 			newmode = drm_mode_duplicate(dev,
-					&(edid_cea_modes[cea_mode].mode));
+					&(edid_cea_modes[cea_mode]));
 			if (newmode) {
 				drm_mode_probed_add(connector, newmode);
 				modes++;
@@ -1661,7 +1691,8 @@ void drm_edid_to_eld(struct drm_connector *connector, struct edid *edid)
 			case VENDOR_BLOCK:
 				/* HDMI Vendor-Specific Data Block */
 				if (db[1] == 0x03 && db[2] == 0x0c && db[3] == 0)
-					parse_hdmi_vsdb(connector, db);
+					if (dbl > VSDB_SIZE)
+						parse_hdmi_vsdb(connector, db);
 				break;
 			default:
 				break;
@@ -1945,7 +1976,8 @@ int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
 	num_modes += add_cvt_modes(connector, edid);
 	num_modes += add_standard_modes(connector, edid);
 	num_modes += add_established_modes(connector, edid);
-	num_modes += add_inferred_modes(connector, edid);
+	if (edid->features & DRM_EDID_FEATURE_DEFAULT_GTF)
+		num_modes += add_inferred_modes(connector, edid);
 	num_modes += add_cea_modes(connector, edid);
 
 	if (quirks & (EDID_QUIRK_PREFER_LARGE_60 | EDID_QUIRK_PREFER_LARGE_75))

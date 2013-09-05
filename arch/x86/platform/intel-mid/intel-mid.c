@@ -924,6 +924,24 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	return 0;
 }
 
+/**
+ * Check if buffer contains printable character, from SPACE(0x20) to
+ * TILDE (0x7E), until \0 or maxlen characters occur.
+ * param char *str_buf buffer of characters to look for
+ * param int maxlen max number of characters to look for
+ * return int 0 if valid, otherwise index of the first non valid character
+ * */
+static int chk_prt_validity(char *strbuf, int max_len)
+{
+	int idx = 0;
+	while ((idx < max_len) && (strbuf[idx] != '\0')) {
+		if ((strbuf[idx] < 0x20) || (strbuf[idx] > 0x7E))
+			return idx;
+		idx++;
+	}
+	return 0;
+}
+
 static int __init sfi_parse_oemb(struct sfi_table_header *table)
 {
 	struct sfi_table_oemb *oemb;
@@ -948,8 +966,13 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 		pr_err("SFI OEMB does not contains SSN\n");
 		intel_mid_ssn[0] = '\0';
 	} else {
-		memcpy(intel_mid_ssn, oemb->ssn, INTEL_MID_SSN_SIZE);
-		intel_mid_ssn[INTEL_MID_SSN_SIZE] = '\0';
+		if (chk_prt_validity(oemb->ssn, INTEL_MID_SSN_SIZE) != 0) {
+			pr_err("SSN contains non printable character\n");
+			intel_mid_ssn[0] = '\0';
+		} else {
+			memcpy(intel_mid_ssn, oemb->ssn, INTEL_MID_SSN_SIZE);
+			intel_mid_ssn[INTEL_MID_SSN_SIZE] = '\0';
+		}
 	}
 
 	snprintf(sig, (SFI_SIGNATURE_SIZE + 1), "%s",

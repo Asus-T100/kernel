@@ -4,7 +4,7 @@
 #include <linux/device.h>
 #include <linux/workqueue.h>
 #include <linux/kfifo.h>
-#include <linux/sched.h>
+#include <linux/sched.h> //<asus-ych20130904>
 #include <linux/mutex.h>
 
 #include "kfifo_buf.h"
@@ -37,7 +37,7 @@ static int iio_request_update_kfifo(struct iio_buffer *r)
 	kfifo_free(&buf->kf);
 	ret = __iio_allocate_kfifo(buf, buf->buffer.bytes_per_datum,
 				   buf->buffer.length);
-	r->stufftoread = false;
+	r->stufftoread = false; //<asus-ych20130904>
 error_ret:
 	return ret;
 }
@@ -97,7 +97,7 @@ static int iio_store_to_kfifo(struct iio_buffer *r,
 {
 	int ret;
 	struct iio_kfifo *kf = iio_to_kfifo(r);
-	if (kfifo_avail(&kf->kf) >= r->bytes_per_datum) {
+	if (kfifo_avail(&kf->kf) >= r->bytes_per_datum) { //<asus-ych20130904>
 		ret = kfifo_in(&kf->kf, data, r->bytes_per_datum);
 		if (ret != r->bytes_per_datum)
 			return -EBUSY;
@@ -116,18 +116,18 @@ static int iio_read_first_n_kfifo(struct iio_buffer *r,
 	int ret, copied;
 	struct iio_kfifo *kf = iio_to_kfifo(r);
 
-	if (n < r->bytes_per_datum || r->length == 0)
+	if (n < r->bytes_per_datum || r->length == 0) //<asus-ych20130904>
 		return -EINVAL;
 
 	n = rounddown(n, r->bytes_per_datum);
 	ret = kfifo_to_user(&kf->kf, buf, n, &copied);
-
+//<asus-ych20130904>
 	if (kfifo_is_empty(&kf->kf))
 		r->stufftoread = false;
 	/* verify it is still empty to avoid race */
 	if (!kfifo_is_empty(&kf->kf))
 		r->stufftoread = true;
-
+//<asus-ych20130904>
 	return copied;
 }
 

@@ -1509,7 +1509,7 @@ static int sst_check_binary_input(char *stream)
 		pr_err("length out of bounds %d\n", bytes->len);
 		return -EINVAL;
 	}
-	if (bytes->type == 0 || bytes->type > 2) {
+	if (bytes->type == 0 || bytes->type > SND_SST_BYTES_GET) {
 		pr_err("type out of bounds: %d\n", bytes->type);
 		return -EINVAL;
 	}
@@ -1517,7 +1517,7 @@ static int sst_check_binary_input(char *stream)
 		pr_err("block invalid %d\n", bytes->block);
 		return -EINVAL;
 	}
-	if (bytes->task_id == 0 || bytes->task_id > 4) {
+	if (bytes->task_id == SST_TASK_ID_NONE || bytes->task_id > SST_TASK_ID_MAX) {
 		pr_err("taskid invalid %d\n", bytes->task_id);
 		return -EINVAL;
 	}

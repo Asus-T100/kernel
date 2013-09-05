@@ -350,12 +350,6 @@ static long pn544_dev_ioctl(struct file *filp,
 			gpio_set_value(pn544_dev->ven_gpio,
 					!pn544_dev->nfc_en_polarity);
 			msleep(10);
-			gpio_set_value(pn544_dev->ven_gpio,
-					pn544_dev->nfc_en_polarity);
-			msleep(10);
-			gpio_set_value(pn544_dev->ven_gpio,
-					!pn544_dev->nfc_en_polarity);
-			msleep(10);
 		} else {
 			pr_err("%s bad arg %lu\n", __func__, arg);
 			return -EINVAL;

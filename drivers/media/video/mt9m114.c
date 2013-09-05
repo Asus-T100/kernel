@@ -1,3 +1,4 @@
+//<asus-ych20130904>
 /*
  * Support for mt9m114 Camera Sensor.
  *
@@ -907,9 +908,10 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return -EINVAL;
 
-	ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg, POST_POLLING);
-	if (ret < 0)
-		return ret;
+	//<ASUS-Ian20130823>
+	//ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg, POST_POLLING);
+	//if (ret < 0)
+	//	return ret;
 
 	if (mt9m114_set_suspend(sd))
 		return -EINVAL;

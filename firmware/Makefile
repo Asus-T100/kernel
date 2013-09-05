@@ -141,8 +141,9 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 fw-shipped-$(CONFIG_INTEL_MID_REMOTEPROC) += intel_mid/intel_mid_remoteproc.fw
+#<asus-ych20130904+>
 fw-shipped-$(CONFIG_TOUCHSCREEN_ATMEL_MXT_I2CHID) += atmel/mXT1664TC2U_Production_V1.0.AC.ENC atmel/ASUS_T100TA_0820_OI.raw
-
+#<asus-ych20130904->
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 # Directories which we _might_ need to create, so we have a rule for them.

@@ -2,6 +2,7 @@ CFLAGS_platform_clv_regulator.o			:= -Werror
 CFLAGS_platform_mrfl_regulator.o		:= -Werror
 
 # IPC Devices
+ifndef CONFIG_CRASH_DUMP
 obj-$(subst m,y,$(CONFIG_SND_BYT_MACHINE))				+= platform_byt_audio.o
 obj-y									+= platform_mrfld_audio.o
 obj-y									+= platform_ipc.o
@@ -14,6 +15,7 @@ obj-y									+= platform_tc35876x.o
 obj-y									+= platform_ctp_audio.o
 obj-y									+= platform_sst_audio.o
 obj-y									+= platform_soc_thermal.o
+endif
 obj-y									+= pci/
 obj-$(subst m,y,$(CONFIG_X86_MDFLD))					+= platform_clv_regulator.o
 obj-$(subst m,y,$(CONFIG_X86_MRFLD))					+= platform_mrfl_regulator.o
@@ -112,7 +114,7 @@ obj-$(subst m,y,$(CONFIG_EXTCON_MID))					+= platform_extcon_mid.o
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
-obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
+obj-$(subst m,y,$(CONFIG_WIFI_PLATFORM_DATA))				+= platform_wifi.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
 obj-$(subst m,y,$(CONFIG_TI_ST_FORK))					+= platform_btwilink.o

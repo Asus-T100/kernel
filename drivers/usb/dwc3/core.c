@@ -373,6 +373,7 @@ int dwc3_core_init(struct dwc3 *dwc)
 	reg = dwc3_readl(flis_reg, 0);
 	reg &= ~(1 << 3);
 	dwc3_writel(flis_reg, 0, reg);
+	iounmap(flis_reg);
 
 	ret = dwc3_event_buffers_setup(dwc);
 	if (ret) {

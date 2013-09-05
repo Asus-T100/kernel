@@ -36,6 +36,8 @@ extern bool nopg;
 #define TXE_INTR_IN_READY_BIT   8 /* beyond HISR */
 #define TXE_INTR_IN_READY       BIT(8)
 
+struct mei_txe_hw;
+
 struct mei_txe_hw {
 	void __iomem *mem_addr[NUM_OF_MEM_BARS];
 	u32 aliveness;
@@ -53,6 +55,8 @@ struct mei_txe_hw {
 	void *pool_vaddr;
 	dma_addr_t pool_paddr;
 	size_t pool_size;
+
+	void (*pool_release) (struct mei_txe_hw *hw);
 };
 
 #define to_txe_hw(dev) (struct mei_txe_hw *)((dev)->hw)

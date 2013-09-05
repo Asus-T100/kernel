@@ -90,7 +90,7 @@ enum iio_endian {
 
 struct iio_chan_spec;
 struct iio_dev;
-struct iio_channel;	//<asus-bob20130830+>
+struct iio_channel;
 
 /**
  * struct iio_chan_spec_ext_info - Extended channel info attribute
@@ -261,7 +261,7 @@ struct iio_info {
 			long mask);
 
 	int (*read_all_raw)(struct iio_channel *chan,
-			int *val);//<asus-bob20130830+>
+			int *val);
 
 	int (*write_raw)(struct iio_dev *indio_dev,
 			 struct iio_chan_spec const *chan,

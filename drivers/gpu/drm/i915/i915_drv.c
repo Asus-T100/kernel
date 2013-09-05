@@ -41,6 +41,12 @@
 /*Added for HDMI Audio */
 #include "hdmi_audio_if.h"
 
+int i915_rotation __read_mostly;
+module_param_named(i915_rotation, i915_rotation, int, 0600);
+MODULE_PARM_DESC(i915_rotation,
+		"Enable 180 degree hardware rotation support, "
+		"1=180 degree, 0=0 degree ");
+
 static int i915_modeset __read_mostly = -1;
 module_param_named(modeset, i915_modeset, int, 0400);
 MODULE_PARM_DESC(modeset,
@@ -122,7 +128,7 @@ MODULE_PARM_DESC(enable_hangcheck,
 		"WARNING: Disabling this can cause system wide hangs. "
 		"(default: true)");
 
-unsigned int i915_hangcheck_period __read_mostly = 250;
+unsigned int i915_hangcheck_period __read_mostly = 1000;
 
 int hangcheck_period_set(const char *val, const struct kernel_param *kp)
 {
@@ -155,7 +161,7 @@ module_param_cb(i915_hangcheck_period, &hangcheck_ops,
 MODULE_PARM_DESC(i915_hangcheck_period,
 		"The hangcheck timer period in milliseconds. "
 		"The actual time to detect a hang may be 3 - 4 times "
-		"this value (default = 250ms)");
+		"this value (default = 1000ms)");
 
 unsigned int i915_ring_reset_min_alive_period __read_mostly;
 module_param_named(i915_ring_reset_min_alive_period,
@@ -175,6 +181,11 @@ MODULE_PARM_DESC(i915_gpu_reset_min_alive_period,
 		"prevent further resets. "
 		"(default=5 seconds, 0=disabled)");
 
+int i915_enable_watchdog __read_mostly = 1;
+module_param_named(i915_enable_watchdog, i915_enable_watchdog, int, 0644);
+MODULE_PARM_DESC(i915_enable_watchdog,
+		"Enable watchdog timers (default: true)");
+
 int i915_enable_ppgtt __read_mostly = -1;
 module_param_named(i915_enable_ppgtt, i915_enable_ppgtt, int, 0600);
 MODULE_PARM_DESC(i915_enable_ppgtt,
@@ -190,12 +201,6 @@ module_param_named(psr_support, i915_psr_support, int, 0400);
 MODULE_PARM_DESC(psr_support,
 		"Specify PSR support parameter "
 		"1 = supported [default], 0 = not supported");
-
-int i915_bytffrd_support __read_mostly;
-module_param_named(bytffrd_support, i915_bytffrd_support, int, 0400);
-MODULE_PARM_DESC(bytffrd_support,
-		"Specify BYT FFRD support parameter "
-		"1 = supported, 0 = not supported [default]");
 
 static struct drm_driver driver;
 extern int intel_agp_enabled;
@@ -561,9 +566,6 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 
 	if (dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
-	/* Added for HDMI Audio */
-	/* TODO: display team to take care of error properly */
-	mid_hdmi_audio_suspend(dev);
 
 	error = dev_priv->pm.drm_freeze(dev);
 	if (error)
@@ -578,7 +580,7 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 	return 0;
 }
 
-int i915_resume(struct drm_device *dev)
+int i915_resume_common(struct drm_device *dev, bool is_hibernate_restore)
 {
 	int ret;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -597,15 +599,18 @@ int i915_resume(struct drm_device *dev)
 
 	pci_set_master(dev->pdev);
 
-	ret = dev_priv->pm.drm_thaw(dev);
+	ret = dev_priv->pm.drm_thaw(dev, is_hibernate_restore);
 	if (ret)
 		return ret;
 
 	drm_kms_helper_poll_enable(dev);
-	/* Added for HDMI Audio */
-	mid_hdmi_audio_resume(dev);
 	DRM_DEBUG_DRIVER("Gfx Resumed\n");
 	return 0;
+}
+
+int i915_resume(struct drm_device *dev)
+{
+	return i915_resume_common(dev, false);
 }
 
 static int i8xx_do_reset(struct drm_device *dev)
@@ -860,7 +865,7 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	/* Correct driver state */
 	intel_ring_resample(ring);
 
-	DRM_ERROR("Reset ring %d\n", ringid);
+	DRM_ERROR("Reset ring %d (GPU Hang)\n", ringid);
 
 	ret = intel_ring_enable(ring);
 
@@ -925,7 +930,7 @@ int i915_reset(struct drm_device *dev)
 
 	mutex_lock(&dev->struct_mutex);
 
-	DRM_ERROR("Reset GPU\n");
+	DRM_ERROR("Reset GPU (GPU Hang)\n");
 	i915_gem_reset(dev);
 
 	ret = -ENODEV;
@@ -1049,23 +1054,25 @@ static int i915_mmap(struct file *filp, struct vm_area_struct *vma)
 }
 #endif
 
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 static int i915_release(struct inode *inode, struct file *filp)
 {
 	int ret = 0;
 	struct drm_file *file_priv = filp->private_data;
 	struct drm_device *dev = file_priv->minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
+#ifdef CONFIG_PM_RUNTIME
 	i915_rpm_get_callback(dev);
+#endif
+#ifdef CONFIG_DRM_VXD_BYT
 	if (dev_priv->vxd_release)
 		ret = dev_priv->vxd_release(inode, filp);
+#endif
 	drm_release(inode, filp);
+#ifdef CONFIG_PM_RUNTIME
 	i915_rpm_put_callback(dev);
-
+#endif
 	return ret;
 }
-#endif
 
 static long i915_ioctl(struct file *filp,
 	      unsigned int cmd, unsigned long arg)
@@ -1087,14 +1094,18 @@ static long i915_ioctl(struct file *filp,
 #endif
 	{
 		int ret;
+#ifdef CONFIG_PM_RUNTIME
 		i915_rpm_get_ioctl(dev);
+#endif
 		ret = drm_ioctl(filp, cmd, arg);
+#ifdef CONFIG_PM_RUNTIME
 		i915_rpm_put_ioctl(dev);
+#endif
 		return ret;
 	}
 }
 
-static int i915_pm_suspend(struct device *dev)
+static int i915_suspend_common(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
@@ -1108,16 +1119,12 @@ static int i915_pm_suspend(struct device *dev)
 	dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_freeze) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting suspend.\n");
+		dev_err(dev, "PM not initialized, aborting suspend.\n");
 		return -ENODEV;
 	}
 
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
-	/* Added for HDMI Audio */
-	/* TODO: display team to take care of error properly */
-	mid_hdmi_audio_suspend(drm_dev);
 
 	error = dev_priv->pm.drm_freeze(drm_dev);
 	if (error)
@@ -1131,10 +1138,39 @@ static int i915_pm_suspend(struct device *dev)
 	return 0;
 }
 
+static int i915_pm_suspend(struct device *dev)
+{
+	int ret;
+
+	DRM_DEBUG_PM("PM Suspend called\n");
+	ret = i915_suspend_common(dev);
+	DRM_DEBUG_PM("PM Suspend finished\n");
+
+	return ret;
+
+}
+
+static int i915_rpm_suspend(struct device *dev)
+{
+	int ret;
+
+	DRM_DEBUG_PM("Runtime PM Suspend called\n");
+	ret = i915_suspend_common(dev);
+	DRM_DEBUG_PM("Runtime PM Suspend finished\n");
+
+	return ret;
+
+}
+
 static void i915_pm_shutdown(struct pci_dev *pdev)
 {
 	struct device *dev = &pdev->dev;
-	i915_pm_suspend(dev);
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	struct drm_i915_private *dev_priv;
+	dev_priv = drm_dev->dev_private;
+
+	dev_priv->shut_down_state = 1;
+	i915_suspend_common(dev);
 }
 
 static int i915_pm_resume(struct device *dev)
@@ -1142,7 +1178,30 @@ static int i915_pm_resume(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
 
-	return i915_resume(drm_dev);
+	DRM_DEBUG_PM("PM Resume called\n");
+	return i915_resume_common(drm_dev, false);
+	DRM_DEBUG_PM("PM Resume finished\n");
+}
+
+static int i915_rpm_resume(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	int ret;
+
+	DRM_DEBUG_PM("Runtime PM Resume called\n");
+	ret = i915_resume_common(drm_dev, false);
+	DRM_DEBUG_PM("Runtime PM Resume finished\n");
+
+	return ret;
+}
+
+static int i915_pm_restore(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+
+	return i915_resume_common(drm_dev, true);
 }
 
 static int i915_pm_freeze(struct device *dev)
@@ -1158,8 +1217,7 @@ static int i915_pm_freeze(struct device *dev)
 	dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_freeze) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting suspend.\n");
+		dev_err(dev, "PM not initialized, aborting suspend.\n");
 		return -ENODEV;
 	}
 
@@ -1173,11 +1231,10 @@ static int i915_pm_thaw(struct device *dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_thaw) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting resume.\n");
+		dev_err(dev, "PM not initialized, aborting resume.\n");
 		return -ENODEV;
 	}
-	return dev_priv->pm.drm_thaw(drm_dev);
+	return dev_priv->pm.drm_thaw(drm_dev, false);
 }
 
 static int i915_pm_poweroff(struct device *dev)
@@ -1187,8 +1244,7 @@ static int i915_pm_poweroff(struct device *dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
 	if (!dev_priv->pm.drm_freeze) {
-		DRM_ERROR("dev: %p\n", dev);
-		DRM_ERROR("PM not initialized, aborting suspend.\n");
+		dev_err(dev, "PM not initialized, aborting suspend.\n");
 		return -ENODEV;
 	}
 
@@ -1201,10 +1257,10 @@ static const struct dev_pm_ops i915_pm_ops = {
 	.freeze = i915_pm_freeze,
 	.thaw = i915_pm_thaw,
 	.poweroff = i915_pm_poweroff,
-	.restore = i915_pm_resume,
+	.restore = i915_pm_restore,
 #ifdef CONFIG_PM_RUNTIME
-	.runtime_suspend = i915_pm_suspend,
-	.runtime_resume = i915_pm_resume,
+	.runtime_suspend = i915_rpm_suspend,
+	.runtime_resume = i915_rpm_resume,
 #endif
 };
 
@@ -1217,17 +1273,8 @@ static const struct vm_operations_struct i915_gem_vm_ops = {
 static const struct file_operations i915_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 	.release = i915_release,
-#else
-	.release = drm_release,
-#endif
-
-#if defined(CONFIG_DRM_VXD_BYT) || defined(CONFIG_PM_RUNTIME)
 	.unlocked_ioctl = i915_ioctl,
-#else
-	.unlocked_ioctl = drm_ioctl,
-#endif
 
 #ifdef CONFIG_DRM_VXD_BYT
 	.mmap = i915_mmap,
@@ -1457,7 +1504,15 @@ static bool IS_DISPLAYREG(u32 reg)
 	case VLV_GTICZPMW:
 	case VLV_RENDER_C0_COUNT_REG:
 	case VLV_MEDIA_C0_COUNT_REG:
+
+	/* Counter registers */
+	case PR_CTR_CTL:
+	case PR_CTR_THRESH:
+	case PR_CTR:
+	case VCS_CTR:
+	case VCS_CTR_THRESH:
 		return false;
+
 	default:
 		break;
 	}
@@ -1557,7 +1612,7 @@ void i915_write_bits##x(struct drm_i915_private *dev_priv,\
 		val = val & mask;		\
 		tmp = val | tmp;		\
 		write##y(tmp, dev_priv->regs + reg + 0x180000);		\
-		if (/*0 &&*/ (reg != 0x70040) && (reg != 0x71040)) {	\
+		if (0 && (reg != 0x70040) && (reg != 0x71040)) {	\
 			DRM_ERROR("Writing 0x%x val 0x%x\n", reg, val); \
 		}	\
 	} else {							\
@@ -1622,3 +1677,41 @@ int i915_reg_read_ioctl(struct drm_device *dev,
 
 	return 0;
 }
+
+
+void i915_init_watchdog(struct drm_device *dev)
+{
+	drm_i915_private_t *dev_priv = dev->dev_private;
+
+	/* Based on pre-defined time out value (60ms or 30ms) calculate
+	* timer count thresholds needed based on core frequency.
+	*
+	* For RCS.
+	* The timestamp resolution changed in Gen7 and beyond to 80ns
+	* for all pipes. Before that it was 640ns.*/
+
+	int freq;
+
+	if (INTEL_INFO(dev)->gen >= 7)
+		freq = KM_TIMESTAMP_CNTS_PER_SEC_80NS;
+	else
+		freq = KM_TIMESTAMP_CNTS_PER_SEC_640NS;
+
+	dev_priv->watchdog_threshold[RCS] =
+		((KM_MEDIA_ENGINE_TIMEOUT_VALUE_IN_MS) *
+		(freq / KM_TIMER_MILLISECOND));
+
+	if (INTEL_INFO(dev)->gen >= 7)
+		freq = KM_TIMESTAMP_CNTS_PER_SEC_80NS;
+	else
+		freq = KM_TIMESTAMP_CNTS_PER_SEC_640NS;
+
+	dev_priv->watchdog_threshold[VCS] =
+		((KM_BSD_ENGINE_TIMEOUT_VALUE_IN_MS) *
+		(freq / KM_TIMER_MILLISECOND));
+
+	DRM_DEBUG_TDR("RCS Thresh 0x%08x  VCS Thresh 0x%08x\n",
+		dev_priv->watchdog_threshold[RCS],
+		dev_priv->watchdog_threshold[VCS]);
+}
+

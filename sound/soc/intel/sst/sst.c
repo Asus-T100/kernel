@@ -110,14 +110,17 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
 	union ipc_header_mrfld header;
 	struct stream_info *stream;
-	unsigned int size = 0, msg_id, pipe_id;
+	unsigned int size = 0, msg_id = 0, pipe_id;
 	int str_id;
 
 	header.full = sst_shim_read64(drv->shim, SST_IPCD);
-	msg_id = header.p.header_low_payload & SST_ASYNC_MSG_MASK;
 	pr_debug("interrupt: header_high: 0x%x, header_low: 0x%x\n",
 				(unsigned int)header.p.header_high.full,
 				(unsigned int)header.p.header_low_payload);
+
+	if (!header.p.header_high.part.large)
+		msg_id = header.p.header_low_payload & SST_ASYNC_MSG_MASK;
+
 	if ((msg_id == IPC_SST_PERIOD_ELAPSED_MRFLD) &&
 	    (header.p.header_high.part.msg_id == IPC_CMD)) {
 		sst_drv_ctx->ops->clear_interrupt();
@@ -607,6 +610,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	for (i = 1; i <= sst_drv_ctx->info.max_streams; i++) {
 		struct stream_info *stream = &sst_drv_ctx->streams[i];
 		memset(stream, 0, sizeof(*stream));
+		stream->pipe_id = PIPE_RSVD;
 		mutex_init(&stream->lock);
 	}
 

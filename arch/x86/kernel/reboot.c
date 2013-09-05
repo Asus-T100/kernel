@@ -580,7 +580,7 @@ static void native_machine_emergency_restart(void)
 
 	for (;;) {
 		/* Could also try the reset bit in the Hammer NB */
-		pr_err("CCATEST reboot type = %x mode = %x",reboot_type,reboot_mode);
+		pr_err("CCATEST reboot type = %x mode = %x",reboot_type,reboot_mode); //<asus-ych20130904>
 		switch (reboot_type) {
 		case BOOT_KBD:
 			mach_reboot_fixups(); /* for board specific fixups */
@@ -841,6 +841,9 @@ void nmi_shootdown_cpus(nmi_shootdown_cb callback)
 		mdelay(1);
 		msecs--;
 	}
+	if (msecs == 0)
+		printk(KERN_ERR "nmi_shootdown_cpus not all cpu shootdown %d.\n",
+			waiting_for_crash_ipi);
 
 	/* Leave the nmi callback set */
 }

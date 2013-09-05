@@ -140,6 +140,14 @@ struct menu_device {
 #define LOAD_INT(x) ((x) >> FSHIFT)
 #define LOAD_FRAC(x) LOAD_INT(((x) & (FIXED_1-1)) * 100)
 
+/*
+ * Define a variable per CPU in order to indicate when to
+ * update the buckets or not. The buckets need to be updated
+ * only when the wakeup is destinated to the CPU otherwise
+ * consider a perfect prediction for the buckets.
+ */
+DEFINE_PER_CPU(int, update_buckets);
+
 static int get_loadavg(void)
 {
 	unsigned long this = this_cpu_load();
@@ -464,7 +472,9 @@ static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	new_factor = data->correction_factor[data->bucket]
 			* (DECAY - 1) / DECAY;
 
-	if (data->expected_us > 0 && measured_us < MAX_INTERESTING)
+	/* if its a fake wakeup just consider it has perfect wakeup */
+	if ((__get_cpu_var(update_buckets)) &&
+		(data->expected_us > 0 && measured_us < MAX_INTERESTING))
 		new_factor += RESOLUTION * measured_us / data->expected_us;
 	else
 		/*
@@ -483,9 +493,15 @@ static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	data->correction_factor[data->bucket] = new_factor;
 
 	/* update the repeating-pattern data */
-	data->intervals[data->interval_ptr++] = last_idle_us;
+	if (__get_cpu_var(update_buckets))
+		data->intervals[data->interval_ptr++] = last_idle_us;
+	else
+		data->intervals[data->interval_ptr++] = data->expected_us;
+
 	if (data->interval_ptr >= INTERVALS)
 		data->interval_ptr = 0;
+
+	__get_cpu_var(update_buckets) = 1;
 }
 
 /**

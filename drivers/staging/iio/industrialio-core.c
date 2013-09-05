@@ -68,7 +68,7 @@ static const char * const iio_chan_type_name_spec[] = {
 	[IIO_ANGL] = "angl",
 	[IIO_TIMESTAMP] = "timestamp",
 	[IIO_CAPACITANCE] = "capacitance",
-	[IIO_QUATERNION] = "quaternion",
+	[IIO_QUATERNION] = "quaternion", //<asus-bob20130830+>
 };
 
 static const char * const iio_modifier_names[] = {
@@ -77,7 +77,7 @@ static const char * const iio_modifier_names[] = {
 	[IIO_MOD_Z] = "z",
 	[IIO_MOD_LIGHT_BOTH] = "both",
 	[IIO_MOD_LIGHT_IR] = "ir",
-	[IIO_MOD_R]  = "r",
+	[IIO_MOD_R]  = "r", //<asus-bob20130830+>
 };
 
 /* relies on pairs of these shared then separate */
@@ -503,7 +503,7 @@ int __iio_device_attr_init(struct device_attribute *dev_attr,
 	}
 
 	if (writefunc) {
-		dev_attr->attr.mode |= S_IWUGO;
+		dev_attr->attr.mode |= S_IWUGO;	//<asus-ych20130904+>
 		dev_attr->store = writefunc;
 	}
 	kfree(name_format);

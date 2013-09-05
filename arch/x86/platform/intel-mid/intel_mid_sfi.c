@@ -64,7 +64,7 @@ static struct sfi_device_table_entry byt_ffrd10_devs_table[] = {
 	/*{bus_type, host_num, addr, irq, max_freq, name}*/
 	{SFI_DEV_TYPE_IPC, 0, 0, 0, 0, "vlv2_plat_clk"},
 	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
-	{SFI_DEV_TYPE_I2C, 4, 0x48, 0x0, 0x0, "mt9m114"},
+	{SFI_DEV_TYPE_I2C, 4, 0x48, 0x0, 0x0, "mt9m114"},	//<asus-ych20130904>
 	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
 	/* SD devices */

@@ -265,149 +265,9 @@ static const struct ov8830_reg ov8835_basic_settings[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-/*****************************STILL********************************/
+/*****************************OV8835 STILL & PREVIEW**************************/
 
-static const struct ov8830_reg ov8835_still_1080p[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x01 },
-	{ OV8830_8BIT, { 0x3803 }, 0x36 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x08 },
-	{ OV8830_8BIT, { 0x3807 }, 0x79 },
-	{ OV8830_8BIT, { 0x3808 }, 0x07 }, /* Output size 1936x1104 */
-	{ OV8830_8BIT, { 0x3809 }, 0x90 },
-	{ OV8830_8BIT, { 0x380a }, 0x04 },
-	{ OV8830_8BIT, { 0x380b }, 0x50 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0x90 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_still_2M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related e6 : e3 */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x06 }, /* Output size: 1632x1224 */
-	{ OV8830_8BIT, { 0x3809 }, 0x60 },
-	{ OV8830_8BIT, { 0x380a }, 0x04 },
-	{ OV8830_8BIT, { 0x380b }, 0xc8 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_still_3M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 },
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x08 }, /* Ouput Size 2064x1552 */
-	{ OV8830_8BIT, { 0x3809 }, 0x10 },
-	{ OV8830_8BIT, { 0x380a }, 0x06 },
-	{ OV8830_8BIT, { 0x380b }, 0x10 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_still_5M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 },
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x0a }, /* Ouput Size 2576x1936 */
-	{ OV8830_8BIT, { 0x3809 }, 0x10 },
-	{ OV8830_8BIT, { 0x380a }, 0x07 },
-	{ OV8830_8BIT, { 0x380b }, 0x90 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_still_6M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x01 },
-	{ OV8830_8BIT, { 0x3803 }, 0x36 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x08 },
-	{ OV8830_8BIT, { 0x3807 }, 0x79 },
-	{ OV8830_8BIT, { 0x3808 }, 0x0c }, /* Output size 3280x1852 */
-	{ OV8830_8BIT, { 0x3809 }, 0xd0 },
-	{ OV8830_8BIT, { 0x380a }, 0x07 },
-	{ OV8830_8BIT, { 0x380b }, 0x3c },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0x90 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_still_8M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x0c }, /* Output size 3280x2464 */
-	{ OV8830_8BIT, { 0x3809 }, 0xd0 },
-	{ OV8830_8BIT, { 0x380a }, 0x09 },
-	{ OV8830_8BIT, { 0x380b }, 0xa0 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-/*****************************OV8835 PREVIEW********************************/
-
-static struct ov8830_reg const ov8835_preview_848x616[] = {
+static const struct ov8830_reg ov8835_cif_mode[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -417,20 +277,22 @@ static struct ov8830_reg const ov8835_preview_848x616[] = {
 	{ OV8830_8BIT, { 0x3805 }, 0xdb },
 	{ OV8830_8BIT, { 0x3806 }, 0x09 },
 	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x03 }, /* O/p 820x616 Binning+Scaling */
-	{ OV8830_8BIT, { 0x3809 }, 0x34 },
-	{ OV8830_8BIT, { 0x380a }, 0x02 },
-	{ OV8830_8BIT, { 0x380b }, 0x68 },
+	{ OV8830_8BIT, { 0x3808 }, 0x01 }, /* 388x318 O/p Binning+Scaling */
+	{ OV8830_8BIT, { 0x3809 }, 0x84 },
+	{ OV8830_8BIT, { 0x380a }, 0x01 },
+	{ OV8830_8BIT, { 0x380b }, 0x3e },
 	{ OV8830_8BIT, { 0x3814 }, 0x31 },
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
-	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Vertical Binning 0n */
-	{ OV8830_8BIT, { 0x3821 }, 0x0f }, /* Horizontal Binning 0n */
+	{ OV8830_8BIT, { 0x3820 }, 0x11 },
+	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0xa0 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_preview_1632x1224[] = {
+static struct ov8830_reg const ov8835_binning_4x3_mode[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -450,79 +312,12 @@ static struct ov8830_reg const ov8835_preview_1632x1224[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f }, /* Horizontal Binning 0n */
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0xa0 },
+	{ OV8830_8BIT, { 0x5002 }, 0x00 }, /* Scale disable */
+	{ OV8830_8BIT, { 0x5041 }, 0x84 }, /* Set manual scale and disable */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_cont_cap_qvga[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x01 }, /* O/p 336x256 Bin+skip+scale */
-	{ OV8830_8BIT, { 0x3809 }, 0x50 },
-	{ OV8830_8BIT, { 0x380a }, 0x01 },
-	{ OV8830_8BIT, { 0x380b }, 0x00 },
-	{ OV8830_8BIT, { 0x3814 }, 0x31 },
-	{ OV8830_8BIT, { 0x3815 }, 0x31 },
-	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Vertical Binning 0n */
-	{ OV8830_8BIT, { 0x3821 }, 0x0f }, /* Horizontal Binning 0n */
-	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static struct ov8830_reg const ov8835_cont_cap_vga[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x02 }, /* O/p 656x496 Bin+skip+scale */
-	{ OV8830_8BIT, { 0x3809 }, 0x90 },
-	{ OV8830_8BIT, { 0x380a }, 0x01 },
-	{ OV8830_8BIT, { 0x380b }, 0xf0 },
-	{ OV8830_8BIT, { 0x3814 }, 0x31 },
-	{ OV8830_8BIT, { 0x3815 }, 0x31 },
-	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Vertical Binning 0n */
-	{ OV8830_8BIT, { 0x3821 }, 0x0f }, /* Horizontal Binning 0n */
-	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static struct ov8830_reg const ov8835_cont_cap_1M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x04 }, /* Output size: 1040x784 */
-	{ OV8830_8BIT, { 0x3809 }, 0x10 },
-	{ OV8830_8BIT, { 0x380a }, 0x03 },
-	{ OV8830_8BIT, { 0x380b }, 0x10 },
-	{ OV8830_8BIT, { 0x3814 }, 0x31 },
-	{ OV8830_8BIT, { 0x3815 }, 0x31 },
-	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Vertical Binning 0n */
-	{ OV8830_8BIT, { 0x3821 }, 0x0f }, /* Horizontal Binning 0n */
-	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_cont_cap_720p[] = {
+static const struct ov8830_reg ov8835_binning_16x9_mode[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -532,89 +327,22 @@ static const struct ov8830_reg ov8835_cont_cap_720p[] = {
 	{ OV8830_8BIT, { 0x3805 }, 0xdb },
 	{ OV8830_8BIT, { 0x3806 }, 0x08 },
 	{ OV8830_8BIT, { 0x3807 }, 0x79 },
-	{ OV8830_8BIT, { 0x3808 }, 0x05 }, /* Output size 1296x736 */
-	{ OV8830_8BIT, { 0x3809 }, 0x10 },
-	{ OV8830_8BIT, { 0x380a }, 0x02 },
-	{ OV8830_8BIT, { 0x380b }, 0xe0 },
+	{ OV8830_8BIT, { 0x3808 }, 0x06 }, /* Output size 1632x 916 */
+	{ OV8830_8BIT, { 0x3809 }, 0x60 },
+	{ OV8830_8BIT, { 0x380a }, 0x03 },
+	{ OV8830_8BIT, { 0x380b }, 0x94 },
 	{ OV8830_8BIT, { 0x3814 }, 0x31 },
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
-	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning oon*/
+	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0x90 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_cont_cap_1080p[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x01 },
-	{ OV8830_8BIT, { 0x3803 }, 0x36 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x08 },
-	{ OV8830_8BIT, { 0x3807 }, 0x79 },
-	{ OV8830_8BIT, { 0x3808 }, 0x07 }, /* Output size 1936x1104 */
-	{ OV8830_8BIT, { 0x3809 }, 0x90 },
-	{ OV8830_8BIT, { 0x380a }, 0x04 },
-	{ OV8830_8BIT, { 0x380b }, 0x50 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
 	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0x90 },
+	{ OV8830_8BIT, { 0x5002 }, 0x00 }, /* Scale disable */
+	{ OV8830_8BIT, { 0x5041 }, 0x84 }, /* Set manual scale and disable */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_3M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x08 }, /* Ouput Size 2064x1552 */
-	{ OV8830_8BIT, { 0x3809 }, 0x10 },
-	{ OV8830_8BIT, { 0x380a }, 0x06 },
-	{ OV8830_8BIT, { 0x380b }, 0x10 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_cont_cap_5M[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x0a }, /* Ouput Size 2576x1936 */
-	{ OV8830_8BIT, { 0x3809 }, 0x10 },
-	{ OV8830_8BIT, { 0x380a }, 0x07 },
-	{ OV8830_8BIT, { 0x380b }, 0x90 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_cont_cap_8M[] = {
+static const struct ov8830_reg ov8835_8M_mode[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -634,10 +362,12 @@ static const struct ov8830_reg ov8835_cont_cap_8M[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
 	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0xa0 },
+	{ OV8830_8BIT, { 0x5002 }, 0x00 }, /* Scale disable */
+	{ OV8830_8BIT, { 0x5041 }, 0x84 }, /* Set manual scale and disable */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_6M[] = {
+static const struct ov8830_reg ov8835_6M_mode[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -657,6 +387,8 @@ static const struct ov8830_reg ov8835_cont_cap_6M[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
 	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0x90 },
+	{ OV8830_8BIT, { 0x5002 }, 0x00 }, /* Scale disable */
+	{ OV8830_8BIT, { 0x5041 }, 0x84 }, /* Set manual scale and disable */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -682,29 +414,8 @@ static const struct ov8830_reg ov8835_video_qcif_dvs[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0xa0 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_video_cif_dvs[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x04 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xab },
-	{ OV8830_8BIT, { 0x3808 }, 0x01 }, /* 388x318 O/p Binning+Scaling */
-	{ OV8830_8BIT, { 0x3809 }, 0x84 },
-	{ OV8830_8BIT, { 0x380a }, 0x01 },
-	{ OV8830_8BIT, { 0x380b }, 0x3e },
-	{ OV8830_8BIT, { 0x3814 }, 0x31 },
-	{ OV8830_8BIT, { 0x3815 }, 0x31 },
-	{ OV8830_8BIT, { 0x3820 }, 0x11 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -728,6 +439,8 @@ static const struct ov8830_reg ov8835_video_qvga_dvs[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0xa0 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -751,6 +464,8 @@ static const struct ov8830_reg ov8835_video_vga_dvs[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0xa0 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -774,6 +489,8 @@ static struct ov8830_reg const ov8835_video_480p_dvs[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0xa0 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -797,6 +514,8 @@ static struct ov8830_reg const ov8835_video_800x600_dvs[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0x90 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -821,6 +540,8 @@ static struct ov8830_reg const ov8835_video_720p_dvs_off[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0x90 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -844,6 +565,8 @@ static struct ov8830_reg const ov8835_video_720p_dvs[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0x90 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -867,73 +590,37 @@ static const struct ov8830_reg ov8835_video_1080p_dvs[] = {
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
 	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0x90 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 }, /* Scale enable */
+	{ OV8830_8BIT, { 0x5041 }, 0x04 }, /* Auto scale */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
 static struct ov8830_resolution ov8835_res_preview[] = {
 	{
-		 .desc = "ov8835_cont_cap_qvga",
-		 .width = 336,
-		 .height = 256,
+		 .desc = "ov8835_cif_mode_for_preview",
+		 .width = 388,
+		 .height = 318,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_qvga,
+		 .regs = ov8835_cif_mode,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
-				 .pixels_per_line = 4400,
-				 .lines_per_frame = 2100,
+				 .pixels_per_line = 5458,
+				 .lines_per_frame = 1700,
 			},
 			{
 			}
 		},
 	},
 	{
-		 .desc = "ov8835_cont_cap_vga",
-		 .width = 656,
-		 .height = 496,
+		 .desc = "ov8835_binning_16x9_mode_for_preview",
+		 .width = 1632,
+		 .height = 916,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_vga,
-		 .bin_factor_x = 1,
-		 .bin_factor_y = 1,
-		 .skip_frames = 1,
-		 .fps_options = {
-			{
-				 .fps = 30,
-				 .pixels_per_line = 4400,
-				 .lines_per_frame = 2100,
-			},
-			{
-			}
-		},
-	},
-	{
-		 .desc = "ov8835_preview_848x616",
-		 .width = 820,
-		 .height = 616,
-		 .used = 0,
-		 .regs = ov8835_preview_848x616,
-		 .bin_factor_x = 1,
-		 .bin_factor_y = 1,
-		 .skip_frames = 1,
-		 .fps_options = {
-			{
-				 .fps = 30,
-				 .pixels_per_line = 4400,
-				 .lines_per_frame = 2100,
-			},
-			{
-			}
-		},
-	},
-	{
-		 .desc = "ov8835_cont_cap_720p",
-		 .width = 1296,
-		 .height = 736,
-		 .used = 0,
-		 .regs = ov8835_cont_cap_720p,
+		 .regs = ov8835_binning_16x9_mode,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
@@ -948,15 +635,15 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8835_cont_cap_1M",
-		.width = 1040,
-		.height = 784,
-		.used = 0,
-		.regs = ov8835_cont_cap_1M,
-		.bin_factor_x = 1,
-		.bin_factor_y = 1,
-		.skip_frames = 1,
-		.fps_options = {
+		 .desc = "ov8835_bnning_4x3_mode",
+		 .width = 1632,
+		 .height = 1224,
+		 .used = 0,
+		 .regs = ov8835_binning_4x3_mode,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1,
+		 .fps_options = {
 			{
 				 .fps = 30,
 				 .pixels_per_line = 4400,
@@ -967,68 +654,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_cont_cap_1080p",
-		 .width = 1936,
-		 .height = 1104,
-		 .used = 0,
-		 .regs = ov8835_cont_cap_1080p,
-		 .bin_factor_x = 0,
-		 .bin_factor_y = 0,
-		 .skip_frames = 1,
-		 .fps_options = {
-			{
-				 .fps = 30,
-				 .pixels_per_line = 4496,
-				 .lines_per_frame = 2064,
-			},
-			{
-			}
-		},
-	},
-	{
-		.desc = "ov8835_cont_cap_3M",
-		.width = 2064,
-		.height = 1552,
-		.used = 0,
-		.regs = ov8835_cont_cap_3M,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.skip_frames = 1,
-		.fps_options = {
-			{
-				.fps = 25,
-				.pixels_per_line = 4450,
-				.lines_per_frame = 2500,
-			},
-			{
-			}
-		},
-	},
-	{
-		.desc = "ov8835_cont_cap_5M",
-		.width = 2576,
-		.height = 1936,
-		.used = 0,
-		.regs = ov8835_cont_cap_5M,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.skip_frames = 1,
-		.fps_options = {
-			{
-				.fps = 25,
-				.pixels_per_line = 4450,
-				.lines_per_frame = 2500,
-			},
-			{
-			}
-		},
-	},
-	{
-		 .desc = "ov8835_cont_cap_6M",
+		 .desc = "ov8835_6M_mode_for_cont_capture",
 		 .width = 3280,
 		 .height = 1852,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_6M,
+		 .regs = ov8835_6M_mode,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1047,17 +677,15 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 				 .fps = 19,
 				 .pixels_per_line = 5800,
 				 .lines_per_frame = 2500,
-			},
-			{
 			}
 		},
 	},
 	{
-		.desc = "ov8835_cont_cap_8M",
+		.desc = "ov8835_8M_mode_for_cont_capture",
 		.width = 3280,
 		.height = 2464,
 		.used = 0,
-		.regs = ov8835_cont_cap_8M,
+		.regs = ov8835_8M_mode,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1076,110 +704,72 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 			}
 		},
 	},
+};
+
+static struct ov8830_resolution ov8835_res_still[] = {
 	{
-		 .desc = "ov8835_preview_1632x1224",
-		 .width = 1632,
-		 .height = 1224,
+		 .desc = "ov8835_cif_mode_for_still",
+		 .width = 388,
+		 .height = 318,
 		 .used = 0,
-		 .regs = ov8835_preview_1632x1224,
+		 .regs = ov8835_cif_mode,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
-				 .pixels_per_line = 4400,
-				 .lines_per_frame = 2100,
+				 .pixels_per_line = 6814,
+				 .lines_per_frame = 2724,
 			},
 			{
 			}
 		},
 	},
-};
-
-static struct ov8830_resolution ov8835_res_still[] = {
 	{
-		 .desc = "ov8835_still_1080p",
-		 .width = 1936,
-		 .height = 1104,
+		 .desc = "ov8835_binning_16x9_mode_for_still",
+		 .width = 1632,
+		 .height = 916,
 		 .used = 0,
-		 .regs = ov8835_still_1080p,
-		 .bin_factor_x = 0,
-		 .bin_factor_y = 0,
+		 .regs = ov8835_binning_16x9_mode,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
 		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				.fps = 15,
-				.pixels_per_line = 5500,
-				.lines_per_frame = 3364,
+				.pixels_per_line = 6814,
+				.lines_per_frame = 2724,
 			},
 			{
 			}
 		},
 	},
 	{
-		.desc = "ov8835_still_2M",
-		.width = 1632,
-		.height = 1224,
-		.used = 0,
-		.regs = ov8835_still_2M,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.skip_frames = 1,
-		.fps_options = {
+		 .desc = "ov8835_bnning_4x3_mode_for_still",
+		 .width = 1632,
+		 .height = 1224,
+		 .used = 0,
+		 .regs = ov8835_binning_4x3_mode,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1,
+		 .fps_options = {
 			{
 				.fps = 15,
-				.pixels_per_line = 5500,
-				.lines_per_frame = 3364,
+				.pixels_per_line = 6474,
+				.lines_per_frame = 2867,
 			},
 			{
 			}
 		},
 	},
 	{
-		.desc = "ov8835_still_3M",
-		.width = 2064,
-		.height = 1552,
-		.used = 0,
-		.regs = ov8835_still_3M,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.skip_frames = 1,
-		.fps_options = {
-			{
-				.fps = 15,
-				.pixels_per_line = 5500,
-				.lines_per_frame = 3364,
-			},
-			{
-			}
-		},
-	},
-	{
-		.desc = "ov8835_still_5M",
-		.width = 2576,
-		.height = 1936,
-		.used = 0,
-		.regs = ov8835_still_5M,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.skip_frames = 1,
-		.fps_options = {
-			{
-				.fps = 15,
-				.pixels_per_line = 5500,
-				.lines_per_frame = 3364,
-			},
-			{
-			}
-		},
-	},
-	{
-		 .desc = "ov8835_still_6M",
+		 .desc = "ov8835_6M_mode_for_still",
 		 .width = 3280,
 		 .height = 1852,
 		 .used = 0,
-		 .regs = ov8835_still_6M,
+		 .regs = ov8835_6M_mode,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1194,11 +784,11 @@ static struct ov8830_resolution ov8835_res_still[] = {
 		},
 	},
 	{
-		.desc = "ov8835_still_8M",
+		.desc = "ov8835_cont_cap_8M_for_still",
 		.width = 3280,
 		.height = 2464,
 		.used = 0,
-		.regs = ov8835_still_8M,
+		.regs = ov8835_8M_mode,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1239,7 +829,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .width = 388,
 		 .height = 318,
 		 .used = 0,
-		 .regs = ov8835_video_cif_dvs,
+		 .regs = ov8835_cif_mode,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,

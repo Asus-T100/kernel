@@ -1163,6 +1163,12 @@ int queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
 
 		set_work_cwq(work, get_cwq(lcpu, wq), 0);
 
+		/*
+		 * REVERT ME: check cwq is Ok before posting the DWork to track
+		 * rare exception in delayed_work_timer_fn()
+		 */
+		WARN_ON(!get_work_cwq(&dwork->work));
+
 		timer->expires = jiffies + delay;
 		timer->data = (unsigned long)dwork;
 		timer->function = delayed_work_timer_fn;

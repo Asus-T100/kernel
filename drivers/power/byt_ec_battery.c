@@ -50,6 +50,7 @@
 #define BAT0_STAT_DISCHARGING		(1 << 0)
 #define BAT0_STAT_CHARGING		(1 << 1)
 #define BAT0_STAT_LOW_BATT		(1 << 2)
+#define BAT0_STAT_BATT_PRESENT		(1 << 3)
 #define EC_BAT0_CUR_RATE_REG		51
 #define EC_BAT0_CUR_CAP_REG		52
 #define EC_BAT0_VOLT_REG		53
@@ -64,11 +65,22 @@
 #define EC_BAT0_BATTSBS_STATUS		202
 #define BAT0_BATTSBS_STATUS_OTP		(1 << 12)
 #define BAT0_BATTSBS_STATUS_FC		(1 << 5)
+#define BAT0_BATTSBS_STATUS_INIT	(1 << 7)
 #define EC_BAT0_TEMP_REG		206
 #define EC_BAT0_AVG_CUR_REG		208
 
 /* 6% is minimun threshold  for platform shutdown*/
 #define EC_BAT_SAFE_MIN_CAPACITY	6
+#define EC_BAT_DEAD_VOLTAGE		6550  /* Dead = 6.55V */
+
+/* Battery temperature related macros*/
+#define EC_BAT_TEMP_CONV_FACTOR		27315 /* K = C + 273.15*/
+/* Battery operating temperature range is 0C to 40C while
+ * charging and -20 C to 60C while Discharging/Full/Not Chraging.
+ */
+#define EC_BAT_CHRG_OVER_TEMP		3131  /* 313.1K ~ 40 C */
+#define EC_BAT_CHRG_UNDER_TEMP		2731  /* 273.1K ~ 0 C  */
+
 
 struct ec_battery_info {
 	struct platform_device *pdev;
@@ -95,6 +107,11 @@ static enum power_supply_property ec_battery_props[] = {
 
 static enum power_supply_property ec_charger_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_TYPE,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_MODEL_NAME,
+	POWER_SUPPLY_PROP_MANUFACTURER,
 };
 
 static short adjust_sign_value(int value)
@@ -153,6 +170,45 @@ static int ec_get_battery_property(struct power_supply *psy,
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
+		ret = byt_ec_read_byte(EC_BAT0_STAT_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+		/* If battery is not connected
+		 * return POWER_SUPPLY_HEALTH_UNKNOWN
+		 */
+		if (!(val8 & BAT0_STAT_BATT_PRESENT)) {
+			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
+			break;
+		}
+
+		/* Battery operational temperature range is
+		 * 0C to 40C while charging and -20 C to 60C
+		 * while Discharging/Full/Not Charging.
+		 */
+		ret = byt_ec_read_word(EC_BAT0_TEMP_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+
+		/* Android framwork don't differentiate b/w hot and cold.
+		 *Both are treated as  overheat cases.
+		 *So report overheat in both high and low temp cases.
+		 */
+		if ((val16 >= EC_BAT_CHRG_OVER_TEMP)
+			| (val16 <= EC_BAT_CHRG_UNDER_TEMP)) {
+			val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
+			break;
+		}
+		ret = byt_ec_read_word(EC_BAT0_VBATT_REG, &val16);
+		if (ret < 0)
+			goto ec_read_err;
+		/* The battery is treated as DEAD if the battery voltage is
+		 *bellow <= 6.55V in BYT-M
+		 */
+		if (val16 <= EC_BAT_DEAD_VOLTAGE) {
+			val->intval = POWER_SUPPLY_HEALTH_DEAD;
+			break;
+		}
+
 		val->intval = POWER_SUPPLY_HEALTH_GOOD;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
@@ -208,7 +264,7 @@ static int ec_get_battery_property(struct power_supply *psy,
 		 * Compensated capacity = cap - ((100 - cap)*6)/100 + 0.5
 		 */
 		comp_cap = val8;
-		comp_cap = comp_cap*100 - ((100 - comp_cap) \
+		comp_cap = comp_cap*100 - ((100 - comp_cap)
 				*EC_BAT_SAFE_MIN_CAPACITY) + 50 ;
 		comp_cap /= 100;
 		if (comp_cap < 0)
@@ -220,20 +276,24 @@ static int ec_get_battery_property(struct power_supply *psy,
 		if (ret < 0)
 			goto ec_read_err;
 		/*
-		 * WA: report 25 Degrees untill
-		 * EC FW is available.
-		 */
-		val16 = (273 + 25) * 10;
-
-		/*
 		 * convert temperature from degree kelvin
 		 * to degree celsius: T(C) = T(K) - 273.15
 		 * also 1 LSB of Temp register = 0.1 Kelvin.
 		 */
-		val->intval = ((val16 / 10) - 273) * 10;
+		val->intval = (((int)val16 * 10) -
+			EC_BAT_TEMP_CONV_FACTOR) / 10;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
-		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		ret = byt_ec_read_byte(EC_BAT0_STAT_REG, &val8);
+		if (ret < 0)
+			goto ec_read_err;
+		/*If battery is not connected
+		 *return POWER_SUPPLY_TECHNOLOGY_UNKNOWN
+		 */
+		if (val8 & BAT0_STAT_BATT_PRESENT)
+			val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		else
+			val->intval =   POWER_SUPPLY_HEALTH_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
 		ret = byt_ec_read_word(EC_BAT0_REM_CAP_REG, &val16);
@@ -273,20 +333,46 @@ static int ec_get_charger_property(struct power_supply *psy,
 	struct ec_battery_info *chip = container_of(psy,
 				struct ec_battery_info, chrg);
 	int ret = 0;
+	int chrg_present = 0;
 	u8 data;
 
 	mutex_lock(&chip->lock);
+	ret = byt_ec_read_byte(EC_REAL_AC_PWR_REG, &data);
+	if (ret < 0)
+		goto ec_read_err;
+	if (data & REAL_AC_PWR_ON)
+		chrg_present = 1;
+	/* As EC provides only charger present status, all other parameters
+	 * are hardcoded as per requirements.
+	 */
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		ret = byt_ec_read_byte(EC_REAL_AC_PWR_REG, &data);
-		if (ret < 0)
-			goto ec_read_err;
+	case POWER_SUPPLY_PROP_PRESENT:
 
-		if (data & REAL_AC_PWR_ON)
+		if (chrg_present)
 			val->intval = 1;
 		else
 			val->intval = 0;
 		break;
+	case POWER_SUPPLY_PROP_HEALTH:
+		if (chrg_present)
+			val->intval = POWER_SUPPLY_HEALTH_GOOD;
+		else
+			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
+		break;
+	case POWER_SUPPLY_PROP_MODEL_NAME:
+		if (chrg_present)
+			val->strval = "INBYTM";
+		else
+			val->strval = "Unknown";
+		break;
+	case POWER_SUPPLY_PROP_MANUFACTURER:
+		if (chrg_present)
+			val->strval = "Intel";
+		else
+			val->strval = "Unknown";
+		break;
+
 	default:
 		mutex_unlock(&chip->lock);
 		return -EINVAL;
@@ -325,11 +411,23 @@ static int byt_ec_evt_batt_callback(struct notifier_block *nb,
 		batt_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY_OTP:
+		/*Battery temp >40 is considered as over temperature*/
 		dev_info(&chip->pdev->dev, "Battery over temp event\n");
 		batt_uevent = true;
 		break;
 	case BYT_EC_SCI_BATTERY_OTP_CLR:
+		/*Battery temp <= 39 will clear over temperature*/
 		dev_info(&chip->pdev->dev, "Battery over temp clear event\n");
+		batt_uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY_ETP:
+		/*Battery temp > 60 is considered as extreme temperature*/
+		dev_info(&chip->pdev->dev, "Battery extreme temp event\n");
+		batt_uevent = true;
+		break;
+	case BYT_EC_SCI_BATTERY_ETP_CLR:
+		/*Battery temp <= 59 will clear extreme temperature*/
+		dev_info(&chip->pdev->dev, "Battery extreme temp clear event\n");
 		batt_uevent = true;
 		break;
 	default:
@@ -365,7 +463,7 @@ static int ec_battery_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, chip);
 	mutex_init(&chip->lock);
 
-	chip->bat.name = "byt-battery";
+	chip->bat.name = "byt_battery";
 	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
 	chip->bat.properties = ec_battery_props;
 	chip->bat.num_properties = ARRAY_SIZE(ec_battery_props);
@@ -376,7 +474,7 @@ static int ec_battery_probe(struct platform_device *pdev)
 		goto probe_failed_1;
 	}
 
-	chip->chrg.name = "byt-charger";
+	chip->chrg.name = "byt_charger";
 	chip->chrg.type = POWER_SUPPLY_TYPE_MAINS;
 	chip->chrg.properties = ec_charger_properties;
 	chip->chrg.num_properties = ARRAY_SIZE(ec_charger_properties);

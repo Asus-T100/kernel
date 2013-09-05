@@ -9,7 +9,7 @@
  * as published by the Free Software Foundation; version 2
  * of the License.
  */
-
+//<asus-ych20130904>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/interrupt.h>

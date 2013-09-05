@@ -7,7 +7,7 @@
  * the Free Software Foundation.
  */
 #include <linux/err.h>
-//#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 
@@ -43,7 +43,7 @@ int iio_map_array_register(struct iio_dev *indio_dev, struct iio_map *maps)
 		}
 		mapi->map = &maps[i];
 		mapi->indio_dev = indio_dev;
-		list_add(&mapi->l, &iio_map_list);
+		list_add(&mapi->l, &iio_map_list); //<asus-ych20130904>
 		i++;
 	}
 error_ret:
@@ -231,7 +231,7 @@ void iio_st_channel_release_all(struct iio_channel *channels)
 	kfree(channels);
 }
 EXPORT_SYMBOL_GPL(iio_st_channel_release_all);
-//<asus-bob20130830+>
+
 int iio_st_channel_get_num(const struct iio_channel *chan)
 {
 	int num = 0;
@@ -273,7 +273,7 @@ int iio_st_channel_get_name(const struct iio_channel *chan, char **chan_name)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(iio_st_channel_get_name);
-//<asus-bob20130830->
+
 int iio_st_read_channel_raw(struct iio_channel *chan, int *val)
 {
 	int val2, ret;
@@ -292,7 +292,7 @@ err_unlock:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(iio_st_read_channel_raw);
-//<asus-bob20130830+>
+
 int iio_st_read_channel_all_raw(struct iio_channel *chan, int *val)
 {
 	int ret;
@@ -330,7 +330,7 @@ err_unlock:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(iio_st_write_channel_raw);
-//<asus-bob20130830->
+
 int iio_st_read_channel_scale(struct iio_channel *chan, int *val, int *val2)
 {
 	int ret;

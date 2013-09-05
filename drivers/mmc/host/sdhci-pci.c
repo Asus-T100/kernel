@@ -348,17 +348,40 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
 		slot->host->quirks2 |= SDHCI_QUIRK2_CARD_CD_DELAY |
 			SDHCI_QUIRK2_WAIT_FOR_IDLE;
+#if 0 //<asus-ych2013004>	
+		if (!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP1) &&
+			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP2) &&
+			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP3) &&
+			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP1) &&
+			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP2) &&
+			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP3))
+			slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR;
+#endif	 //<asus-ych2013004>		
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
+#if 0 ///<asus-ych2013004>	
+		if (!INTEL_MID_BOARDV2(TABLET, BYT, BLB, PRO) &&
+				!INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
+#endif //<asus-ych2013004>	
 		sdhci_alloc_panic_host(slot->host);
 		slot->rst_n_gpio = -EINVAL;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
+#if 0 //<asus-ych2013004>	
+		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC |
+			MMC_CAP2_CACHE_CTRL;
+		slot->host->mmc->qos = kzalloc(sizeof(struct pm_qos_request),
+				GFP_KERNEL);
+#endif //<asus-ych2013004>	
 		break;
 	}
 
 	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE;
 	slot->host->mmc->caps2 |= MMC_CAP2_HC_ERASE_SZ | MMC_CAP2_POLL_R1B_BUSY;
-
+#if 0 //<asus-ych2013004>	
+	if (slot->host->mmc->qos)
+		pm_qos_add_request(slot->host->mmc->qos, PM_QOS_CPU_DMA_LATENCY,
+				PM_QOS_DEFAULT_VALUE);
+#endif //<asus-ych2013004>	
 	return 0;
 }
 
@@ -372,6 +395,12 @@ static void mfd_emmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC1:
 		break;
 	}
+#if 0 //<asus-ych2013004>	
+	if (slot->host->mmc->qos) {
+		pm_qos_remove_request(slot->host->mmc->qos);
+		kfree(slot->host->mmc->qos);
+	}
+#endif //<asus-ych2013004>
 }
 
 static int mfd_sdio_probe_slot(struct sdhci_pci_slot *slot)
@@ -588,6 +617,13 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int err;
+
+	/* On BYT-M, SD card is using to store ipanic as a W/A */
+#if 0 //<asus-ych2013004>	
+	if (INTEL_MID_BOARDV2(TABLET, BYT, BLB, PRO) ||
+			INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
+		sdhci_alloc_panic_host(slot->host);
+#endif //<asus-ych2013004>	
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	/*
 	 * change GPIOC_7 to alternate function 2
@@ -620,6 +656,14 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 		gpio_set_value(slot->host->gpio_1p8_en, 0);
 	}
 
+	/* Bayley Bay board */
+#if 0 //<asus-ych2013004>
+	if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
+			INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG))
+		slot->host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
+
+	slot->host->mmc->caps2 |= MMC_CAP2_PWCTRL_POWER;
+#endif  //<asus-ych2013004>
 	return 0;
 }
 
@@ -658,12 +702,14 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_emmc = {
 static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
 	.allow_runtime_pm = true,
 	.probe_slot	= mfd_emmc_probe_slot,
+	.remove_slot	= mfd_emmc_remove_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
 	.quirks2	= SDHCI_QUIRK2_POWER_PIN_GPIO_MODE,
 	.allow_runtime_pm = true,
 	.probe_slot	= byt_sd_probe_slot,
+	.remove_slot	= byt_sd_remove_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sdio = {
@@ -678,16 +724,28 @@ static const struct sdhci_pci_fixes sdhci_intel_pch_sdio = {
 	.probe_slot	= pch_hc_probe_slot,
 };
 
+#define TNG_IOAPIC_IDX	0xfec00000
+static void mrfl_ioapic_rte_reg_addr_map(struct sdhci_pci_slot *slot)
+{
+	slot->host->rte_addr = ioremap_nocache(TNG_IOAPIC_IDX, 256);
+	if (!slot->host->rte_addr)
+		dev_err(&slot->chip->pdev->dev, "rte_addr ioremap fail!\n");
+	else
+		dev_info(&slot->chip->pdev->dev, "rte_addr mapped addr: %p\n",
+			slot->host->rte_addr);
+}
+
 /* Define Host controllers for Intel Merrifield platform */
 #define INTEL_MRFL_EMMC_0	0
-#define INTEL_MRFL_EMMC_1	1
+#define INTEL_MRFL_EMMC0H	1
 #define INTEL_MRFL_SD		2
 #define INTEL_MRFL_SDIO		3
+#define INTEL_MRFL_EMMC_1	1 //<asus-ych2013004>
 
 static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int ret = 0;
-
+//<asus-ych2013004+>
 	if ((PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0) ||
 		(PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_1))
 		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
@@ -703,6 +761,37 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 	slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
 				MMC_CAP2_INIT_CARD_SYNC;
 
+#if 0 //<asus-ych2013004>
+	switch (PCI_FUNC(slot->chip->pdev->devfn)) {
+	case INTEL_MRFL_EMMC_0:
+		sdhci_alloc_panic_host(slot->host);
+		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
+					MMC_CAP_NONREMOVABLE |
+					MMC_CAP_1_8V_DDR;
+		slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
+					MMC_CAP2_INIT_CARD_SYNC;
+		mrfl_ioapic_rte_reg_addr_map(slot);
+		break;
+	case INTEL_MRFL_EMMC0H:
+		if (slot->chip->pdev->revision == 0x1) { /* B0 stepping */
+			slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
+						MMC_CAP_NONREMOVABLE |
+						MMC_CAP_1_8V_DDR;
+			slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
+						MMC_CAP2_INIT_CARD_SYNC |
+						MMC_CAP2_HS200_1_8V_SDR;
+			/* WA for async abort silicon issue */
+			slot->host->quirks2 |= SDHCI_QUIRK2_WAIT_FOR_IDLE;
+		}
+		break;
+	case INTEL_MRFL_SD:
+		slot->host->quirks2 |= SDHCI_QUIRK2_WAIT_FOR_IDLE;
+		break;
+	case INTEL_MRFL_SDIO:
+		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
+		break;
+	}
+#endif //<asus-ych2013004->
 	if (slot->data->platform_quirks & PLFM_QUIRK_NO_HIGH_SPEED) {
 		slot->host->quirks2 |= SDHCI_QUIRK2_DISABLE_HIGH_SPEED;
 		slot->host->mmc->caps &= ~MMC_CAP_1_8V_DDR;
@@ -722,6 +811,11 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 
 static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
+#if 0 //<asus-ych2013004>
+	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0)
+		if (slot->host->rte_addr)
+			iounmap(slot->host->rte_addr);
+#endif //<asus-ych2013004->
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
@@ -731,6 +825,94 @@ static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
 	.allow_runtime_pm = true,
 	.probe_slot	= intel_mrfl_mmc_probe_slot,
 	.remove_slot	= intel_mrfl_mmc_remove_slot,
+};
+
+static int intel_moor_emmc_probe_slot(struct sdhci_pci_slot *slot)
+{
+	int ret = 0;
+
+	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
+				MMC_CAP_NONREMOVABLE |
+				MMC_CAP_1_8V_DDR;
+
+	sdhci_alloc_panic_host(slot->host);
+
+	slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
+				MMC_CAP2_INIT_CARD_SYNC;
+	//<asus-ych2013004>if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HIGH_SPEED) {
+			slot->host->quirks2 |= SDHCI_QUIRK2_DISABLE_HIGH_SPEED;
+			slot->host->mmc->caps &= ~MMC_CAP_1_8V_DDR;
+		}
+
+	//<asus-ych2013004>if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
+			slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
+
+	return ret;
+}
+
+static void intel_moor_emmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
+{
+}
+
+static int intel_moor_sd_probe_slot(struct sdhci_pci_slot *slot)
+{
+	int ret = 0;
+
+	//<asus-ych2013004>if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
+			ret = -ENODEV;
+
+	return ret;
+}
+
+static void intel_moor_sd_remove_slot(struct sdhci_pci_slot *slot, int dead)
+{
+}
+
+static int intel_moor_sdio_probe_slot(struct sdhci_pci_slot *slot)
+{
+	int ret = 0;
+
+	slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
+
+	//<asus-ych2013004>if (slot->data)
+		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
+			ret = -ENODEV;
+
+	return ret;
+}
+
+static void intel_moor_sdio_remove_slot(struct sdhci_pci_slot *slot, int dead)
+{
+}
+
+static const struct sdhci_pci_fixes sdhci_intel_moor_emmc = {
+	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
+	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
+				SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
+	.allow_runtime_pm = true,
+	.probe_slot	= intel_moor_emmc_probe_slot,
+	.remove_slot	= intel_moor_emmc_remove_slot,
+};
+
+static const struct sdhci_pci_fixes sdhci_intel_moor_sd = {
+	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
+	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
+				SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
+	.allow_runtime_pm = true,
+	.probe_slot	= intel_moor_sd_probe_slot,
+	.remove_slot	= intel_moor_sd_remove_slot,
+};
+
+static const struct sdhci_pci_fixes sdhci_intel_moor_sdio = {
+	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
+	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
+				SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
+	.allow_runtime_pm = true,
+	.probe_slot	= intel_moor_sdio_probe_slot,
+	.remove_slot	= intel_moor_sdio_remove_slot,
 };
 
 /* O2Micro extra registers */
@@ -1365,6 +1547,30 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 	},
 
 	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_MOOR_EMMC,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_moor_emmc,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_MOOR_SD,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_moor_sd,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_MOOR_SDIO,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_moor_sdio,
+	},
+
+	{
 		.vendor		= PCI_VENDOR_ID_O2,
 		.device		= PCI_DEVICE_ID_O2_8120,
 		.subvendor	= PCI_ANY_ID,
@@ -1615,6 +1821,8 @@ static int sdhci_pci_get_tuning_count(struct sdhci_host *host)
 
 	switch (slot->chip->pdev->device) {
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
+		tuning_count = 4; /* using 8 seconds, this can be tuning */
+	case PCI_DEVICE_ID_INTEL_MRFL_MMC:
 		tuning_count = 4; /* using 8 seconds, this can be tuning */
 	default:
 		break;
@@ -1892,8 +2100,10 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	host->quirks2 = chip->quirks2;
 
 	/* Retrieve platform data if there is any */
-	if (pdata && (pdata->slotno == slotno))
+	if (pdata && (pdata->slotno == slotno)) {
+		pdata->pdev = pdev;
 		slot->data = pdata;
+	}
 
 	if (slot->data) {
 		if (slot->data->setup) {

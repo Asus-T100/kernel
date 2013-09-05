@@ -455,6 +455,9 @@ static int mmc_emergency_reinit_card(void)
 	u32 cid[4];
 	unsigned int max_dtr;
 
+	if (mmc_card_sd(card))
+		return 0;
+
 	/*
 	 * before re-init card, flush cache first
 	 * if there is.
@@ -687,7 +690,7 @@ int mmc_emergency_init(void)
 {
 	struct mmc_panic_host *host = panic_host;
 	int ret;
-	if (host == NULL) {
+	if (host == NULL || !host->mmc || !host->mmc->card) {
 		pr_err("%s: no device for panic record\n", __func__);
 		return -ENODEV;
 	}
@@ -786,9 +789,10 @@ void mmc_emergency_setup(struct mmc_host *mmc)
 	/*
 	 * if is SDIO card or SD card, by pass
 	 */
-	if (mmc_card_sdio(mmc->card) ||
-			mmc_card_sd(mmc->card))
+	if (mmc_card_sdio(mmc->card))
 		return;
+
+	kfree(host->card);
 
 	host->card = kzalloc(sizeof(struct mmc_card), GFP_KERNEL);
 	if (!host->card) {
@@ -811,6 +815,7 @@ void mmc_emergency_setup(struct mmc_host *mmc)
 	/*
 	 * sample ios values
 	 */
+	memset(&host->ios, 0, sizeof(struct mmc_ios));
 	memcpy(&host->ios, &mmc->ios, sizeof(struct mmc_ios));
 #ifdef CONFIG_MMC_CLKGATE
 	if (mmc->ios.clock == 0)

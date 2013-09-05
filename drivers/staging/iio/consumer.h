@@ -58,7 +58,7 @@ struct iio_channel *iio_st_channel_get_all(const char *name);
  * @chan:		Array of channels to be released.
  */
 void iio_st_channel_release_all(struct iio_channel *chan);
-//<asus-bob20130830+>
+
 /**
  * iio_st_channel_get_num() - get the number of channels
  * @chan: array of iio_channel structures
@@ -95,7 +95,7 @@ int iio_st_read_channel_raw(struct iio_channel *chan,
  */
 int iio_st_read_channel_all_raw(struct iio_channel *chan,
 			    int *val);
-//<asus-bob20130830->
+
 /**
  * iio_st_get_channel_type() - get the type of a channel
  * @channel:		The channel being queried.

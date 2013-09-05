@@ -59,23 +59,32 @@ KERNEL_CCSLOP := $(filter-out time_macros,$(subst $(comma), ,$(CCACHE_SLOPPINESS
 KERNEL_CCSLOP := $(subst $(space),$(comma),$(KERNEL_CCSLOP))
 
 KERNEL_OUT_DIR := $(PRODUCT_OUT)/linux/kernel
+KERNEL_OUT_DIR_KDUMP := $(PRODUCT_OUT)/linux/kdump
 KERNEL_MODULES_ROOT := $(PRODUCT_OUT)/root/lib/modules
 KERNEL_CONFIG := $(KERNEL_OUT_DIR)/.config
+KERNEL_CONFIG_KDUMP := $(KERNEL_OUT_DIR_KDUMP)/.config
 KERNEL_BLD_FLAGS := \
     A="../modules/drivers ../modules/intel_media" \
     ARCH=$(KERNEL_ARCH) \
-    O=../../$(KERNEL_OUT_DIR) \
     $(KERNEL_EXTRA_FLAGS)
+
+KERNEL_BLD_FLAGS_KDUMP := $(KERNEL_BLD_FLAGS) \
+    O=../../$(KERNEL_OUT_DIR_KDUMP) \
+
+KERNEL_BLD_FLAGS :=$(KERNEL_BLD_FLAGS) \
+     O=../../$(KERNEL_OUT_DIR) \
+
 
 KERNEL_BLD_ENV := CROSS_COMPILE=$(KERNEL_CROSS_COMP) \
     PATH=$(KERNEL_PATH):$(PATH) \
     CCACHE_SLOPPINESS=$(KERNEL_CCSLOP)
 KERNEL_FAKE_DEPMOD := $(KERNEL_OUT_DIR)/fakedepmod/lib/modules
-
 KERNEL_DEFCONFIG := $(KERNEL_SRC_DIR)/arch/x86/configs/$(KERNEL_ARCH)_$(KERNEL_SOC)_defconfig
+KERNEL_DEFCONFIG_KDUMP := $(KERNEL_DEFCONFIG)_kdump
 KERNEL_DIFFCONFIG_DIR ?= $(TARGET_DEVICE_DIR)
 KERNEL_DIFFCONFIG ?= $(KERNEL_DIFFCONFIG_DIR)/$(TARGET_DEVICE)_diffconfig
 KERNEL_VERSION_FILE := $(KERNEL_OUT_DIR)/include/config/kernel.release
+KERNEL_VERSION_FILE_KDUMP := $(KERNEL_OUT_DIR_KDUMP)/include/config/kernel.release
 
 $(KERNEL_CONFIG): $(KERNEL_DEFCONFIG) $(wildcard $(KERNEL_DIFFCONFIG))
 	@echo Regenerating kernel config $(KERNEL_OUT_DIR)
@@ -83,9 +92,20 @@ $(KERNEL_CONFIG): $(KERNEL_DEFCONFIG) $(wildcard $(KERNEL_DIFFCONFIG))
 	@cat $^ > $@
 	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) defoldconfig
 
+$(KERNEL_CONFIG_KDUMP): $(KERNEL_DEFCONFIG_KDUMP) $(wildcard $(KERNEL_DIFFCONFIG))
+	@echo Regenerating kdump kernel config $(KERNEL_OUT_DIR_KDUMP)
+	@mkdir -p $(KERNEL_OUT_DIR_KDUMP)
+	@cat $^ > $@
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS_KDUMP) defoldconfig
+
 build_bzImage: $(KERNEL_CONFIG) openssl $(MINIGZIP)
 	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS)
 	@cp -f $(KERNEL_OUT_DIR)/arch/x86/boot/bzImage $(PRODUCT_OUT)/kernel
+
+build_bzImage_kdump: $(KERNEL_CONFIG_KDUMP) openssl $(MINIGZIP)
+	@echo Building the kdump bzimage
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS_KDUMP)
+	@cp -f $(KERNEL_OUT_DIR_KDUMP)/arch/x86/boot/bzImage $(PRODUCT_OUT)/kdumpbzImage
 
 clean_kernel:
 	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) clean

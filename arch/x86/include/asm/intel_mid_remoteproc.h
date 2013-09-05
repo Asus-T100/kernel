@@ -26,6 +26,7 @@
 #define	RP_GET_FW_REVISION	0xF4
 #define	RP_COLD_BOOT		0xF3
 #define	RP_COLD_RESET		0xF1
+#define	RP_COLD_OFF		0x80
 #define	RP_MIP_ACCESS		0xEC
 #define RP_GET_HOBADDR		0xE5
 #define RP_OSC_CLK_CTRL		0xE6
@@ -33,6 +34,7 @@
 #define RP_WRITE_OSNIB		0xE4
 #define RP_FW_UPDATE		0xFE
 #define RP_VRTC			0xFA
+#define RP_PMDB			0xE0
 
 /*
  * Assigning some temp ids for following devices

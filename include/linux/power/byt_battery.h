@@ -1,6 +1,7 @@
 #ifndef __BYT_BATTERY_H_
 #define __BYT_BATTERY_H_
 
+//<asus-ych20130904>
 
 #pragma pack(1)
 struct byt_battery 

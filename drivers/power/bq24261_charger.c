@@ -115,6 +115,8 @@
 
 #define BQ24261_TE_MASK			(0x01 << 2)
 #define BQ24261_TE_ENABLE		(0x01 << 2)
+#define BQ24261_STAT_ENABLE_MASK	(0x01 << 3)
+#define BQ24261_STAT_ENABLE		(0x01 << 3)
 
 #define BQ24261_VENDOR_MASK		(0x07 << 5)
 #define BQ24261_VENDOR			(0x02 << 5)
@@ -302,6 +304,8 @@ struct bq24261_charger {
 	int max_temp;
 	int min_temp;
 	enum bq24261_chrgr_stat chrgr_stat;
+	bool online;
+	bool present;
 	bool is_charging_enabled;
 	bool is_charger_enabled;
 	bool is_vsys_on;
@@ -418,7 +422,12 @@ static inline void bq24261_dump_regs(bool dump_master)
 	int i;
 	int ret;
 	int bat_cur, bat_volt;
-	struct bq24261_charger *chip = i2c_get_clientdata(bq24261_client);
+	struct bq24261_charger *chip;
+
+	if (!bq24261_client)
+		return;
+
+	chip = i2c_get_clientdata(bq24261_client);
 
 	ret = get_battery_current(&bat_cur);
 	if (ret)
@@ -630,8 +639,11 @@ static inline int bq24261_enable_charging(
 		reg_val = BQ24261_CE_DISABLE;
 	}
 
+	reg_val |=  BQ24261_STAT_ENABLE;
+
 	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
-		       BQ24261_RESET_MASK|BQ24261_CE_MASK|BQ24261_TE_MASK,
+		       BQ24261_STAT_ENABLE_MASK|BQ24261_RESET_MASK|
+				BQ24261_CE_MASK|BQ24261_TE_MASK,
 					reg_val);
 	if (ret || !val)
 		return ret;
@@ -940,6 +952,12 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 
 	switch (psp) {
 
+	case POWER_SUPPLY_PROP_PRESENT:
+		chip->present = val->intval;
+		break;
+	case POWER_SUPPLY_PROP_ONLINE:
+		chip->online = val->intval;
+		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGING:
 
 		ret = bq24261_enable_charging(chip, val->intval);
@@ -1056,11 +1074,10 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
-		val->intval = (chip->cable_type
-			       != POWER_SUPPLY_CHARGER_TYPE_NONE);
+		val->intval = chip->present;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		val->intval = bq24261_is_online(chip);
+		val->intval = chip->online;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = chip->chrgr_health;
@@ -1095,7 +1112,7 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
-		val->intval = chip->is_charger_enabled;
+		val->intval = bq24261_is_online(chip);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		val->intval = chip->cntl_state;
@@ -1359,6 +1376,7 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Charge Progress\n");
+		bq24261_dump_regs(false);
 		break;
 	case BQ24261_STAT_CHRG_DONE:
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;

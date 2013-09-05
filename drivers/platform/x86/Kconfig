@@ -649,22 +649,6 @@ config INTEL_SCU_IPC_UTIL
 	  low level access for debug work and updating the firmware. Say
 	  N unless you will be doing this on an Intel MID platform.
 
-config INTEL_PSH_IPC
-	bool "Intel PSH IPC Support"
-	depends on X86_INTEL_MID && X86_MRFLD
-	---help---
-	  PSH(Platform Services Hub) is a low frequence IA core on Tangier Platform,
-	  whose power consumption is quite low. PSH runs RTOS software inside itself,
-	  which independently controls and collects sensor data, pre-processes the data,
-	  and communicates with Atom. Thus ATOM side could be put into low power mode
-	  with more time, while all the sensor data are collected without any lost.
-
-	  PSH IPC is used as a  bridge for OS sensor service to control and access PSH
-	  sensors communications between kernel and PSH. This is not needed for PC-type
-	  machines.
-
-	  Say Y here to get Intel PSH IPC support.
-
 config CTP_CRYSTAL_38M4
 	bool "38.4M Hz crystal for CLV A0 boards"
 	depends on INTEL_SCU_IPC
@@ -711,17 +695,6 @@ config POWER_BUTTON_CLVP
 	---help---
 		CLVP SRAM address for powerbutton status. Say y for CLV+ and n for CLV
 
-config INTEL_MID_OSIP
-	tristate "osip driver for Intel MID platforms"
-	depends on INTEL_SCU_IPC
-	default y
-	help
-	  This driver modifies the osip header when rebooting,
-	  so that one can type 'reboot bootloader' to fall back
-	  in kboot mode.
-
-	  If unsure, say N.
-
 config INTEL_MID_OSIP_DEBUG_FS
 	tristate "osip driver debug fs"
 	depends on INTEL_MID_OSIP && DEBUG_FS
@@ -733,16 +706,6 @@ config INTEL_MID_OSIP_DEBUG_FS
 	  This has to be disabled if we have secure boot enabled by default.
 
 	  If unsure, say N.
-
-config INTEL_MID_OSNIB_ILB
-        tristate "cmos osnib driver for Intel BYT platforms"
-        default n
-        ---help---
-			This driver adds OSNIB support using CMOS.
-			OSNIB is used to share flags between firmware and kernel.
-			This is only valid when no SCU is present.
-
-			If unsure, say N.
 
 config INTEL_MODEM_NVRAM
 	tristate "modem NVRAM driver for Intel CTP/MERR platforms"
@@ -886,5 +849,11 @@ config INTEL_BYT_EC
 	tristate "Intel Baytrail EC driver"
 	help
 	  This driver provides the interface to access Intel Baytrail EC.
+
+config INTEL_BYT_M_BTN
+	tristate "Intel Baytrail-M Key Buttons driver"
+	depends on INTEL_BYT_EC
+	help
+	  This driver provides the interface to access Intel Baytrail-M Key Buttons.
 
 endif # X86_PLATFORM_DEVICES

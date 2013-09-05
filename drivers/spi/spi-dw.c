@@ -263,7 +263,40 @@ static int map_dma_buffers(struct dw_spi *dws)
 	if (dws->cur_transfer->rx_dma)
 		dws->rx_dma = dws->cur_transfer->rx_dma;
 
+	/* map dma buffer if it's not mapped */
+	if (!dws->tx_dma) {
+		dws->tx_dma = dma_map_single(NULL, dws->tx,
+				dws->len, DMA_TO_DEVICE);
+		if (dma_mapping_error(NULL, dws->tx_dma)) {
+			pr_err("map tx dma buffer failed\n");
+			goto err1;
+		}
+	}
+
+	if (!dws->rx_dma) {
+		dws->rx_dma = dma_map_single(NULL, dws->rx,
+				dws->len, DMA_FROM_DEVICE);
+		if (dma_mapping_error(NULL, dws->rx_dma)) {
+			pr_err("map rx dma buffer failed\n");
+			goto err2;
+		}
+	}
+
 	return 1;
+
+err2:
+	dma_unmap_single(NULL, dws->tx_dma, dws->len, DMA_TO_DEVICE);
+err1:
+	dws->cur_msg->is_dma_mapped = 0;
+	return 0;
+}
+
+static void unmap_dma_buffers(struct dw_spi *dws)
+{
+	dma_unmap_single(NULL, dws->rx_dma,
+				dws->len, DMA_FROM_DEVICE);
+	dma_unmap_single(NULL, dws->tx_dma,
+				dws->len, DMA_TO_DEVICE);
 }
 
 /* Caller already set message->status; dma and pio irqs are blocked */
@@ -274,6 +307,10 @@ static void giveback(struct dw_spi *dws)
 	struct spi_message *msg;
 
 	spin_lock_irqsave(&dws->lock, flags);
+
+	if (dws->dma_mapped)
+		unmap_dma_buffers(dws);
+
 	msg = dws->cur_msg;
 	list_del_init(&dws->cur_msg->queue);
 	dws->cur_msg = NULL;
@@ -320,6 +357,7 @@ void dw_spi_xfer_done(struct dw_spi *dws)
 		giveback(dws);
 	} else
 		tasklet_schedule(&dws->pump_transfers);
+
 }
 EXPORT_SYMBOL_GPL(dw_spi_xfer_done);
 

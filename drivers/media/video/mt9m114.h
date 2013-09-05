@@ -1,3 +1,4 @@
+//<asus-ych20130904>
 /*
  * Support for mt9m114 Camera Sensor.
  *
@@ -795,6 +796,11 @@ static struct misensor_reg const mt9m114_960P_init[] = {
 	{MISENSOR_8BIT,  0xC85C, 0x03},   //cam_crop_cropmode = 3
 	{MISENSOR_16BIT, 0xC868, 0x0508}, //cam_output_width = 1280
 	{MISENSOR_16BIT, 0xC86A, 0x03C8}, //cam_output_height = 960
+	//<asus-ian20130904>LOAD = Change-Config
+	{MISENSOR_16BIT, 0x098E, 0xDC00}, // LOGICAL_ADDRESS_ACCESS
+	{MISENSOR_8BIT, 0xDC00, 0x28},    // SYSMGR_NEXT_STATE
+	{MISENSOR_16BIT, 0x0080, 0x8002}, // COMMAND_REGISTER
+	{MISENSOR_TOK_DELAY, 0x00, 10},
 	{MISENSOR_TOK_TERM, 0, 0},
 };
 

@@ -363,6 +363,7 @@
 #define IOSF_PORT_CCU			0xA9
 #define IOSF_PORT_GPS_CORE		0x48
 #define IOSF_PORT_PMC			0x52
+#define IOSF_PORT_FLISDSI		0x1B
 
 
 /*
@@ -480,6 +481,8 @@
 #define RING_SYNC_1(base)	((base)+0x44)
 #define RING_MI_MODE(base)		((base)+0x9c)
 #define RING_UHPTR(base)	((base)+0x134)
+#define RING_CNTR(base)		((base)+0x178)
+#define RING_THRESH(base)	((base)+0x17C)
 #define GEN6_RVSYNC (RING_SYNC_0(RENDER_RING_BASE))
 #define GEN6_RBSYNC (RING_SYNC_1(RENDER_RING_BASE))
 #define GEN6_VRSYNC (RING_SYNC_1(GEN6_BSD_RING_BASE))
@@ -556,6 +559,10 @@
 #define HWSTAM		0x02098
 #define DMA_FADD_I8XX	0x020d0
 
+#define RCS_RING_TLB_INVALIDATE_VAL 0x02a002a0
+#define BLT_RING_TLB_INVALIDATE_VAL 0x02200220
+#define BSD_RING_TLB_INVALIDATE_VAL 0x02200220
+
 #define ERROR_GEN6	0x040a0
 
 /* GM45+ chicken bits -- debug workaround bits that may be required
@@ -606,6 +613,7 @@
 #define DPST_VLV_BTGR_REG		0x61268
 #define DPST_SEGVALUE_MAX_22_BIT	0x3FFFFF
 #define DPST_BIN_COUNT			32
+#define DPST_LUMA_COUNT			33
 #define DPST_HIST_ENABLE_MASK		(1UL<<31)
 #define DPST_MOD_TBL_ENABLE_MASK	(1UL<<30)
 #define DPST_HIST_MODE_SELECT_MASK	(1UL<<24)
@@ -618,6 +626,13 @@
 #define DPST_IEHCR_HIST_MODE_SELECT	(1UL<<24)
 #define DPST_IEHCR_MOD_TBL_ENABLE	(1UL<<30)
 #define DPST_IEHCR_HIST_ENABLE		(1UL<<31)
+
+/* Watchdog counter registers */
+#define PR_CTR_CTL      0x2178
+#define PR_CTR_THRESH   0x217c
+#define PR_CTR          0x2190
+#define VCS_CTR_THRESH  0x1217c
+#define VCS_CTR         0x12178
 
 #define SCPD0		0x0209c /* 915+ only */
 #define IER		0x020a0
@@ -653,8 +668,12 @@
 #define   I915_BSD_USER_INTERRUPT                      (1<<25)
 /* Added for HDMI Audio */
 /* HDMI AUDIO INTERRUPT TYPE */
+#define I915_LPE_AUDIO_HDMI_CONFIG_A			0x65000
 #define I915_LPE_AUDIO_HDMI_STATUS_A			0x65064
+#define I915_LPE_AUDIO_HDMI_CONFIG_B			0x65800
 #define I915_LPE_AUDIO_HDMI_STATUS_B			0x65864
+
+#define I915_LPE_AUDIO_HDMI_ENABLE			(1<<0)
 /* Discrepancy in Display HAS, bit definitions are reversed */
 #define I915_LPE_PIPE_A_INTERRUPT			(1<<21)
 #define I915_LPE_PIPE_B_INTERRUPT			(1<<20)
@@ -809,6 +828,7 @@
 #define GEN6_BSD_HWSTAM			0x12098
 #define GEN6_BSD_IMR			0x120a8
 #define   GEN6_BSD_USER_INTERRUPT	(1 << 12)
+#define   GEN6_BSD_TIMEOUT_COUNTER_EXPIRED (1 << 18)
 
 #define GEN6_BSD_RNCID			0x12198
 
@@ -3289,6 +3309,18 @@ EDP_PSR_SW_TIMER
 #define _VLV_DSPBADDR		0x7117C
 #define _DSPBSURFLIVE		0x711AC
 
+/* Sprite Contrast and Brightness Registers */
+#define SPRITEA_CB_REG		0x721d0
+#define SPRITEB_CB_REG		0x722d0
+#define SPRITEC_CB_REG		0x723d0
+#define SPRITED_CB_REG		0x724d0
+
+/* Sprite Hue and Saturation Registers */
+#define SPRITEA_HS_REG         0x721d4
+#define SPRITEB_HS_REG         0x721d4
+#define SPRITEC_HS_REG         0x723d4
+#define SPRITED_HS_REG         0x724d4
+
 /* Sprite A control */
 #define _DVSACNTR		0x72180
 #define   DVS_ENABLE		(1<<31)
@@ -3685,8 +3717,10 @@ EDP_PSR_SW_TIMER
 #define GT_GEN6_BLT_FLUSHDW_NOTIFY_INTERRUPT	(1 << 26)
 #define GT_GEN6_BLT_CS_ERROR_INTERRUPT		(1 << 25)
 #define GT_GEN6_BLT_USER_INTERRUPT		(1 << 22)
+#define GT_GEN6_BSD_WATCHDOG_INTERRUPT          (1 << 18)
 #define GT_GEN6_BSD_CS_ERROR_INTERRUPT		(1 << 15)
 #define GT_GEN6_BSD_USER_INTERRUPT		(1 << 12)
+#define GT_GEN6_RENDER_WATCHDOG_INTERRUPT       (1 << 6)
 #define GT_BSD_USER_INTERRUPT			(1 << 5) /* ilk only */
 #define GT_GEN7_L3_PARITY_ERROR_INTERRUPT	(1 << 5)
 #define GT_PIPE_NOTIFY				(1 << 4)
@@ -5337,6 +5371,7 @@ EDP_PSR_SW_TIMER
 #define  READ_DATA_VALID(n)				(1 << (n))
 
 #define VLV_IOSFSB_PWRGT_STATUS			0x61
+#define VLV_PWRGT_DPIO_RX_LANES_MASK	0x00F00000
 #define VLV_PWRGT_DPIO_TX_LANES_MASK	0x000FF000
 #define VLV_PWRGT_DPIO_CMN_LANES_MASK	0x00000C00
 #define VLV_PWRGT_DPIO_RX_TX_LANES_MASK	0x00FFF000

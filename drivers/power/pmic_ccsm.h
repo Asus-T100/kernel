@@ -44,8 +44,11 @@
 #define PMIC_VENDOR_ID_MASK	(0x03 << 6)
 #define PMIC_MAJOR_REV_MASK	(0x07 << 3)
 
-#define PMIC_MAJOR_REV_A0	0x00
-#define PMIC_MAJOR_REV_B0	(0x01 << 3)
+#define BASINCOVE_VENDORID	(0x03 << 6)
+#define SHADYCOVE_VENDORID	0x00
+
+#define BC_PMIC_MAJOR_REV_A0	0x00
+#define BC_PMIC_MAJOR_REV_B0	(0x01 << 3)
 
 #define PMIC_BZONE_LOW 0
 #define PMIC_BZONE_HIGH 5
@@ -127,7 +130,8 @@
 #define EMRGCHREN_ENABLE		(0x01 << 1)
 
 #define CHGRCTRL1_ADDR			0x4C
-#define CHGRCTRL1_RSVD_MASK			(D7|D6)
+#define CHGRCTRL1_DPEN_MASK			D7
+#define CHGRCTRL1_OTGMODE_MASK			D6
 #define CHGRCTRL1_FTEMP_EVENT_MASK		D5
 #define CHGRCTRL1_FUSB_INLMT_1500		D4
 #define CHGRCTRL1_FUSB_INLMT_900		D3
@@ -136,7 +140,10 @@
 #define CHGRCTRL1_FUSB_INLMT_100		D0
 
 #define CHGRSTATUS_ADDR				0x4D
-#define CHGRSTATUS_RSVD_MASK			(D7|D6|D5|D4|D3|D2)
+#define CHGRSTATUS_RSVD_MASK			(D7|D6|D5)
+#define CHGRSTATUS_SDPB_MASK			D4
+#define CHGRSTATUS_USBSEL_MASK			D3
+#define CHGRSTATUS_CHGDISLVL_MASK		D2
 #define CHGRSTATUS_CHGDETB_LATCH_MASK		D1
 #define CHGDETB_MASK				D0
 
@@ -168,6 +175,17 @@
 
 #define CHRTTADDR_ADDR		0x56
 #define CHRTTDATA_ADDR		0x57
+
+#define ID_REG			0x00
+#define VENDORID_MASK		(D6|D7)
+
+#define USBSRCDETSTATUS_ADDR		0x5D
+#define USBSRCDET_SUSBHWDET_MASK	(D0|D1)
+#define USBSRCDET_USBSRCRSLT_MASK	(D2|D3|D4|D5)
+#define USBSRCDET_SDCD_MASK		(D6|D7)
+
+#define GET_THRMBATZONE_ADDR(vend_id) \
+	(vend_id == BASINCOVE_VENDORID ? 0xB5 : 0xB6)
 
 #define TT_I2CDADDR_ADDR		0x00
 #define TT_CHGRINIT0OS_ADDR		0x01
@@ -279,6 +297,7 @@ struct pmic_chrgr_drv_context {
 	struct device *dev;
 	int health;
 	u8 pmic_id;
+	bool is_internal_usb_phy;
 	struct ps_batt_chg_prof *sfi_bcprof;
 	struct ps_pse_mod_prof *actual_bcprof;
 	struct ps_pse_mod_prof *runtime_bcprof;
@@ -307,5 +326,18 @@ struct temp_lookup {
 struct pmic_regs_def {
 	char reg_name[PMIC_REG_NAME_LEN];
 	u8 addr;
+};
+
+enum pmic_charger_cable_type {
+	PMIC_CHARGER_TYPE_NONE = 0,
+	PMIC_CHARGER_TYPE_SDP,
+	PMIC_CHARGER_TYPE_DCP,
+	PMIC_CHARGER_TYPE_CDP,
+	PMIC_CHARGER_TYPE_ACA,
+	PMIC_CHARGER_TYPE_SE1,
+	PMIC_CHARGER_TYPE_MHL,
+	PMIC_CHARGER_TYPE_FLOAT_DP_DN,
+	PMIC_CHARGER_TYPE_OTHER,
+	PMIC_CHARGER_TYPE_DCP_EXTPHY,
 };
 #endif

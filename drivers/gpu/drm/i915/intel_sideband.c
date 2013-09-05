@@ -271,6 +271,24 @@ int intel_pmc_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 				IOSF_PORT_PMC, reg, val, mask);
 }
 
+int intel_flisdsi_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
+{
+
+	return intel_sideband_read32(dev_priv, IOSF_PORT_FLISDSI, reg, val);
+}
+
+int intel_flisdsi_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val)
+{
+	return intel_sideband_write32(dev_priv, IOSF_PORT_FLISDSI, reg, val);
+}
+
+int intel_flisdsi_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
+				u32 val, u32 mask)
+{
+	return intel_sideband_write32_bits(dev_priv,
+				IOSF_PORT_FLISDSI, reg, val, mask);
+}
+
 /* Function reads the fuse port */
 int intel_fuse_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
 {

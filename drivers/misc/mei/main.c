@@ -43,6 +43,8 @@
 #include "hw-me.h"
 #include "client.h"
 
+static struct workqueue_struct *mei_wq;
+
 /**
  * mei_open - the open function
  *
@@ -252,19 +254,16 @@ static ssize_t mei_read(struct file *file, char __user *ubuf,
 		mutex_unlock(&dev->device_lock);
 
 		if (wait_event_interruptible(cl->rx_wait,
-			(MEI_READ_COMPLETE == cl->reading_state ||
-			 MEI_FILE_INITIALIZING == cl->state ||
-			 MEI_FILE_DISCONNECTED == cl->state ||
-			 MEI_FILE_DISCONNECTING == cl->state))) {
+				MEI_READ_COMPLETE == cl->reading_state ||
+				mei_cl_is_transitioning(cl))) {
+
 			if (signal_pending(current))
 				return -EINTR;
 			return -ERESTARTSYS;
 		}
 
 		mutex_lock(&dev->device_lock);
-		if (MEI_FILE_INITIALIZING == cl->state ||
-		    MEI_FILE_DISCONNECTED == cl->state ||
-		    MEI_FILE_DISCONNECTING == cl->state) {
+		if (mei_cl_is_transitioning(cl)) {
 			rets = -EBUSY;
 			goto out;
 		}
@@ -684,6 +683,9 @@ static struct miscdevice  mei_misc_device = {
 int mei_register(struct mei_device *dev)
 {
 	int ret;
+
+	dev->wq = mei_wq;
+
 	mei_misc_device.parent = &dev->pdev->dev;
 	ret = misc_register(&mei_misc_device);
 	if (ret)
@@ -706,12 +708,25 @@ EXPORT_SYMBOL_GPL(mei_deregister);
 
 static int __init mei_init(void)
 {
-	return mei_cl_bus_init();
+	int ret = 0;
+
+	mei_wq = alloc_workqueue("mei", 0, 0);
+	if (!mei_wq) {
+		pr_err("mei workqueue allocation failed.\n");
+		return -ENOMEM;
+	}
+
+	ret = mei_cl_bus_init();
+	if (ret)
+		destroy_workqueue(mei_wq);
+
+	return ret;
 }
 
 static void __exit mei_exit(void)
 {
 	mei_cl_bus_exit();
+	destroy_workqueue(mei_wq);
 }
 
 module_init(mei_init);

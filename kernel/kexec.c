@@ -39,6 +39,8 @@
 #include <asm/io.h>
 #include <asm/sections.h>
 
+#include <linux/intel_mid_pm.h>
+
 /* Per cpu memory for storing cpu states in case of system crash. */
 note_buf_t __percpu *crash_notes;
 
@@ -1078,6 +1080,10 @@ asmlinkage long compat_sys_kexec_load(unsigned long entry,
 }
 #endif
 
+#ifndef CONFIG_CRASH_DUMP
+#define KEXEC_MAX_RESET_TIME 120
+#endif
+
 void crash_kexec(struct pt_regs *regs)
 {
 	/* Take the kexec_mutex here to prevent sys_kexec_load
@@ -1088,17 +1094,28 @@ void crash_kexec(struct pt_regs *regs)
 	 * of memory the xchg(&kexec_crash_image) would be
 	 * sufficient.  But since I reuse the memory...
 	 */
+	printk(KERN_EMERG "crash_kexec: enter\n");
 	if (mutex_trylock(&kexec_mutex)) {
+		printk(KERN_EMERG "crash_kexec: trylock\n");
 		if (kexec_crash_image) {
 			struct pt_regs fixed_regs;
 
+			printk(KERN_EMERG "crash_kexec: has image\n");
+#ifdef CONFIG_ATOM_SOC_POWER
+			set_all_power_on_inpanic();
+#endif
+#if !defined(CONFIG_CRASH_DUMP) && defined(CONFIG_INTEL_SCU_WATCHDOG)
+			kexec_crash_reset_timeouts(KEXEC_MAX_RESET_TIME);
+#endif
 			crash_setup_regs(&fixed_regs, regs);
 			crash_save_vmcoreinfo();
 			machine_crash_shutdown(&fixed_regs);
 			machine_kexec(kexec_crash_image);
 		}
 		mutex_unlock(&kexec_mutex);
+		printk(KERN_EMERG "crash_kexec: unlock\n");
 	}
+	printk(KERN_EMERG "crash_kexec: exit\n");
 }
 
 size_t crash_get_memory_size(void)
@@ -1210,6 +1227,8 @@ void crash_save_cpu(struct pt_regs *regs, int cpu)
 
 	if ((cpu < 0) || (cpu >= nr_cpu_ids))
 		return;
+
+	printk(KERN_ERR "crash_save_cpu save %d\n", cpu);
 
 	/* Using ELF notes here is opportunistic.
 	 * I need a well defined structure format

@@ -289,7 +289,7 @@ struct drm_i915_gt_funcs {
 
 struct drm_i915_pm_funcs {
 	int (*drm_freeze)(struct drm_device *dev);
-	int (*drm_thaw)(struct drm_device *dev);
+	int (*drm_thaw)(struct drm_device *dev, bool is_hibernate_restore);
 };
 
 #define DEV_INFO_FLAGS \
@@ -418,10 +418,11 @@ struct intel_hangcheck {
 #define MBOX_HANGCHECK_THRESHOLD 4
 	int count;
 
-	/* Last recorded active head*/
+	/* Last sampled head and active head*/
 	uint32_t last_acthd;
+	uint32_t last_hd;
 
-	/* Last recorded ring head index.
+	/* Last recorded head index from previous ring hang.
 	* This is only ever a ring index where as active
 	* head may be a graphics address in a ring buffer */
 	uint32_t last_head;
@@ -465,7 +466,7 @@ typedef struct drm_i915_private {
 	unsigned int fw_mediacount;
 
 	/** counter for user requests to disable/re-enable RC6 */
-	unsigned int rc6_user_disable_count;
+	int rc6_user_disable_count;
 
 	/** gt_lock is also taken in irq contexts. */
 	struct spinlock gt_lock;
@@ -581,6 +582,10 @@ typedef struct drm_i915_private {
 	bool is_edp;
 	bool is_mipi;
 	bool is_hdmi;
+	bool csc_enabled;
+	bool gamma_enabled;
+	int planeid_gamma;
+	int planeid_csc;
 
 	bool no_aux_handshake;
 
@@ -602,6 +607,8 @@ typedef struct drm_i915_private {
 
 	wait_queue_head_t error_queue;
 	struct workqueue_struct *wq;
+
+	struct workqueue_struct *vmap_mn_unregister_wq;
 
 	/* Display functions */
 	struct drm_i915_display_funcs display;
@@ -770,6 +777,7 @@ typedef struct drm_i915_private {
 	u32 saveGUNIT_CZClockGatingDisable2;
 	u32 saveDPIO_CFG_DATA;
 	u32 saveDPST_VLV_BTGR_DATA;
+	bool saveDPSTState;
 
 	struct {
 		/** Bridge to intel-gtt-ko */
@@ -937,7 +945,20 @@ typedef struct drm_i915_private {
 		u32 render_down_EI_C0;
 		u32 media_down_EI_C0;
 
+		struct mutex rps_mutex;
 	} rps;
+
+	/* Runtime power management related */
+	struct {
+		/* To track (num of get calls - num of put calls)
+		 * made by procfs
+		 */
+		atomic_t procfs_count;
+		/* To make sure ring get/put are in pair */
+		bool ring_active;
+		struct proc_dir_entry *i915_proc_file;
+		struct proc_dir_entry *local_proc_file;
+	} rpm;
 
 	u8 cur_delay;
 	u8 min_delay;
@@ -945,6 +966,14 @@ typedef struct drm_i915_private {
 	u8 fmax;
 	u8 fstart;
 
+#ifdef CONFIG_DEBUG_FS
+	/* Variables declaration for DPST */
+	struct {
+		u32 bin_data[DPST_BIN_COUNT];
+		u32 luma_data[DPST_LUMA_COUNT];
+		u32 num_interrupt;
+	} dpst;
+#endif
 	/* Adding this to fallback to normal Turbo logic */
 	bool use_RC0_residency_for_turbo;
 
@@ -953,7 +982,7 @@ typedef struct drm_i915_private {
 		atomic_t down_threshold;
 	} turbodebug;
 
-	int max_frequency_mode;
+	int max_freq_enable_count;
 
 	u64 last_count1;
 	unsigned long last_time1;
@@ -1004,6 +1033,7 @@ typedef struct drm_i915_private {
 	int tmds_clock_speed;
 	int hdmi_audio_interrupt_mask;
 	struct work_struct hdmi_audio_wq;
+
 	/* Added for DPST */
 	struct task_struct *dpst_task;
 	u32 dpst_signal;
@@ -1011,6 +1041,10 @@ typedef struct drm_i915_private {
 	u32 blc_data;
 	u32 blc_user;
 	bool is_dpst_enabled;
+
+	uint32_t watchdog_threshold[I915_NUM_RINGS];
+
+	int shut_down_state;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */
@@ -1213,7 +1247,7 @@ struct i915_gem_vmap_object {
 	int read_only;
 	struct mm_struct *mm;
 #if defined(CONFIG_MMU_NOTIFIER)
-	struct mmu_notifier mn;
+	struct mmu_notifier *mn;
 #endif
 };
 
@@ -1264,6 +1298,10 @@ struct drm_i915_file_private {
 #ifdef CONFIG_DRM_VXD_BYT
 	struct psb_fpriv *pPriv;
 #endif
+	struct {
+		int max_freq;
+		int rc6_disable;
+	} perfmon_override_counter;
 };
 
 #define INTEL_INFO(dev)	(((struct drm_i915_private *) (dev)->dev_private)->info)
@@ -1381,15 +1419,16 @@ extern int i915_panel_use_ssc __read_mostly;
 extern int i915_vbt_sdvo_panel_type __read_mostly;
 extern int i915_mipi_panel_id __read_mostly;
 extern int i915_enable_rc6 __read_mostly;
+extern int i915_rotation __read_mostly;
 extern int i915_enable_fbc __read_mostly;
 extern bool i915_enable_hangcheck __read_mostly;
 extern unsigned int i915_hangcheck_period __read_mostly;
 extern unsigned int i915_ring_reset_min_alive_period __read_mostly;
 extern unsigned int i915_gpu_reset_min_alive_period __read_mostly;
+extern int i915_enable_watchdog __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
 extern int i915_enable_turbo __read_mostly;
 extern int i915_psr_support __read_mostly;
-extern int i915_bytffrd_support __read_mostly;
 extern struct drm_display_mode rot_mode;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
@@ -1426,8 +1465,9 @@ extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 
 
 /* i915_irq.c */
-void i915_hangcheck_elapsed(unsigned long data);
-void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc);
+void i915_hangcheck_sample(unsigned long data);
+void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc,
+			int watchdog);
 
 extern void intel_irq_init(struct drm_device *dev);
 extern void intel_gt_init(struct drm_device *dev);
@@ -1498,9 +1538,6 @@ int i915_gem_leavevt_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv);
 int i915_gem_vmap_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
-int i915_perfmon_ioctl(struct drm_device *dev, void *data,
-			struct drm_file *file);
-int i915_perfmon_set_rc6(struct drm_device *dev, __u32 enable);
 int i915_gem_set_tiling(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 int i915_gem_get_tiling(struct drm_device *dev, void *data,
@@ -1781,6 +1818,8 @@ extern bool valleyview_update_cur_delay(struct drm_device *dev);
 extern void intel_detect_pch(struct drm_device *dev);
 extern int intel_trans_dp_port_sel(struct drm_crtc *crtc);
 extern int intel_enable_rc6(const struct drm_device *dev);
+extern int i915_rotation_ffrd(const struct drm_device *dev,
+			const struct drm_crtc *crtc);
 extern void valleyview_enable_rps(struct drm_device *dev);
 extern void valleyview_disable_rps(struct drm_device *dev);
 
@@ -1845,6 +1884,20 @@ void vlv_force_wake_restore(struct drm_i915_private *dev_priv, int fw_engine);
 #define FORCEWAKE_MEDIA		(1 << 1)
 #define FORCEWAKE_ALL		(FORCEWAKE_RENDER | FORCEWAKE_MEDIA)
 
+#define KM_MEDIA_ENGINE_TIMEOUT_VALUE_IN_MS 60
+#define KM_BSD_ENGINE_TIMEOUT_VALUE_IN_MS   60
+#define KM_TIMER_MILLISECOND 1000
+
+/* Timestamp timer resolution = 0.080 uSec, or 12500000 counts per second*/
+#define KM_TIMESTAMP_CNTS_PER_SEC_80NS          12500000
+
+/* Timestamp timer resolution = 0.640 uSec, or  1562500 counts per second*/
+#define KM_TIMESTAMP_CNTS_PER_SEC_640NS          1562500
+
+#define KM_TIMER_MHZ 1000000
+#define KM_CD_CLK_FREQ (450 * KM_TIMER_MHZ)
+
+
 #define __i915_read(x, y) \
 	u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg, bool trace);
 
@@ -1894,9 +1947,18 @@ __i915_write_bits(64, q)
 #define POSTING_READ(reg)	(void)I915_READ_NOTRACE(reg)
 #define POSTING_READ16(reg)	(void)I915_READ16_NOTRACE(reg)
 
-/* runtime power management related */
+/* Runtime power management related */
+#define RPM_AUTOSUSPEND		0x1
+#define RPM_SYNC		0x2
+#define RPM_SYNC_STRICT		0X4
+#define RPM_NOIDLE		0X8
+#define RPM_NORESUME		0x10
+
 int i915_rpm_init(struct drm_device *dev);
 int i915_rpm_deinit(struct drm_device *dev);
+
+int i915_rpm_get(struct drm_device *drm_dev, u32 flags);
+int i915_rpm_put(struct drm_device *drm_dev, u32 flags);
 
 int i915_rpm_get_ring(struct intel_ring_buffer *ring);
 int i915_rpm_put_ring(struct intel_ring_buffer *ring);
@@ -1909,6 +1971,10 @@ int i915_rpm_put_ioctl(struct drm_device *dev);
 
 int i915_rpm_get_disp(struct drm_device *dev);
 int i915_rpm_put_disp(struct drm_device *dev);
+
+/* Runtime Power Management related */
+int i915_rpm_get_procfs(struct inode *inode, struct file *file);
+int i915_rpm_put_procfs(struct inode *inode, struct file *file);
 
 #ifdef CONFIG_DRM_VXD_BYT
 int i915_rpm_get_vxd(struct drm_device *dev);
@@ -1954,6 +2020,12 @@ int intel_pmc_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
 int intel_pmc_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
 int intel_pmc_write32_bits(struct drm_i915_private *dev_priv, \
 					u32 reg, u32 val, u32 mask);
+void i915_init_watchdog(struct drm_device *dev);
+
+int intel_flisdsi_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_flisdsi_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_flisdsi_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
 
 #define intel_dpio_read(dev_priv, reg)	intel_dpio_read32_tmp(dev_priv, reg)
 #define intel_dpio_write(dev_priv, reg, val) \
@@ -1990,4 +2062,16 @@ int intel_pmc_write32_bits(struct drm_i915_private *dev_priv, \
 			intel_pmc_write32(dev_priv, reg, val)
 #define intel_pmc_write_bits(dev_priv, reg, val, mask) \
 			intel_pmc_write32_bits(dev_priv, reg, val, mask)
+#define intel_flisdsi_read(dev_priv, reg, val) \
+			intel_flisdsi_read32(dev_priv, reg, val)
+#define intel_flisdsi_write(dev_priv, reg, val) \
+			intel_flisdsi_write32(dev_priv, reg, val)
+#define intel_flisdsi_write_bits(dev_priv, reg, val, mask) \
+			intel_flisdsi_write32_bits(dev_priv, reg, val, mask)
+
+/* i915_perfmon.c */
+int i915_perfmon_ioctl(struct drm_device *dev, void *data,
+			struct drm_file *file);
+void i915_perfmon_init(struct drm_file *file);
+void i915_perfmon_close(struct drm_device *dev, struct drm_file *file);
 #endif

@@ -1,4 +1,4 @@
-
+//<asus-ych20130904>
 #include <linux/i2c.h>
 #include <linux/kernel.h>
 #include <linux/power/byt_battery.h>

@@ -315,7 +315,9 @@ int get_smip_plat_config(int offset)
 static void init_tgain_toff(struct max17042_platform_data *pdata)
 {
 	if (INTEL_MID_BOARD(2, TABLET, MFLD, SLP, ENG) ||
-		INTEL_MID_BOARD(2, TABLET, MFLD, SLP, PRO)) {
+		INTEL_MID_BOARD(2, TABLET, MFLD, SLP, PRO) ||
+		INTEL_MID_BOARD(1, PHONE, MRFL) ||
+			INTEL_MID_BOARD(1, TABLET, MRFL)) {
 		pdata->tgain = NTC_10K_B3435K_TDK_TGAIN;
 		pdata->toff = NTC_10K_B3435K_TDK_TOFF;
 	} else {
@@ -498,7 +500,7 @@ void *max17042_platform_data(void *info)
 	if (intel_mid_identify_cpu() ==
 				INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
 		intr = acpi_get_gpio("\\_SB.GPO2", 0x12);
-		intr =  149; /* GPIO_S5_18  = SUS0_18. SUS0_0 = 130 */
+		intr =  148; /* GPIO_S5_18  = SUS0_18. SUS0_0 = 130 */
 		i2c_info->irq = gpio_to_irq(intr);
 	}
 

@@ -447,12 +447,12 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 	unsigned long *bit = NULL;
 
 	field->hidinput = hidinput;
-
+//<asus-ych20130904+>
 	if (((usage->hid & HID_USAGE_PAGE) != HID_UP_ASUSVENDOR) &&
             (field->flags & HID_MAIN_ITEM_CONSTANT)) {
 		goto ignore;
         }        
-
+//<asus-ych20130904->
 	/* only LED usages are supported in output fields */
 	if (field->report_type == HID_OUTPUT_REPORT &&
 			(usage->hid & HID_USAGE_PAGE) != HID_UP_LED) {
@@ -840,7 +840,7 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		default: goto ignore;
 		}
 		break;
-
+//<asus-ych20130904+>
 	case HID_UP_ASUSVENDOR:
 		switch (usage->hid & HID_USAGE) {
 		case 0x06C: 
@@ -849,7 +849,7 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		default: goto ignore;
 		}
 		break;
-
+//<asus-ych20130904->
 	default:
 	unknown:
 		if (field->report_size == 1) {

@@ -14,7 +14,7 @@
  * - Alternative access techniques?
  */
 #include <linux/kernel.h>
-//#include <linux/export.h>
+#include <linux/export.h>
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
@@ -56,16 +56,16 @@ unsigned int iio_buffer_poll(struct file *filp,
 {
 	struct iio_dev *indio_dev = filp->private_data;
 	struct iio_buffer *rb = indio_dev->buffer;
-	if (!rb || !rb->access->read_first_n) //<asus-ych20130830+>
+//<asus-ych20130904+>
+	if (!rb || !rb->access->read_first_n) 
 		return 0;
 		
         if (rb->stufftoread)
                 return POLLIN | POLLRDNORM;
-
+//<asus-ych20130904->
 	poll_wait(filp, &rb->pollq, wait);
-        if (rb->stufftoread)
-                return POLLIN | POLLRDNORM;
-
+	if (rb->stufftoread)
+		return POLLIN | POLLRDNORM;
 	/* need a way of knowing if there may be enough data... */
 	return 0;
 }

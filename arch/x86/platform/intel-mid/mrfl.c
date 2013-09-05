@@ -47,23 +47,6 @@ static struct intel_mid_ops tangier_ops = {
 	.arch_setup = tangier_arch_setup,
 };
 
-static void tangier_power_off(void)
-{
-#if defined(CONFIG_INTEL_MID_OSIP) && !defined(CONFIG_BOARD_REDRIDGE)
-	if (!get_force_shutdown_occured() &&
-	    get_shutdown_power_supply_supplied()) {
-#else
-	if (power_supply_is_system_supplied()) {
-#endif
-		pr_info("%s: Power system supplied, do COLD_BOOT\n", __func__);
-		outb(RSTC_COLD_BOOT, RSTC_IO_PORT_ADDR); /* Request cold boot */
-		udelay(50);
-	} else {
-		pr_info("%s: Execute pmu_power_off\n", __func__);
-		pmu_power_off();
-	}
-}
-
 static unsigned long __init tangier_calibrate_tsc(void)
 {
 
@@ -202,7 +185,6 @@ static void __init tangier_arch_setup(void)
 	x86_platform.calibrate_tsc = tangier_calibrate_tsc;
 	intel_mid_timer_init = x86_init.timers.timer_init;
 	x86_init.timers.timer_init = tangier_time_init;
-	pm_power_off = tangier_power_off;
 }
 
 static void set_batt_chrg_prof(struct ps_pse_mod_prof *batt_prof,

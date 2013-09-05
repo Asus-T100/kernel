@@ -15,6 +15,7 @@
 #include <linux/device.h>
 #include <linux/fault-inject.h>
 #include <linux/wakelock.h>
+#include <linux/pm_qos.h>
 
 #include <linux/mmc/core.h>
 #include <linux/mmc/pm.h>
@@ -79,6 +80,10 @@ struct mmc_ios {
 #define MMC_SET_DRIVER_TYPE_C	2
 #define MMC_SET_DRIVER_TYPE_D	3
 };
+
+#define mmc_tuning_timing(mmc)	((mmc->ios.timing == MMC_TIMING_UHS_SDR50) ||\
+				(mmc->ios.timing == MMC_TIMING_MMC_HS200) ||\
+				(mmc->ios.timing == MMC_TIMING_UHS_SDR104))
 
 struct mmc_panic_host;
 
@@ -279,6 +284,7 @@ struct mmc_host {
 #define MMC_CAP2_RPMBPART_NOACC	(1 << 11)	/* RPMB partition no access */
 #define MMC_CAP2_POLL_R1B_BUSY	(1 << 12)	/* host poll R1B busy*/
 #define MMC_CAP2_LED_SUPPORT	(1 << 13)	/* led support */
+#define MMC_CAP2_PWCTRL_POWER	(1 << 14)	/* power control card power */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
@@ -372,6 +378,7 @@ struct mmc_host {
 #endif
 
 	struct mmc_panic_host *phost;
+	struct pm_qos_request *qos;
 	unsigned long		private[0] ____cacheline_aligned;
 };
 

@@ -54,41 +54,6 @@ static void b080xat_get_panel_info(int pipe, struct drm_connector *connector)
 	return;
 }
 
-void b080xat_msgbus_reset()
-{
-#ifdef CONFIG_X86_INTEL_MID
-	u32 msg_bus_port;
-	u32 msg_bus_reg;
-	u32 val;
-
-	DRM_DEBUG_KMS("\n");
-
-	/* MIPI Escape control register */
-	msg_bus_port = 0x14;
-	msg_bus_reg = 0x6d;
-	val = intel_mid_msgbus_read32(msg_bus_port, msg_bus_reg);
-	val  &= 0xFFFCFFFF;
-	val  |= 0x00010000;
-	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
-
-	/* dsi0 control register */
-	msg_bus_port = 0x14;
-	msg_bus_reg = 0x6f;
-	val = intel_mid_msgbus_read32(msg_bus_port, msg_bus_reg);
-	val  &= 0xFFFCFFFF;
-	val  |= 0x00010000;
-	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
-
-	/* dsi0 control register */
-	msg_bus_port = 0x14;
-	msg_bus_reg = 0x6f;
-	val = intel_mid_msgbus_read32(msg_bus_port, msg_bus_reg);
-	val  &= 0xFFFCFFFF;
-	val  |= 0x00010000;
-	intel_mid_msgbus_write32(msg_bus_port, msg_bus_reg, val);
-#endif
-}
-
 bool b080xat_init(struct intel_dsi_device *dsi)
 {
 	/* create private data, slam to dsi->dev_priv. could support many panels
@@ -120,8 +85,6 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	dsi->clk_hs_to_lp_count = 0x0c;
 	dsi->video_frmt_cfg_bits = IP_TG_CONFIG;
 	dsi->dphy_reg = 0x1B104315;
-
-	b080xat_msgbus_reset();
 
 	return true;
 }
@@ -212,9 +175,9 @@ struct drm_display_mode *b080xat_get_modes(struct intel_dsi_device *dsi)
 	mode->htotal = 948;
 
 	mode->vdisplay = 1024;
-	mode->vsync_start = 1060;
-	mode->vsync_end = 1110;
-	mode->vtotal = 1140;
+	mode->vsync_start = 1160;
+	mode->vsync_end = 1210;
+	mode->vtotal = 1240;
 
 	mode->vrefresh = 60;
 

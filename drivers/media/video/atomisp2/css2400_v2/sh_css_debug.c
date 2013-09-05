@@ -1,26 +1,24 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
 #include "debug.h"
 #include "memory_access.h"
 
@@ -202,7 +200,7 @@ static void print_if_state(
 #endif
 	const char *st_vsync_active_low =
 		(state->vsync_active_low ? "low" : "high");
-	const char *st_hsync_active_low = 
+	const char *st_hsync_active_low =
 		(state->hsync_active_low ? "low" : "high");
 
 	const char *fsm_sync_status_str    = "unknown";
@@ -288,7 +286,7 @@ static void print_if_state(
 	 * COMMENT: Print out the value of the register that tells
 	 * whehter the IF is set to the blocked mode (i.e. "1") or
 	 * not (i.e. "0").
-	 ***********************************************************/	
+	 ***********************************************************/
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 			"IF_BLOCKED_FIFO_NO_REQ_ADDRESS",
 			input_formatter_reg_load(INPUT_FORMATTER0_ID, 							HIVE_IF_BLOCK_FIFO_NO_REQ_ADDRESS)
@@ -304,14 +302,14 @@ static void print_if_state(
 	 * LOCATION: Santa Clara
 	 * COMMENT: Print out the input switch states.
 	 * not (i.e. "0").
-	 ***********************************************************/	
+	 ***********************************************************/
 	sh_css_dtrace(2, "\t%-32s:\n",
 		"InputSwitch State");
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg0",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg0));
-		
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg1",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg1));
@@ -319,15 +317,15 @@ static void print_if_state(
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg2",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg2));
-		
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg3",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg3));
-		
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg4",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg4));
-		
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg5",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg5));
@@ -335,7 +333,7 @@ static void print_if_state(
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg6",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg6));
-		
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_input_switch_lut_reg7",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg7));
@@ -347,7 +345,7 @@ static void print_if_state(
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_srst",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_srst));
-		
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		"_REG_GP_IFMT_slv_reg_srst",
 		gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_slv_reg_srst));
@@ -1089,7 +1087,7 @@ void sh_css_print_sp_debug_state(
 	}
 
 	if (last_index == 0) {
-		sh_css_dtrace(SH_DBG_DEBUG, 
+		sh_css_dtrace(SH_DBG_DEBUG,
 		  "copy-trace init: sp_dbg_if_start_line=%d, sp_dbg_if_start_column=%d, "
 		  "sp_dbg_if_cropped_height=%d, sp_debg_if_cropped_width=%d\n",
 		  state->if_start_line,
@@ -1108,7 +1106,7 @@ void sh_css_print_sp_debug_state(
 	for (n = last_index; n < sp_index; n++) {
 		int i = n % SH_CSS_SP_DBG_TRACE_DEPTH;
 		if (state->trace[i].frame != 0) {
-			sh_css_dtrace(SH_DBG_DEBUG, 
+			sh_css_dtrace(SH_DBG_DEBUG,
 			  "copy-trace: frame=%d, line=%d, "
 			  "pixel_distance=%d, mipi_used_dword=%d, sp_index=%d\n",
 			  state->trace[i].frame,
@@ -1154,7 +1152,7 @@ void sh_css_print_sp_debug_state(
 			int ts = state->trace[t][i].time_stamp;
 
 			if (ts) {
-				sh_css_dtrace(SH_DBG_DEBUG, 
+				sh_css_dtrace(SH_DBG_DEBUG,
 				  "%05d trace=%s, file=%s:%d, data=0x%08x\n",
 				  ts,
 				  trace_name[t],
@@ -1172,7 +1170,7 @@ void sh_css_print_sp_debug_state(
 	int base = 0;
 	int limit = SH_CSS_NUM_SP_DEBUG;
 	int step = 1;
-	
+
 	for (i = base; i < limit; i += step) {
 		sh_css_dtrace(SH_DBG_DEBUG,
 			"sp_dbg_trace[%d] = %d\n",
@@ -1226,7 +1224,7 @@ static void print_rx_mipi_port_state(
 
 	for (i = 0; i < MIPI_4LANE_CFG; i++) {
 		sh_css_dtrace(2, "\t\t%-32s%d%-32s: %d\n"	,
-				"lane_rx_count[", i, "]", state->lane_rx_count[i]);		
+				"lane_rx_count[", i, "]", state->lane_rx_count[i]);
 	}
 
 	return;
@@ -1251,7 +1249,7 @@ static void print_rx_channel_state(
 	for (i = 0; i < N_MIPI_FORMAT_CUSTOM; i++) {
 		sh_css_dtrace(2, "\t\t%-32s%d: %d\n"	,
 				"MIPI Compressor ", i, state->comp[i]);
-	}	
+	}
 
 	return;
 }
@@ -1350,7 +1348,7 @@ static void print_rx_state(
 	for (i = 0; i < N_RX_CHANNEL_ID; i++) {
 		sh_css_dtrace(2, "\tRX Channel %d State:\n",
 				i);
-		
+
 		print_rx_channel_state(&state->rx_channel_state[i]);
 	}
 	/* end of rx channel state */
@@ -1420,22 +1418,22 @@ static void print_isys_capture_unit_state(
 {
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Packet_Length"		, state->Packet_Length);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Received_Length"	, state->Received_Length);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"		,
 			"Received_Short_Packets"	, state->Received_Short_Packets);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Received_Long_Packets"	, state->Received_Long_Packets);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Last_Command"		, state->Last_Command);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Next_Command"		, state->Next_Command);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Last_Acknowledge"	, state->Last_Acknowledge);
 
@@ -1456,13 +1454,13 @@ static void print_isys_capture_unit_state(
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Num_Mem_Regions"	, state->Num_Mem_Regions);
-#if 0	
+#if 0
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Init"			, state->Init);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Start"			, state->Start);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Stop"			, state->Stop);
 #endif
@@ -1478,16 +1476,16 @@ static void print_isys_acquisition_unit_state(
 #endif
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"		,
 			"Received_Short_Packets"	, state->Received_Short_Packets);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Received_Long_Packets"	, state->Received_Long_Packets);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Last_Command"		, state->Last_Command);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Next_Command"		, state->Next_Command);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Last_Acknowledge"	, state->Last_Acknowledge);
 
@@ -1529,7 +1527,7 @@ static void print_isys_ctrl_unit_state(
 			"top_fsm_state"		, state->top_fsm_state);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
-			"captA_fsm_state"	, state->captA_fsm_state);	
+			"captA_fsm_state"	, state->captA_fsm_state);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"captB_fsm_state"	, state->captB_fsm_state);
@@ -1597,7 +1595,7 @@ static void print_isys_state(
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"str_multiCastA_sel"	, state->str_multicastA_sel);
-	
+
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"str_multicastB_sel"	, state->str_multicastB_sel);
 
@@ -1665,8 +1663,8 @@ static void print_isys_state(
 
 void sh_css_dump_isys_state(void)
 {
-	input_system_state_t state;	
-	
+	input_system_state_t state;
+
 	input_system_get_state(INPUT_SYSTEM0_ID, &state);
 	print_isys_state(&state);
 
@@ -1687,16 +1685,22 @@ void sh_css_dump_debug_info(
 	sh_css_dump_isp_sp_fifo_state();
 	sh_css_dump_isp_gdc_fifo_state();
 	sh_css_dump_sp_state();
+	sh_css_dump_perf_counters();
+#ifdef HAS_WATCHDOG_SP_THREAD_DEBUG
+	sh_css_dump_thread_wait_info();
+	sh_css_dump_pipe_stage_info();
+	sh_css_dump_pipe_stripe_info();
+#endif
 	sh_css_dump_dma_isp_fifo_state();
 	sh_css_dump_dma_sp_fifo_state();
 	sh_css_dump_dma_state();
 #if defined(HAS_INPUT_FORMATTER_VERSION_2)
 	sh_css_dump_isys_state();
-	
+
     {
         irq_controller_state_t state;
         irq_controller_get_state(IRQ2_ID, &state);
-    
+
         sh_css_dtrace(2, "\t%-32s:\n" ,
          "Input System IRQ Controller State");
 
@@ -1705,10 +1709,10 @@ void sh_css_dump_debug_info(
 
         sh_css_dtrace(2, "\t\t%-32s: %d\n"  ,
                                 "irq_mask"  , state.irq_mask);
-        
+
         sh_css_dtrace(2, "\t\t%-32s: %d\n"  ,
                                "irq_status" , state.irq_status);
-        
+
         sh_css_dtrace(2, "\t\t%-32s: %d\n"  ,
                                "irq_enable" , state.irq_enable);
 
@@ -2057,8 +2061,142 @@ void sh_css_dump_isp_params(struct ia_css_stream *stream, unsigned int enable)
 	}
 }
 
+void sh_css_dump_isp_binary(void)
+{
+	const struct ia_css_fw_info *fw;
+	unsigned int HIVE_ADDR_curr_binary_id;
+	int32_t curr_binary_id;
+	static int32_t prev_binary_id = -1;
+	static uint32_t sample_count = 0;
 
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_curr_binary_id =
+			fw->info.sp.curr_binary_id;
 
+	(void)HIVE_ADDR_curr_binary_id;
+
+	sp_dmem_load(SP0_ID,
+		(unsigned int)sp_address_of(curr_binary_id),
+		     &curr_binary_id,
+		     sizeof(curr_binary_id));
+
+	/* do the handling */
+	sample_count++;
+	if (prev_binary_id != curr_binary_id) {
+		sh_css_dtrace(SH_DBG_DEBUG, "sh_css_dump_isp_binary() "
+			"pipe_id=%d, binary_id=%d, sample_count=%d\n",
+			(curr_binary_id >> 16), (curr_binary_id & 0x0ffff),
+			sample_count);
+		sample_count = 0;
+		prev_binary_id = curr_binary_id;
+	}
+}
+
+void sh_css_dump_perf_counters(void)
+{
+	const struct ia_css_fw_info *fw;
+	int i;
+	unsigned int HIVE_ADDR_ia_css_sp_input_system_error_cnt;
+	int32_t ia_css_sp_input_system_error_cnt[N_MIPI_PORT_ID];
+	sh_css_dtrace(SH_DBG_DEBUG, "Input System Error Counters:\n");
+
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_ia_css_sp_input_system_error_cnt =
+			fw->info.sp.perf_counter_input_system_error;
+
+	(void)HIVE_ADDR_ia_css_sp_input_system_error_cnt;
+
+	sp_dmem_load(SP0_ID,
+		(unsigned int)sp_address_of(ia_css_sp_input_system_error_cnt),
+		     &ia_css_sp_input_system_error_cnt,
+		     sizeof(ia_css_sp_input_system_error_cnt));
+	for (i=0; i < N_MIPI_PORT_ID; i++) {
+		sh_css_dtrace(SH_DBG_DEBUG,
+			"\tport[%d] = %d\n",
+			i, ia_css_sp_input_system_error_cnt[i]);
+	}
+
+}
+
+#ifdef HAS_WATCHDOG_SP_THREAD_DEBUG
+void sh_css_dump_thread_wait_info(void)
+{
+	const struct ia_css_fw_info *fw;
+	int i;
+	unsigned int HIVE_ADDR_sp_thread_wait;
+	int32_t sp_thread_wait[5];
+	sh_css_dtrace(SH_DBG_DEBUG, "SEM WAITS:\n");
+
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_sp_thread_wait =
+			fw->info.sp.debug_wait;
+
+	(void)HIVE_ADDR_sp_thread_wait;
+
+	sp_dmem_load(SP0_ID,
+		(unsigned int)sp_address_of(sp_thread_wait),
+		     &sp_thread_wait,
+		     sizeof(sp_thread_wait));
+	for (i=0; i < 5; i++) {
+		sh_css_dtrace(SH_DBG_DEBUG,
+			"\twait[%d] = 0x%X\n",
+			i, sp_thread_wait[i]);
+	}
+
+}
+
+void sh_css_dump_pipe_stage_info(void)
+{
+	const struct ia_css_fw_info *fw;
+	int i;
+	unsigned int HIVE_ADDR_sp_pipe_stage;
+	int32_t sp_pipe_stage[5];
+	sh_css_dtrace(SH_DBG_DEBUG, "PIPE STAGE:\n");
+
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_sp_pipe_stage =
+			fw->info.sp.debug_stage;
+
+	(void)HIVE_ADDR_sp_pipe_stage;
+
+	sp_dmem_load(SP0_ID,
+		(unsigned int)sp_address_of(sp_pipe_stage),
+		     &sp_pipe_stage,
+		     sizeof(sp_pipe_stage));
+	for (i=0; i < 5; i++) {
+		sh_css_dtrace(SH_DBG_DEBUG,
+			"\tstage[%d] = %d\n",
+			i, sp_pipe_stage[i]);
+	}
+
+}
+
+void sh_css_dump_pipe_stripe_info(void)
+{
+	const struct ia_css_fw_info *fw;
+	int i;
+	unsigned int HIVE_ADDR_sp_pipe_stripe;
+	int32_t sp_pipe_stripe[5];
+	sh_css_dtrace(SH_DBG_DEBUG, "PIPE STRIPE:\n");
+
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_sp_pipe_stripe =
+			fw->info.sp.debug_stripe;
+
+	(void)HIVE_ADDR_sp_pipe_stripe;
+
+	sp_dmem_load(SP0_ID,
+		(unsigned int)sp_address_of(sp_pipe_stripe),
+		     &sp_pipe_stripe,
+		     sizeof(sp_pipe_stripe));
+	for (i=0; i < 5; i++) {
+		sh_css_dtrace(SH_DBG_DEBUG,
+			"\tstripe[%d] = %d\n",
+			i, sp_pipe_stripe[i]);
+	}
+
+}
+#endif
 /*
 
 void sh_css_init_ddr_debug_queue(void)

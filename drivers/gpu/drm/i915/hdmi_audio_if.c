@@ -75,7 +75,7 @@ bool mid_hdmi_audio_is_busy(struct drm_device *dev)
 	int hdmi_audio_busy = 0;
 	hdmi_audio_event_t hdmi_audio_event;
 
-	if (i915_hdmi_state == 0) {
+	if (i915_hdmi_state == connector_status_disconnected) {
 		/* HDMI is not connected, assuming audio device is idle. */
 		return false;
 	}
@@ -100,14 +100,14 @@ bool mid_hdmi_audio_suspend(struct drm_device *dev)
 	hdmi_audio_event_t hdmi_audio_event;
 	int ret = 0;
 
-	DRM_DEBUG_DRIVER("%s: i915_hdmi_state %d", __func__,
-			i915_hdmi_state);
-	if (i915_hdmi_state == 0) {
+	if (i915_hdmi_state == connector_status_disconnected) {
 		/* HDMI is not connected, assuming audio device
 		 * is suspended already.
 		 */
 		return true;
 	}
+	DRM_DEBUG_DRIVER("%s: i915_hdmi_state %d", __func__,
+			i915_hdmi_state);
 
 	if (dev_priv->had_interface) {
 		hdmi_audio_event.type = 0;
@@ -122,14 +122,15 @@ void mid_hdmi_audio_resume(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv =
 		(struct drm_i915_private *) dev->dev_private;
-	DRM_DEBUG_DRIVER("%s: i915_hdmi_state %d", __func__,
-				i915_hdmi_state);
-	if (i915_hdmi_state == 0) {
+
+	if (i915_hdmi_state == connector_status_disconnected) {
 		/* HDMI is not connected, there is no need
 		 * to resume audio device.
 		 */
 		return;
 	}
+	DRM_DEBUG_DRIVER("%s: i915_hdmi_state %d", __func__,
+				i915_hdmi_state);
 
 	if (dev_priv->had_interface)
 		dev_priv->had_interface->resume(dev_priv->had_pvt_data);

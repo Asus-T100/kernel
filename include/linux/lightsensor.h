@@ -1,3 +1,4 @@
+//<asus-ych20130904>
 /* include/linux/lightsensor.h
  *
  * Copyright (C) 2009 Google, Inc.

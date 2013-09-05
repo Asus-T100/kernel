@@ -41,7 +41,6 @@ ifneq ($(CONFIG_CRYSTAL_COVE), y)
 obj-$(CONFIG_INTEL_SCU_IPC)	+= intel_scu_pmic.o
 endif
 obj-$(CONFIG_INTEL_SCU_IPC_UTIL) += intel_scu_ipcutil.o
-obj-$(CONFIG_INTEL_PSH_IPC)	+= intel_psh_ipc.o
 obj-$(CONFIG_INTEL_SCU_FLIS)	+= intel_scu_flis.o
 obj-$(CONFIG_INTEL_MFLD_THERMAL) += intel_mid_thermal.o
 obj-$(CONFIG_INTEL_IPS)		+= intel_ips.o
@@ -53,12 +52,11 @@ obj-$(CONFIG_SAMSUNG_LAPTOP)	+= samsung-laptop.o
 obj-$(CONFIG_MXM_WMI)		+= mxm-wmi.o
 obj-$(CONFIG_INTEL_MID_POWER_BUTTON)	+= intel_mid_powerbtn.o
 obj-$(CONFIG_INTEL_PMIC_CHARGER) += intel_pmic_charger.o
-obj-$(CONFIG_INTEL_MID_OSIP)	+= intel_mid_osip.o
 obj-$(CONFIG_INTEL_MID_UMIP)	+= intel_mid_umip.o
 obj-$(CONFIG_INTEL_OAKTRAIL)	+= intel_oaktrail.o
 obj-$(CONFIG_SAMSUNG_Q10)	+= samsung-q10.o
 obj-$(CONFIG_APPLE_GMUX)	+= apple-gmux.o
-obj-$(CONFIG_INTEL_MID_OSNIB_ILB)	+= intel_mid_osnib_ilb.o
 obj-$(CONFIG_INTEL_MODEM_NVRAM)		+= intel_modem_nvram.o
 obj-$(CONFIG_INTEL_CRYSTALCOVE_PWRSRC)	+= intel_crystalcove_pwrsrc.o
 obj-$(CONFIG_INTEL_BYT_EC)	+= intel_byt_ec.o
+obj-$(CONFIG_INTEL_BYT_M_BTN)	+= intel_byt_buttons.o

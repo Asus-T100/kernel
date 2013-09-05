@@ -1,3 +1,4 @@
+//<asus-ych20130904>
 /*
  * Copyright c 2013 Intel Corporation
  *
@@ -24,7 +25,7 @@
  *
  *
  */
-   
+
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
@@ -237,7 +238,7 @@ bool hv101hd1_init(struct intel_dsi_device *dsi)
 	dsi->dphy_reg = 0x360D360B;
 
 	/* Program MIPI reset */
-	hv101hd1_msgbus_reset();
+	//hv101hd1_msgbus_reset(); //<asus-ych20130905>
 
 	intel_mid_pmic_writeb(0x52,1);//PANEL_EN
 	intel_mid_pmic_writeb(0x51,1);//BACKLIGHT_EN

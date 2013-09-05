@@ -304,6 +304,9 @@ static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
 	/* Extract bits[0:7] or [8:15] using sensor_index */
 	*temp =  (val >> (8 * td_info->sensor_index)) & 0xFF;
 
+	if (*temp == 0)
+		return 0;
+
 	/* Calibrate the temperature */
 	*temp = TJMAX_CODE - *temp + TJMAX_TEMP;
 

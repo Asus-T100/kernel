@@ -27,7 +27,7 @@ enum iio_chan_type {
 	IIO_ANGL,
 	IIO_TIMESTAMP,
 	IIO_CAPACITANCE,
-	IIO_QUATERNION,
+	IIO_QUATERNION, //<asus-bob20130830+>
 	IIO_RESISTANCE,	//<asus-bob20130830+>
 };
 
@@ -46,7 +46,7 @@ enum iio_modifier {
 	IIO_MOD_X_OR_Y_OR_Z,
 	IIO_MOD_LIGHT_BOTH,
 	IIO_MOD_LIGHT_IR,
-	IIO_MOD_R,
+	IIO_MOD_R, //<asus-bob20130830+>
 };
 
 #define IIO_VAL_INT 1

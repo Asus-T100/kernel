@@ -1,25 +1,23 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
 #include "platform_support.h"
 
@@ -27,6 +25,8 @@
 
 #include "device_access.h"
 
+#define __INLINE_EVENT__
+#include "event.h"
 #define __INLINE_SP__
 #include "sp.h"
 #define __INLINE_ISP__
@@ -64,7 +64,6 @@ enum sh_css_mipi_data_type {
 	sh_css_mipi_data_type_rgb,
 };
 
-static hrt_address gp_fifo_base_address     = GP_FIFO_BASE;
 static unsigned int curr_ch_id, curr_fmt_type;
 
 struct streaming_to_mipi_instance {
@@ -156,13 +155,23 @@ return marker |
 	(curr_fmt_type << _HIVE_STR_TO_MIPI_FMT_TYPE_LSB);
 }
 
+STORAGE_CLASS_INLINE void
+_sh_css_fifo_snd(unsigned token)
+{
+	while (!can_event_send_token(STR2MIPI_EVENT_ID)) {
+		hrt_sleep();
+	}
+	event_send_token(STR2MIPI_EVENT_ID, token);
+    return;
+}
+
 static void sh_css_streaming_to_mipi_send_data_a(
 /* STORAGE_CLASS_INLINE void sh_css_streaming_to_mipi_send_data_a( */
 	unsigned int data)
 {
 	unsigned int token = (1 << HIVE_STR_TO_MIPI_VALID_A_BIT) |
 			     (data << HIVE_STR_TO_MIPI_DATA_A_LSB);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -172,7 +181,7 @@ static void sh_css_streaming_to_mipi_send_data_b(
 {
 	unsigned int token = (1 << HIVE_STR_TO_MIPI_VALID_B_BIT) |
 			     (data << _HIVE_STR_TO_MIPI_DATA_B_LSB);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -185,7 +194,7 @@ static void sh_css_streaming_to_mipi_send_data(
 			      (1 << HIVE_STR_TO_MIPI_VALID_B_BIT) |
 			      (a << HIVE_STR_TO_MIPI_DATA_A_LSB) |
 			      (b << _HIVE_STR_TO_MIPI_DATA_B_LSB));
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -194,7 +203,7 @@ static void sh_css_streaming_to_mipi_send_sol(void)
 {
 	hrt_data	token = _sh_css_wrap_marker(
 		1 << HIVE_STR_TO_MIPI_SOL_BIT);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -203,7 +212,7 @@ static void sh_css_streaming_to_mipi_send_eol(void)
 {
 	hrt_data	token = _sh_css_wrap_marker(
 		1 << HIVE_STR_TO_MIPI_EOL_BIT);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -212,7 +221,7 @@ static void sh_css_streaming_to_mipi_send_sof(void)
 {
 	hrt_data	token = _sh_css_wrap_marker(
 		1 << HIVE_STR_TO_MIPI_SOF_BIT);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -221,7 +230,7 @@ static void sh_css_streaming_to_mipi_send_eof(void)
 {
 	hrt_data	token = _sh_css_wrap_marker(
 		1 << HIVE_STR_TO_MIPI_EOF_BIT);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -236,7 +245,7 @@ static void sh_css_streaming_to_mipi_send_ch_id(
 	 * fmt_type automatically.
 	 */
 	token = _sh_css_wrap_marker(0);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -250,7 +259,7 @@ static void sh_css_streaming_to_mipi_send_fmt_type(
 	 * fmt_type automatically.
 	 */
 	token = _sh_css_wrap_marker(0);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 #endif /*  __ON__ */
@@ -268,7 +277,7 @@ void sh_css_streaming_to_mipi_send_ch_id_and_fmt_type( */
 	 * fmt_type automatically.
 	 */
 	token = _sh_css_wrap_marker(0);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 
@@ -276,7 +285,7 @@ static void sh_css_streaming_to_mipi_send_empty_token(void)
 /* STORAGE_CLASS_INLINE void sh_css_streaming_to_mipi_send_empty_token(void) */
 {
 	hrt_data	token = _sh_css_wrap_marker(0);
-	device_store_uint32(gp_fifo_base_address, token);
+	_sh_css_fifo_snd(token);
 return;
 }
 

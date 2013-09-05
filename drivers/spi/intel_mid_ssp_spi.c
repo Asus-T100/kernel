@@ -707,7 +707,15 @@ static irqreturn_t ssp_int(int irq, void *dev_id)
 	struct ssp_drv_context *sspc = dev_id;
 	void *reg = sspc->ioaddr;
 	struct device *dev = &sspc->pdev->dev;
-	u32 status = read_SSSR(reg);
+	u32 status;
+
+	if (sspc->pdev->current_state != PCI_D0) {
+		dev_err(dev, "Device suspended; pci_dev->current_state = %d\n",
+			sspc->pdev->current_state);
+		return IRQ_HANDLED;
+	}
+
+	status = read_SSSR(reg);
 
 	/* It should never be our interrupt since SSP will */
 	/* only trigs interrupt for under/over run.        */
@@ -1143,9 +1151,8 @@ static int setup(struct spi_device *spi)
 		if (sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)
 			sspc->cr1_sig |= SSCR1_TRAIL;
 	} else {
-		sspc->cr1_sig = SSCR1_RIE | SSCR1_TIE | SSCR1_TINTE;
-		sspc->mask_sr = SSSR_RFS | SSSR_TFS |
-				 SSSR_ROR | SSSR_TUR | SSSR_TINT;
+		sspc->cr1_sig = SSCR1_TINTE;
+		sspc->mask_sr = SSSR_ROR | SSSR_TUR | SSSR_TINT;
 	}
 	sspc->clear_sr = SSSR_TUR | SSSR_ROR | SSSR_TINT;
 

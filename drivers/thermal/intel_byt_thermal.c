@@ -67,11 +67,12 @@
 #define SYS0ALRT	(1 << 0)
 #define THERM_EN	(1 << 0)
 #define ALERT_EN	(1 << 6)
+#define PROCHOT_EN	(1 << 7)
 #define IRQ_LVL1_EN	(1 << 1)
 #define TS_ENABLE_ALL	0x27
 
 /* ADC to Temperature conversion table length */
-#define TABLE_LENGTH	24
+#define TABLE_LENGTH	35
 #define TEMP_INTERVAL	5
 
 /* Default Alert threshold 85 C */
@@ -152,9 +153,11 @@ static const int alert_regs_l[3][4] = {
  */
 static const int adc_code[2][TABLE_LENGTH] = {
 	{977, 961, 941, 917, 887, 853, 813, 769, 720, 669, 615, 561, 508, 456,
-		407, 357, 315, 277, 243, 212, 186, 162, 140, 107},
+		407, 357, 315, 277, 243, 212, 186, 162, 140, 107,
+		94, 82, 72, 64, 56, 50, 44, 39, 35, 31},
 	{-20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
-		65, 70, 75, 80, 85, 90, 100},
+		65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125,
+		130, 135, 140, 145, 150},
 	};
 
 static DEFINE_MUTEX(thrm_update_lock);
@@ -200,6 +203,12 @@ static struct thermal_regs {
 	{"THRMIRQ1",		0x05},
 	{"MTHRMIRQ0",		0x11},
 	{"MTHRMIRQ1",		0x12},
+	{"A0_SYS0_H",		0x94},
+	{"A0_SYS1_H",		0x99},
+	{"A0_SYS2_H",		0x9E},
+	{"A0_BAT0_H",		0xA3},
+	{"A0_BAT1_H",		0xA9},
+	{"A0_PMIC_H",		0xAF},
 };
 
 static struct dentry *thermal_dent[ARRAY_SIZE(thermal_regs)];
@@ -512,6 +521,24 @@ static int get_alert_temp(int alert_reg_l, int level)
 	return ((h & 0x03) << 8) | l;
 }
 
+static int disable_prochot(void)
+{
+	int i, reg, ret;
+
+	mutex_lock(&thrm_update_lock);
+
+	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
+		reg = alert_regs_l[0][i] - 1;
+		ret = intel_mid_pmic_clearb(reg, PROCHOT_EN);
+		if (ret < 0)
+			goto exit;
+	}
+
+exit:
+	mutex_unlock(&thrm_update_lock);
+	return ret;
+}
+
 /**
  * program_tmax - programs a default _max value for each sensor
  * @dev: device pointer
@@ -625,8 +652,9 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 		return -EINVAL;
 	}
 
-	/* Convert from mC to C */
-	trip_temp /= 1000;
+	/* Calibrate w.r.t slope & intercept values */
+	trip_temp = (trip_temp - td_info->sensor->intercept) /
+				td_info->sensor->slope;
 
 	/* Minimum Tcrit for PMIC DIE is different from that of others */
 	if (td_info->sensor->direct)
@@ -641,11 +669,17 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	mutex_lock(&thrm_update_lock);
 
 	ret = temp_to_adc(td_info->sensor->direct, (int)trip_temp, &adc_val);
-	if (ret)
-		goto exit;
+	if (ret) {
+		adc_val = trip_temp > 0 ?
+				adc_code[0][TABLE_LENGTH - 1] : adc_code[0][0];
+
+		dev_err(&tzd->device,
+			"ADC code out of range. Capping it to %s possible\n",
+			trip_temp > 0 ? "highest" : "lowest");
+	}
 
 	ret = set_alert_temp(alert_reg_l, adc_val, trip);
-exit:
+
 	mutex_unlock(&thrm_update_lock);
 	return ret;
 }
@@ -654,6 +688,7 @@ static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
 				int trip, long *trip_temp)
 {
 	int ret = -EINVAL, adc_val;
+	bool need_calibration = true;
 	struct thermal_device_info *td_info = tzd->devdata;
 	int alert_reg_l = alert_regs_l[trip][td_info->sensor_index];
 
@@ -664,6 +699,18 @@ static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
 		goto exit;
 
 	ret = adc_to_temp(td_info->sensor->direct, adc_val, trip_temp);
+	if (ret)
+		goto exit;
+
+	if (adc_val == adc_code[0][0] ||
+		adc_val == adc_code[0][TABLE_LENGTH - 1]) {
+		need_calibration = false;
+	}
+
+	/* Calibrate w.r.t slope & intercept values */
+	if (need_calibration && td_info->sensor->temp_correlation)
+		ret = td_info->sensor->temp_correlation(td_info->sensor,
+						*trip_temp, trip_temp);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -1030,6 +1077,13 @@ static int byt_thermal_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "kzalloc failed\n");
 		ret = -ENOMEM;
 		goto exit_free;
+	}
+
+	/* Disable prochot on alert0 crossing */
+	ret = disable_prochot();
+	if (ret) {
+		dev_err(&pdev->dev, "Disabling prochot failed:%d\n", ret);
+		goto exit_tzd;
 	}
 
 	/* Program a default _max value for each sensor */

@@ -37,6 +37,63 @@ struct i915_gem_vmap_object *to_vmap_object(struct drm_i915_gem_object *obj)
 }
 
 #if defined(CONFIG_MMU_NOTIFIER)
+struct i915_vmap_mn_object {
+	struct mmu_notifier mn;
+	struct i915_gem_vmap_object *vmap;
+	struct mm_struct    *mm;
+};
+struct i915_gem_mn_unregister_work {
+	struct i915_vmap_mn_object *vmap_mn_obj;
+	struct work_struct  work;
+};
+static void i915_gem_userptr_mn_unregister_work_fn(struct work_struct *__work)
+{
+	struct i915_gem_mn_unregister_work *work =
+		container_of(__work, struct i915_gem_mn_unregister_work, work);
+	struct i915_vmap_mn_object *vmap_mn_object =
+		work->vmap_mn_obj;
+	struct mmu_notifier *mn = &(vmap_mn_object->mn);
+	struct mm_struct *mm = vmap_mn_object->mm;
+
+	/*BUG_ON(mn->ops->invalidate_range_start);*/
+
+	BUG_ON(vmap_mn_object->vmap);
+
+	/* The following check is not really required, as even
+	   though the release callback method of notfifier could
+	   have already been called through __mmu_notifier_release,
+	   we can still safely invoke the notifier_unregister function.
+	   But this notifier unregistration has a considerable overhead,
+	   so it is better to avoid this whenever possible */
+	if (mm != NULL)	{
+		/* Assuming till we have a single registered notifier,
+		   kernel will not free up the 'mm' structure and
+		   hence we may not have this check here. */
+		BUG_ON(atomic_read(&mm->mm_count) <= 0);
+
+		/* Even though the release callback method of
+		   notifier & this work function could get executed
+		   concurrently, we don't need an explicit synchronization
+		   The kernel ensures the serialization between
+		   the mmu_notifier_unregister & __mmu_notifier_release
+		   functions, and also our release callback method would get
+		   called from one of them only, as kernel de-links the
+		   notifier structure from both the functions, so whichever
+		   is executed first will also de-link the notifier structure */
+
+		/* Do the real work now */
+		mmu_notifier_unregister(mn, mm);
+		BUG_ON(vmap_mn_object->mm);
+	}
+
+	/* Finally release the wrapper object & thus the
+	   also memory for the embedded notifier object*/
+	kfree(vmap_mn_object);
+
+	/* Release the work object */
+	kfree(work);
+}
+
 static void i915_gem_userptr_mn_invalidate_range_start(struct mmu_notifier *mn,
 						       struct mm_struct *mm,
 						       unsigned long start,
@@ -46,7 +103,11 @@ static void i915_gem_userptr_mn_invalidate_range_start(struct mmu_notifier *mn,
 	struct drm_device *dev;
 
 	/* XXX race between obj unref and mmu notifier? */
-	vmap = container_of(mn, struct i915_gem_vmap_object, mn);
+	vmap = container_of(mn, struct i915_vmap_mn_object, mn)->vmap;
+	/* Check whether if the vmap obj was already destroyed for mn */
+	if (vmap == NULL)
+		return;
+
 	BUG_ON(vmap->mm != mm);
 
 	if (vmap->user_ptr >= end || vmap->user_ptr + vmap->user_size <= start)
@@ -79,9 +140,27 @@ static void i915_gem_userptr_mn_release(struct mmu_notifier *mn,
 					struct mm_struct *mm)
 {
 	struct i915_gem_vmap_object *vmap;
-	vmap = container_of(mn, struct i915_gem_vmap_object, mn);
+	struct i915_vmap_mn_object *vmap_mn_object;
 
-	BUG_ON(vmap->mm != mm);
+	vmap_mn_object =
+		container_of(mn, struct i915_vmap_mn_object, mn);
+
+	BUG_ON(vmap_mn_object->mm != mm);
+
+	/* Set the mm pointer to NULL, as this release method
+	   getting called now, probably indicates that process is
+	   making an exit. So our work function which may
+	   be invoked later shall not unregister the notifier now */
+	vmap_mn_object->mm = NULL;
+
+	vmap = vmap_mn_object->vmap;
+	/* Check if the vmap object has already been released as
+	   as this release method could be getting called after
+	   the object was already freed, as now we do not unregister
+	   the notifier immediately when the object is freed */
+	if (vmap == NULL)
+		return;
+
 	vmap->mm = NULL;
 
 	/* XXX Schedule an eventual unbind? E.g. hook into require request?
@@ -96,9 +175,54 @@ static const struct mmu_notifier_ops i915_gem_vmap_notifier = {
 static void
 i915_gem_userptr_release__mmu_notifier(struct i915_gem_vmap_object *vmap) {
 
-	if (vmap->mn.ops && vmap->mm) {
-		mmu_notifier_unregister(&vmap->mn, vmap->mm);
-		BUG_ON(vmap->mm);
+	struct mmu_notifier *mn = vmap->mn;
+	struct i915_vmap_mn_object *vmap_mn_object;
+
+	/* Check whether if a notifier was registered for this vmap
+	   object or not because the User could have created this object
+	   with I915_USERPTR_UNSYNCHRONIZED flag, if it does not want an
+	   extra synchronization from the driver side */
+	if (mn == NULL)
+		return;
+
+	vmap_mn_object =
+		container_of(mn, struct i915_vmap_mn_object, mn);
+
+	/* check if the mn's release function has already been
+	   called or not due to process crash or exit, so
+	   may not unregister the MMU notifier now.
+	   In case of process crash/exit, first the OS
+	   will release the notfifiers & then close the
+	   DRM device file, causing the freeing of vmap objects */
+	if (vmap->mm) {
+		struct i915_gem_mn_unregister_work *work;
+		struct drm_device *dev = vmap->gem.base.dev;
+		struct drm_i915_private *dev_priv = dev->dev_private;
+
+		/* set the pointer to NULL as the vmap
+		   object would get destroyed shortly */
+		vmap_mn_object->vmap = NULL;
+
+		/* Allocate a new work item to take care of the
+		   notifier unregistration */
+		work = kzalloc(sizeof *work, GFP_KERNEL);
+		if (work == NULL)
+			return;
+
+		work->vmap_mn_obj = vmap_mn_object;
+		INIT_WORK(&work->work, i915_gem_userptr_mn_unregister_work_fn);
+
+		/* Queue the unregistration work in our private workqueue,
+		   from which the work items will be dequeued sequentially
+		   one by one */
+		queue_work(dev_priv->vmap_mn_unregister_wq, &work->work);
+
+	} else {
+		BUG_ON(vmap->mn == NULL);
+		/* Release the wrapper object & thus also the memory
+		   for the notfier object, as by now the release method
+		   of notifier would have already been called by kernel */
+		kfree(vmap_mn_object);
 	}
 }
 
@@ -106,11 +230,22 @@ static int
 i915_gem_userptr_init__mmu_notifier(struct i915_gem_vmap_object *vmap,
 				    unsigned flags)
 {
+	struct i915_vmap_mn_object *vmap_mn_object;
+
 	if (flags & I915_USERPTR_UNSYNCHRONIZED)
 		return capable(CAP_SYS_ADMIN) ? 0 : -EPERM;
 
-	vmap->mn.ops = &i915_gem_vmap_notifier;
-	return mmu_notifier_register(&vmap->mn, vmap->mm);
+	/* Allocate a new wrapper object*/
+	vmap_mn_object =
+		kzalloc(sizeof(struct i915_vmap_mn_object), GFP_KERNEL);
+
+	if (vmap_mn_object == NULL)
+		return -ENOMEM;
+	vmap_mn_object->vmap = vmap;
+	vmap_mn_object->mm = vmap->mm;
+	vmap->mn = &vmap_mn_object->mn;
+	vmap->mn->ops = &i915_gem_vmap_notifier;
+	return mmu_notifier_register(vmap->mn, vmap->mm);
 }
 
 #else
@@ -220,12 +355,12 @@ i915_gem_vmap_object_fn(void)
 	return 1;
 }
 
-	static const struct drm_i915_gem_object_ops i915_gem_vmap_ops = {
-	.get_pages   = i915_gem_vmap_get_pages,
-	.put_pages   = i915_gem_vmap_put_pages,
-	.release     = i915_gem_vmap_object_release,
-	.is_vmap_obj = i915_gem_vmap_object_fn,
-	};
+static const struct drm_i915_gem_object_ops i915_gem_vmap_ops = {
+.get_pages   = i915_gem_vmap_get_pages,
+.put_pages   = i915_gem_vmap_put_pages,
+.release     = i915_gem_vmap_object_release,
+.is_vmap_obj = i915_gem_vmap_object_fn,
+};
 
 /**
  * Creates a new mm object that wraps some user memory.

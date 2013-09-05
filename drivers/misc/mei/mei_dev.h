@@ -353,6 +353,7 @@ struct mei_device {
 	 */
 	struct mutex device_lock; /* device lock */
 	struct delayed_work timer_work;	/* MEI timer delayed work (timeouts) */
+	struct workqueue_struct *wq;	/* MEI workqueue */
 
 	bool recvd_hw_ready;
 	/*

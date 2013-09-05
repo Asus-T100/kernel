@@ -52,7 +52,7 @@
 #define CAMFLASH_STATE_OFF	0
 
 /* 'enum' of BCU events */
-enum bcu_events { WARN1, WARN2, CRIT, GSMPULSE, TXPWRTH, UNKNOWN, __COUNT };
+enum bcu_events { VWARN1, VWARN2, VCRIT, GSMPULSE, TXPWRTH, UNKNOWN, __COUNT };
 
 static DEFINE_MUTEX(ocd_update_lock);
 
@@ -72,6 +72,9 @@ struct ocd_info {
 };
 
 static uint8_t cam_flash_state;
+static uint32_t intr_count_lvl1;
+static uint32_t intr_count_lvl2;
+static uint32_t intr_count_lvl3;
 
 static void enable_volt_trip_points(void)
 {
@@ -166,6 +169,43 @@ static int program_bcu(void *ocd_smip_addr)
 	}
 	/* MBCUIRQ register address not consecutive with other BCU registers */
 	ret = intel_scu_ipc_iowrite8(MBCUIRQ, *smip_data);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in writing addr 0x%02x\n",
+				__func__, ret, MBCUIRQ);
+		goto ipc_fail;
+	}
+
+	/***
+	 * Programming the Exit Debounce Time for VWARN1, VWARN2 and VCRIT
+	 * trip points
+	 */
+	ret = intel_scu_ipc_update_register(VWARN1_CFG,
+						VW_EXIT_DB_CLK160,
+						VW_EXIT_DB_MASK);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in updating addr 0x%02x\n",
+				__func__, ret, VWARN1_CFG);
+		goto ipc_fail;
+	}
+
+	ret = intel_scu_ipc_update_register(VWARN2_CFG,
+						VW_EXIT_DB_CLK160,
+						VW_EXIT_DB_MASK);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in updating addr 0x%02x\n",
+				__func__, ret, VWARN2_CFG);
+		goto ipc_fail;
+	}
+
+	ret = intel_scu_ipc_update_register(VCRIT_CFG,
+						VCRIT_EXIT_DB_CLK160,
+						VCRIT_EXIT_DB_MASK);
+	if (ret) {
+		pr_err("EM_BCU: Inside %s error(%d) in updating addr 0x%02x\n",
+				__func__, ret, VCRIT_CFG);
+		goto ipc_fail;
+	}
+	pr_debug("EM_BCU: Registers are programmed successfully.\n");
 
 ipc_fail:
 	mutex_unlock(&ocd_update_lock);
@@ -322,6 +362,30 @@ static ssize_t show_crit_shutdown(struct device *dev,
 	return ret ? ret : sprintf(buf, "%d\n", flag);
 }
 
+
+static ssize_t show_intr_count(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	uint32_t value;
+	int level = to_sensor_dev_attr(attr)->index;
+
+	switch (level) {
+	case VWARN1:
+		value = intr_count_lvl1;
+		break;
+	case VWARN2:
+		value = intr_count_lvl2;
+		break;
+	case VCRIT:
+		value = intr_count_lvl3;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return sprintf(buf, "%d\n", value);
+}
+
 static ssize_t store_camflash_ctrl(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -345,8 +409,6 @@ static ssize_t show_camflash_ctrl(struct device *dev,
 #ifdef CONFIG_DEBUG_FS
 
 struct dentry *bcbcu_dbgfs_root;
-
-#define MAX_RONLY_REG	3
 
 static struct bcu_reg_info bcbcu_reg[] = {
 	reg_info(S_BCUINT),
@@ -528,10 +590,14 @@ static void handle_VW1_event(int event, void *dev_data)
 	uint8_t irq_status, beh_data;
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
+	char *bcu_envp[2];
 
 	dev_info(cinfo->dev, "EM_BCU: VW1 Event %d has occured\n", event);
-	/* Notify using UEvent */
-	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	/* Notify using UEvent along with env info */
+	bcu_envp[0] = get_envp(VWARN1);
+	bcu_envp[1] = NULL;
+	kobject_uevent_env(&cinfo->dev->kobj, KOBJ_CHANGE, bcu_envp);
 
 	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
 	if (ret)
@@ -564,10 +630,14 @@ static void handle_VW2_event(int event, void *dev_data)
 	uint8_t irq_status, beh_data;
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 	int ret;
+	char *bcu_envp[2];
 
 	dev_info(cinfo->dev, "EM_BCU: VW2 Event %d has occured\n", event);
-	/* Notify using UEvent */
-	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	/* Notify using UEvent along with env info */
+	bcu_envp[0] = get_envp(VWARN2);
+	bcu_envp[1] = NULL;
+	kobject_uevent_env(&cinfo->dev->kobj, KOBJ_CHANGE, bcu_envp);
 
 	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
 	if (ret)
@@ -609,10 +679,14 @@ ipc_fail:
 static void handle_VC_event(int event, void *dev_data)
 {
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
+	char *bcu_envp[2];
 
 	dev_info(cinfo->dev, "EM_BCU: VC Event %d has occured\n", event);
-	/* Notify using UEvent */
-	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	/* Notify using UEvent along with env info */
+	bcu_envp[0] = get_envp(VCRIT);
+	bcu_envp[1] = NULL;
+	kobject_uevent_env(&cinfo->dev->kobj, KOBJ_CHANGE, bcu_envp);
 
 	return;
 }
@@ -634,15 +708,18 @@ static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 						TXPWRTH_IRQ event */
 
 	if (irq_data & VCRIT_IRQ) {
-		event = CRIT;
+		event = VCRIT;
+		++intr_count_lvl3;
 		handle_VC_event(event, dev_data);
 	}
 	if (irq_data & VWARN2_IRQ) {
-		event = WARN2;
+		event = VWARN2;
+		++intr_count_lvl2;
 		handle_VW2_event(event, dev_data);
 	}
 	if (irq_data & VWARN1_IRQ) {
-		event = WARN1;
+		event = VWARN1;
+		++intr_count_lvl1;
 		handle_VW1_event(event, dev_data);
 	}
 	if (irq_data & GSMPULSE_IRQ) {
@@ -686,6 +763,15 @@ static SENSOR_DEVICE_ATTR_2(uncore_current, S_IRUGO | S_IWUSR,
 static SENSOR_DEVICE_ATTR_2(enable_crit_shutdown, S_IRUGO | S_IWUSR,
 				show_crit_shutdown, store_crit_shutdown, 0, 0);
 
+static SENSOR_DEVICE_ATTR(intr_count_level1, S_IRUGO,
+				show_intr_count, NULL, 0);
+
+static SENSOR_DEVICE_ATTR(intr_count_level2, S_IRUGO,
+				show_intr_count, NULL, 1);
+
+static SENSOR_DEVICE_ATTR(intr_count_level3, S_IRUGO,
+				show_intr_count, NULL, 2);
+
 static SENSOR_DEVICE_ATTR(camflash_ctrl, S_IRUGO | S_IWUSR,
 				show_camflash_ctrl, store_camflash_ctrl, 0);
 
@@ -696,12 +782,14 @@ static struct attribute *mrfl_ocd_attrs[] = {
 	&sensor_dev_attr_volt_warn2.dev_attr.attr,
 	&sensor_dev_attr_volt_crit.dev_attr.attr,
 	&sensor_dev_attr_enable_crit_shutdown.dev_attr.attr,
+	&sensor_dev_attr_intr_count_level1.dev_attr.attr,
+	&sensor_dev_attr_intr_count_level2.dev_attr.attr,
+	&sensor_dev_attr_intr_count_level3.dev_attr.attr,
 	&sensor_dev_attr_camflash_ctrl.dev_attr.attr,
 	NULL
 };
 
 static struct attribute_group mrfl_ocd_gr = {
-	.name = "mrfl_current",
 	.attrs = mrfl_ocd_attrs
 };
 
@@ -754,7 +842,7 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 	/* Register for Interrupt Handler */
 	ret = request_threaded_irq(cinfo->irq, NULL,
 						ocd_intrpt_thread_handler,
-						IRQF_TRIGGER_RISING,
+						IRQF_NO_SUSPEND,
 						DRIVER_NAME, cinfo);
 	if (ret) {
 		dev_err(&pdev->dev,

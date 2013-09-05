@@ -295,10 +295,13 @@ int __mei_cl_recv(struct mei_cl *cl, u8 *buf, size_t length)
 
 	if (cl->reading_state != MEI_READ_COMPLETE &&
 	    !waitqueue_active(&cl->rx_wait)) {
+
 		mutex_unlock(&dev->device_lock);
 
 		if (wait_event_interruptible(cl->rx_wait,
-				(MEI_READ_COMPLETE == cl->reading_state))) {
+				cl->reading_state == MEI_READ_COMPLETE  ||
+				mei_cl_is_transitioning(cl))) {
+
 			if (signal_pending(current))
 				return -EINTR;
 			return -ERESTARTSYS;
@@ -516,7 +519,7 @@ void mei_cl_bus_rx_event(struct mei_cl *cl)
 
 	set_bit(MEI_CL_EVENT_RX, &device->events);
 
-	schedule_work(&device->event_work);
+	queue_work(cl->dev->wq, &device->event_work);
 }
 
 int __init mei_cl_bus_init(void)

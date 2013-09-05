@@ -1,3 +1,4 @@
+//<asus-ych20130904>
 /*
  * Intel Baytrail ULPMC battery driver
  *

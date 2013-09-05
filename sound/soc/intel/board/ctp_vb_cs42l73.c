@@ -328,7 +328,8 @@ static int ctp_vb_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 		tx_mask = CTP_VB_SSP_MIXING_SLOT_TX_MASK;
 		rx_mask = CTP_VB_SSP_MIXING_SLOT_RX_MASK;
 
-		tristate_offset = BIT(TRISTATE_BIT);
+		tristate_offset = BIT(TRISTATE_BIT) |\
+				BIT(FRAME_SYNC_RELATIVE_TIMING_BIT);
 
 		break;
 	default:

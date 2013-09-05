@@ -84,11 +84,16 @@ static struct platform_device vwm89942_device = {
 
 static struct platform_device wm8994_ldo1_device;
 static struct platform_device wm8994_ldo2_device;
-static struct platform_device *regulator_devices[] __initdata = {
+static struct platform_device *wm1811a_reg_devices[] __initdata = {
 	&vwm89941_device,
 	&vwm89942_device,
 	&wm8994_ldo1_device,
 	&wm8994_ldo2_device
+};
+
+static struct platform_device *wm8958_reg_devices[] __initdata = {
+	&vwm89941_device,
+	&vwm89942_device
 };
 
 static struct regulator_consumer_supply wm8994_avdd1_supply =
@@ -99,6 +104,7 @@ static struct regulator_consumer_supply wm8994_dcvdd_supply =
 
 static struct regulator_init_data wm8994_ldo1_data = {
 	.constraints	= {
+		.always_on	= 1,
 		.name		= "AVDD1_3.0V",
 		.valid_ops_mask	= REGULATOR_CHANGE_STATUS,
 	},
@@ -124,6 +130,7 @@ static struct platform_device wm8994_ldo1_device = {
 
 static struct regulator_init_data wm8994_ldo2_data = {
 	.constraints	= {
+		.always_on	= 1,
 		.name		= "DCVDD_1.0V",
 	},
 	.num_consumer_supplies	= 1,
@@ -145,7 +152,7 @@ static struct platform_device wm8994_ldo2_device = {
 	},
 };
 
-static struct wm8994_pdata wm8958_merr_pdata = {
+static struct wm8994_pdata wm8994_pdata = {
 	/* configure gpio1 function: 0x0001(Logic level input/output) */
 	.gpio_defaults[0] = 0x0003,
 	.irq_flags = IRQF_TRIGGER_RISING,
@@ -170,32 +177,50 @@ static struct wm8994_pdata wm8958_merr_pdata = {
 	.micdet_delay = 500,
 };
 
+static int wm8994_get_irq_data(struct wm8994_pdata *pdata,
+			struct i2c_board_info *i2c_info, char *name)
+{
+	int codec_gpio;
+
+	/* alek tells me that since driver is registering a new chip
+	 * irq we need to give it a base which is unused so put
+	 * 256+192 here */
+	pdata->irq_base = (256 + 192);
+	codec_gpio = get_gpio_by_name(name);
+	if (codec_gpio < 0) {
+		pr_err("%s failed for : %d\n", __func__, codec_gpio);
+		return -EINVAL;
+	}
+	i2c_info->irq = codec_gpio + INTEL_MID_IRQ_OFFSET;
+	return codec_gpio;
+}
+
 void __init *wm8994_platform_data(void *info)
 {
-	platform_add_devices(regulator_devices,
-		ARRAY_SIZE(regulator_devices));
+	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
+	int irq = 0;
 
 	if ((INTEL_MID_BOARD(1, PHONE, MRFL)) ||
 		   (INTEL_MID_BOARD(1, TABLET, MRFL))) {
-		struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
-		int codec_gpio;
 
-		/* alek tells me that since driver is registering a new chip
-		 * irq we need to give it a base which is unused so put
-		 * 256+192 here */
-		wm8958_merr_pdata.irq_base = (256 + 192);
+		platform_add_devices(wm8958_reg_devices,
+			ARRAY_SIZE(wm8958_reg_devices));
 
-		codec_gpio = get_gpio_by_name("audiocodec_int");
-		if (codec_gpio < 0) {
-			pr_err("%s: get_gpio_by_name:audiocodec_int failed\n", __func__);
+		irq = wm8994_get_irq_data(&wm8994_pdata, i2c_info,
+							"audiocodec_int");
+		if (irq < 0)
 			return NULL;
-		}
+	} else if ((SPID_PRODUCT(INTEL, CLVTP, PHONE, RHB)) ||
+		   (SPID_PRODUCT(INTEL, CLVT, TABLET, TBD))) {
 
-		i2c_info->irq = codec_gpio + INTEL_MID_IRQ_OFFSET;
-		if (!i2c_info->irq)
-			pr_err("%s, failed to get audiocodec_int\n", __func__);
+		platform_add_devices(wm1811a_reg_devices,
+			ARRAY_SIZE(wm1811a_reg_devices));
 
-		return &wm8958_merr_pdata;
-	} else
+		i2c_info->addr = 0x1a;
+	} else {
+		pr_err("Not supported....\n");
 		return NULL;
+	}
+
+	return &wm8994_pdata;
 }

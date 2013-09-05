@@ -90,6 +90,7 @@ static inline int platform_is(u8 model)
 #else
 #define CSTATE_EXIT_LATENCY_LPMP3 1040
 #define CSTATE_EXIT_LATENCY_S0i1 1040
+#define CSTATE_EXIT_LATENCY_S0i2 2000
 #define CSTATE_EXIT_LATENCY_S0i3 2800
 #endif
 #define BYT_S0I1_STATE         0x60
@@ -159,6 +160,7 @@ extern unsigned int pmu_get_new_cstate(unsigned int cstate, int *index);
 extern int get_target_platform_state(unsigned long *eax);
 extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);
+extern int set_all_power_on_inpanic(void);
 extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
 

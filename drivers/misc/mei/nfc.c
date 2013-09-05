@@ -535,7 +535,7 @@ int mei_nfc_host_init(struct mei_device *dev)
 
 	INIT_WORK(&ndev->init_work, mei_nfc_init);
 	init_waitqueue_head(&ndev->send_wq);
-	schedule_work(&ndev->init_work);
+	queue_work(dev->wq, &ndev->init_work);
 
 	return 0;
 
@@ -551,6 +551,8 @@ void mei_nfc_host_exit(void)
 
 	if (ndev->cl && ndev->cl->device)
 		mei_cl_remove_device(ndev->cl->device);
+
+	cancel_work_sync(&ndev->init_work);
 
 	mei_nfc_free(ndev);
 }

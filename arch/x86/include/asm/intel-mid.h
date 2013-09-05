@@ -244,8 +244,6 @@ extern void intel_mid_rtc_init(void);
 
 extern int get_force_shutdown_occured(void);
 
-extern int get_shutdown_power_supply_supplied(void);
-
 extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
 
 enum intel_mid_sim_type {

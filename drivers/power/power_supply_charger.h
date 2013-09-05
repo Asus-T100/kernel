@@ -114,6 +114,10 @@ static inline int get_ps_int_property(struct power_supply *psy,
 
 #define set_inlmt(psy, inlmt) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_INLMT, inlmt)
+
+#define set_present(psy, present) \
+		set_ps_int_property(psy, POWER_SUPPLY_PROP_PRESENT, present)
+
 #define SET_MAX_CC(psy, max_cc) \
 		set_ps_int_property(psy,\
 				POWER_SUPPLY_PROP_MAX_CHARGE_CURRENT, max_cc)
@@ -158,6 +162,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 		get_ps_int_property(psy, POWER_SUPPLY_PROP_PRIORITY)
 #define CABLE_TYPE(psy) \
 		get_ps_int_property(psy, POWER_SUPPLY_PROP_CABLE_TYPE)
+#define ONLINE(psy) \
+		get_ps_int_property(psy, POWER_SUPPLY_PROP_ONLINE)
 
 #define IS_CHARGING_ENABLED(psy) \
 		get_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGING)
@@ -218,12 +224,20 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define IS_HEALTH_GOOD(psy)\
 	(HEALTH(psy) == POWER_SUPPLY_HEALTH_GOOD)
 
-static inline void set_status(struct power_supply *psy, int status)
+static inline void set_battery_status(struct power_supply *psy, int status)
 {
 
 	if (STATUS(psy) != status)
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_STATUS, status);
 
+
+}
+
+static inline void set_charger_online(struct power_supply *psy, int online)
+{
+
+	if (ONLINE(psy) != online)
+		set_ps_int_property(psy, POWER_SUPPLY_PROP_ONLINE, online);
 
 }
 

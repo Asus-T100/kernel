@@ -186,11 +186,6 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	msleep(20);
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp);
 
-	temp = I915_READ(MIPI_PORT_CTRL(pipe));
-	temp = temp | intel_dsi->dev.port_bits;
-	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
-	POSTING_READ(MIPI_PORT_CTRL(pipe));
-
 	temp = I915_READ(MIPI_DEVICE_READY(pipe));
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp | DEVICE_READY);
 
@@ -372,8 +367,14 @@ static void intel_dsi_commit(struct drm_encoder *encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	int pipe = intel_crtc->pipe;
+	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
+
+	temp = I915_READ(MIPI_PORT_CTRL(pipe));
+	temp = temp | intel_dsi->dev.port_bits;
+	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
+	POSTING_READ(MIPI_PORT_CTRL(pipe));
 
 	/* XXX: fix the bits with constants */
 	I915_WRITE(MIPI_DPI_CONTROL(pipe), ((0x1 << 1) &
@@ -395,9 +396,7 @@ static void intel_dsi_commit(struct drm_encoder *encoder)
 /* return pixels in terms of txbyteclkhs */
 static u32 txbyteclkhs(u32 pixels, int bpp, int lane_count)
 {
-	u32 pixel_bytes;
-	pixel_bytes =  ((pixels * bpp) / 8) + (((pixels * bpp) % 8) && 1);
-	return (pixel_bytes / lane_count) + ((pixel_bytes % lane_count) && 1);
+	return (pixels * bpp) / (lane_count * 8);
 }
 
 static void set_dsi_timings(struct drm_encoder *encoder,
@@ -499,41 +498,21 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 		intel_dsi->dev.dev_ops->mode_set(&intel_dsi->dev,
 						mode, adjusted_mode);
 
-	/* Enable bandgap fix */
-	intel_cck_write32_bits(dev_priv, 0x6D, 0x00010000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6E, 0x00010000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6F, 0x00010000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x00, 0x00008000, 0x00008000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x00, 0x00000000, 0x00008000);
-	msleep(20);
-
-	/* Turn Display Trunk on */
-	intel_cck_write32_bits(dev_priv, 0x6B, 0x00020000, 0x00030000);
-	msleep(20);
-
-	intel_cck_write32_bits(dev_priv, 0x6C, 0x00020000, 0x00030000);
-	msleep(20);
-
-	intel_cck_write32_bits(dev_priv, 0x6D, 0x00020000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6E, 0x00020000, 0x00030000);
-	msleep(20);
-	intel_cck_write32_bits(dev_priv, 0x6F, 0x00020000, 0x00030000);
-
-	/* Need huge delay, otherwise clock is not stable */
-	msleep(100);
+	/* bandgap reset */
+	intel_flisdsi_write32(dev_priv, 0x08, 0x0001);
+	intel_flisdsi_write32(dev_priv, 0x0F, 0x0005);
+	intel_flisdsi_write32(dev_priv, 0x0F, 0x0025);
+	udelay(150);
+	intel_flisdsi_write32(dev_priv, 0x0F, 0x0000);
+	intel_flisdsi_write32(dev_priv, 0x08, 0x0000);
 
 	/* MIPI PORT Control register */
-	I915_WRITE(0x61190, 0x80010000);
+	I915_WRITE(0x61190, 0x00010000);
 
 	dsi_config(encoder);
 
 	I915_WRITE(MIPI_DPI_RESOLUTION(pipe),
-		((adjusted_mode->vdisplay + 1) << VERTICAL_ADDRESS_SHIFT) |
+		(adjusted_mode->vdisplay << VERTICAL_ADDRESS_SHIFT) |
 		(adjusted_mode->hdisplay << HORIZONTAL_ADDRESS_SHIFT));
 
 	set_dsi_timings(encoder, adjusted_mode);
@@ -594,6 +573,13 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 				intel_dsi->dev.video_frmt_cfg_bits |
 				VIDEO_MODE_BURST);
 
+	/*
+	 * Enabling panel fitter produces banding effect in non 24 bit
+	 * panels. Until we get a clarification from h/w designers don't
+	 * enable Panel Fitter in the MIPI DSI path.
+	 */
+	return;
+
 	if (intel_dsi->pfit && (adjusted_mode->hdisplay < PFIT_SIZE_LIMIT)) {
 		u32 val = 0;
 		if (intel_dsi->pfit == AUTOSCALE)
@@ -627,10 +613,7 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 		return connector_status_disconnected;
 	}
 
-	/* Don't call detect again and again. Once detected as connected
-	 * it will always be connected as this is supposed to be internal
-	 * panel
-	 */
+	/* Fix panel, No need to detect again If force on */
 	if (dev_priv->is_mipi)
 		return connector_status_connected;
 
@@ -646,8 +629,19 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 
 static int intel_dsi_get_modes(struct drm_connector *connector)
 {
+	u32 count = 0;
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 	struct drm_display_mode *mode = NULL;
+
+	/* Fix panel, No need to read modes again If we already
+	have modes with connector */
+	list_for_each_entry(mode, &connector->modes, head) {
+		mode->status = MODE_OK;
+		count++;
+	}
+
+	if (count)
+		return count;
 
 	/* Get the mode info from panel specific callback */
 	intel_dsi->panel_fixed_mode =
@@ -660,6 +654,8 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 	mode = drm_mode_duplicate(connector->dev, intel_dsi->panel_fixed_mode);
 	if (!mode)
 		return 0;
+	else
+		intel_dsi->mode_count = 1;
 
 	mode->status = MODE_OK;
 
@@ -669,10 +665,8 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 
 	/* Fill the panel info here */
 	intel_dsi->dev.dev_ops->get_info(0, connector);
-
-	return 1;
+	return intel_dsi->mode_count;
 }
-
 static void intel_dsi_destroy(struct drm_connector *connector)
 {
 	DRM_DEBUG_KMS("\n");
@@ -855,8 +849,6 @@ bool intel_dsi_init(struct drm_device *dev)
 			DRM_MODE_CONNECTOR_MIPI);
 
 	drm_connector_helper_add(connector, &intel_dsi_connector_helper_funcs);
-
-	connector->polled = DRM_CONNECTOR_POLL_HPD;
 
 	connector->display_info.subpixel_order = SubPixelHorizontalRGB; /*XXX*/
 	connector->interlace_allowed = false;

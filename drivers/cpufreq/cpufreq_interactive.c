@@ -346,7 +346,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 
 	if (!down_read_trylock(&pcpu->enable_sem))
 		return;
-	if (!pcpu->governor_enabled)
+	if (!pcpu->governor_enabled || !cpu_online(data))
 		goto exit;
 
 	spin_lock_irqsave(&pcpu->load_lock, flags);

@@ -166,7 +166,7 @@ ssize_t iio_buffer_store_enable(struct device *dev,
 ssize_t iio_buffer_show_enable(struct device *dev,
 			       struct device_attribute *attr,
 			       char *buf);
-
+//<asus-ych20130904+>
 #define IIO_BUFFER_LENGTH_ATTR DEVICE_ATTR(length, S_IRUGO | S_IWUGO,	\
 					   iio_buffer_read_length,	\
 					   iio_buffer_write_length)
@@ -174,7 +174,7 @@ ssize_t iio_buffer_show_enable(struct device *dev,
 #define IIO_BUFFER_ENABLE_ATTR DEVICE_ATTR(enable, S_IRUGO | S_IWUGO,	\
 					   iio_buffer_show_enable,	\
 					   iio_buffer_store_enable)
-
+//<asus-ych20130904->
 int iio_sw_buffer_preenable(struct iio_dev *indio_dev);
 
 #else /* CONFIG_IIO_BUFFER */

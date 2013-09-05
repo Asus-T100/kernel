@@ -24,6 +24,7 @@
  */
 struct fsa9285_pdata {
 	int mux_gpio;
+	int xsd_gpio;
 	int (*enable_vbus)(void);
 	int (*disable_vbus)(void);
 	int (*sdp_pre_setup)(void);

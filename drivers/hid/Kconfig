@@ -397,7 +397,7 @@ config HID_MULTITOUCH
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called hid-multitouch.
-
+#//<asus-ych20130904>
 config TOUCHSCREEN_ATMEL_MXT_I2CHID
         tristate "Atmel mXT I2C HID Touchscreen"
         depends on I2C && INPUT
@@ -409,7 +409,7 @@ config TOUCHSCREEN_ATMEL_MXT_I2CHID
 
           To compile this driver as a module, choose M here: the
           module will be called atmel_mxt_ts.
-
+#//<asus-ych20130904>
 config HID_NTRIG
 	tristate "N-Trig touch screen"
 	depends on USB_HID

@@ -1,28 +1,26 @@
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+
 #ifndef _SH_CSS_PARAMS_H_
 #define _SH_CSS_PARAMS_H_
-
-/*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
 
 /*! \file */
 
@@ -64,14 +62,12 @@ struct ia_css_isp_parameters {
 	struct ia_css_macc_config   macc_config;
 	struct ia_css_ctc_config    ctc_config;
 	struct ia_css_aa_config     aa_config;
+	struct ia_css_aa_config     baa_config;
 	struct ia_css_rgb_gamma_table     r_gamma_table;
 	struct ia_css_rgb_gamma_table     g_gamma_table;
 	struct ia_css_rgb_gamma_table     b_gamma_table;
 	struct ia_css_anr_thres     anr_thres;
-/*
-	struct ia_css_yuv2rgb_cc_config   yuv2rgb_cc_config;
-	struct ia_css_rgb2yuv_cc_config   rgb2yuv_cc_config;
-*/
+
 	bool isp_params_changed;
 	bool fpn_table_changed;
 	bool dz_config_changed;
@@ -104,6 +100,7 @@ struct ia_css_isp_parameters {
 	bool macc_config_changed;
 	bool ctc_config_changed;
 	bool aa_config_changed;
+	bool baa_config_changed;
 	bool r_gamma_table_changed;
 	bool g_gamma_table_changed;
 	bool b_gamma_table_changed;

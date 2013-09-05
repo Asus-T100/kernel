@@ -1,7 +1,7 @@
 #
 # Makefile for the drm device driver.  This driver provides support for the
 # Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
-        
+#<asus-ych20130904+>
 ccflags-y := -Iinclude/drm -Iinclude/uapi/drm -I../modules/intel_media/common
 i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  i915_debugfs.o \
@@ -41,6 +41,7 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  intel_overlay.o \
 	  intel_sprite.o \
 	  intel_opregion.o \
+	  intel_clrmgr.o \
 	  dsi_mod_auo_b101uan01.o \
 	  dsi_mod_panasonic_vvx09f006a00.o \
 	  dsi_mod_auo_b080xat.o \
@@ -54,7 +55,7 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  dvo_ns2501.o \
 	  hdmi_audio_if.o \
 	  i915_gem_dmabuf.o
-
+#<asus-ych20130904->
 i915-y += bp_34_dma-buf.o
 i915-y += i915_gem_vmap.o
 i915-y += i915_dpst.o

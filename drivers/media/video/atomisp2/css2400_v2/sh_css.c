@@ -1,25 +1,23 @@
 /*
-* Support for Medfield PNW Camera Imaging ISP subsystem.
-*
-* Copyright (c) 2010 Intel Corporation. All Rights Reserved.
-*
-* Copyright (c) 2010 Silicon Hive www.siliconhive.com.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License version
-* 2 as published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-* 02110-1301, USA.
-*
-*/
+ * Support for Intel Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 - 2013 Intel Corporation. All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
 
 /*! \file */
 //#include "stdio.h"
@@ -422,6 +420,8 @@ static enum sh_css_buffer_queue_id
 		sh_css_input_buffer_queue,
 		sh_css_output_buffer_queue,
 		sh_css_param_buffer_queue };
+
+static bool fw_explicitly_loaded = false;
 
 /**
  * Local prototypes
@@ -1524,8 +1524,7 @@ sh_css_pipeline_stage_create(struct sh_css_pipeline_stage **me,
 			}
 			stage->vf_frame_allocated = true;
 		}
-	} else if (vf_frame && binary && binary->vf_frame_info.res.width) {
-		//assert(vf_frame->data != mmgr_NULL);
+	} else if (vf_frame && binary && binary->vf_frame_info.res.width && vf_frame->data) {
 		/* only mark as allocated if buffer pointer available */
 		if (vf_frame->data != mmgr_NULL)
 			stage->vf_frame_allocated = true;
@@ -1842,7 +1841,7 @@ void sh_css_frame_info_init(
 	enum ia_css_frame_format format,
 	unsigned int aligned)
 {
-	assert_exit(info);
+assert(info != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_init() enter: "
 		"width=%d, "
@@ -2009,6 +2008,55 @@ enable_interrupts(enum ia_css_irq_type irq_type)
 #endif
 }
 
+void
+ia_css_unload_firmware(void)
+{
+	if (sh_css_num_binaries)
+	{
+		/* we have already loaded before so get rid of the old stuff */
+		sh_css_binary_uninit();
+		sh_css_unload_firmware();
+	}
+	fw_explicitly_loaded = false;
+}
+
+enum ia_css_err
+ia_css_load_firmware(const struct ia_css_env *env,
+	    const struct ia_css_fw  *fw)
+{
+	enum ia_css_err err;
+	struct sh_css default_css = DEFAULT_CSS;
+
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_load_firmware() enter\n");
+	assert_exit_code(env && fw, IA_CSS_ERR_INTERNAL_ERROR);
+
+	ia_css_memory_access_init(&env->css_mem_env);
+
+	/* make sure we initialize my_css */
+	if ((my_css.malloc != env->cpu_mem_env.alloc) ||
+	    (my_css.free != env->cpu_mem_env.free) ||
+	    (my_css.flush != env->cpu_mem_env.flush)
+	    )
+	{
+		my_css = default_css;
+
+		my_css.malloc = env->cpu_mem_env.alloc;
+		my_css.free = env->cpu_mem_env.free;
+		my_css.flush = env->cpu_mem_env.flush;
+	}
+
+	ia_css_unload_firmware(); /* in case we are called twice */
+	err = sh_css_load_firmware(fw->data, fw->bytes);
+	if (err == IA_CSS_SUCCESS) {
+		sh_css_init_binary_infos();
+		fw_explicitly_loaded = true;
+	}
+
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_load_firmware() leave\n");
+	return err;
+
+}
+
 enum ia_css_err
 ia_css_init(const struct ia_css_env *env,
 	    const struct ia_css_fw  *fw,
@@ -2020,8 +2068,11 @@ ia_css_init(const struct ia_css_env *env,
 	void *(*malloc_func) (size_t size, bool zero_mem) = env->cpu_mem_env.alloc;
 	void (*free_func) (void *ptr) = env->cpu_mem_env.free;
 	void (*flush_func) (struct ia_css_acc_fw *fw) = env->cpu_mem_env.flush;
-	static struct sh_css default_css = DEFAULT_CSS;
 	hrt_data select, enable;
+	struct sh_css default_css = DEFAULT_CSS;
+
+	assert_exit_code(env && (fw || fw_explicitly_loaded),
+								IA_CSS_ERR_INTERNAL_ERROR);
 
 	init_pipe_number();
 
@@ -2038,7 +2089,7 @@ ia_css_init(const struct ia_css_env *env,
 	if (malloc_func == NULL || free_func == NULL)
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
 
-	memcpy(&my_css, &default_css, sizeof(my_css));
+	my_css = default_css;
 
 	my_css.malloc = malloc_func;
 	my_css.free = free_func;
@@ -2069,15 +2120,20 @@ ia_css_init(const struct ia_css_env *env,
 	err = sh_css_params_init();
 	if (err != IA_CSS_SUCCESS)
 		return err;
-	err = sh_css_load_firmware(fw->data, fw->bytes);
-	if (err != IA_CSS_SUCCESS)
-		return err;
-	sh_css_init_binary_infos();
+	if (fw)
+	{
+		ia_css_unload_firmware(); /* in case we already had firmware loaded */
+		err = sh_css_load_firmware(fw->data, fw->bytes);
+		if (err != IA_CSS_SUCCESS)
+			return err;
+		sh_css_init_binary_infos();
+		fw_explicitly_loaded = false;
+	}
 	my_css.sp_bin_addr = sh_css_sp_load_program(&sh_css_sp_fw,
 						    SP_PROG_NAME,
 						    my_css.sp_bin_addr);
 	if (!my_css.sp_bin_addr) {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
+		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 	}
 
@@ -2088,7 +2144,7 @@ ia_css_init(const struct ia_css_env *env,
 	 * must explicitly enable debug support by calling this function.
 	 */
 	if (!sh_css_debug_mode_init()) {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_INTERNAL_ERROR);
+		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_INTERNAL_ERROR);
 		return IA_CSS_ERR_INTERNAL_ERROR;
 	}
 #endif
@@ -2103,7 +2159,7 @@ ia_css_init(const struct ia_css_env *env,
 	sh_css_printf = printk;
 #endif
 	if (!sh_css_hrt_system_is_idle()) {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_SYSTEM_NOT_IDLE);
+		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_SYSTEM_NOT_IDLE);
 		return IA_CSS_ERR_SYSTEM_NOT_IDLE;
 	}
 	/* can be called here, queuing works, but:
@@ -2241,20 +2297,19 @@ static uint8_t
 generate_pipe_number(void)
 {
 	uint8_t i;
-	uint8_t pipe_num = 0xFF;
 	/*Assign a new pipe_num .... search for empty place */
 	for (i = 0; i < MAX_NUM_PIPES; i++)
 	{
 		if (pipe_num_list[i] == PIPE_NUM_EMPTY_TOKEN){
 			pipe_num_list[i] = PIPE_NUM_RESERVED_TOKEN; /*position is reserved */
-			pipe_num = i;
 			break;
 		}
 	}
-	assert(pipe_num != 0xFF);
-	pipe_num_counter++;
-	map_pipe_num_to_sp_thread(pipe_num);
-	return pipe_num;
+	if (i < MAX_NUM_PIPES) {
+		pipe_num_counter++;
+		map_pipe_num_to_sp_thread(i);
+	}
+	return i;
 }
 
 static void
@@ -2331,6 +2386,9 @@ create_pipe(enum ia_css_pipe_mode mode,
 	}
 
 	me->pipe_num = generate_pipe_number();
+	if (me->pipe_num >= MAX_NUM_PIPES)
+		return IA_CSS_ERR_INTERNAL_ERROR;
+
 	my_css.active_pipes[me->pipe_num] = me;
 	me->old_pipe->new_pipe = me;
 	me->old_pipe->pipe_num = me->pipe_num;
@@ -2448,13 +2506,13 @@ ia_css_uninit(void)
 
 	ia_css_i_host_rmgr_uninit();
 
-	sh_css_binary_uninit();
-	sh_css_unload_firmware();
+	if (fw_explicitly_loaded == false) {
+		ia_css_unload_firmware(); 
+	}
 	if (my_css.sp_bin_addr) {
 		mmgr_free(my_css.sp_bin_addr);
 		my_css.sp_bin_addr = mmgr_NULL;
 	}
-
 	sh_css_sp_set_sp_running(false);
 	/* check and free any remaining mipi frames */
 	free_mipi_frames(NULL, true);
@@ -2519,14 +2577,18 @@ ia_css_mmu_invalidate_cache(void)
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_mmu_invalidate_cache() enter\n");
 	/* indicate to sp start that invalidation must occur */
 	sh_css_sp_invalidate_mmu();
+ 
+	/* if the SP is not running we should not access its dmem */
+ 	if (sh_css_sp_is_running())
+	{
+		HIVE_ADDR_sp_invalidate_tlb = fw->info.sp.invalidate_tlb;
 
-	HIVE_ADDR_sp_invalidate_tlb = fw->info.sp.invalidate_tlb;
+		(void)HIVE_ADDR_sp_invalidate_tlb; /* Suppres warnings in CRUN */
 
-	(void)HIVE_ADDR_sp_invalidate_tlb; /* Suppres warnings in CRUN */
-
-	sp_dmem_store_uint32(SP0_ID,
-		(unsigned int)sp_address_of(sp_invalidate_tlb),
-		true);
+		sp_dmem_store_uint32(SP0_ID,
+			(unsigned int)sp_address_of(sp_invalidate_tlb),
+			true);
+	}
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_mmu_invalidate_cache() leave\n");
 }
 
@@ -2744,9 +2806,6 @@ enum ia_css_err ia_css_irq_translate(
 			 * to get statistics for each binary */
 			infos |= IA_CSS_IRQ_INFO_ISP_BINARY_STATISTICS_READY;
 #endif
-			break;
-		case IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR:
-			irq = virq_isys_csi;
 			break;
 		case virq_isys_sof:
 			infos |= IA_CSS_IRQ_INFO_CSS_RECEIVER_SOF;
@@ -4218,7 +4277,6 @@ ia_css_dequeue_event(struct ia_css_event *event)
 	uint8_t arg3 = 0;
 
 	assert_exit_code(event, IA_CSS_ERR_INTERNAL_ERROR);
-
 	/* dequeue the IRQ event */
 	is_event_available = sp2host_dequeue_irq_event(&sp_event);
 
@@ -4235,6 +4293,7 @@ ia_css_dequeue_event(struct ia_css_event *event)
 		sh_css_sp_snd_event(SP_SW_EVENT_ID_3, 0, 0, 0);
 	}
 
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_dequeue_event() enter: queue not empty\n");
  	decode_sp_event(sp_event, &event->type, &arg1, &arg2, &arg3);
  	pipe_id = (enum ia_css_pipe_id)arg2;
 	

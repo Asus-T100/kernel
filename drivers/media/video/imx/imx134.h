@@ -1577,9 +1577,15 @@ struct imx_resolution imx134_res_preview[] = {
 		.regs = imx134_820_616_30fps,
 		.width = 820,
 		.height = 616,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
@@ -1589,9 +1595,15 @@ struct imx_resolution imx134_res_preview[] = {
 		.regs = imx134_1936_1096_30fps_v2,
 		.width = 1936,
 		.height = 1096,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
@@ -1601,9 +1613,15 @@ struct imx_resolution imx134_res_preview[] = {
 		.regs = imx134_8M_30fps,
 		.width = 3280,
 		.height = 2464,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1616,9 +1634,15 @@ struct imx_resolution imx134_res_still[] = {
 		.regs = imx134_820_616_30fps,
 		.width = 820,
 		.height = 616,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
@@ -1628,9 +1652,15 @@ struct imx_resolution imx134_res_still[] = {
 		.regs = imx134_1936_1096_30fps_v2,
 		.width = 1936,
 		.height = 1096,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
@@ -1640,9 +1670,15 @@ struct imx_resolution imx134_res_still[] = {
 		.regs = imx134_8M_30fps,
 		.width = 3280,
 		.height = 2464,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -1655,9 +1691,15 @@ struct imx_resolution imx134_res_video[] = {
 		.regs = imx134_820_616_30fps,
 		.width = 820,
 		.height = 616,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 4,
 		.bin_factor_y = 4,
 		.used = 0,
@@ -1667,9 +1709,15 @@ struct imx_resolution imx134_res_video[] = {
 		.regs = imx134_720p_30fps,
 		.width = 1280,
 		.height = 720,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
@@ -1679,9 +1727,15 @@ struct imx_resolution imx134_res_video[] = {
 		.regs = imx134_1568_876_30fps_v2,
 		.width = 1568,
 		.height = 876,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
 		.used = 0,
@@ -1691,9 +1745,15 @@ struct imx_resolution imx134_res_video[] = {
 		.regs = imx134_1080p_30fps,
 		.width = 1920,
 		.height = 1080,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
@@ -1703,9 +1763,15 @@ struct imx_resolution imx134_res_video[] = {
 		.regs = imx134_2336_1308_30fps_v2,
 		.width = 2336,
 		.height = 1308,
-		.fps = 30,
-		.pixels_per_line = 3600,
-		.lines_per_frame = 2518,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 3600,
+				 .lines_per_frame = 2518,
+			},
+			{
+			}
+		},
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.used = 0,
