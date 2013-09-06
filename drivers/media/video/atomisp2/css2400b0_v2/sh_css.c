@@ -8561,6 +8561,10 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 		if (preview_pipe && capture_pipe) {
 			preview_pipe->old_pipe->pipe.preview.capture_pipe =
 				capture_pipe->old_pipe;
+				/* check for raw binning */
+				sensor_binning_changed |=
+					sh_css_params_set_raw_binning(curr_stream,
+						preview_pipe->old_pipe->input_needs_raw_binning);
 		}
 		if (video_pipe && !video_pipe->old_pipe->pipe.video.copy_pipe) {
 			create_pipe(IA_CSS_PIPE_MODE_CAPTURE, &copy_pipe, true);
