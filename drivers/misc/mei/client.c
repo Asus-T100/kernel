@@ -752,6 +752,7 @@ int mei_cl_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 	struct mei_msg_hdr mei_hdr;
 	size_t len = cb->request_buffer.size - cb->buf_idx;
 	u32 msg_slots = mei_data2slots(len);
+	int rets;
 
 	mei_hdr.host_addr = cl->host_client_id;
 	mei_hdr.me_addr = cl->me_client_id;
@@ -776,11 +777,12 @@ int mei_cl_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 	dev_dbg(&dev->pdev->dev, MEI_HDR_FMT, MEI_HDR_PRM(&mei_hdr));
 
 	*slots -=  msg_slots;
-	if (mei_write_message(dev, &mei_hdr,
-			cb->request_buffer.data + cb->buf_idx)) {
-		cl->status = -ENODEV;
+	rets = mei_write_message(dev, &mei_hdr,
+			cb->request_buffer.data + cb->buf_idx);
+	if (rets) {
+		cl->status = rets;
 		list_move_tail(&cb->list, &cmpl_list->list);
-		return -ENODEV;
+		return rets;
 	}
 
 	cl->status = 0;
@@ -789,7 +791,7 @@ int mei_cl_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 
 	if (mei_hdr.msg_complete) {
 		if (mei_cl_flow_ctrl_reduce(cl))
-			return -ENODEV;
+			return -EIO;
 		list_move_tail(&cb->list, &dev->write_waiting_list.list);
 	}
 
@@ -875,10 +877,9 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 		MEI_HDR_PRM(&mei_hdr));
 
 
-	if (mei_write_message(dev, &mei_hdr, buf->data)) {
-		rets = -EIO;
+	rets = mei_write_message(dev, &mei_hdr, buf->data);
+	if (rets)
 		goto err;
-	}
 
 	cl->writing_state = MEI_WRITING;
 	cb->buf_idx = mei_hdr.length;
