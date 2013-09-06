@@ -252,7 +252,12 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 
 	err = mei_reserver_dma_acpi(dev);
-	if (err)
+//<asus-ych20130906+>
+	if (err) {
+		printk("<asus-ych> mei_reserver_dma_acpi init failed.  %s, %d\n", __func__, __LINE__);	
+		goto free_device;
+	}
+//<asus-ych20130906->	
 		err = mei_alloc_dma(dev);
 	if (err)
 		goto free_device;
