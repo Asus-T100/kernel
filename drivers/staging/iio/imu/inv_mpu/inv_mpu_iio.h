@@ -374,11 +374,11 @@ struct prod_rev_map_t {
  *  @set_lpf            set low pass filter.
  *  @set_fs             set full scale
  */
-//<ASUS-GUC20130731+>
+//<asus-guc20130731+>
 #ifdef set_fs
 #undef set_fs
 #endif
-//<ASUS-GUC20130731->
+//<asus-guc20130731->
 struct inv_mpu_slave {
 	int (*suspend)(struct inv_mpu_iio_s *);
 	int (*resume)(struct inv_mpu_iio_s *);

@@ -287,7 +287,7 @@ int mpu_memory_write(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 	msgs[0].flags = 0;
 	msgs[0].buf = bank;
 	msgs[0].len = sizeof(bank);
-	//<ASUS-GUC20130820+>
+	//<asus-guc20130820+>
 	res = i2c_transfer(st->sl_handle, msgs, 1);		
 	if (res != 1) {
 		printk("<ych> %s %d \n", __func__, __LINE__);		
@@ -299,9 +299,9 @@ int mpu_memory_write(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 		printk("<ych> %s %d \n", __func__, __LINE__);		
 		res = 0;
 	}
-	//<ASUS-GUC20130820->
+	//<asus-guc20130820->
 
-	//<ASUS-GUC20130820+>
+	//<asus-guc20130820+>
 	msgs[0].addr = mpu_addr;
 	msgs[0].flags = 0;
 	msgs[0].buf = addr;
@@ -317,9 +317,9 @@ int mpu_memory_write(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 		printk("<ych> %s %d \n", __func__, __LINE__);		
 		res = 0;
 	}
-	//<ASUS-GUC20130820->
+	//<asus-guc20130820->
 
-	//<ASUS-GUC20130820+>
+	//<asus-guc20130820+>
 	msgs[0].addr = mpu_addr;
 	msgs[0].flags = 0;
 	msgs[0].buf = (u8 *)buf;
@@ -335,7 +335,7 @@ int mpu_memory_write(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 		printk("<ych> %s %d \n", __func__, __LINE__);		
 		res = 0;
 	}
-	//<ASUS-GUC20130820->
+	//<asus-guc20130820->
 
 	INV_I2C_INC_MPUWRITE(3 + 3 + (2 + len));
 #if CONFIG_DYNAMIC_DEBUG
@@ -389,7 +389,7 @@ int mpu_memory_read(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 	msgs[0].flags = 0;
 	msgs[0].buf = bank;
 	msgs[0].len = sizeof(bank);
-	//<ASUS-GUC20130820+>
+	//<asus-guc20130820+>
 	res = i2c_transfer(st->sl_handle, msgs, 1);	
 	if (res != 1) {
 		printk("<ych> %s %d \n", __func__, __LINE__);		
@@ -401,9 +401,9 @@ int mpu_memory_read(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 		printk("<ych> %s %d \n", __func__, __LINE__);		
 		res = 0;
 	}
-	//<ASUS-GUC20130820->
+	//<asus-guc20130820->
 
-	//<ASUS-GUC20130820+>
+	//<asus-guc20130820+>
 	msgs[0].addr = mpu_addr;
 	msgs[0].flags = 0;
 	msgs[0].buf = addr;
@@ -419,9 +419,9 @@ int mpu_memory_read(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 		printk("<ych> %s %d \n", __func__, __LINE__);		
 		res = 0;
 	}
-	//<ASUS-GUC20130820->
+	//<asus-guc20130820->
 
-	//<ASUS-GUC20130820+>
+	//<asus-guc20130820+>
 	msgs[0].addr = mpu_addr;
 	msgs[0].flags = 0;
 	msgs[0].buf = &buf;
@@ -437,9 +437,9 @@ int mpu_memory_read(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 		printk("<ych> %s %d \n", __func__, __LINE__);		
 		res = 0;
 	}
-	//<ASUS-GUC20130820->
+	//<asus-guc20130820->
 
-	//<ASUS-GUC20130820+>
+	//<asus-guc20130820+>
 	msgs[0].addr = mpu_addr;
 	msgs[0].flags = I2C_M_RD;
 	msgs[0].buf = data;
@@ -450,22 +450,8 @@ int mpu_memory_read(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 			res = -EIO;
 	} else
 		res = 0;
+	//<asus-guc20130820->
 
-	//<ASUS-GUC20130820->
-/*
-//	res = i2c_transfer(st->sl_handle, msgs, 4);
-	printk("<ych> %s %d \n", __func__, __LINE__);		
-	if (res != 4) {
-		printk("<ych> %s %d \n", __func__, __LINE__);		
-		if (res >= 0) {
-			printk("<ych> %s %d \n", __func__, __LINE__);		
-			res = -EIO;
-		}
-	} else {
-		printk("<ych> %s %d \n", __func__, __LINE__);		
-		res = 0;
-		}
-*/
 	INV_I2C_INC_MPUWRITE(3 + 3 + 3);
 	INV_I2C_INC_MPUREAD(len);
 #if CONFIG_DYNAMIC_DEBUG

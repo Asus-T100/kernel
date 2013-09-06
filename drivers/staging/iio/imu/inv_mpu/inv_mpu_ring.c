@@ -401,7 +401,7 @@ static irqreturn_t inv_irq_handler(int irq, void *dev_id)
 	st = (struct inv_mpu_iio_s *)dev_id;
 	timestamp = get_time_ns();
 	time_since_last_irq = timestamp - st->last_isr_time;
-	//<ASUS-GUC20130816>spin_lock(&st->time_stamp_lock);
+	//<asus-guc20130816>spin_lock(&st->time_stamp_lock);
 	catch_up = 0;
 	while ((time_since_last_irq > st->irq_dur_ns * 2) &&
 	       (catch_up < MAX_CATCH_UP) &&
@@ -415,7 +415,7 @@ static irqreturn_t inv_irq_handler(int irq, void *dev_id)
 	}
 	kfifo_in(&st->timestamps, &timestamp, 1);
 	st->last_isr_time = timestamp;
-	//<ASUS-GUC20130816>spin_unlock(&st->time_stamp_lock);
+	//<asus-guc20130816>spin_unlock(&st->time_stamp_lock);
 
 	return IRQ_WAKE_THREAD;
 }

@@ -39,7 +39,7 @@
 #include <linux/poll.h>
 #include <linux/miscdevice.h>
 #include <linux/spinlock.h>
-#include <linux/acpi_gpio.h>	//<ASUS-GUC20130814>
+#include <linux/acpi_gpio.h>	//<asus-guc20130814>
 
 #include "inv_mpu_iio.h"
 #include "sysfs.h"
@@ -467,7 +467,7 @@ static int mpu_read_raw(struct iio_dev *indio_dev,
 			*val = 0;
 			return IIO_VAL_INT;
 		}
-		//<ASUS-GUC20130819>if (st->chip_config.self_test_run_once == 0) 
+		//<asus-guc20130819>if (st->chip_config.self_test_run_once == 0) 
 		{
 			result = inv_do_test(st, 0,  st->gyro_bias,
 				st->accel_bias);
@@ -1672,9 +1672,9 @@ static int inv_check_chip_type(struct inv_mpu_iio_s *st,
 		st->chip_type = INV_MPU6050;
 	else if (!strcmp(id->name, "mpu9150"))
 		st->chip_type = INV_MPU6050;
-	else if (!strcmp(id->name, "mpu6500")  || !strcmp(id->name, "INVN6500:00") )	//<ASUS-GUC20130807>
+	else if (!strcmp(id->name, "mpu6500")  || !strcmp(id->name, "INVN6500:00") )	//<asus-guc20130807>
 	{
-		printk("%s  %d  GUC -- id->name = %s\n", __func__, __LINE__, id->name);
+		printk("<asus-guc> %s  %d -- id->name = %s\n", __func__, __LINE__, id->name);
 		st->chip_type = INV_MPU6500;
 	}
 	else if (!strcmp(id->name, "mpu9250"))
@@ -1819,7 +1819,7 @@ static int inv_create_dmp_sysfs(struct iio_dev *ind)
 /**
  *  inv_mpu_probe() - probe function.
  */
-//<ASUS-GUC20130802+>
+//<asus-guc20130802+>
 static struct mpu_platform_data oem_mpu_platform_data = {        
 	.int_config  = 0x10,        
 	.level_shifter = 0,        
@@ -1838,7 +1838,7 @@ static struct mpu_platform_data oem_mpu_platform_data = {
     	0xdd, 0x16, 0xcd, 0x7, 0xd9, 0xba, 0x97, 0x37,
 	0xce, 0xfe, 0x23, 0x90, 0xe1, 0x66, 0x2f, 0x32}, 
 };
-//<ASUS-GUC20130802->
+//<asus-guc20130802->
 
 static int inv_mpu_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
@@ -1846,11 +1846,11 @@ static int inv_mpu_probe(struct i2c_client *client,
 	struct inv_mpu_iio_s *st;
 	struct iio_dev *indio_dev;
 	int result;
-	//<ASUS-GUC20130814+>
+	//<asus-guc20130814+>
 	int intpin;
 	
 	if (client->addr != 0x68) return -EIO;
-	//<ASUS-GUC20130814->
+	//<asus-guc20130814->
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		result = -ENOSYS;
@@ -1863,17 +1863,17 @@ static int inv_mpu_probe(struct i2c_client *client,
 		result =  -ENOMEM;
 		goto out_no_free;
 	}
-	//<ASUS-GUC20130814+>
+	//<asus-guc20130814+>
 	intpin = acpi_get_gpio("\\_SB.GPO2", 3); //acpi_get_gpio("\\_SB.GPO2", 28); /* GPIO_SUS28 */
 	client->irq = gpio_to_irq(intpin);
-	//<ASUS-GUC20130814->
+	//<asus-guc20130814->
 
 	st = iio_priv(indio_dev);
 	st->client = client;
 	st->sl_handle = client->adapter;
 	st->i2c_addr = client->addr;
 	st->plat_data =
-		oem_mpu_platform_data;	//<ASUS-GUC20130807>st->plat_data = *(struct mpu_platform_data *)dev_get_platdata(&client->dev);
+		oem_mpu_platform_data;	//<asus-guc20130807>st->plat_data = *(struct mpu_platform_data *)dev_get_platdata(&client->dev);
 	/* power is turned on inside check chip type*/
 	result = inv_check_chip_type(st, id);
 	if (result)
@@ -1925,7 +1925,7 @@ static int inv_mpu_probe(struct i2c_client *client,
 	}
 
 	/* Tell the i2c counter, we have an IRQ */
-	INV_I2C_SETIRQ(MPU, st->irq);	//<GUC20130814>INV_I2C_SETIRQ(MPU, client->irq);
+	INV_I2C_SETIRQ(MPU, st->irq);	//<asus-guc20130814>INV_I2C_SETIRQ(MPU, client->irq);
 
 	result = iio_device_register(indio_dev);
 	if (result) {
@@ -2041,7 +2041,7 @@ static const struct i2c_device_id inv_mpu_id[] = {
 	{"mpu3050", INV_MPU3050},
 	{"mpu6050", INV_MPU6050},
 	{"mpu9150", INV_MPU9150},
-	{"INVN6500:00", INV_MPU6500},	//<ASUS-GUC20130802>
+	{"INVN6500:00", INV_MPU6500},	//<asus-guc20130802>
 	{"mpu9250", INV_MPU9250},
 	{"mpu6xxx", INV_MPU6XXX},
 	{}
