@@ -65,7 +65,7 @@ static struct fixed_voltage_config vwlan = {
 	.microvolts		= 1800000,
 	.gpio			= -EINVAL,
 	.startup_delay		= 1000 * DELAY_ONOFF,
-	.enable_high		= 1,
+	.enable_high		= 0, // <asus-ethan20130906>  add to low Enable 
 	.enabled_at_boot	= 0,
 	.init_data		= &wlan_vmmc_data,
 };
