@@ -43,7 +43,7 @@
 #define HEADSET_DET_DELAY    200 /* Delay(ms) before reading over current
 				    status for headset detection */
 /*#define USE_EQ*/
-#define USE_EQ 1 //realtek EQ control //<asus-baron20130830+> 
+//<asus-baron20130906-> #define USE_EQ 1 //realtek EQ control //<asus-baron20130830+> 
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
 static int delay_work = 500;
@@ -129,9 +129,9 @@ static struct rt5640_init_reg init_list[] = {
 #endif
 //<asus-baron20130830+>
 	/* DRC parameters */
-	{RT5640_DRC_AGC_1, 0x4206},
-	{RT5640_DRC_AGC_2, 0x1f04},
-	{RT5640_DRC_AGC_3, 0x0052},
+//<asus-baron20130906->	{RT5640_DRC_AGC_1, 0x4206},
+//<asus-baron20130906->	{RT5640_DRC_AGC_2, 0x1f04},
+//<asus-baron20130906->	{RT5640_DRC_AGC_3, 0x0052},
 //<asus-baron20130830->
 #if RT5640_DET_EXT_MIC
 	{RT5640_MICBIAS, 0x3a10},	/* enable MICBIAS short current;
