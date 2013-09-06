@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -206,7 +206,7 @@ static ia_css_err_t set_resource_pool_size(ia_css_resource_list_t* pool, uint32_
     ia_css_err_t rval = IA_CSS_SUCCESS; 
     uint32_t i = 0;
 
-    assert(pool != NULL);
+    assert_exit_code(pool != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
 
     if (size > IA_CSS_RESOURCE_LIST_MAX_AMOUNT) return IA_CSS_ERR_RESOURCE_LIST_TO_SMALL; 
 

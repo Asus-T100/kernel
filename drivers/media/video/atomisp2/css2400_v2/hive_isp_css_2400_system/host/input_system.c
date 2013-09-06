@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -270,11 +270,11 @@ void receiver_set_compression(
 	const mipi_compressor_t		comp,
 	const mipi_predictor_t		pred)
 {
-	const unsigned int	field_id = cfg_ID % N_MIPI_FORMAT_CUSTOM;
-	const unsigned int	ch_id = cfg_ID / N_MIPI_FORMAT_CUSTOM;
-	hrt_data			val = 0;
-	hrt_address			addr = 0;
-	hrt_data			reg = 0;
+	const unsigned int		field_id = cfg_ID % N_MIPI_FORMAT_CUSTOM;
+	const unsigned int		ch_id = cfg_ID / N_MIPI_FORMAT_CUSTOM;
+	hrt_data			val;
+	hrt_address			addr;
+	hrt_data			reg;
 
 	assert_exit(ID < N_RX_ID);
 	assert_exit(cfg_ID < N_MIPI_COMPRESSOR_CONTEXT);
@@ -1028,7 +1028,7 @@ static input_system_error_t input_buffer_configuration(void)
 		unallocated_memory 	-= size_requested;
 		config.acquisition_buffer_unique_flags = INPUT_SYSTEM_CFG_FLAG_SET;
 
-assert(current_address <= IB_CAPACITY_IN_WORDS);
+		assert(current_address <= IB_CAPACITY_IN_WORDS);
 	}
 
 	return INPUT_SYSTEM_ERR_NO_ERROR;
@@ -1213,7 +1213,7 @@ static input_system_error_t configuration_to_registers(void)
 	input_system_network_cfg_t input_system_network_cfg;
 	int i; 
 
-assert (config.source_type_flags & INPUT_SYSTEM_CFG_FLAG_SET);  
+	assert(config.source_type_flags & INPUT_SYSTEM_CFG_FLAG_SET);
 
 	switch (config.source_type) {
 		case INPUT_SYSTEM_SOURCE_SENSOR :
@@ -1605,10 +1605,13 @@ input_system_error_t	input_system_gpfifo_channel_cfg(
 static input_system_error_t input_system_configure_channel_sensor(
 	const channel_cfg_t channel)
 {
-	uint32_t port = channel.source_cfg.csi_cfg.csi_port;
+	const uint32_t port = channel.source_cfg.csi_cfg.csi_port;
 	input_system_error_t status = INPUT_SYSTEM_ERR_NO_ERROR;
 
 	input_system_multiplex_t mux;
+
+	if (port >= N_INPUT_SYSTEM_PORTS)
+		return INPUT_SYSTEM_ERR_GENERIC;
 
 	//check if port > N_INPUT_SYSTEM_MULTIPLEX
 
@@ -1616,24 +1619,23 @@ static input_system_error_t input_system_configure_channel_sensor(
 	if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
 
 	// Check for conflicts on source (implicitly on multicast, capture unit and input buffer).
+
 	status = set_csi_cfg(&(config.csi_value[port]), &channel.source_cfg.csi_cfg, &(config.csi_flags[port]));
-
 	if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
-
-	assert_exit_code(channel.source_cfg.csi_cfg.csi_port < N_CSI_PORTS, INPUT_SYSTEM_ERR_PARAMETER_NOT_SUPPORTED);
+		
 
 	switch (channel.source_cfg.csi_cfg.buffering_mode){
 		case INPUT_SYSTEM_FIFO_CAPTURE:
 			
 			// Check for conflicts on mux.
-			mux = INPUT_SYSTEM_MIPI_PORT0 + channel.source_cfg.csi_cfg.csi_port;
+			mux = INPUT_SYSTEM_MIPI_PORT0 + port;
 			status = input_system_multiplexer_cfg(&config.multiplexer, mux, &config.multiplexer_flags);
 			if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
-			config.multicast[channel.source_cfg.csi_cfg.csi_port] = INPUT_SYSTEM_CSI_BACKEND;
+			config.multicast[port] = INPUT_SYSTEM_CSI_BACKEND;
 			
 			// Shared resource, so it should be blocked.
 			//config.mux_flags |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
-			//config.csi_buffer_flags[channel.source_cfg.csi_cfg.csi_port] |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
+			//config.csi_buffer_flags[port] |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
 			//config.acquisition_buffer_unique_flags |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
 			
 			break;	
@@ -1643,11 +1645,11 @@ static input_system_error_t input_system_configure_channel_sensor(
 			mux = INPUT_SYSTEM_ACQUISITION_UNIT;
 			status = input_system_multiplexer_cfg(&config.multiplexer, mux, &config.multiplexer_flags);
 			if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
-			config.multicast[channel.source_cfg.csi_cfg.csi_port] = INPUT_SYSTEM_INPUT_BUFFER;
+			config.multicast[port] = INPUT_SYSTEM_INPUT_BUFFER;
 			
 			// Shared resource, so it should be blocked.
 			//config.mux_flags |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
-			//config.csi_buffer_flags[channel.source_cfg.csi_cfg.csi_port] |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
+			//config.csi_buffer_flags[port] |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
 			//config.acquisition_buffer_unique_flags |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
 			
 			break;	
@@ -1657,11 +1659,11 @@ static input_system_error_t input_system_configure_channel_sensor(
 			mux = INPUT_SYSTEM_ACQUISITION_UNIT;
 			status = input_system_multiplexer_cfg(&config.multiplexer, mux, &config.multiplexer_flags);
 			if (status != INPUT_SYSTEM_ERR_NO_ERROR) return status;
-			config.multicast[channel.source_cfg.csi_cfg.csi_port] = INPUT_SYSTEM_INPUT_BUFFER;
+			config.multicast[port] = INPUT_SYSTEM_INPUT_BUFFER;
 			
 			// Shared resource, so it should be blocked.
 			//config.mux_flags |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
-			//config.csi_buffer_flags[channel.source_cfg.csi_cfg.csi_port] |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
+			//config.csi_buffer_flags[port] |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
 			//config.acquisition_buffer_unique_flags |= INPUT_SYSTEM_CFG_FLAG_BLOCKED;
 		
 			break;	
@@ -1687,7 +1689,7 @@ static input_system_error_t set_source_type(
 		const input_system_source_t 			rhs,
 		input_system_config_flags_t * const	 	flags)
 {
-	/* MW: Not enough asserts */
+	// MW: Not enough asserts
 	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {
@@ -1726,6 +1728,7 @@ static input_system_error_t set_csi_cfg(
 {
 	uint32_t memory_required;
 	uint32_t acq_memory_required;
+
 	assert_exit_code(lhs && flags, N_INPUT_SYSTEM_ERR);
 
 	if ((*flags) & INPUT_SYSTEM_CFG_FLAG_BLOCKED) {

@@ -59,21 +59,7 @@ static void vvx09f006a00_destroy(struct intel_dsi_device *dsi)
 {
 }
 
-static void vvx09f006a00_commit(struct intel_dsi_device *dsi)
-{
-}
-
-static void vvx09f006a00_prepare(struct intel_dsi_device *dsi)
-{
-}
-
 static void vvx09f006a00_dump_regs(struct intel_dsi_device *dsi)
-{
-}
-
-static void vvx09f006a00_mode_set(struct intel_dsi_device *dsi,
-		  struct drm_display_mode *mode,
-		  struct drm_display_mode *adjusted_mode)
 {
 }
 
@@ -202,6 +188,10 @@ bool vvx09f006a00_init(struct intel_dsi_device *dsi)
 	dsi->video_frmt_cfg_bits = 0;
 	dsi->dphy_reg = 0x3c1fc51f;
 
+	dsi->backlight_off_delay = 20;
+	dsi->send_shutdown = true;
+	dsi->shutdown_pkt_delay = 20;
+
 	return true;
 }
 
@@ -214,9 +204,6 @@ struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops = {
 	.dpms = vvx09f006a00_dpms,
 	.mode_valid = vvx09f006a00_mode_valid,
 	.mode_fixup = vvx09f006a00_mode_fixup,
-	.prepare = vvx09f006a00_prepare,
-	.commit = vvx09f006a00_commit,
-	.mode_set = vvx09f006a00_mode_set,
 	.detect = vvx09f006a00_detect,
 	.get_hw_state = vvx09f006a00_get_hw_state,
 	.get_modes = vvx09f006a00_get_modes,

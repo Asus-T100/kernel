@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -19,11 +20,12 @@
  *
  */
 
-
 #include "fifo_monitor.h"
+
 #ifndef __KERNEL__
 #include <stdbool.h>
 #endif
+
 #include "device_access.h"
 
 #include <hrt/bits.h>

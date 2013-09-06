@@ -778,6 +778,11 @@ static void handle_stopped_endpoint(struct xhci_hcd *xhci,
 	memset(&deq_state, 0, sizeof(deq_state));
 	slot_id = TRB_TO_SLOT_ID(le32_to_cpu(trb->generic.field[3]));
 	ep_index = TRB_TO_EP_INDEX(le32_to_cpu(trb->generic.field[3]));
+	if (!xhci->devs[slot_id]) {
+		xhci_warn(xhci, "Stop endpoint command completion for "
+				"disabled slot\n");
+		return;
+	}
 	ep = &xhci->devs[slot_id]->eps[ep_index];
 
 	if (list_empty(&ep->cancelled_td_list)) {
@@ -1065,6 +1070,12 @@ static void handle_set_deq_completion(struct xhci_hcd *xhci,
 	stream_id = TRB_TO_STREAM_ID(le32_to_cpu(trb->generic.field[2]));
 	dev = xhci->devs[slot_id];
 
+	if (!dev) {
+		xhci_warn(xhci, "WARN Set TR deq ptr command for "
+				"disabled slot\n");
+		return;
+	}
+
 	ep_ring = xhci_stream_id_to_ring(dev, ep_index, stream_id);
 	if (!ep_ring) {
 		xhci_warn(xhci, "WARN Set TR deq ptr command for "
@@ -1146,9 +1157,16 @@ static void handle_reset_ep_completion(struct xhci_hcd *xhci,
 {
 	int slot_id;
 	unsigned int ep_index;
+	struct xhci_virt_device *dev;
 
 	slot_id = TRB_TO_SLOT_ID(le32_to_cpu(trb->generic.field[3]));
 	ep_index = TRB_TO_EP_INDEX(le32_to_cpu(trb->generic.field[3]));
+	dev = xhci->devs[slot_id];
+	if (!dev) {
+		xhci_warn(xhci, "WARN reset ep command for "
+				"disabled slot\n");
+		return;
+	}
 	/* This command will only fail if the endpoint wasn't halted,
 	 * but we don't care.
 	 */
@@ -1414,6 +1432,11 @@ static void handle_cmd_completion(struct xhci_hcd *xhci,
 		break;
 	case TRB_TYPE(TRB_CONFIG_EP):
 		virt_dev = xhci->devs[slot_id];
+		if (!virt_dev) {
+			xhci_warn(xhci, "TRB_CONFIG_EP cmd completion "
+					"for disabled slot\n");
+			break;
+		}
 		if (handle_cmd_in_cmd_wait_list(xhci, virt_dev, event))
 			break;
 		/*
@@ -1459,13 +1482,25 @@ bandwidth_change:
 		break;
 	case TRB_TYPE(TRB_EVAL_CONTEXT):
 		virt_dev = xhci->devs[slot_id];
+		if (!virt_dev) {
+			xhci_warn(xhci, "TRB_EVAL_CONTEXT cmd completion "
+					"for disabled slot\n");
+			break;
+		}
 		if (handle_cmd_in_cmd_wait_list(xhci, virt_dev, event))
 			break;
 		xhci->devs[slot_id]->cmd_status = GET_COMP_CODE(le32_to_cpu(event->status));
 		complete(&xhci->devs[slot_id]->cmd_completion);
 		break;
 	case TRB_TYPE(TRB_ADDR_DEV):
-		xhci->devs[slot_id]->cmd_status = GET_COMP_CODE(le32_to_cpu(event->status));
+		virt_dev = xhci->devs[slot_id];
+		if (!virt_dev) {
+			xhci_warn(xhci, "TRB_ADDR_DEV cmd completion "
+					"for disabled slot\n");
+			break;
+		}
+		virt_dev->cmd_status =
+			GET_COMP_CODE(le32_to_cpu(event->status));
 		complete(&xhci->addr_dev);
 		break;
 	case TRB_TYPE(TRB_STOP_RING):
@@ -1659,6 +1694,13 @@ static void handle_port_status(struct xhci_hcd *xhci,
 			goto cleanup;
 		}
 
+#ifdef CONFIG_USB_SUSPEND
+		/* add 5s time-out wakelock for delay system suspend */
+		wake_lock_timeout(&hcd->wake_lock, 5 * HZ);
+		xhci_dbg(xhci,
+			"%s add 5s wake_lock for port connect change\n",
+			__func__);
+#endif
 		if (DEV_SUPERSPEED(temp)) {
 			xhci_dbg(xhci, "remote wake SS port %d\n", port_id);
 			/* Set a flag to say the port signaled remote wakeup,

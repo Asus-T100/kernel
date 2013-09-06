@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -1676,6 +1676,22 @@ ia_css_stop_sp(void);
 enum ia_css_err
 ia_css_mipi_frame_specify(const unsigned int	size_mem_words,
 				const bool contiguous);
+
+/** @brief Register size of a CSS MIPI frame for check during capturing.
+ *
+ * @param[in]	port	CSI-2 port this check is registered.
+ * @param[in]	size_mem_words	The frame size in memory words (32B).
+ * @return		Return the error in case of failure. E.g. MAX_NOF_ENTRIES REACHED
+ *
+ * Register size of a CSS MIPI frame to check during capturing. Up to
+ * 		IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES entries per port allowed. Entries are reset
+ * 		when stream is stopped.
+ *
+ *
+ */
+enum ia_css_err
+ia_css_mipi_frame_enable_check_on_size(const enum ia_css_csi2_port port,
+				const unsigned int	size_mem_words);
 
 /** @brief Dequeue param buffers from sp2host_queue
  *

@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -1528,7 +1528,8 @@ ia_css_set_dvs_coefficients(struct ia_css_isp_parameters *params,
 				const struct ia_css_dvs_coefficients *coefs)
 {
 	assert_exit(params && coefs);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_dis_coefficients() enter: \
+
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_set_dvs_coefficients() enter: \
 		hcoef=%p, vcoef=%p", coefs->hor_coefs, coefs->ver_coefs);
 	params->dis_hor_coef_tbl = coefs->hor_coefs;
 	params->dis_ver_coef_tbl = coefs->ver_coefs;
@@ -3226,16 +3227,16 @@ static enum ia_css_err sh_css_params_default_morph_table(
 	const struct sh_css_binary *binary)
 {
 /* MW 2400 advanced requires different scaling */
-	unsigned int i, j, k,
-		     width, height,
-		     step = (ISP_VEC_NELEMS / 16) * 128;
+	unsigned int i, j, k, step, width, height;
 	short start_x[IA_CSS_MORPH_TABLE_NUM_PLANES] = { -8, 0, -8, 0, 0, -8 },
 	      start_y[IA_CSS_MORPH_TABLE_NUM_PLANES] = { 0, 0, -8, -8, -8, 0 };
 	struct ia_css_morph_table *tab;
 
 	assert_exit_code(table && binary, IA_CSS_ERR_INTERNAL_ERROR);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_default_morph_table() enter:\n");
-	width = binary->morph_tbl_width,
+
+	step = (ISP_VEC_NELEMS / 16) * 128,
+	width = binary->morph_tbl_width;
 	height = binary->morph_tbl_height;
 
 	tab = ia_css_morph_table_allocate(width, height);

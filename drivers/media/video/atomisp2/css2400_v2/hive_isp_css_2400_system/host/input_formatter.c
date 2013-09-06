@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -101,8 +101,9 @@ void input_formatter_get_switch_state(
 	input_formatter_switch_state_t	*state)
 {
 	assert_exit(ID < N_INPUT_FORMATTER_ID && state);
-/* We'll change this into an intelligent function to get switch info per IF */
-(void)ID;
+
+	/* We'll change this into an intelligent function to get switch info per IF */
+	(void)ID;
 
 	state->if_input_switch_lut_reg[0] = gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg0);
 	state->if_input_switch_lut_reg[1] = gp_device_reg_load(GP_DEVICE0_ID, _REG_GP_IFMT_input_switch_lut_reg1);

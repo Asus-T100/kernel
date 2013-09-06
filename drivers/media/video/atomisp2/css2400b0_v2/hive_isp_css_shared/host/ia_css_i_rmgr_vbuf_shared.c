@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -133,7 +134,7 @@ void ia_css_i_host_rmgr_uninit_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 {
 	uint32_t i;
 
-	assert_exit(pool );
+	assert_exit(pool);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_i_host_rmgr_uninit_vbuf()\n");
@@ -184,7 +185,7 @@ void ia_css_i_host_rmgr_pop_handle(
 {
 	uint32_t i;
 	bool succes = false;
-	assert_exit(pool && pool->recycle && pool->handles && handle);
+	assert_exit(pool && pool->recycle && pool->handles && handle && *handle);
 	for (i = 0; i < pool->size; i++) {
 		if (pool->handles[i] != NULL && pool->handles[i]->size == (*handle)->size) {
 			*handle = pool->handles[i];

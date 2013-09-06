@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -73,7 +73,7 @@
 #endif
 #define NUM_MIPI_FRAMES		4
 
-#define NUM_OFFLINE_INIT_CONTINUOUS_FRAMES     4
+#define NUM_OFFLINE_INIT_CONTINUOUS_FRAMES     3
 #define NUM_ONLINE_INIT_CONTINUOUS_FRAMES      2
 
 #define NUM_TNR_FRAMES		2
@@ -339,6 +339,8 @@ struct sh_css_sp_input_formatter_set {
 	input_formatter_cfg_t	config_b;
 };
 
+#define IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT (3)
+
 /* SP configuration information */
 struct sh_css_sp_config {
 	uint8_t			is_offline;  /* Run offline, with continuous copy */
@@ -355,6 +357,7 @@ struct sh_css_sp_config {
 	prbs_cfg_t				prbs;
 	input_system_cfg_t		input_circuit;
 	uint8_t					input_circuit_cfg_changed;
+	uint32_t				mipi_sizes_for_check[N_CSI_PORTS][IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT];
 };
 
 enum sh_css_stage_type {
@@ -827,6 +830,8 @@ void
 sh_css_frame_info_set_width(struct ia_css_frame_info *info,
 			    unsigned int width,
 			    unsigned int aligned); // this can be used for an extra alignemt requirement. when 0, no extra alignment is done.
+
+unsigned int sh_css_get_mipi_sizes_for_check(const unsigned int port, const unsigned int idx);
 
 /* Return whether the sp copy process should be started */
 bool

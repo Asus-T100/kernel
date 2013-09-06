@@ -678,7 +678,15 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 			trip_temp > 0 ? "highest" : "lowest");
 	}
 
+	/*
+	 * Hold the irq lock, so that no alert threshold for any sensor
+	 * is being programmed while we are handling an interrupt
+	 */
+	mutex_lock(&tdata->thrm_irq_lock);
+
 	ret = set_alert_temp(alert_reg_l, adc_val, trip);
+
+	mutex_unlock(&tdata->thrm_irq_lock);
 
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -886,9 +894,10 @@ exit:
 	return;
 }
 
-static int update_intrpt_params(int irq, int level, int *sensor, int *event)
+static int update_intrpt_params(int irq, int level)
 {
 	int i, sts;
+	struct thermal_event te;
 
 	/* Read the appropriate status register */
 	sts = intel_mid_pmic_readb(params[0][level]);
@@ -897,9 +906,10 @@ static int update_intrpt_params(int irq, int level, int *sensor, int *event)
 
 	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
 		if (irq & params[1][i]) {
-			*sensor = i;
-			*event = !!(sts & params[2][i]);
-			break;
+			te.level = level;
+			te.sensor = i;
+			te.event = !!(sts & params[2][i]);
+			kfifo_put(&irq_fifo, &te);
 		}
 	}
 	return 0;
@@ -910,21 +920,21 @@ static void thermal_work_func(struct work_struct *work)
 	int gotten;
 	struct thermal_event te;
 
-	gotten = kfifo_get(&irq_fifo, &te);
-	if (!gotten) {
-		pr_err("kfifo empty\n");
-		return;
-	}
+	while (!kfifo_is_empty(&irq_fifo)) {
+		gotten = kfifo_get(&irq_fifo, &te);
+		if (!gotten) {
+			pr_err("kfifo empty\n");
+			return;
+		}
 
-	/* Notify the user space through UEvent */
-	notify_thermal_event(te);
+		/* Notify the user space through UEvent */
+		notify_thermal_event(te);
+	}
 }
 
 static irqreturn_t thermal_intrpt(int irq_nr, void *id)
 {
-	int ret, irq, reg, level, clear_bit;
-	int sensor = 0, event = 0;
-	struct thermal_event te;
+	int ret, irq, irq_cache, reg, level;
 	struct thermal_data *tdata = (struct thermal_data *)id;
 
 	if (!tdata)
@@ -948,6 +958,8 @@ static irqreturn_t thermal_intrpt(int irq_nr, void *id)
 		if (irq < 0)
 			goto exit;
 
+		irq_cache = irq;
+
 		irq = irq >> (PMIC_THERMAL_SENSORS * (level == LEVEL_ALERT1));
 		if (irq & 0x0F)
 			goto handle_event;
@@ -966,19 +978,11 @@ handle_event:
 	 * which sensor caused the event, and for what transition
 	 * [either 'Hot to Cold' or 'Cold to Hot']
 	 */
-	ret = update_intrpt_params(irq, level, &sensor, &event);
+	ret = update_intrpt_params(irq, level);
 	if (ret < 0)
 		goto exit_err;
 
-	te.event = event;
-	te.sensor = sensor;
-	te.level = level;
-
-	kfifo_put(&irq_fifo, &te);
-
-	/* Alright, we handled the interrupt; Now, clear it. */
-	clear_bit = sensor + PMIC_THERMAL_SENSORS * (level == LEVEL_ALERT1);
-	ret = intel_mid_pmic_setb(reg, (1 << clear_bit));
+	ret = intel_mid_pmic_writeb(reg, irq_cache);
 	if (ret < 0)
 		goto exit_err;
 
@@ -1165,13 +1169,11 @@ exit_free:
 
 static int byt_thermal_resume(struct device *dev)
 {
-	dev_info(dev, "resume called.\n");
 	return 0;
 }
 
 static int byt_thermal_suspend(struct device *dev)
 {
-	dev_info(dev, "suspend called.\n");
 	return 0;
 }
 

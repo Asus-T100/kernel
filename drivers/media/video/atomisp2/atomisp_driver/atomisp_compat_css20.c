@@ -455,17 +455,9 @@ static void __apply_additional_pipe_config(
 		return;
 	}
 
-	/*
-	 * Current ISP2.2 Firmware has issues with online still capture.
-	 * So still uses ISP1.5 firmware for online still capture cases
-	 */
-	if (asd->run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE)
-		asd->stream_env.pipe_configs[pipe_id].
-		    isp_pipe_version = 1;
-	else
-		asd->stream_env.pipe_configs[pipe_id].
-		    isp_pipe_version = 2;
-
+	/* apply default pipe config */
+	asd->stream_env.pipe_configs[pipe_id].
+				isp_pipe_version = 2;
 	/* apply isp 2.2 specific config for baytrail*/
 	switch (pipe_id) {
 	case IA_CSS_PIPE_ID_CAPTURE:

@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -236,12 +236,10 @@ static void print_if_state(
 #if defined(HAS_INPUT_FORMATTER_VERSION_1)
 	st_reset  = (state->reset ? "Active" : "Not active");
 #endif
-
 	st_vsync_active_low =
 		(state->vsync_active_low ? "low" : "high");
 	st_hsync_active_low =
 		(state->hsync_active_low ? "low" : "high");
-
 	st_stline = state->start_line;
 	st_stcol  = state->start_column;
 	st_crpht  = state->cropped_height;
@@ -598,6 +596,10 @@ void sh_css_dump_dma_state(void)
 	case N_DMA_COMMANDS:
 		snprintf(last_cmd_str, 64,
 		  "UNKNOWN");
+		break;
+	default:
+		snprintf(last_cmd_str, 64,
+		  "unknown [Channel: %d]", ch_id);
 		break;
 	}
 	sh_css_dtrace(2, "\t%-32s: (0x%X : %s)\n", "last command received",

@@ -1400,16 +1400,6 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 		return -EIO;
 	}
 
-	/* check if the device is accessible */
-	ret = ulpmc_read_reg16(client, ULPMC_FG_REG_CNTL);
-	if (ret < 0) {
-		dev_err(&client->dev,
-			"I2C read error:%s error:%d\n", __func__, ret);
-		return -EIO;
-	} else {
-		dev_err(&client->dev, "FG control reg:%x\n", ret);
-	}
-
 	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
 	if (!chip) {
 		dev_err(&client->dev, "failed to allocate memory\n");
@@ -1419,6 +1409,16 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
 	i2c_set_clientdata(client, chip);
+
+	/* check if the device is accessible */
+	ret = ulpmc_read_reg16(client, ULPMC_FG_REG_CNTL);
+	if (ret < 0) {
+		dev_err(&client->dev,
+			"I2C read error:%s error:%d\n", __func__, ret);
+		chip->is_fwupdate_on = true;
+	} else {
+		dev_err(&client->dev, "FG control reg:%x\n", ret);
+	}
 
 	INIT_WORK(&chip->chg_work, ulpmc_chg_work_handler);
 	mutex_init(&chip->lock);

@@ -172,13 +172,19 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 	struct i2c_client *client = chip->client;
 	static bool notify_otg, notify_charger;
 	static char *cable;
-	int stat, devtype, ohm_code, ret;
+	int stat, devtype, ohm_code, cntl, ret;
 	u8 w_man_sw, w_man_chg_cntl;
 	bool discon_evt = false, drive_vbus = false;
 	int vbus_mask = 0;
 	int usb_switch = 1;
 
 	/* read status registers */
+	ret = fsa9285_read_reg(client, FSA9285_REG_CTRL);
+	if (ret < 0)
+		goto dev_det_i2c_failed;
+	else
+		cntl = ret;
+
 	ret = fsa9285_read_reg(client, FSA9285_REG_DEVTYPE);
 	if (ret < 0)
 		goto dev_det_i2c_failed;
@@ -197,8 +203,8 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 	else
 		ohm_code = ret;
 
-	dev_info(&client->dev, "devtype:%x, Stat:%x, ohm:%x\n",
-				devtype, stat, ohm_code);
+	dev_info(&client->dev, "devtype:%x, Stat:%x, ohm:%x cntl:%x\n",
+				devtype, stat, ohm_code, cntl);
 
 	/* set default register setting */
 	w_man_sw = (chip->man_sw & 0x3) | MAN_SW_DPDM_HOST1;
@@ -255,6 +261,14 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 	} else {
 		dev_warn(&chip->client->dev,
 			"ID or VBUS change event\n");
+		if (stat & STATUS_VBUS_VALID)
+			chip->cntl = cntl | CTRL_EN_DCD_TOUT;
+		else
+			chip->cntl = cntl & ~CTRL_EN_DCD_TOUT;
+
+		ret = fsa9285_write_reg(client, FSA9285_REG_CTRL, chip->cntl);
+		if (ret < 0)
+			dev_warn(&chip->client->dev, "i2c write failed\n");
 		/* disconnect event */
 		discon_evt = true;
 		/* usb switch off per nothing attached */
@@ -359,10 +373,10 @@ static irqreturn_t fsa9285_irq_handler(int irq, void *data)
 	else
 		dev_info(&client->dev, "intr:%x\n", ret);
 
-	mdelay(10);
 	/* unmask the interrupts */
 	ret = fsa9285_write_reg(client, FSA9285_REG_CTRL,
 					chip->cntl & ~CTRL_INT_MASK);
+	mdelay(10);
 isr_ret:
 	pm_runtime_put_sync(&chip->client->dev);
 	return IRQ_HANDLED;
@@ -393,7 +407,7 @@ static int fsa9285_irq_init(struct fsa9285_chip *chip)
 		goto irq_i2c_failed;
 	else
 		cntl = ret;
-	cntl = (cntl | CTRL_EM_MAN_SW) & ~CTRL_INT_MASK;
+	cntl = (cntl | CTRL_EM_MAN_SW) & ~(CTRL_INT_MASK | CTRL_EN_DCD_TOUT);
 	ret = fsa9285_write_reg(client, FSA9285_REG_CTRL, cntl);
 	if (ret < 0)
 		goto irq_i2c_failed;

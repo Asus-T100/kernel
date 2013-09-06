@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -1308,17 +1308,6 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 	unsigned int pipe_num;
 	assert_exit_code(pipe != NULL, IA_CSS_ERR_INTERNAL_ERROR);
 	assert_exit_code(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES, IA_CSS_ERR_INTERNAL_ERROR);
-#ifndef __KERNEL__
-	assert(or_mask <= UINT16_MAX);
-	assert(and_mask <= UINT16_MAX);
-#endif
-	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
-
-	sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_set_irq_mask("
-				"or_mask=%x, and_mask=%x)\n",
-				or_mask, and_mask);
-
-	assert(IA_CSS_PIPE_ID_NUM == NR_OF_PIPELINES);
 	/* Linux kernel does not have UINT16_MAX
 	 * Therefore decided to comment out these 2 asserts for Linux
 	 * Alternatives that were not chosen:
@@ -1330,6 +1319,13 @@ ia_css_pipe_set_irq_mask(struct ia_css_pipe *pipe,
 	assert(or_mask <= UINT16_MAX);
 	assert(and_mask <= UINT16_MAX);
 #endif
+
+	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
+
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_set_irq_mask("
+				"or_mask=%x, and_mask=%x)\n",
+				or_mask, and_mask);
+
 
 	event_irq_mask.or_mask  = (uint16_t)or_mask;
 	event_irq_mask.and_mask = (uint16_t)and_mask;

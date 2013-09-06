@@ -348,7 +348,7 @@ struct mxt_platform_data mxt_pdata[] = {
 			.version = 0x20,
 			.build = 0xAB,
 			.info_crc = 0xB86FA4,
-			.config_crc = 0xBBD300,
+			.config_crc = 0xB85700,
 		},
 		.hardware_id = MXT_3432S_ID,
 	},
@@ -1629,7 +1629,7 @@ static void mxt_dump_cfg(struct mxt_data *data,
  *   <SIZE> - 2-byte object size as hex
  *   <CONTENTS> - array of <SIZE> 1-byte hex values
  */
-static int mxt_check_reg_init(struct mxt_data *data)
+static int mxt_check_reg_init(struct mxt_data *data, bool force)
 {
 	struct device *dev = &data->client->dev;
 	struct mxt_info cfg_info;
@@ -1735,8 +1735,10 @@ static int mxt_check_reg_init(struct mxt_data *data)
 				data->config_crc == platform_info->config_crc) {
 			dev_info(dev, "Config CRC 0x%06X: OK\n",
 					data->config_crc);
-			ret = 0;
-			goto release;
+			if (!force) {
+				ret = 0;
+				goto release;
+			}
 
 		} else {
 			mxt_dump_cfg(data, cfg, data_pos);
@@ -2496,7 +2498,7 @@ err_free_mem:
 }
 
 static int mxt_initialize_t9_input_device(struct mxt_data *data);
-static int mxt_configure_objects(struct mxt_data *data);
+static int mxt_configure_objects(struct mxt_data *data, bool force);
 
 static void mxt_check_firmware(struct mxt_data *data)
 {
@@ -2584,14 +2586,14 @@ retry_bootloader:
 	if (error)
 		return error;
 
-	error = mxt_configure_objects(data);
+	error = mxt_configure_objects(data, false);
 	if (error)
 		return error;
 
 	return 0;
 }
 
-static int mxt_configure_objects(struct mxt_data *data)
+static int mxt_configure_objects(struct mxt_data *data, bool force)
 {
 	struct i2c_client *client = data->client;
 	int error;
@@ -2607,7 +2609,7 @@ static int mxt_configure_objects(struct mxt_data *data)
 	}
 
 	/* Check register init values */
-	error = mxt_check_reg_init(data);
+	error = mxt_check_reg_init(data, force);
 	if (error) {
 		dev_warn(&client->dev, "Initialize configuration failed (%d)\n",
 			error);
@@ -2957,7 +2959,7 @@ static ssize_t mxt_update_cfg_store(struct device *dev,
 		data->suspended = false;
 	}
 
-	ret = mxt_configure_objects(data);
+	ret = mxt_configure_objects(data, true);
 	if (ret)
 		goto out;
 

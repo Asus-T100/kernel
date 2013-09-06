@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -324,6 +324,7 @@ struct sh_css {
 	hrt_vaddress                   sp_bin_addr;
 	hrt_data                       page_table_base_index;
 	unsigned int                   size_mem_words;
+	uint32_t                       mipi_sizes_for_check[N_CSI_PORTS][IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT];
 	bool                           contiguous;
 	enum ia_css_irq_type           irq_type;
 };
@@ -343,6 +344,7 @@ struct sh_css {
 	0,                        /* sp_bin_addr */ \
 	0,                        /* page_table_base_index */ \
 	0,                        /* size_mem_words */ \
+	{ {0, 0, 0}, {0, 0, 0}, {0, 0, 0} },    /* mipi_sizes_for_check */ \
 	true,                     /* contiguous */ \
 	IA_CSS_IRQ_TYPE_EDGE,      /* irq_type */ \
 }
@@ -2217,13 +2219,13 @@ ia_css_init(const struct ia_css_env *env,
 		return err;
 	err = sh_css_params_init();
 	if (err != IA_CSS_SUCCESS)
-		return err;
+		goto refcnt_uninit;
 	if (fw)
 	{
 		ia_css_unload_firmware(); /* in case we already had firmware loaded */
 		err = sh_css_load_firmware(fw->data, fw->bytes);
 		if (err != IA_CSS_SUCCESS)
-			return err;
+			goto params_uninit;
 		sh_css_init_binary_infos();
 		fw_explicitly_loaded = false;
 	}
@@ -2232,7 +2234,8 @@ ia_css_init(const struct ia_css_env *env,
 						    my_css.sp_bin_addr);
 	if (!my_css.sp_bin_addr) {
 		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
-		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+		err = IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+		goto unload_fw;
 	}
 
 #if defined(HRT_CSIM)
@@ -2243,7 +2246,8 @@ ia_css_init(const struct ia_css_env *env,
 	 */
 	if (!sh_css_debug_mode_init()) {
 		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_INTERNAL_ERROR);
-		return IA_CSS_ERR_INTERNAL_ERROR;
+		err = IA_CSS_ERR_INTERNAL_ERROR;
+		goto free_sp_bin_addr;
 	}
 #endif
 
@@ -2258,7 +2262,8 @@ ia_css_init(const struct ia_css_env *env,
 #endif
 	if (!sh_css_hrt_system_is_idle()) {
 		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_SYSTEM_NOT_IDLE);
-		return IA_CSS_ERR_SYSTEM_NOT_IDLE;
+		err = IA_CSS_ERR_SYSTEM_NOT_IDLE;
+		goto free_sp_bin_addr;
 	}
 	/* can be called here, queuing works, but:
 	   - when sp is started later, it will wipe queued items
@@ -2273,8 +2278,21 @@ ia_css_init(const struct ia_css_env *env,
 	if(ia_css_input_system_init() != INPUT_SYSTEM_ERR_NO_ERROR)
 		err = IA_CSS_ERR_INVALID_ARGUMENTS;
 #endif
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",err);
+	if (err == IA_CSS_SUCCESS)
+		goto init_ok;
 
+free_sp_bin_addr:
+	mmgr_free(my_css.sp_bin_addr);
+	my_css.sp_bin_addr = mmgr_NULL;
+unload_fw:
+	if (fw)
+		ia_css_unload_firmware();
+params_uninit:
+	sh_css_params_uninit();
+refcnt_uninit:
+	sh_css_refcount_uninit();
+init_ok:
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave:err=%d\n", err);
 	return err;
 }
 
@@ -2395,7 +2413,7 @@ static uint8_t
 generate_pipe_number(void)
 {
 	uint8_t i;
-	uint8_t pipe_num = ~0;
+	uint8_t pipe_num = ~0; /* UINT8_MAX; but Linux does not have this macro */
 	/*Assign a new pipe_num .... search for empty place */
 	for (i = 0; i < MAX_NUM_PIPES; i++)
 	{
@@ -2405,7 +2423,7 @@ generate_pipe_number(void)
 			break;
 		}
 	}
-	assert_exit_code(pipe_num != ~0, ~0);
+	assert_exit_code(pipe_num != (uint8_t)~0, ~0); /* UINT8_MAX; but Linux does not have this macro */
 	pipe_num_counter++;
 	map_pipe_num_to_sp_thread(pipe_num);
 	return pipe_num;
@@ -3646,7 +3664,7 @@ static enum ia_css_err add_capture_pp_stage(
 {
 	const struct ia_css_fw_info *last_fw;
 	enum ia_css_err err = IA_CSS_SUCCESS;
-	struct ia_css_frame *in_frame = NULL;
+	struct ia_css_frame *in_frame;
 	struct ia_css_frame *vf_frame = NULL;
 
 /* out_frame can be NULL ??? */
@@ -4094,6 +4112,8 @@ ia_css_pipe_enqueue_buffer(struct ia_css_pipe *pipe,
 				sizeof(struct sh_css_hmm_buffer));
 	if ((buf_type == IA_CSS_BUFFER_TYPE_3A_STATISTICS)
 		|| (buf_type == IA_CSS_BUFFER_TYPE_DIS_STATISTICS)) {
+		/* pipeline will always be non NULL if we have statistics, but KW does not know;
+		   this fixes a KW warning on the dereference of pipeline in the for loop */
 		assert_exit_code(pipeline, IA_CSS_ERR_INTERNAL_ERROR);
 		for (stage = pipeline->stages; stage; stage = stage->next) {
 			/* The SP will read the params
@@ -4431,6 +4451,8 @@ ia_css_dequeue_event(struct ia_css_event *event)
 	uint8_t arg3 = 0;
 
 	assert_exit_code(event, IA_CSS_ERR_INTERNAL_ERROR);
+
+	/* do not add a sh_css_dtrace statement here as this function can be polled */
 	/* dequeue the IRQ event */
 	is_event_available = sp2host_dequeue_irq_event(&sp_event);
 
@@ -4533,18 +4555,25 @@ ia_css_dequeue_event(struct ia_css_event *event)
 }
 
 static void
-set_sp_copy_pack(void)
+set_sp_copy_pack(struct ia_css_stream *stream)
 {
 	const struct ia_css_fw_info *fw;
+	unsigned int bpp = ia_css_stream_input_format_bits_per_pixel(stream);
 	
+	unsigned int HIVE_ADDR_sp_pack_bits;
 	unsigned int HIVE_ADDR_sp_copy_pack;
 
 	fw = &sh_css_sp_fw;
 	
+	HIVE_ADDR_sp_pack_bits = fw->info.sp.pack_bits;
 	HIVE_ADDR_sp_copy_pack = fw->info.sp.copy_pack;
 
+	(void)HIVE_ADDR_sp_pack_bits;
 	(void)HIVE_ADDR_sp_copy_pack;
 
+	sp_dmem_store_uint32(SP0_ID,
+			(unsigned int)sp_address_of(sp_pack_bits),
+			(uint32_t)(bpp));
 	sp_dmem_store_uint32(SP0_ID,
 			(unsigned int)sp_address_of(sp_copy_pack),
 			(uint32_t)(1));
@@ -4632,7 +4661,7 @@ sh_css_pipe_start(struct ia_css_stream *stream)
 	if (old_pipe->stream->config.continuous) {
 		struct sh_css_pipe *copy_pipe = NULL;
 
-		set_sp_copy_pack();
+		set_sp_copy_pack(old_pipe->stream);
 
 		if (pipe_id == IA_CSS_PIPE_ID_PREVIEW)
 			copy_pipe = pipe->old_pipe->pipe.preview.copy_pipe;
@@ -4719,21 +4748,22 @@ sh_css_pipe_get_input_resolution(struct sh_css_pipe *pipe,
 			else
 				binary = &pipe->pipe.capture.pre_isp_binary;
 		}
-		if (!binary)
-			return IA_CSS_ERR_INTERNAL_ERROR;
-		*width  = binary->in_frame_info.res.width +
-			columns_needed_for_bayer_order(pipe);
-		*height = binary->in_frame_info.res.height +
-			lines_needed_for_bayer_order(pipe);
-	/* TODO: Remove this when the decimated resolution is available */
-	/* Only for continuous preview mode where we need 2xOut resolution */
-		if (pipe->input_needs_raw_binning &&
-		pipe->pipe.preview.preview_binary.info->enable.raw_binning) {
-			*width *= 2;
-			*width -= binary->info->left_cropping;
-			*height *= 2;
-			*height -= binary->info->left_cropping;
-		}
+		if (binary) {
+			*width  = binary->in_frame_info.res.width +
+				columns_needed_for_bayer_order(pipe);
+			*height = binary->in_frame_info.res.height +
+				lines_needed_for_bayer_order(pipe);
+			/* TODO: Remove this when the decimated resolution is available */
+			/* Only for continuous preview mode where we need 2xOut resolution */
+			if (pipe->input_needs_raw_binning &&
+			pipe->pipe.preview.preview_binary.info->enable.raw_binning) {
+				*width *= 2;
+				*width -= binary->info->left_cropping;
+				*height *= 2;
+				*height -= binary->info->left_cropping;
+			}
+		} else
+			err = IA_CSS_ERR_INTERNAL_ERROR;
 	}
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_pipe_get_input_resolution() leave: width=%d, height=%d err=%d\n",
@@ -4806,6 +4836,16 @@ sh_css_continuous_start_sp_copy(void)
 {
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_start_sp_copy() enter: void\n");
 	return my_css.start_sp_copy;
+}
+
+unsigned int
+sh_css_get_mipi_sizes_for_check(const unsigned int port, const unsigned int idx)
+{
+	OP___assert(port < N_CSI_PORTS);
+	OP___assert(idx  < IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_mipi_sizes_for_check(port %d, idx %d): %d\n", 
+		port, idx, my_css.mipi_sizes_for_check[port][idx]);
+	return my_css.mipi_sizes_for_check[port][idx];
 }
 
 static enum ia_css_err sh_css_pipe_configure_output(
@@ -7212,6 +7252,29 @@ ia_css_mipi_frame_calculate_size(const unsigned int width,
 	return err;
 }
 
+enum ia_css_err
+ia_css_mipi_frame_enable_check_on_size(const enum ia_css_csi2_port port,
+				const unsigned int	size_mem_words)
+{
+	uint32_t idx;
+
+	enum ia_css_err err = IA_CSS_ERR_RESOURCE_NOT_AVAILABLE;
+
+	OP___assert(port < N_CSI_PORTS);
+	OP___assert(size_mem_words != 0);
+
+
+	for (idx = 0; idx < IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT &&
+		my_css.mipi_sizes_for_check[port][idx] != 0;
+		idx++){}
+	if (idx < IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT) {
+		my_css.mipi_sizes_for_check[port][idx] = size_mem_words;
+		err = IA_CSS_SUCCESS;
+	}
+
+	return err;
+}
+
 enum ia_css_err ia_css_frame_allocate_contiguous(
 	struct ia_css_frame **frame,
 	unsigned int width,
@@ -7904,7 +7967,8 @@ sh_css_acceleration_stop(struct ia_css_pipe *pipe)
 {
 	enum ia_css_err err = IA_CSS_SUCCESS;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_acceleration_stop() enter: void\n");
-	err = sh_css_pipe_stop(pipe);
+	if (pipe)
+		err = sh_css_pipe_stop(pipe);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_acceleration_stop() leave: return_err=%d\n",err);
 	return err;
@@ -8478,6 +8542,11 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 						IA_CSS_PIPE_MODE_VIDEO, false);
 		capture_pipe = find_pipe(pipes, num_pipes,
 						IA_CSS_PIPE_MODE_CAPTURE, false);
+
+		/* we are in continuous capture mode so there should be a capture pipe */
+		if (capture_pipe == NULL)
+			return IA_CSS_ERR_INTERNAL_ERROR;
+
 		/* We do not support preview and video pipe at the same time */
 		if (preview_pipe && video_pipe)
 			return IA_CSS_ERR_INVALID_ARGUMENTS;
@@ -8568,7 +8637,7 @@ enum ia_css_err
 ia_css_stream_destroy(struct ia_css_stream *stream)
 {
 	int i;
-	sh_css_dtrace(SH_DBG_TRACE, "ia_css_stream_destroy: enter\n");
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_stream_destroy() enter\n");
 	assert_exit_code(stream, IA_CSS_ERR_INVALID_ARGUMENTS);
 	ia_css_stream_isp_parameters_uninit(stream);
 
@@ -8631,6 +8700,18 @@ ia_css_stream_start(struct ia_css_stream *stream)
 	/* for now simple implementation, just start what seems right */
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_stream_start: starting %d\n",
 		stream->last_pipe->old_pipe->mode);
+
+	// Initialize mipi size checks
+	if (stream->config.mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
+	{
+		unsigned int idx;
+		unsigned int port = (unsigned int) (stream->config.source.port.port) ;
+
+		for (idx = 0; idx < IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT; idx++) {
+			sh_css_sp_group.config.mipi_sizes_for_check[port][idx] =  sh_css_get_mipi_sizes_for_check(port, idx);
+		}
+	}
+
 	return sh_css_pipe_start(stream);
 }
 
@@ -8638,7 +8719,6 @@ enum ia_css_err
 ia_css_stream_stop(struct ia_css_stream *stream)
 {
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_stream_stop() enter/exit\n");
-	/* for now simple implementation, just start what seems right */
 	assert_exit_code(stream && stream->last_pipe
 			&& stream->last_pipe->old_pipe,
 			IA_CSS_ERR_INVALID_ARGUMENTS);
@@ -8647,6 +8727,17 @@ ia_css_stream_stop(struct ia_css_stream *stream)
 
 	// Check if this is the last pipe, if not return else stop everything
 	//if (pipe_num_counter > 1) return IA_CSS_SUCCESS;
+
+	// De-initialize mipi size checks
+	if (stream->config.mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
+	{
+		unsigned int idx;
+		unsigned int port = (unsigned int) (stream->config.source.port.port) ;
+
+		for (idx = 0; idx < IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT; idx++) {
+			sh_css_sp_group.config.mipi_sizes_for_check[port][idx] = 0;
+		}
+	}
 	return sh_css_pipe_request_stop(stream->last_pipe);
 }
 

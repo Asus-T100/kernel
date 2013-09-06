@@ -274,13 +274,7 @@ static void xhci_byt_pm_check_work(struct work_struct *work)
 
 	pdev = to_pci_dev(hcd->self.controller);
 
-	/* Workaround: controller can not set PME_STATUS in D3, so
-	   get controller back to D0 and check PME_STATUS */
-	if (pdev->current_state != PCI_D0)
-		pci_set_power_state(pdev, PCI_D0);
-	else
-		goto done;
-
+	/* No need to put XHCI back to D0, as PMC will do */
 	msleep(20);
 
 	if (pci_check_pme_enable_and_status(pdev)) {

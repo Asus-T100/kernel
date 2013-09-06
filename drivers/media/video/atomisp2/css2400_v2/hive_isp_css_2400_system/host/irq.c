@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -269,8 +269,9 @@ void cnd_virq_enable_channel(
 	irq_ID_t		ID = virq_get_irq_id(irq_ID, &channel_ID);
 	
 	assert_exit(ID < N_IRQ_ID);
-	for (i = IRQ1_ID; i < N_IRQ_ID; i++) {
-		/* not allowed to enable the pin of a nested IRQ directly */
+
+	for (i=IRQ1_ID;i<N_IRQ_ID;i++) {
+	/* It is not allowed to enable the pin of a nested IRQ directly */
 		assert(irq_ID != IRQ_NESTING_ID[i]);
 	}
 
@@ -353,7 +354,7 @@ enum hrt_isp_css_irq_status virq_get_channel_id(
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_success;
 	irq_ID_t ID;
 
-	assert(irq_id != NULL);
+	assert_exit_code(irq_id != NULL, hrt_isp_css_irq_status_error);
 
 /* find the first irq bit on device 0 */
 	for (idx = 0; idx < IRQ_N_CHANNEL[IRQ0_ID]; idx++) {

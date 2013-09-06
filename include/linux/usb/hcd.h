@@ -87,7 +87,7 @@ struct usb_hcd {
 	struct urb		*status_urb;	/* the current status urb */
 #ifdef CONFIG_USB_SUSPEND
 	struct work_struct	wakeup_work;	/* for remote wakeup */
-	struct wake_lock	*wake_lock;	/* for add time-delay */
+	struct wake_lock	wake_lock;	/* for add time-delay */
 #endif
 
 	/*

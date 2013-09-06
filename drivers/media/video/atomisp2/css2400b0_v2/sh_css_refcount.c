@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130820_2200 */
+/* Release Version: ci_master_byt_20130823_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -199,7 +199,7 @@ bool sh_css_refcount_is_single(hrt_vaddress ptr)
 int32_t sh_css_refcount_get_id(hrt_vaddress ptr)
 {
 	struct sh_css_refcount_entry *entry;
-	assert_exit_code(ptr, 0);
+	assert_exit_code(ptr != mmgr_NULL, 0);
 	entry = find_entry(ptr, false);
 	assert_exit_code(entry, 0);
 	return entry->id;
