@@ -181,6 +181,11 @@ static int mei_cl_irq_close(struct mei_cl *cl, struct mei_cl_cb *cb,
 	u32 msg_slots =
 		mei_data2slots(sizeof(struct hbm_client_connect_request));
 
+	if (!dev->hbuf_is_ready) {
+		cl_dbg(dev, cl, "host buffer is notready: not sending.\n");
+		return 0;
+	}
+
 	if (*slots < msg_slots)
 		return -EMSGSIZE;
 
@@ -222,6 +227,10 @@ static int mei_cl_irq_read(struct mei_cl *cl, struct mei_cl_cb *cb,
 
 	int ret;
 
+	if (!dev->hbuf_is_ready) {
+		cl_dbg(dev, cl, "host buffer is notready: not sending.\n");
+		return 0;
+	}
 
 	if (*slots < msg_slots) {
 		/* return the cancel routine */
@@ -265,6 +274,10 @@ static int mei_cl_irq_ioctl(struct mei_cl *cl, struct mei_cl_cb *cb,
 	u32 msg_slots =
 		mei_data2slots(sizeof(struct hbm_client_connect_request));
 
+	if (!dev->hbuf_is_ready) {
+		cl_dbg(dev, cl, "host buffer is notready: not sending.\n");
+		return 0;
+	}
 	if (*slots < msg_slots) {
 		/* return the cancel routine */
 		list_del(&cb->list);

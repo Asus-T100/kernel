@@ -461,6 +461,11 @@ int mei_amthif_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 		return 0;
 	}
 
+	if (!dev->hbuf_is_ready) {
+		cl_dbg(dev, cl, "host buffer is notready: not sending.\n");
+		return 0;
+	}
+
 	mei_hdr.host_addr = cl->host_client_id;
 	mei_hdr.me_addr = cl->me_client_id;
 	mei_hdr.reserved = 0;

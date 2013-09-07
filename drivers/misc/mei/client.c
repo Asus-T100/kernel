@@ -778,6 +778,11 @@ int mei_cl_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 		return 0;
 	}
 
+	if (!dev->hbuf_is_ready) {
+		cl_dbg(dev, cl, "host buffer is notready: not sending.\n");
+		return 0;
+	}
+
 	len = buf->size - cb->buf_idx;
 	msg_slots = mei_data2slots(len);
 
@@ -862,6 +867,7 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 	}
 
 	cb->fop_type = MEI_FOP_WRITE;
+	cb->buf_idx = 0;
 	cl->writing_state = MEI_IDLE;
 
 	mei_hdr.host_addr = cl->host_client_id;
@@ -879,10 +885,14 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 	if (rets < 0)
 		goto err;
 
+	if (rets == 0) {
+		cl_dbg(dev, cl,	"No flow control credentials: not sending.\n");
+		rets = buf->size;
+		goto out;
+	}
 	/* Host buffer is not ready, we queue the request */
-	if (rets == 0 || !dev->hbuf_is_ready) {
-		cb->buf_idx = 0;
-		/* unseting complete will enqueue the cb for write */
+	if (!dev->hbuf_is_ready) {
+		cl_dbg(dev, cl,	"Host buffer not ready: not sending.\n");
 		rets = buf->size;
 		goto out;
 	}
