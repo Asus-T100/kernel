@@ -580,7 +580,6 @@ static void native_machine_emergency_restart(void)
 
 	for (;;) {
 		/* Could also try the reset bit in the Hammer NB */
-		pr_err("CCATEST reboot type = %x mode = %x",reboot_type,reboot_mode); //<asus-ych20130904>
 		switch (reboot_type) {
 		case BOOT_KBD:
 			mach_reboot_fixups(); /* for board specific fixups */

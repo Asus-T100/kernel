@@ -134,6 +134,10 @@ struct mxt_data {
 
 	u8	bootloader_addr;
 	const struct firmware *fw; 
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	struct early_suspend early_suspend;
+#endif
 };
 
 
@@ -158,7 +162,7 @@ static int mxt_write_read(struct i2c_client *client,u8 *write_buf, u16 write_len
         ret = i2c_transfer(client->adapter, msg, num);
 
         if(ret <0) {
-                pr_err("i2c transfer error\n");
+                mxt_err("<asus-cca> i2c transfer error\n");
                 return -EIO;
         } else
                 return 0;
@@ -182,7 +186,7 @@ static int mxt_write(struct i2c_client *client,u8 *write_buf, u16 write_len)
         ret = i2c_transfer(client->adapter, msg, num);
 
         if(ret <0) {
-                pr_err("i2c transfer error\n");
+                mxt_err("<asus-cca> i2c transfer error\n");
                 return -EIO;
         } else
                 return 0;
@@ -207,7 +211,7 @@ static int mxt_read(struct i2c_client *client, u8 *read_buf, u16 read_len)
         ret = i2c_transfer(client->adapter, msg, num);
 
         if(ret <0) {
-                pr_err("i2c transfer error\n");
+                mxt_err("<asus-cca> i2c transfer error\n");
                 return -EIO;
         } else
                 return 0;
@@ -228,7 +232,7 @@ static int mxt_bootloader_read(struct mxt_data *data, u8 *read_buf, u16 read_len
 	ret = i2c_transfer(data->client->adapter, &msg, 1);
 
         if(ret <0) {
-                pr_err("i2c transfer error\n");
+                mxt_err("<asus-cca> i2c transfer error\n");
                 return -EIO;
         } else
                 return 0;
@@ -249,7 +253,7 @@ static int mxt_bootloader_write(struct mxt_data *data,u8 *write_buf, u16 write_l
 	ret = i2c_transfer(data->client->adapter, &msg, 1);
 
         if(ret <0) {
-                pr_err("i2c transfer error\n");
+                mxt_err("<asus-cca> i2c transfer error\n");
                 return -EIO;
         } else
                 return 0;
@@ -323,7 +327,7 @@ static int mxt_hid_read_config(struct mxt_data *data,u16 addr,u8 *read_buf,u8 re
 	}while(--time_out);
 	
 	if(!time_out) {
-		mxt_err("hid read config time out\n");
+		mxt_err("<asus-cca> hid read config time out\n");
 		return -EINVAL;
 	}
 	memcpy(read_buf,input_buffer+1,read_len);
@@ -372,7 +376,7 @@ static int mxt_hid_write_config(struct mxt_data *data,u16 addr,u8 *write_buf,u8 
         }while(--time_out);
 
         if(!time_out) {
-                mxt_err("hid write config time out\n");
+                mxt_err("<asus-cca> hid write config time out\n");
                 return -EINVAL;
         }
 
@@ -397,10 +401,10 @@ static int mxt_init_object(struct mxt_data *data)
 
 	ret = mxt_hid_read_config(data,index,(u8 *)&data->info,sizeof(struct mxt_info));
 	if(ret != 0 ) {
-		pr_err("read ID err %x\n",ret);
+		mxt_err("<asus-cca> read ID err %x\n",ret);
 		return 0;
 	}
-	pr_err("Touch Firmware Version = %x Build = %x\n",data->info.version,data->info.build);
+	mxt_err("<asus-cca> Touch Firmware Version = %x Build = %x\n",data->info.version,data->info.build);
 
 	object_num = data->info.object_num;
 
@@ -415,7 +419,7 @@ static int mxt_init_object(struct mxt_data *data)
 	while(object_num >0) {
 		ret = mxt_hid_read_config(data,index,(u8 *)&object_table[i],sizeof(struct mxt_object));
 	        if(ret != 0 ) {
-        	        pr_err("read Object err %x\n",ret);
+        	        mxt_err("<asus-cca> read Object err %x\n",ret);
       			return 0;
 	  	}
 
@@ -439,11 +443,11 @@ static int mxt_init_object(struct mxt_data *data)
 
 	mxt_hid_read_config(data,object_table[data->T38_Index].start_address,(u8 *)&data->ConfigVersion,3);
         if(ret != 0 ) {
-                pr_err("read config version err %x\n",ret);
+                mxt_err("<asus-cca> read config version err %x\n",ret);
                 return 0;
         }
 
-	pr_err("config ver = %x\n",data->ConfigVersion);
+	mxt_err("<asus-cca> config ver = %x\n",data->ConfigVersion);
 
 	//Use REPORTALL  to generate checksum
 	cmd = 0x01;
@@ -451,14 +455,14 @@ static int mxt_init_object(struct mxt_data *data)
 	ret = mxt_hid_write_config(data,object_table[data->T6_Index].start_address+3,&cmd,1);
 		
 	if(ret <0) {
-		pr_err("write REPORTALL err\n");
+		mxt_err("<asus-cca> write REPORTALL err\n");
 	}
 	
 	time_out = 1000;		
         do {
                 ret = mxt_hid_read_config(data,object_table[data->T5_Index].start_address,buf,object_table[data->T5_Index].size_minus_one+1);
                 if(ret <0) {
-			pr_err("read REPORTALL err\n");
+			mxt_err("<asus-cca> read REPORTALL err\n");
 			break;
 		}
                 if(buf[0] == data->T6_ReportID) {
@@ -467,7 +471,7 @@ static int mxt_init_object(struct mxt_data *data)
 		msleep(100);
         }while(--time_out);
         if(!time_out) {
-		pr_err("read REPORTALL time out\n");
+		mxt_err("<asus-cca> read REPORTALL time out\n");
 	}
 	
 {
@@ -505,7 +509,7 @@ static int mxt_update_frame(struct mxt_data *data,u8 *buf,int size) {
 	}while(--time_out);
 
         if(!time_out) { 
-		mxt_err("waiting frame data time out\n");
+		mxt_err("<asus-cca> waiting frame data time out\n");
                	return -EINVAL;
 	}
 
@@ -520,7 +524,7 @@ static int mxt_update_frame(struct mxt_data *data,u8 *buf,int size) {
         }while(--time_out);
 
         if(!time_out) {  
-		mxt_err("waiting frame crc time out\n");
+		mxt_err("<asus-cca> waiting frame crc time out\n");
                 return -EINVAL;
 	}
 
@@ -534,12 +538,12 @@ static int mxt_update_frame(struct mxt_data *data,u8 *buf,int size) {
         }while(--time_out);
 
         if(!time_out) {
-                mxt_err("waiting frame crc  pass time out\n");
+                mxt_err("<asus-cca> waiting frame crc  pass time out\n");
                 return -EINVAL;
         }
 
         if(ack == FRAME_CRC_FAIL) {
-                mxt_err("CRC failed\n");
+                mxt_err("<asus-cca> CRC failed\n");
                 return -EINVAL;
         }
 
@@ -563,7 +567,7 @@ static int mxt_update_frames(struct mxt_data *data,u8 *flash_data,int total_flas
         }while(--time_out);
 
         if(!time_out) {
-		pr_err("wait bootloader cmd timeout\n");
+		mxt_err("<asus-cca> wait bootloader cmd timeout\n");
                 return -EINVAL;
 	}
 
@@ -576,7 +580,7 @@ static int mxt_update_frames(struct mxt_data *data,u8 *flash_data,int total_flas
 		mxt_dbg("FlashSize = %x FrameSize= %x data = %x\n",flash_size,frame_size,flash_data[2]);
 		ret = mxt_update_frame(data,flash_data,frame_size);
 		if(ret) {
-			mxt_err("update frame error FlashSize = %x FrameSize= %x data = %x\n",flash_size,frame_size,flash_data[2]);
+			mxt_err("<asus-cca> update frame error FlashSize = %x FrameSize= %x data = %x\n",flash_size,frame_size,flash_data[2]);
 			return -EINVAL;
 		}
 		flash_data +=frame_size;
@@ -613,7 +617,7 @@ static int mxt_load_firmware(struct mxt_data *data,u8 **FlashData,int *FlashSize
 
         ret = request_firmware(&data->fw, fn, &client->dev);
         if (ret < 0) {
-                mxt_err("Unable to open firmware %s\n", fn);
+                mxt_err("<asus-cca> Unable to open firmware %s\n", fn);
                 return ret;
         }
         encode_data = data->fw->data;
@@ -639,7 +643,7 @@ static void mxt_unload_firmware(struct mxt_data *data,u8 *FlashData)
 	kfree(FlashData);
 	release_firmware(data->fw);
 }
-
+/*
 static int mxt_recovery_firmware(struct mxt_data *data)
 {
         u8      *flash_data;
@@ -676,7 +680,7 @@ static int mxt_recovery_firmware(struct mxt_data *data)
 	
 	return ret;
 }
-
+*/
 
 static int mxt_update_firmware(struct mxt_data *data)
 {
@@ -689,11 +693,11 @@ static int mxt_update_firmware(struct mxt_data *data)
 
 	ret = mxt_load_firmware(data,&flash_data,&flash_size);
         if(ret) {
-                mxt_err("load fw error\n");
+                mxt_err("<asus-cca> load fw error\n");
                 return ret;
         }
 
-	pr_err("Flash firmware,please wait\n");	
+	mxt_err("<asus-cca> Flash firmware,please wait\n");	
 
         mxt_dbg("enter boot mode\n");
        	//enter bootloader mode
@@ -709,7 +713,7 @@ static int mxt_update_firmware(struct mxt_data *data)
 	}while(--time_out);
 
 	if(!time_out) {
-		pr_err("enter boot mode time out\n");
+		mxt_err("<asus-cca> enter boot mode time out\n");
 		mxt_unload_firmware(data,flash_data);
 		return -EINVAL;
 	}
@@ -722,10 +726,10 @@ static int mxt_update_firmware(struct mxt_data *data)
 
         ret = mxt_check_bootloader(data);
         if(ret) {
-                pr_err("flash firmware success\n");
+                mxt_err("<asus-cca> flash firmware success\n");
                 return 0;
         }else {
-		pr_err("exit boot mode failed\n");
+		mxt_err("<asus-cca> exit boot mode failed\n");
 		return -EINVAL;
 	}
 }
@@ -754,7 +758,7 @@ static int mxt_update_config(struct mxt_data *data)
 	object_table = data->object_table;
 	ret = request_firmware(&cfg, MXT_TOUCH_CONFIG, &data->client->dev);
 	if (ret < 0) {
-		mxt_err("Failure to request config file %s\n",MXT_TOUCH_CONFIG);
+		mxt_err("<asus-cca> Failure to request config file %s\n",MXT_TOUCH_CONFIG);
 		return 0;
 	}
 	
@@ -776,7 +780,7 @@ static int mxt_update_config(struct mxt_data *data)
 	parse_line(&config_data,&size,&argc,argv);//Configure checksum
 	config_size -= size;
 	config_check_sum  = (u32)simple_strtoul(argv[0],&after,16);
-	pr_err("current checksum = %x ,config checksum %x\n",data->ConfigCheckSum,config_check_sum); 
+	mxt_err("<asus-cca> current checksum = %x ,config checksum %x\n",data->ConfigCheckSum,config_check_sum); 
 
 
 	if(data->ConfigCheckSum == config_check_sum) {
@@ -793,7 +797,7 @@ static int mxt_update_config(struct mxt_data *data)
 		cd_size = (u8)simple_strtoul(argv[2],&after,16);
 		mxt_dbg("type = %x CDSize = %x argc = %x\n",type,cd_size,argc-3);
 		if(cd_size != (argc-3)) {
-			pr_err("Type = %x Error CFG Data Size not match\n",type);
+			mxt_err("<asus-cca> Type = %x Error CFG Data Size not match\n",type);
 			break;
 		}
 		cd_data = kzalloc(sizeof(u8)*cd_size, GFP_KERNEL); 
@@ -820,7 +824,7 @@ static int mxt_update_config(struct mxt_data *data)
 			}
 		}
 		if(!config_object_found)
-			mxt_err("Warring T%d object not match\n",type);	
+			mxt_err("<asus-cca> Warring T%d object not match\n",type);	
 		config_size -= size;
 		kfree(cd_data);
 	}
@@ -917,7 +921,7 @@ static int hid_reset(struct hid_device *hid)
 
 	ret = wait_event_timeout(data->wait,!test_bit(I2C_HID_RESET_PENDING, &data->flags),msecs_to_jiffies(5000));
 	if(!ret) {
-		mxt_err("hid reset error\n");
+		mxt_err("<asus-cca> hid reset error\n");
 		return -ENODATA;
 	}
 	return 0;
@@ -945,7 +949,7 @@ static int i2chid_parse(struct hid_device *hid)
 	ret = hid_parse_report(hid, rdesc, data->hid_desc.report_desc_len);
 	kfree(rdesc);
 	if (ret) {
-		mxt_err("parsing report descriptor failed\n");
+		mxt_err("<asus-cca> parsing report descriptor failed\n");
 		return ret;
 	}
 	
@@ -1013,6 +1017,25 @@ static struct hid_ll_driver i2c_hid_driver = {
 #define USB_VENDOR_ID_ATMEL		0x03eb
 #define USB_DEVICE_ID_ATMEL_MULTITOUCH	0x211c
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void mxt_early_suspend(struct early_suspend *es)
+{
+	struct mxt_data *data;
+	data = container_of(es, struct mxt_data, early_suspend);
+
+	hid_set_power(data->hid,1);
+
+}
+
+static void mxt_late_resume(struct early_suspend *es)
+{
+	struct mxt_data *data;
+	data = container_of(es, struct mxt_data, early_suspend);
+
+	hid_set_power(data->hid,0);
+}
+#endif
+
 static int __devinit mxt_probe(struct i2c_client *client,
                                const struct i2c_device_id *id)
 {
@@ -1036,11 +1059,13 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	data->bootloader_addr = 0x26;
 
+/*
 	if(mxt_check_bootloader(data) ==0) {
 		ret = mxt_recovery_firmware(data);
 		if(ret)
 			goto err_free_data;
 	}
+*/
 	data->hid_desc_addr = 0x00;
 
 	mxt_write_read(client,(u8 *)&data->hid_desc_addr,2,(u8 *)&data->hid_desc,2);
@@ -1083,11 +1108,11 @@ static int __devinit mxt_probe(struct i2c_client *client,
                                         IRQF_TRIGGER_LOW|IRQF_TRIGGER_FALLING,
                                         "mxt-touch", data);
         if (ret) {
-                pr_err("cannot get IRQ:%d\n", data->irq);
+                mxt_err("<asus-cca> cannot get IRQ:%d\n", data->irq);
                 data->irq = -1;
 		goto err_free_data_object;
         } else {
-                pr_err("IRQ No:%d\n", data->irq);
+                mxt_err("<asus-cca> IRQ No:%d\n", data->irq);
         }
 
 	hid = hid_allocate_device();
@@ -1111,10 +1136,18 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	ret = hid_add_device(hid);
 	if (ret) {
 		if (ret != -ENODEV)
-			pr_err("can't add hid device: %d\n", ret);
+			mxt_err("<asus-cca> can't add hid device: %d\n", ret);
 		goto err_free_hid;
 	}
-	pr_err("add HID %s\n",hid->name);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	data->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	data->early_suspend.suspend = mxt_early_suspend;
+	data->early_suspend.resume = mxt_late_resume;
+	register_early_suspend(&data->early_suspend);
+#endif
+
+	mxt_err("<asus-cca> add HID %s\n",hid->name);
 
 	return 0;
 
@@ -1137,6 +1170,9 @@ static int __devexit mxt_remove(struct i2c_client *client)
 
 	mxt_dbg("mxt remove\n");
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	unregister_early_suspend(&data->early_suspend);
+#endif
 	hid_destroy_device(data->hid);
 	free_irq(data->irq, data);
 
@@ -1146,6 +1182,31 @@ static int __devexit mxt_remove(struct i2c_client *client)
 
 	return 0;
 }
+#if 0
+static int mxt_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mxt_data *data = i2c_get_clientdata(client);
+
+	hid_set_power(data->hid,1);
+
+	return 0;
+}
+
+static int mxt_resume(struct device *dev)
+{
+        struct i2c_client *client = to_i2c_client(dev);
+        struct mxt_data *data = i2c_get_clientdata(client);
+
+        hid_set_power(data->hid,0);
+
+	return 0;
+}
+#endif
+
+#if 0
+static SIMPLE_DEV_PM_OPS(mxt_pm, mxt_suspend, mxt_resume);
+#endif
 
 static const struct i2c_device_id mxt_id[] = {
 	{ "atmel_mxt_mxt1664S", 0 },
@@ -1165,6 +1226,9 @@ static struct i2c_driver mxt_driver = {
         .driver = {
                 .name   = "atmel_mxt_ts",
                 .owner  = THIS_MODULE,
+#if 0
+		.pm	= &mxt_pm,
+#endif
                 .acpi_match_table = ACPI_PTR(mxt_acpi_match),
         },
         .probe          = mxt_probe,
@@ -1174,7 +1238,7 @@ static struct i2c_driver mxt_driver = {
 
 static int __init mxt_init(void)
 {
-	pr_err("add mxt driver\n");
+	mxt_err("<asus-cca> add mxt driver\n");
         return i2c_add_driver(&mxt_driver);
 }
 
