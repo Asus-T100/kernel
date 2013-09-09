@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -330,7 +330,7 @@ bool sp2host_dequeue_buffer(
 	(void)stage_num;
 	(void)pipe_num;
 
-	assert_exit_code(buffer_ptr != NULL, false);
+	assert(buffer_ptr != NULL);
 	assert(index < SH_CSS_NUM_BUFFER_QUEUES);
 
 	/* This is just the first step of introducing the queue API */
@@ -364,7 +364,7 @@ bool sp2host_dequeue_irq_event(
 	bool is_empty;
 	struct sh_css_circular_buf *offset_to_queue;
 
-	assert_exit_code(event != NULL, false);
+	assert(event != NULL);
 
 	offset_to_queue = (struct sh_css_circular_buf *)
 		offsetof(struct host_sp_queues,
@@ -536,7 +536,7 @@ static void pop_sp_queue(
 	unsigned int entry_to_cb_elem;
 	uint32_t cb_elem;
 
-	assert_exit(elem != NULL);
+	assert(elem != NULL);
 
 #ifndef C_RUN
 	/* get the variable address from the firmware */
@@ -564,22 +564,10 @@ static void pop_sp_queue(
 static bool is_sp_queue_full(
 	struct sh_css_circular_buf *offset)
 {
-#ifndef C_RUN
-	unsigned int HIVE_ADDR_host_sp_queue;
-	const struct ia_css_fw_info *fw;
-#endif
-
 	unsigned int cb_size;
 	unsigned int cb_start;
 	unsigned int cb_end;
-
 	bool is_full;
-
-#ifndef C_RUN
-	/* get the variable address from the firmware */
-	fw = &sh_css_sp_fw;
-	HIVE_ADDR_host_sp_queue = fw->info.sp.host_sp_queue;
-#endif
 
 	load_sp_queue (offset, &cb_size, NULL, &cb_start, &cb_end);
 
@@ -635,22 +623,10 @@ static bool is_sp_queue_full(
 static bool is_sp_queue_empty(
 	struct sh_css_circular_buf *offset)
 {
-#ifndef C_RUN
-	unsigned int HIVE_ADDR_host_sp_queue;
-	const struct ia_css_fw_info *fw;
-#endif
-
 	unsigned int cb_size;
 	unsigned int cb_start;
 	unsigned int cb_end;
-
 	bool is_empty;
-
-#ifndef C_RUN
-	/* get the variable address from the firmware */
-	fw = &sh_css_sp_fw;
-	HIVE_ADDR_host_sp_queue = fw->info.sp.host_sp_queue;
-#endif
 
 	load_sp_queue (offset, &cb_size, NULL, &cb_start, &cb_end);
 
