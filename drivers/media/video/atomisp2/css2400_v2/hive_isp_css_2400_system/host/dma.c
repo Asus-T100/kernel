@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -37,7 +37,8 @@ void dma_get_state(
 	int			i;
 	hrt_data	tmp;
 
-	assert_exit(ID < N_DMA_ID && state);
+	assert(ID < N_DMA_ID);
+	assert(state != NULL);
 
 	tmp = dma_reg_load(ID, DMA_COMMAND_FSM_REG_IDX);
 	//reg  [3:0] : flags error [3], stall, run, idle [0]

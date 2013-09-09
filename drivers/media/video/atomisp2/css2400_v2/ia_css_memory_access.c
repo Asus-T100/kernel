@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -32,7 +32,7 @@ static struct ia_css_css_mem_env my_env;
 void
 ia_css_memory_access_init(const struct ia_css_css_mem_env *env)
 {
-	assert_exit(env != NULL);
+	assert(env != NULL);
 
 	my_env = *env;
 }

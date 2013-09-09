@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -95,8 +95,8 @@ crop_and_interpolate(unsigned int cropped_width,
 	unsigned short *in_ptr,
 		       *out_ptr;
 
-	assert_exit(in_table != NULL);
-	assert_exit(out_table != NULL);
+	assert(in_table != NULL);
+	assert(out_table != NULL);
 
 	sensor_width  = in_table->sensor_width;
 	sensor_height = in_table->sensor_height;
@@ -201,8 +201,8 @@ generate_id_shading_table(struct ia_css_shading_table **target_table,
 	unsigned int i, j, table_width, table_height;
 	struct ia_css_shading_table *result;
 
-	assert_exit(target_table != NULL);
-	assert_exit(binary != NULL);
+	assert(target_table != NULL);
+	assert(binary != NULL);
 
 	table_width  = binary->sctbl_width_per_color;
 	table_height = binary->sctbl_height;
@@ -235,8 +235,8 @@ prepare_shading_table(const struct ia_css_shading_table *in_table,
 		     i;
 	struct ia_css_shading_table *result;
 
-	assert_exit(target_table != NULL);
-	assert_exit(binary != NULL);
+	assert(target_table != NULL);
+	assert(binary != NULL);
 
 	if (!in_table) {
 		generate_id_shading_table(target_table, binary);

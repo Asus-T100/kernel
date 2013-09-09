@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -70,8 +70,8 @@ static void print_sp_state(
 	const sp_state_t	*state,
 	const char		*cell)
 {
-	assert_exit(state != NULL);
-	assert_exit(cell != NULL);
+	assert(state != NULL);
+	assert(cell != NULL);
 
 	sh_css_dtrace(2, "%s state:\n", cell);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "PC", state->pc);
@@ -88,8 +88,8 @@ static void print_isp_state(
 	const isp_state_t	*state,
 	const char		*cell)
 {
-	assert_exit(state != NULL);
-	assert_exit(cell != NULL);
+	assert(state != NULL);
+	assert(cell != NULL);
 
 	sh_css_dtrace(2, "%s state:\n", cell);
 	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "PC", state->pc);
@@ -229,9 +229,7 @@ static void print_if_state(
 	int st_allow_fifo_overflow;
 	int st_block_fifo_when_no_req;
 
-	if (state == NULL)
-		return;
-
+	assert(state != NULL);
 
 #if defined(HAS_INPUT_FORMATTER_VERSION_1)
 	st_reset  = (state->reset ? "Active" : "Not active");
@@ -414,6 +412,7 @@ static void print_if_state(
 		break;
 	}
 
+	(void)fsm_sync_status_str; /* fix KW complaint that var is not used if sh_css_dtrace is not active */
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
 		     "FSM Synchronization Status", val, fsm_sync_status_str);
 
@@ -451,6 +450,7 @@ static void print_if_state(
 		fsm_crop_status_str = "unknown";
 		break;
 	}
+	(void)fsm_crop_status_str; /* fix KW complaint that var is not used if sh_css_dtrace is not active */
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
 		     "FSM Crop Status", val, fsm_crop_status_str);
 
@@ -499,6 +499,7 @@ static void print_if_state(
 		break;
 	}
 
+	(void)fsm_padding_status_str; /* fix KW complaint that var is not used if sh_css_dtrace is not active */
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n", "FSM Padding Status",
 		     val, fsm_padding_status_str);
 
@@ -794,8 +795,8 @@ static void print_fifo_channel_state(
 	const fifo_channel_state_t	*state,
 	const char			*descr)
 {
-	assert_exit(state != NULL);
-	assert_exit(descr != NULL);
+	assert(state != NULL);
+	assert(descr != NULL);
 
 	sh_css_dtrace(2, "FIFO channel: %s\n", descr);
 	sh_css_dtrace(2, "\t%-32s: %d\n", "source valid", state->src_valid);
@@ -881,7 +882,7 @@ return;
 static void sh_css_binary_info_print(
 	const struct ia_css_binary_info *info)
 {
-	assert_exit(info != NULL);
+	assert(info != NULL);
 
 	sh_css_dtrace(2, "id = %d\n", info->id);
 	sh_css_dtrace(2, "mode = %d\n", info->mode);
@@ -940,8 +941,8 @@ void sh_css_frame_print(
 {
 	char *data;
 
-	assert_exit(frame != NULL);
-	assert_exit(descr != NULL);
+	assert(frame != NULL);
+	assert(descr != NULL);
 
 	data = (char *)HOST_ADDRESS(frame->data);
 	sh_css_dtrace(2, "frame %s (%p):\n", descr, frame);
@@ -1022,7 +1023,7 @@ void sh_css_print_sp_debug_state(
 {
 #if SP_DEBUG == SP_DEBUG_DUMP
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(SH_DBG_DEBUG, "current SP software counter: %d\n",
 				state->debug[0]);
@@ -1127,7 +1128,7 @@ void sh_css_print_sp_debug_state(
 	int sp_index = state->index;
 	int n;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	if (sp_index < last_index) {
 		/* SP has been reset */
@@ -1188,7 +1189,7 @@ void sh_css_print_sp_debug_state(
 #endif
 	int t, d;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	for (t = 0; t < SH_CSS_SP_DBG_NR_OF_TRACES; t++) {
 		/* base contains the "oldest" index */
@@ -1221,7 +1222,7 @@ void sh_css_print_sp_debug_state(
 	int limit = SH_CSS_NUM_SP_DEBUG;
 	int step = 1;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	for (i = base; i < limit; i += step) {
 		sh_css_dtrace(SH_DBG_DEBUG,
@@ -1241,7 +1242,7 @@ static void print_rx_mipi_port_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"device_ready"		, state->device_ready);
@@ -1287,7 +1288,7 @@ static void print_rx_channel_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"compression_scheme0"	, state->comp_scheme0);
@@ -1313,7 +1314,7 @@ static void print_rx_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "CSI Receiver State:\n");
 
@@ -1472,7 +1473,7 @@ return;
 static void print_isys_capture_unit_state(
 	capture_unit_state_t *state)
 {
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"Packet_Length"		, state->Packet_Length);
@@ -1528,7 +1529,7 @@ static void print_isys_capture_unit_state(
 static void print_isys_acquisition_unit_state(
 	acquisition_unit_state_t *state)
 {
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 #if 0
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
@@ -1571,7 +1572,7 @@ static void print_isys_acquisition_unit_state(
 static void print_isys_ctrl_unit_state(
 	ctrl_unit_state_t *state)
 {
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "\t\t%-32s: %d\n"	,
 			"last_cmd"		, state->last_cmd);
@@ -1650,7 +1651,7 @@ static void print_isys_state(
 {
 	int i;
 
-	assert_exit(state != NULL);
+	assert(state != NULL);
 
 	sh_css_dtrace(2, "InputSystem State:\n");
 
@@ -1836,7 +1837,7 @@ void sh_css_dump_isp_params(struct ia_css_stream *stream, unsigned int enable)
 {
 	const struct sh_css_isp_params *isp_params = ia_css_get_isp_params(stream);
 
-	assert_exit(stream != NULL);
+	assert(stream != NULL);
 
 	sh_css_dtrace(SH_DBG_DEBUG, "ISP PARAMETERS:\n");
 	if ((enable & SH_CSS_DEBUG_DUMP_FPN)
@@ -2421,7 +2422,7 @@ dtrace_dot(const char *fmt, ...)
 {
 	va_list ap;
 
-	assert_exit(fmt != NULL);
+	assert(fmt != NULL);
 
 	va_start(ap, fmt);
 
@@ -2464,7 +2465,7 @@ sh_css_debug_pipe_graph_dump_stage(
 	char const *blob_name = "<unknow name>";
 	char const *bin_type = "<unknow type>";
 
-	assert_exit(stage != NULL);
+	assert(stage != NULL);
 
 	if (debug_pipe_graph_do_init) {
 		sh_css_debug_pipe_graph_dump_prologue();
@@ -2627,7 +2628,7 @@ void
 sh_css_debug_pipe_graph_dump_sp_raw_copy(
 	struct ia_css_frame *cc_frame)
 {
-	assert_exit(cc_frame != NULL);
+	assert(cc_frame != NULL);
 
 	dtrace_dot(
 		"node [shape = circle, "
