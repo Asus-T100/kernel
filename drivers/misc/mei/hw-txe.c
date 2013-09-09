@@ -507,21 +507,6 @@ static void mei_txe_hw_config(struct mei_device *dev)
 		hw->aliveness, hw->readiness_state);
 }
 
-static void mei_txe_reset(struct work_struct *work)
-{
-	struct mei_txe_hw *hw =
-		container_of(work, struct mei_txe_hw,  reset_work);
-	struct mei_device *dev = hw_txe_to_mei(hw);
-
-	mutex_lock(&dev->device_lock);
-
-	mei_reset(dev, true);
-
-	mutex_unlock(&dev->device_lock);
-}
-
-
-
 
 /**
  * mei_txe_write - writes a message to mei device.
@@ -884,7 +869,7 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 			    dev->dev_state != MEI_DEV_INITIALIZING) {
 				dev_dbg(&dev->pdev->dev, "FW not ready.\n");
 
-				schedule_work(&hw->reset_work);
+				schedule_work(&dev->reset_work);
 				mutex_unlock(&dev->device_lock);
 				return IRQ_HANDLED;
 			}
@@ -995,7 +980,6 @@ struct mei_device *mei_txe_dev_init(struct pci_dev *pdev)
 	hw = to_txe_hw(dev);
 
 	init_waitqueue_head(&hw->wait_aliveness_resp);
-	INIT_WORK(&hw->reset_work, mei_txe_reset);
 
 	dev->ops = &mei_txe_hw_ops;
 
