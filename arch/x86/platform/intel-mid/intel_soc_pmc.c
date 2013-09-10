@@ -361,6 +361,11 @@ static int mid_suspend_prepare(void)
 	if (ret)
 		printk(KERN_ALERT "pmic write failed\n");
 
+	/* Turn off PWM 1 */
+	ret = intel_mid_pmic_writeb(PWM1CLKDIV, 0x0);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
 	return 0;
 }
 
@@ -385,6 +390,11 @@ static void mid_suspend_finish(void)
 
 	/* Turn On VHDMI internal power switch */
 	ret = intel_mid_pmic_writeb(VHDMICNT, 0x3);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* Turn on PWM 1 */
+	ret = intel_mid_pmic_writeb(PWM1CLKDIV, 0x81);
 	if (ret)
 		printk(KERN_ALERT "pmic write failed\n");
 
