@@ -229,7 +229,7 @@ void ia_css_i_host_rmgr_acq_vbuf(
 	struct ia_css_i_host_rmgr_vbuf_pool *pool,
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
-	struct ia_css_i_host_rmgr_vbuf_handle h;
+	uint32_t size;
 
 	assert(pool != NULL);
 	assert(handle != NULL);
@@ -242,11 +242,14 @@ void ia_css_i_host_rmgr_acq_vbuf(
 		/* more than one reference, release current buffer */
 		if ((*handle)->count > 1) {
 			/* store current values */
-			h.vptr = 0x0;
-			h.size = (*handle)->size;
+			size = (*handle)->size;
 			/* release ref to current buffer */
 			ia_css_i_host_refcount_release_vbuf(handle);
-			*handle = &h;
+			if (!(*handle))
+				return;
+			(*handle)->vptr = 0;
+			(*handle)->size = size;
+			(*handle)->count = 0;
 		}
 		/* get new buffer for needed size */
 		if ((*handle)->vptr == 0x0) {
