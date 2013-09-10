@@ -124,10 +124,12 @@ struct byt_chip_info {
 
 	struct power_supply	bat;
 	struct power_supply	ac;
+	struct power_supply	usb;
 
 	struct byt_platform_data *pdata;
 
 	struct byt_battery	ecbat;
+	u8     chargerReg;
 
 	struct delayed_work byt_batt_info_update_work;
 
@@ -153,6 +155,7 @@ struct byt_chip_info {
 	int 	guage_rom_mode;
 	u8	*guage_firmware;
 	int 	guage_firmware_size;
+	int skip_prepare_step;
 };
 
 static struct byt_chip_info *byt_chip;
@@ -604,8 +607,8 @@ static int ec_firmware_update(struct byt_chip_info *chip)
 	int i;
 	u8	DataArray[3] = {0};
 	u32	IDDATA = 0x0;
-	struct i2c_client *client = chip->client;
-	int ret;
+	//struct i2c_client *client = chip->client;
+	//int ret;
 
 	if(chip->ec_firmware == NULL || (chip->ec_firmware_size != ECSIZE)) {
 		pr_err("load EC firmware error\n");
@@ -764,9 +767,17 @@ static int asusec_get_battery_id(struct byt_chip_info *chip,u8 *battery_id)
 		return -EIO;
 	}
 
+	pr_err("%s cell_voltage[0] = %x\n", TAG, cell_voltage[0]);
+	pr_err("%s cell_voltage[1] = %x\n", TAG, cell_voltage[1]);
+
+
 	voltage = cell_voltage[0];
+	pr_err("%s voltage = cell_voltage[0] = %x\n", TAG, voltage);
 	voltage <<=8;
+	pr_err("%s voltage <<=8, voltage = %x\n", TAG, voltage);
 	voltage |= cell_voltage[1];
+	pr_err("%s voltage |= cell_voltage[1], voltage = %x\n", TAG, voltage);
+	
 
 	if((voltage>1000) && (voltage<1050))	//Typical 0x03FB
 	{
@@ -849,7 +860,7 @@ static int get_guage_version_from_dffs(u8 *image,int image_size)
 
 	while(image_size) 
 	{
-		parse_line(&image,&size,&argc,argv);
+		parse_line((char **)&image,&size,&argc,argv);
 		image_size -= size;
 		if(strcmp(argv[0],"W:"))
 			continue;
@@ -860,7 +871,7 @@ static int get_guage_version_from_dffs(u8 *image,int image_size)
 
 		if((addr ==0x16)&& (reg == 0x00) && (cmd==0x0A)) 
 		{
-			parse_line(&image,&size,&argc,argv);
+			parse_line((char **)&image,&size,&argc,argv);
 			image_size -= size;
 
 			addr = (u8)simple_strtoul(argv[1],&after,16);
@@ -869,7 +880,7 @@ static int get_guage_version_from_dffs(u8 *image,int image_size)
 			pr_err("next addr = %x reg = %x cmd = %x\n",addr,reg,cmd);
 
 			if((addr == 0x16) && (reg == 0x01) && (cmd == 0x16)) {
-				parse_line(&image,&size,&argc,argv);
+				parse_line((char **)&image,&size,&argc,argv);
 				image_size -= size;
 
 				addr = (u8)simple_strtoul(argv[1],&after,16);
@@ -884,7 +895,7 @@ static int get_guage_version_from_dffs(u8 *image,int image_size)
 		}
 
 	}
-
+	return 0;
 }
 /*
 //W: AA 00 14 04
@@ -903,6 +914,7 @@ static int prepare_update_dffs(struct byt_chip_info *chip)
 	u8 cmd;
 	u8 buf[2];
 
+	/* Unseal the device */
 	cmd = 0x00;
 	buf[0] = 0x14;
 	buf[1] = 0x04;
@@ -936,7 +948,7 @@ static int process_update_dffs(struct byt_chip_info *chip,u8 *image,int image_si
 	int     argc;
 	char    **argv;
 	int     size;
-	u8      addr,reg,cmd;
+	u8      addr,reg;
 	char    *after;
 	int i;
 	u8 	buf[64];
@@ -949,7 +961,7 @@ static int process_update_dffs(struct byt_chip_info *chip,u8 *image,int image_si
 
 	while(image_size)
 	{
-		parse_line(&image,&size,&argc,argv);
+		parse_line((char **)&image,&size,&argc,argv);
 		image_size -= size;
 
 		if((argv[0][0] != 'W') && (argv[0][0] != 'C') && (argv[0][0] != 'X'))
@@ -967,18 +979,18 @@ static int process_update_dffs(struct byt_chip_info *chip,u8 *image,int image_si
 				asusec_write_guage(chip,reg,buf,argc-3);
 				break;
 			case 'C':
-                                addr = (u8)simple_strtoul(argv[1],&after,16);
-                                reg = (u8)simple_strtoul(argv[2],&after,16);
+                addr = (u8)simple_strtoul(argv[1],&after,16);
+                reg = (u8)simple_strtoul(argv[2],&after,16);
 				pr_err("%x compare : addr = %x reg = %x argc = %x\n",debug_num,addr,reg,argc);
 				
 				asusec_read_guage(chip,reg,buf,argc-3);
-                                for(i=0;i<argc-3;i++) {
-                                        tmp = (u8)simple_strtoul(argv[3+i],&after,16);
+                for(i=0;i<argc-3;i++) {
+                    tmp = (u8)simple_strtoul(argv[3+i],&after,16);
 					if(tmp != buf[i]) {
 						pr_err("index = %x %x %x\n",i,tmp,buf[i]);
 						break;
 					}
-                                }
+                }
 				if(i != (argc-3)) {
 					pr_err("compare failed\n");
 					goto failed;	
@@ -1010,11 +1022,13 @@ failed:
 //W: AA 00 20 00
 //X: 20
 */
+
 static int after_update_dffs(struct byt_chip_info *chip)
 {
         u8 cmd;
         u8 buf[2];
-
+		
+		/* SEAL the gauge */
         cmd = 0x00;
         buf[0] = 0x20;
         buf[1] = 0x00;
@@ -1037,7 +1051,7 @@ static int guage_firmware_update(struct byt_chip_info *chip)
 	int ret;
 	u16 battery_id = BATTERY_ID_SANYO;
 
-	ret = asusec_get_battery_id(chip,&battery_id);
+	ret = asusec_get_battery_id(chip,(u8 *)&battery_id);
 	if(ret) 
 	{
 		pr_err("unknow battery id\n");
@@ -1049,9 +1063,14 @@ static int guage_firmware_update(struct byt_chip_info *chip)
 	pr_err("battery polling stop");
 	asusec_battery_polling(chip,false);
 
-	pr_err("prepare \n");
-	prepare_update_dffs(chip);
-
+	if(!chip->skip_prepare_step){
+		pr_err("skip_prepare_step = %d, prepare..\n", chip->skip_prepare_step);
+		prepare_update_dffs(chip);
+	}
+	else{
+		pr_err("skip_prepare_step = %d, skip prepare.\n", chip->skip_prepare_step);
+	}
+	
 	pr_err("update \n");
 	process_update_dffs(chip,chip->guage_firmware,chip->guage_firmware_size);
 
@@ -1095,12 +1114,87 @@ static inline struct power_supply *to_power_supply(struct device *dev)
 	return dev_get_drvdata(dev);    //&chip->bat
 }
 
+
+
+static u8 get_charger(struct byt_chip_info *chip)
+{
+
+
+	u8      charge_i2c_buf[2] = {0xC0,0x05};
+	u8      charge_reg[11];
+	int ret;
+
+	ret = asusec_write_read(chip,charge_i2c_buf,2,charge_reg,11);
+	/*
+	   dev_info(&chip->client->dev,"%s charge:\n", TAG);
+	   for(i=0;i<11;i++) {
+	   dev_info(&chip->client->dev,"%s chargerIC[%x]=%x", TAG,i,charge_reg[i]);
+	   }
+	 */
+	if(!ret){
+		dev_info(&chip->client->dev,"%s chargerIC[8]=%x\n", TAG, charge_reg[8]);
+	}
+
+	chip ->chargerReg = charge_reg[8];
+
+	
+	return charge_reg[8];
+}
+
+static int byt_usb_status(struct byt_chip_info *chip)
+{
+	int ret = 0;
+	u8 status;
+
+	status = (chip ->chargerReg >> 6) &0x03;
+
+	if(status == 0x00 ) { //non charge source
+		ret  = 0;
+	}else if (status == 0x01) { //DC USB charger
+		ret = 1;
+	}else if(status == 0x02) { //AC
+		ret = 0;
+	}else if(status == 0x03) { //OTG
+		ret = 0;
+	}
+
+	return ret;
+}
+
+
+static int byt_get_usb_property(struct power_supply *psy,
+		enum power_supply_property psp,
+		union power_supply_propval *val)
+{
+	int ret = 0;
+	struct byt_chip_info *chip = container_of(psy,
+			struct byt_chip_info, usb);
+
+	//dev_info(&chip->client->dev,"%s byt_get_usb_property psp = %x\n", TAG, psp);
+
+	switch (psp) {
+		case POWER_SUPPLY_PROP_ONLINE:
+			val->intval = byt_usb_status(chip);
+			//dev_err(&chip->client->dev,"%s byt_get_usb_property psp, usb = %x\n", TAG, val->intval);
+			break;
+		default:
+
+			return -EINVAL;
+
+	}
+
+
+	return ret;
+}
+
+
 static int byt_ac_status(struct byt_chip_info *chip)
 {
 	int ret = 0;
 	u8 status;
 
-	status = (chip->ecbat.ChargerStatusRegister>>6) &0x03;
+	//status = (chip->ecbat.ChargerStatusRegister>>6) &0x03;
+	status = (chip ->chargerReg >> 6) &0x03;
 
 	if(status == 0x00 ) { //non charge source
 		ret  = 0;
@@ -1174,7 +1268,6 @@ static int byt_get_battery_property(struct power_supply *psy,
 		union power_supply_propval *val)
 {
 
-	int ret = 0, batt_volt, cur_avg;
 	struct byt_chip_info *chip = container_of(psy,
 			struct byt_chip_info, bat);
 
@@ -1190,6 +1283,7 @@ static int byt_get_battery_property(struct power_supply *psy,
 			break;
 		case POWER_SUPPLY_PROP_CAPACITY:
 			val->intval = byt_get_capacity(chip);
+			//val->intval = 80;
 			break;
 
 		case POWER_SUPPLY_PROP_HEALTH:
@@ -1227,9 +1321,6 @@ static int byt_get_battery_property(struct power_supply *psy,
 
 	return 0;
 
-i2c_read_err:
-
-	return ret;
 }
 
 //TODO error handle
@@ -1259,7 +1350,7 @@ static int byt_battery_update( struct byt_chip_info *chip)
 
 	offset = 0x81;
 
-	ret = asusec_write_read(chip,&offset,1,&chip->ecbat,sizeof(chip->ecbat));
+	ret = asusec_write_read(chip,&offset,1,(u8 *)&chip->ecbat,sizeof(chip->ecbat));
 
 	return ret;
 
@@ -1286,8 +1377,8 @@ static int get_gaugeIC_FW( struct byt_chip_info *chip)
 	u16	fw_version = 0;
 	int ret;
 
-	asusec_write_guage(chip,GUAGE_CMD_CNTL,&sub_command,2);
-	ret = asusec_read_guage(chip,GUAGE_CMD_CNTL,&fw_version,2);
+	asusec_write_guage(chip,GUAGE_CMD_CNTL,(u8 *)&sub_command,2);
+	ret = asusec_read_guage(chip,GUAGE_CMD_CNTL,(u8 *)&fw_version,2);
 	if(!ret){
 		dev_info(&chip->client->dev,"%s guage version = %x\n", TAG,fw_version);
 	}
@@ -1301,21 +1392,18 @@ static int get_chargerIC_current(struct byt_chip_info *chip)
 
 	u8      charge_i2c_buf[2] = {0xC0,0x05};
 	u8      charge_reg[11];
-	int i=0, ret;
-
+	int ret;
+	u8 current_ii;
+	int current_mA=0;
+	
 	ret = asusec_write_read(chip,charge_i2c_buf,2,charge_reg,11);
-	/*
-	   dev_info(&chip->client->dev,"%s charge:\n", TAG);
-	   for(i=0;i<11;i++) {
-	   dev_info(&chip->client->dev,"%s chargerIC[%x]=%x", TAG,i,charge_reg[i]);
-	   }
-	 */
+
 	if(!ret){
 		dev_info(&chip->client->dev,"%s chargerIC[0]=%x\n", TAG, charge_reg[0]);
 	}
 
-	u8 current_ii = charge_reg[0] & 0x07;
-	int current_mA=0;
+	current_ii = charge_reg[0] & 0x07;
+
 	dev_info(&chip->client->dev,"%s shift & : current_ii=%x\n", TAG, current_ii);
 
 	switch(current_ii){
@@ -1375,14 +1463,14 @@ static int get_event_ID( struct byt_chip_info *chip)
 static irqreturn_t byt_thread_handler(int id, void *dev)
 {
 	struct byt_chip_info *chip = dev;
-	int ret, event_id, lid_value;
+	int event_id, lid_value;
 
 	if((chip->ec_fw_mode == 1) || (chip->guage_rom_mode == 1))
 		return IRQ_HANDLED;
 
 
-	dev_info(&chip->client->dev,"%s sleep 100 ms..\n", TAG);
-	msleep(100);
+	//dev_info(&chip->client->dev,"%s sleep 100 ms..\n", TAG);
+	//msleep(100);
 	//LID_Open 0x82 ;  LID_Close 0x83 ; Ac In Out 0xA0 ; Battery Charge 0xA3
 	event_id = get_event_ID(chip);
 
@@ -1395,11 +1483,25 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 		dev_info(&chip->client->dev,"%s handler :LID = %s \n", TAG, lid_value ? "closed" : "opened");
 	}
 	//*/
-	else{
-		mutex_lock(&chip->lock);
-		byt_battery_update(chip);
+	else if(event_id ==0xA0){
 
-		dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
+		get_charger(chip);
+		asusec_battery_polling(chip,true);
+
+		if(byt_usb_status(chip) ==1){
+			power_supply_changed(&chip->usb);
+
+		}
+		else if(byt_ac_status(chip) ==1){
+			power_supply_changed(&chip->ac);
+
+		}
+
+	}
+
+	else{
+		byt_battery_update(chip);
+		/*dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
 		{
 			int i;
 			u8 *p = (u8*)&chip->ecbat;
@@ -1407,15 +1509,10 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 				dev_info(&chip->client->dev,"%s %x = %x\n", TAG, i,*p);
 			}
 
-		}
-
-
-		mutex_unlock(&chip->lock);
-
-		power_supply_changed(&chip->ac);
+		}*/
+		dev_err(&chip->client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
 		power_supply_changed(&chip->bat);
 	}
-
 
 
 	return IRQ_HANDLED;
@@ -1467,8 +1564,8 @@ static void byt_batt_info_update_work_func(struct work_struct *work)
 	struct byt_chip_info *chip;
 	chip = container_of(work, struct byt_chip_info, byt_batt_info_update_work.work);
 
-        if((chip->ec_fw_mode == 1) || (chip->guage_rom_mode == 1))
-                return IRQ_HANDLED;
+	if(chip->ec_fw_mode == 1)
+		return;
 
 	mutex_lock(&chip->lock);
 	byt_battery_update(chip);
@@ -1501,7 +1598,9 @@ static ssize_t byt_battery_show_charge_status(struct device *class,struct device
 
 }
 static ssize_t byt_battery_show_current_now(struct device *class,struct device_attribute *attr,char *buf){	
-	short mycurrent2 = byt_chip->ecbat.AverageCurrent;
+	short mycurrent2;
+	byt_battery_update(byt_chip);
+	mycurrent2 = byt_chip->ecbat.AverageCurrent;
 	return sprintf(buf, "%d\n", mycurrent2);
 
 }
@@ -1514,13 +1613,16 @@ static ssize_t byt_battery_show_capacity(struct device *class,struct device_attr
 
 
 
-static ssize_t ec_version_show(struct device *class,struct device_attribute *attr,char *buf){	
+static ssize_t ec_version_show(struct device *class,struct device_attribute *attr,char *buf){
+	get_EC_version(byt_chip);
 	return sprintf(buf, "%s\n", byt_chip->ec_ver);
 
 }
 
 static ssize_t gaugeIC_FW_show(struct device *class,struct device_attribute *attr,char *buf){	
-	return sprintf(buf, "%x\n", byt_chip->gaugeIC_fw);
+	get_gaugeIC_FW(byt_chip);
+	asusec_battery_polling(byt_chip,true);
+	return sprintf(buf, "%x\n", (unsigned int)byt_chip->gaugeIC_fw);
 
 }
 
@@ -1529,7 +1631,9 @@ static ssize_t chargeIC_current_show(struct device *class,struct device_attribut
 	   get_chargerIC_current(byt_chip);
 	   return sprintf(buf, "%d\n", byt_chip->chargerIC_current); 
 	 */
-	short mycurrent2 = byt_chip->ecbat.AverageCurrent;
+	short mycurrent2;
+	byt_battery_update(byt_chip);
+	mycurrent2 = byt_chip->ecbat.AverageCurrent;
 	if(mycurrent2>0){
 		return sprintf(buf, "%d\n", mycurrent2);
 	}
@@ -1557,7 +1661,7 @@ static ssize_t gaugeIC_status_show(struct device *class,struct device_attribute 
 	else{
 		byt_chip->gaugeIC_status_ack = 0;
 	}
-
+	asusec_battery_polling(byt_chip,true);
 	return sprintf(buf, "%d\n", byt_chip->gaugeIC_status_ack);
 
 }
@@ -1569,6 +1673,7 @@ static ssize_t chargerIC_status_show(struct device *class,struct device_attribut
 	else{
 		byt_chip->chargerIC_status_ack = 0;
 	}
+	asusec_battery_polling(byt_chip,true);
 	return sprintf(buf, "%d\n", byt_chip->chargerIC_status_ack);
 
 }
@@ -1626,7 +1731,7 @@ static ssize_t ec_firmware_write(struct file *filp, struct kobject *kobj,
 			chip->ec_firmware_size = 0;		
 		}
 		if(chip->ec_firmware) {
-			pr_err("count = %x off = %lx \n",count,off);
+			pr_err("count = %x off = %lx \n",count,(long unsigned int)off);
 			memcpy(chip->ec_firmware+off,buf,count);
 			chip->ec_firmware_size += count;
 			if(chip->ec_firmware_size == ECSIZE) {
@@ -1652,7 +1757,7 @@ static ssize_t guage_firmware_write(struct file *filp, struct kobject *kobj,
                         chip->guage_firmware_size = 0;
                 }
                 if(chip->guage_firmware) {
-                        pr_err("count = %x off = %lx \n",count,off);
+                        pr_err("count = %x off = %lx \n",count,(long unsigned int)off);
                         memcpy(chip->guage_firmware+off,buf,count);
                         chip->guage_firmware_size += count;
                         if(chip->guage_firmware_size+0x1000 >GUAGE_FW_MAX_SIZE) {
@@ -1672,7 +1777,7 @@ static ssize_t battery_id_show(struct device *dev,struct device_attribute *attr,
 	int ret;
 	u16 battery_id = BATTERY_ID_SANYO;
 
-	ret = asusec_get_battery_id(chip,&battery_id);
+	ret = asusec_get_battery_id(chip,(u8 *)&battery_id);
 	if(ret){
 		return sprintf(buf,"Not found battery id\n");
 	}
@@ -1687,7 +1792,20 @@ static ssize_t battery_id_show(struct device *dev,struct device_attribute *attr,
 
 }
 
-
+static ssize_t skip_prepare_store(struct device *dev,struct device_attribute *attr,const char *buf, size_t count)
+{
+	struct byt_chip_info *chip = dev_get_drvdata(dev);
+	pr_err("skip_prepare_store..\n");
+	if (buf[0] == '1'){
+		chip->skip_prepare_step = 1;
+		pr_err("skip_prepare_step=%d\n", chip->skip_prepare_step);
+	}
+	else{ 			
+		chip->skip_prepare_step = 0;
+		pr_err("skip_prepare_step=%d\n", chip->skip_prepare_step);
+	}
+	return count;
+}
 
 static DEVICE_ATTR(battery_charge_status, S_IRUGO | S_IWUSR,
 		byt_battery_show_charge_status, NULL);
@@ -1696,8 +1814,7 @@ static DEVICE_ATTR(battery_current_now, S_IRUGO | S_IWUSR,
 static DEVICE_ATTR(battery_status, S_IRUGO | S_IWUSR,
 		byt_battery_show_capacity, NULL);
 
-static DEVICE_ATTR(ec_version, S_IRUGO | S_IWUSR,
-		ec_version_show, NULL);
+
 static DEVICE_ATTR(gaugeIC_FW, S_IRUGO | S_IWUSR,
 		gaugeIC_FW_show, NULL);
 static DEVICE_ATTR(chargerIC_inputcurrent, S_IRUGO | S_IWUSR,	
@@ -1719,7 +1836,7 @@ static struct attribute *byt_attributes[] = {
 	&dev_attr_battery_charge_status.attr,
 	&dev_attr_battery_current_now.attr,
 	&dev_attr_battery_status.attr,
-	&dev_attr_ec_version.attr,
+	
 	&dev_attr_gaugeIC_FW.attr,
 	&dev_attr_chargerIC_inputcurrent.attr,
 	&dev_attr_ec_status.attr,
@@ -1752,9 +1869,16 @@ static struct bin_attribute guage_firmware_attr = {
 
 static DEVICE_ATTR(battery_id, S_IRUGO | S_IWUSR,
 		battery_id_show, NULL);
+static DEVICE_ATTR(ec_version, S_IRUGO | S_IWUSR,
+		ec_version_show, NULL);
+static DEVICE_ATTR(skip_prepare, S_IRUGO | S_IWUSR,
+		NULL, skip_prepare_store);
+
 
 static struct attribute *asusec_attributes[] = {
 	&dev_attr_battery_id.attr,
+	&dev_attr_ec_version.attr,
+	&dev_attr_skip_prepare.attr,
 	NULL
 };
 
@@ -1775,10 +1899,11 @@ static void byt_set_lid_bit(struct input_dev *dev){
 static int byt_battery_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
-	dev_info(&client->dev,"%s byt_battery_probe()\n", TAG);
 	struct byt_chip_info *chip;
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	int ret = 0;
+
+	dev_info(&client->dev,"%s byt_battery_probe()\n", TAG);
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE)) {
 		dev_err(&client->dev,
@@ -1807,11 +1932,12 @@ static int byt_battery_probe(struct i2c_client *client,
 	chip->ec_firmware = NULL;
 	chip->ec_firmware_size = 0;
 
-        chip->guage_user_addr = 0xAA;
-        chip->guage_rom_addr = 0x16;
+    chip->guage_user_addr = 0xAA;
+    chip->guage_rom_addr = 0x16;
 	chip->guage_rom_mode = 0;
-        chip->guage_firmware = NULL;
-        chip->guage_firmware_size = 0;
+    chip->guage_firmware = NULL;
+    chip->guage_firmware_size = 0;
+	chip->skip_prepare_step = 0;
 
 	i2c_set_clientdata(client, chip);
 
@@ -1838,9 +1964,6 @@ static int byt_battery_probe(struct i2c_client *client,
 		dev_err(&client->dev, "%s input_allocate_device fail\n", TAG);
 	}
 
-	get_gaugeIC_FW(chip);
-	get_EC_version(chip);
-
 	mutex_lock(&chip->lock);
 	byt_battery_update(chip);
 	mutex_unlock(&chip->lock);
@@ -1850,10 +1973,15 @@ static int byt_battery_probe(struct i2c_client *client,
 		int i;
 		u8 *p = (u8*)&chip->ecbat;
 		for(i=0;i<sizeof(chip->ecbat);i++,p++){
-			dev_info(&client->dev,"%s %x = %x\n",i,*p);
+			dev_info(&client->dev,"%s %x = %x\n", TAG,i,*p);
 		}
 
 	}
+	dev_err(&client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
+
+// if EC failed, skip...... (start)
+//if(chip->ecbat.FullChargeCapacity!=0){	
+if(0){
 
 
 	//Logo
@@ -1894,6 +2022,16 @@ static int byt_battery_probe(struct i2c_client *client,
 		goto probe_failed_1;
 	}
 
+	chip->usb.name = "byt_usb";
+	chip->usb.type = POWER_SUPPLY_TYPE_USB;
+	chip->usb.properties = byt_ac_props;
+	chip->usb.num_properties = ARRAY_SIZE(byt_ac_props);
+	chip->usb.get_property = byt_get_usb_property;
+	ret = power_supply_register(&client->dev, &chip->usb);
+	if (ret) {
+		dev_err(&client->dev, "%s failed to register usb: %d\n", TAG, ret);
+		goto probe_failed_1;
+	}
 
 	chip->bat.name = "byt_battery";
 	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
@@ -1906,16 +2044,21 @@ static int byt_battery_probe(struct i2c_client *client,
 		dev_err(&client->dev, "%s failed to register battery: %d\n", TAG, ret);
 		goto probe_failed_1;
 	}
-	///*
+	
 	ret = sysfs_create_group(&chip->bat.dev->kobj, &byt_attr_group);
 	if (ret) {
 		dev_err(chip->bat.dev, "%s failed to create sysfs group\n", TAG);
 		goto fail_unregister;
 	}
-	//*/
+	
+
+
 	byt_init_irq(chip);
 
 	queue_delayed_work(byt_wq, &chip->byt_batt_info_update_work, 15*HZ);
+}
+//if EC failed, skip...... (end)
+
 
         if (sysfs_create_bin_file(&client->dev.kobj,
                                 &ec_firmware_attr) < 0) {
@@ -1946,8 +2089,9 @@ probe_failed_1:
 
 static int byt_battery_remove(struct i2c_client *client)
 {
-	dev_info(&client->dev,"%s byt_battery_remove()\n", TAG);
+	
 	struct byt_chip_info *chip = i2c_get_clientdata(client);
+	dev_info(&client->dev,"%s byt_battery_remove()\n", TAG);
 
 	sysfs_remove_bin_file(&chip->client->dev.kobj, &ec_firmware_attr);
 
@@ -1958,7 +2102,7 @@ static int byt_battery_remove(struct i2c_client *client)
 	sysfs_remove_group(&chip->bat.dev->kobj, &byt_attr_group);
 
 	power_supply_unregister(&chip->ac);
-
+	power_supply_unregister(&chip->usb);
 	power_supply_unregister(&chip->bat);
 	kfree(chip);
 
@@ -1967,13 +2111,16 @@ static int byt_battery_remove(struct i2c_client *client)
 
 static void byt_battery_shutdown(struct i2c_client *client)
 {
-	dev_info(&client->dev, "byt_battery shutdown\n", TAG);
+	
 
 	struct byt_chip_info *chip = i2c_get_clientdata(client);
 	cancel_delayed_work(&chip->byt_batt_info_update_work);
 
 	if (client->irq > 0)
 		disable_irq(client->irq);
+
+	dev_info(&client->dev, "%s byt_battery shutdown\n", TAG);
+
 
 	return;
 }
@@ -2017,6 +2164,6 @@ static void __exit byt_battery_exit(void)
 }
 module_exit(byt_battery_exit);
 
-MODULE_AUTHOR("Hollie");
+
 MODULE_DESCRIPTION("BYT battery driver");
 MODULE_LICENSE("GPL");
