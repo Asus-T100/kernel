@@ -75,6 +75,7 @@
 
 #define V1P0ACNT			0x55
 #define V1P8ACNT			0x5A
+#define VHDMICNT			0x6d
 
 struct mid_pmc_dev {
 	u32 base_address;

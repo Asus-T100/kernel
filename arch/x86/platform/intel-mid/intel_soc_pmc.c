@@ -356,6 +356,11 @@ static int mid_suspend_prepare(void)
 	if (ret)
 		printk(KERN_ALERT "pmic write failed\n");
 
+	/* Turn off VHDMI internal power switch */
+	ret = intel_mid_pmic_writeb(VHDMICNT, 0x2);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
 	return 0;
 }
 
@@ -375,6 +380,11 @@ static void mid_suspend_finish(void)
 
 	/* restore V1P8A to nominal voltage */
 	ret = intel_mid_pmic_writeb(0x5A, 0x60);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* Turn On VHDMI internal power switch */
+	ret = intel_mid_pmic_writeb(VHDMICNT, 0x3);
 	if (ret)
 		printk(KERN_ALERT "pmic write failed\n");
 
