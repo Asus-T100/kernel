@@ -23,6 +23,7 @@
 
 /***********V2P85S REGUATOR platform data*************/
 static struct regulator_consumer_supply v2p85s_consumer[] = {
+	REGULATOR_SUPPLY("v2p85s", "0000:00:17.0"),
 };
 static struct regulator_init_data v2p85s_data = {
 	.constraints = {
