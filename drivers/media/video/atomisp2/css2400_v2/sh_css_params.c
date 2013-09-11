@@ -5872,7 +5872,7 @@ static enum ia_css_err sh_css_params_write_to_ddr_internal(
 			return err;
 		if (params->sc_table_changed || buff_realloced) {
 			/* shading table is full resolution, reduce */
-			struct ia_css_shading_table *tmp_sc_table;
+			struct ia_css_shading_table *tmp_sc_table = NULL;
 
 			prepare_shading_table(
 				(const struct ia_css_shading_table *)params->sc_table,
