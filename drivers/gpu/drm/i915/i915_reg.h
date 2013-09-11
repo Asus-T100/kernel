@@ -29,6 +29,7 @@
 
 #define _PORT(port, a, b) ((a) + (port)*((b)-(a)))
 
+#define _MASKED_BIT_ENABLE_ALL(a) ((a) | 0xFFFF0000)
 #define _MASKED_BIT_ENABLE(a) (((a) << 16) | (a))
 #define _MASKED_BIT_DISABLE(a) ((a) << 16)
 

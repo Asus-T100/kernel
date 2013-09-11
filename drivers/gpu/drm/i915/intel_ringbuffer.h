@@ -12,7 +12,7 @@ struct  intel_hw_status_page {
 * which may need to change for different versions of the chip*/
 #define COMMON_RING_CTX_SIZE 6
 
-#define RCS_RING_CTX_SIZE 13
+#define RCS_RING_CTX_SIZE 14
 #define VCS_RING_CTX_SIZE 10
 #define BCS_RING_CTX_SIZE 11
 
