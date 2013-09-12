@@ -586,6 +586,18 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 	return 0;
 }
 
+void intel_console_resume(struct work_struct *work)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(work, struct drm_i915_private,
+			     console_resume_work);
+	struct drm_device *dev = dev_priv->dev;
+
+	console_lock();
+	intel_fbdev_set_suspend(dev, 0);
+	console_unlock();
+}
+
 int i915_resume_common(struct drm_device *dev, bool is_hibernate_restore)
 {
 	int ret;
