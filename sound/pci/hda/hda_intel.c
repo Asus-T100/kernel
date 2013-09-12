@@ -520,6 +520,11 @@ enum {
 #define AZX_DCAPS_ALIGN_BUFSIZE	(1 << 22)	/* buffer size alignment */
 #define AZX_DCAPS_COUNT_LPIB_DELAY (1 << 25)	/* Take LPIB as delay */
 
+/* quirk for Intel VLV2 */
+#define AZX_DCAPS_INTEL_VLV2 \
+	(AZX_DCAPS_SCH_SNOOP | AZX_DCAPS_BUFSIZE | \
+	 AZX_DCAPS_COUNT_LPIB_DELAY)
+
 /* quirks for ATI SB / AMD Hudson */
 #define AZX_DCAPS_PRESET_ATI_SB \
 	(AZX_DCAPS_ATI_SNOOP | AZX_DCAPS_NO_TCSEL | \
@@ -3073,6 +3078,9 @@ static DEFINE_PCI_DEVICE_TABLE(azx_ids) = {
 	{ PCI_DEVICE(0x8086, 0x3a6e),
 	  .driver_data = AZX_DRIVER_ICH | AZX_DCAPS_OLD_SSYNC |
 	  AZX_DCAPS_BUFSIZE },  /* ICH10 */
+	/* ValleyView */
+	{ PCI_DEVICE(0x8086, 0x0f04),
+	  .driver_data = AZX_DRIVER_SCH | AZX_DCAPS_INTEL_VLV2 },
 	/* Generic Intel */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_ANY_ID),
 	  .class = PCI_CLASS_MULTIMEDIA_HD_AUDIO << 8,
