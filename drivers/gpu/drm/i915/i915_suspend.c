@@ -975,9 +975,17 @@ static int i915_drm_thaw(struct drm_device *dev, bool is_hibernate_restore)
 
 	dev_priv->modeset_on_lid = 0;
 
-	console_lock();
-	intel_fbdev_set_suspend(dev, 0);
-	console_unlock();
+	/*
+	 * The console lock can be pretty contented on resume due
+	 * to all the printk activity.  Try to keep it out of the hot
+	 * path of resume if possible.
+	 */
+	if (console_trylock()) {
+		intel_fbdev_set_suspend(dev, 0);
+		console_unlock();
+	} else {
+		schedule_work(&dev_priv->console_resume_work);
+	}
 
 	return error;
 }
