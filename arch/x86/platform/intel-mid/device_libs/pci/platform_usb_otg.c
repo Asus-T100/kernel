@@ -53,8 +53,7 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 		dwc_otg_pdata.no_device_mode = 0;
 		dwc_otg_pdata.no_host_mode = 1;
 		dwc_otg_pdata.is_byt = 1;
-//<ASUS-Bob20130830+>	patch Bugzilla - Bug840
-#if 0
+//<ASUS-Larry 20130911+>	Fix OTG doesn't work on PR device
 		/* FIXME: Hardcode now, but need to use ACPI table for GPIO */
 		if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, RVP3) ||
 			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, RVP3)) {
@@ -66,9 +65,13 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 			pr_info("This is BYT FFRD10 PRx\n");
 			dwc_otg_pdata.gpio_cs = 54;
 			dwc_otg_pdata.gpio_reset = 144;
+		}else 
+		{
+			pr_info(" #### This is T100TA ####\n");
+			dwc_otg_pdata.gpio_cs = 156;
+			dwc_otg_pdata.gpio_reset = 144;
 		}
-#endif
-//<ASUS-Bob20130830->
+//<ASUS-Larry 20130911->
 		return &dwc_otg_pdata;
 	default:
 		break;
