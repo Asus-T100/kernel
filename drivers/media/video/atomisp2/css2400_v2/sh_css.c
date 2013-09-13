@@ -2219,13 +2219,13 @@ ia_css_init(const struct ia_css_env *env,
 		return err;
 	err = sh_css_params_init();
 	if (err != IA_CSS_SUCCESS)
-		goto refcnt_uninit;
+		return err;
 	if (fw)
 	{
 		ia_css_unload_firmware(); /* in case we already had firmware loaded */
 		err = sh_css_load_firmware(fw->data, fw->bytes);
 		if (err != IA_CSS_SUCCESS)
-			goto params_uninit;
+			return err;
 		sh_css_init_binary_infos();
 		fw_explicitly_loaded = false;
 	}
@@ -2234,8 +2234,7 @@ ia_css_init(const struct ia_css_env *env,
 						    my_css.sp_bin_addr);
 	if (!my_css.sp_bin_addr) {
 		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY);
-		err = IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
-		goto unload_fw;
+		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 	}
 
 #if defined(HRT_CSIM)
@@ -2246,8 +2245,7 @@ ia_css_init(const struct ia_css_env *env,
 	 */
 	if (!sh_css_debug_mode_init()) {
 		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_INTERNAL_ERROR);
-		err = IA_CSS_ERR_INTERNAL_ERROR;
-		goto free_sp_bin_addr;
+		return IA_CSS_ERR_INTERNAL_ERROR;
 	}
 #endif
 
@@ -2262,8 +2260,7 @@ ia_css_init(const struct ia_css_env *env,
 #endif
 	if (!sh_css_hrt_system_is_idle()) {
 		sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",IA_CSS_ERR_SYSTEM_NOT_IDLE);
-		err = IA_CSS_ERR_SYSTEM_NOT_IDLE;
-		goto free_sp_bin_addr;
+		return IA_CSS_ERR_SYSTEM_NOT_IDLE;
 	}
 	/* can be called here, queuing works, but:
 	   - when sp is started later, it will wipe queued items
@@ -2278,21 +2275,8 @@ ia_css_init(const struct ia_css_env *env,
 	if(ia_css_input_system_init() != INPUT_SYSTEM_ERR_NO_ERROR)
 		err = IA_CSS_ERR_INVALID_ARGUMENTS;
 #endif
-	if (err == IA_CSS_SUCCESS)
-		goto init_ok;
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",err);
 
-free_sp_bin_addr:
-	mmgr_free(my_css.sp_bin_addr);
-	my_css.sp_bin_addr = mmgr_NULL;
-unload_fw:
-	if (fw)
-		ia_css_unload_firmware();
-params_uninit:
-	sh_css_params_uninit();
-refcnt_uninit:
-	sh_css_refcount_uninit();
-init_ok:
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave:err=%d\n", err);
 	return err;
 }
 

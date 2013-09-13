@@ -22,11 +22,39 @@
 #include <asm/processor.h>
 #include <asm/pci_x86.h>
 
+#define ILB_BASE	0xfed08000
+#define ILB_SIZE	0xa0
+#define ILB_IR		0x20
+#define PCI_DEV_NUM(x)	((x >> 3) & 0x1f)
+#define IR_INTA(ir)	(ir & 0xf)
+
+#define PIRQ2IRQ(x)	(x + 16)
+
 extern struct legacy_pic default_legacy_pic;
 
+/* Propagate PCI IRQ# */
 static int vlv2_pci_enable_irq(struct pci_dev *pdev)
 {
+
+	u8 ir_val, dev;
+	void __iomem *ilb_mem;
 	struct io_apic_irq_attr irq_attr;
+
+	ilb_mem = ioremap_nocache(ILB_BASE, ILB_SIZE);
+	if (ilb_mem == NULL) {
+		pr_err("%s(): can't map ILB_BASE(0x%x)\n",
+			__func__, ILB_BASE);
+		return -EIO;
+	}
+
+	dev = PCI_DEV_NUM(pdev->devfn);
+	ir_val = ioread8(ilb_mem + ILB_IR + PCI_DEV_NUM(pdev->devfn) * 2);
+
+	iounmap(ilb_mem);
+
+	/* map INTA# only */
+	pdev->irq = PIRQ2IRQ(IR_INTA(ir_val));
+	pci_write_config_byte(pdev, PCI_INTERRUPT_LINE, pdev->irq);
 
 	irq_attr.ioapic = mp_find_ioapic(pdev->irq);
 	irq_attr.ioapic_pin = pdev->irq;
