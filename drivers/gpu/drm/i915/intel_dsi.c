@@ -85,6 +85,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
 #include <drm/i915_drm.h>
+#include <linux/sysfs.h>
 #include <linux/slab.h>
 #include "linux/mfd/intel_mid_pmic.h"
 #include "i915_drv.h"
@@ -782,6 +783,26 @@ intel_dsi_add_properties(struct intel_dsi *intel_dsi,
 	intel_attach_force_pfit_property(connector);
 }
 
+static ssize_t panel_bpp_show(struct device *device,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	struct drm_connector *connector =
+			container_of(device, struct drm_connector, kdev);
+	struct drm_device *dev = connector->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	int bpp = dev_priv->mipi.panel_bpp;
+
+	snprintf(buf, sizeof(bpp), "%d\n", bpp);
+
+	return sizeof(bpp);
+}
+
+static struct device_attribute connector_bpp_attrs[] = {
+	__ATTR_RO(panel_bpp),
+};
+
 bool intel_dsi_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -879,6 +900,9 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 
 	drm_sysfs_connector_add(connector);
+
+	/* add panel bpp as another connector property */
+	device_create_file(&connector->kdev, &connector_bpp_attrs[0]);
 
 	/* XXX: Disable PPS to be done before eDP is disabled per BSPEC*/
 	/* FIXME: move to correct place */
