@@ -2216,16 +2216,23 @@ i915_ring_hangcheck_read(struct file *filp,
 	 * have hung and been reset since boot */
 	struct drm_device *dev = filp->private_data;
 	drm_i915_private_t *dev_priv = dev->dev_private;
-	char buf[100];
+	char buf[200];
 	int len;
 
 	len = snprintf(buf, sizeof(buf),
-		       "GPU=0x%08x,RCS=0x%08x,VCS=0x%08x,BCS=0x%08x\n",
-			dev_priv->total_resets,
-			dev_priv->hangcheck[RCS].total,
-			dev_priv->hangcheck[VCS].total,
-			dev_priv->hangcheck[BCS].total);
-
+		"GPU=0x%08x,RCS=0x%08x,VCS=0x%08x,BCS=0x%08x,"
+		"RCS_T=0x%08x,VCS_T=0x%08x,BCS_T=0x%08x,"
+		"RCS_W=0x%08x,VCS_W=0x%08x,BCS_W=0x%08x\n",
+		dev_priv->total_resets,
+		dev_priv->hangcheck[RCS].total,
+		dev_priv->hangcheck[VCS].total,
+		dev_priv->hangcheck[BCS].total,
+		dev_priv->hangcheck[RCS].tdr_count,
+		dev_priv->hangcheck[VCS].tdr_count,
+		dev_priv->hangcheck[BCS].tdr_count,
+		dev_priv->hangcheck[RCS].watchdog_count,
+		dev_priv->hangcheck[VCS].watchdog_count,
+		dev_priv->hangcheck[BCS].watchdog_count);
 
 	if (len > sizeof(buf))
 		len = sizeof(buf);
@@ -2251,6 +2258,8 @@ i915_ring_hangcheck_write(struct file *filp,
 	for (i = 0; i < I915_NUM_RINGS; i++) {
 		/* Reset the hangcheck counters */
 		dev_priv->hangcheck[i].total = 0;
+		dev_priv->hangcheck[i].tdr_count = 0;
+		dev_priv->hangcheck[i].watchdog_count = 0;
 	}
 
 	dev_priv->total_resets = 0;

@@ -2328,9 +2328,26 @@ sh_css_params_set_binning_factor(struct ia_css_stream *stream, unsigned int binn
 	return params->sc_table_changed;
 }
 
+bool
+sh_css_params_set_raw_binning(struct ia_css_stream *stream, bool binning)
+{
+	struct ia_css_isp_parameters *params = stream->isp_params_configs;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_set_raw_binning() enter:\n");
+
+	if (params->raw_binning != binning) {
+		params->raw_binning = binning;
+		params->sc_table_changed = true;
+	}
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_set_raw_binning() leave:\n");
+
+	return params->sc_table_changed;
+}
+
+
 static void
 sh_css_set_shading_table(struct ia_css_stream *stream,
-			 const struct ia_css_shading_table *table)
+			  const struct ia_css_shading_table *table)
 {
 	struct ia_css_isp_parameters *params;
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_shading_table() enter:\n");
@@ -5856,6 +5873,7 @@ static enum ia_css_err sh_css_params_write_to_ddr_internal(
 			prepare_shading_table(
 				(const struct ia_css_shading_table *)params->sc_table,
 				params->sensor_binning,
+				params->raw_binning,
 				&tmp_sc_table,
 				binary);
 
@@ -6233,6 +6251,7 @@ struct ia_css_shading_table * ia_css_get_shading_table(struct ia_css_stream *str
 		prepare_shading_table(
 			(const struct ia_css_shading_table *)params->sc_table,
 			params->sensor_binning,
+			params->raw_binning,
 			&tmp_sc_table,
 			binary);
 

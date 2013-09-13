@@ -55,6 +55,9 @@ ia_css_stream_input_format_bits_per_pixel(struct ia_css_stream *stream);
 bool
 sh_css_params_set_binning_factor(struct ia_css_stream *stream, unsigned int sensor_binning);
 
+bool
+sh_css_params_set_raw_binning(struct ia_css_stream *stream, bool sensor_binning);
+
 enum ia_css_err
 sh_css_params_write_to_ddr(struct ia_css_stream *stream,
 			   const struct sh_css_binary *binary_info);

@@ -2910,6 +2910,8 @@ static void vlv_rps_timer_work(struct work_struct *work)
 							rps.rps_timer_work);
 
 	mutex_lock(&dev_priv->rps.rps_mutex);
+	if (!dev_priv->is_turbo_enabled)
+		goto exit;
 
 	if (I915_READ(VLV_GTLC_SURVIVABILITY_REG) & VLV_GFX_CLK_STATUS_BIT) {
 		/* GT is not power gated. Cancel any pending ones
@@ -2956,6 +2958,7 @@ static void vlv_rps_timer_work(struct work_struct *work)
 			I915_WRITE(GEN6_PMINTRMSK, ~GEN6_PM_DEFERRED_EVENTS);
 	}
 
+exit:
 	mutex_unlock(&dev_priv->rps.rps_mutex);
 }
 
@@ -3068,6 +3071,8 @@ bool vlv_turbo_initialize(struct drm_device *dev)
 	I915_WRITE(GEN6_PMIMR, 0);
 	spin_unlock_irqrestore(&dev_priv->rps.lock, flags);
 
+	dev_priv->is_turbo_enabled = true;
+
 	/* Upon RC6 entry, VLV_DEFRRED_EVENTS will not be generated
 	 * and if freq is more than Rpe, it will consume more power
 	 * Have a delayed work item to track this and bring freq to Rpe
@@ -3092,6 +3097,8 @@ void vlv_turbo_disable(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
+
+	dev_priv->is_turbo_enabled = false;
 
 	/* Cancel the timer work item first */
 	cancel_delayed_work_sync(&dev_priv->rps.rps_timer_work);

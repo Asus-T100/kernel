@@ -1423,7 +1423,7 @@ void mmc_power_off(struct mmc_host *host)
 	 * powered off completely
 	 */
 	if (host->caps2 & MMC_CAP2_PWOFF_DELAY)
-		msleep(200);
+		msleep(500);
 }
 
 /*

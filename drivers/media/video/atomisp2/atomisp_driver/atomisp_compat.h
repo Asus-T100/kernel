@@ -473,6 +473,9 @@ void atomisp_css_morph_table_free(struct atomisp_css_morph_table *table);
 void atomisp_css_set_cont_prev_start_time(struct atomisp_device *isp,
 					unsigned int overlap);
 
+int atomisp_css_get_dis_stat(struct atomisp_sub_device *asd,
+			 struct atomisp_dis_statistics *stats);
+
 int atomisp_css_update_stream(struct atomisp_sub_device *asd);
 
 int atomisp_css_create_acc_pipe(struct atomisp_sub_device *asd);

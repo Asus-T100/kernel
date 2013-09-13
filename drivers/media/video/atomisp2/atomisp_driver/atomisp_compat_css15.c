@@ -1270,6 +1270,56 @@ int atomisp_css_get_zoom_factor(struct atomisp_sub_device *asd,
 	return 0;
 }
 
+/*
+ * Function to set/get image stablization statistics
+ */
+int atomisp_css_get_dis_stat(struct atomisp_sub_device *asd,
+			 struct atomisp_dis_statistics *stats)
+{
+	struct atomisp_device *isp = asd->isp;
+	unsigned long flags;
+	int error;
+
+	if (stats->vertical_projections   == NULL ||
+	    stats->horizontal_projections == NULL ||
+	    asd->params.dis_hor_proj_buf  == NULL ||
+	    asd->params.dis_ver_proj_buf  == NULL)
+		return -EINVAL;
+
+	/* isp needs to be streaming to get DIS statistics */
+	spin_lock_irqsave(&isp->lock, flags);
+	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+		spin_unlock_irqrestore(&isp->lock, flags);
+		return -EINVAL;
+	}
+	spin_unlock_irqrestore(&isp->lock, flags);
+
+	if (!asd->params.video_dis_en)
+		return -EINVAL;
+
+	if (atomisp_compare_grid(asd, &stats->grid_info) != 0)
+		/* If the grid info in the argument differs from the current
+		   grid info, we tell the caller to reset the grid size and
+		   try again. */
+		return -EAGAIN;
+
+	if (!asd->params.dis_proj_data_valid)
+		return -EBUSY;
+
+	error = copy_to_user(stats->vertical_projections,
+			     asd->params.dis_ver_proj_buf,
+			     asd->params.dis_ver_proj_bytes);
+
+	error |= copy_to_user(stats->horizontal_projections,
+			     asd->params.dis_hor_proj_buf,
+			     asd->params.dis_hor_proj_bytes);
+
+	if (error)
+		return -EFAULT;
+
+	return 0;
+}
+
 struct atomisp_css_shading_table *atomisp_css_shading_table_alloc(
 				unsigned int width, unsigned int height)
 {

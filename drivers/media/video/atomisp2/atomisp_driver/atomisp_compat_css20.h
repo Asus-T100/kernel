@@ -71,10 +71,13 @@
 #define atomisp_css_xnr_table	ia_css_xnr_table
 #define atomisp_css_rgb_gamma_table	ia_css_rgb_gamma_table
 #define atomisp_css_anr_thres	ia_css_anr_thres
+#define atomisp_css_dvs_6axis	ia_css_dvs_6axis_config
 #define atomisp_css_grid_info	ia_css_grid_info
 #define atomisp_css_3a_grid_info	ia_css_3a_grid_info
+#define atomisp_css_dvs_grid_info	ia_css_dvs_grid_info
 #define atomisp_css_shading_table	ia_css_shading_table
 #define atomisp_css_morph_table	ia_css_morph_table
+#define atomisp_css_dvs_6axis_config	ia_css_dvs_6axis_config
 #define atomisp_css_fw_info	ia_css_fw_info
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
@@ -227,4 +230,6 @@ int atomisp_css_load_firmware(struct atomisp_device *isp);
 
 void atomisp_css_unload_firmware(struct atomisp_device *isp);
 
+void atomisp_css_set_dvs_6axis(struct atomisp_sub_device *asd,
+			struct atomisp_css_dvs_6axis *dvs_6axis);
 #endif

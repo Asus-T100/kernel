@@ -807,7 +807,7 @@ retry_read:
 			retry = true;
 			goto retry_read;
 		} else {
-			dev_err(&client->dev, "%s: i2c transfer failed (%d)\n",
+			dev_dbg(&client->dev, "%s: i2c transfer failed (%d)\n",
 				__func__, ret);
 			return -EIO;
 		}
@@ -1271,7 +1271,7 @@ static int mxt_read_and_process_messages(struct mxt_data *data, u8 count)
 	ret = __mxt_read_reg(data->client, data->T5_address,
 				data->T5_msg_size * count, data->msg_buf);
 	if (ret) {
-		dev_err(dev, "Failed to read %u messages (%d)\n", count, ret);
+		dev_warn(dev, "No %u T5 messages to read\n", count);
 		return ret;
 	}
 
@@ -1297,7 +1297,8 @@ static irqreturn_t mxt_process_messages_t44(struct mxt_data *data)
 	ret = __mxt_read_reg(data->client, data->T44_address,
 		data->T5_msg_size + 1, data->msg_buf);
 	if (ret) {
-		dev_err(dev, "Failed to read T44 and T5 (%d)\n", ret);
+		dev_err(dev, "%s: Failed to read T44 and T5 (%d)\n",
+				__func__, ret);
 		return IRQ_NONE;
 	}
 
@@ -1442,8 +1443,11 @@ static int mxt_t6_command(struct mxt_data *data, u16 cmd_offset,
 	do {
 		msleep(20);
 		ret = __mxt_read_reg(data->client, reg, 1, &command_register);
-		if (ret)
+		if (ret) {
+			dev_err(&data->client->dev, "%s: T6 command failed! (%d)\n",
+					__func__, ret);
 			return ret;
+		}
 	} while ((command_register != 0) && (timeout_counter++ <= 100));
 
 	if (timeout_counter > 100) {
@@ -1561,8 +1565,11 @@ static int mxt_check_retrigen(struct mxt_data *data)
 		error = __mxt_read_reg(client,
 				       data->T18_address + MXT_COMMS_CTRL,
 				       1, &val);
-		if (error)
+		if (error) {
+			dev_err(&client->dev, "%s: Read T18 failed (%d)\n",
+					__func__, error);
 			return error;
+		}
 
 		if (val & MXT_COMMS_RETRIGEN)
 			return 0;
@@ -1926,8 +1933,10 @@ static int mxt_set_t7_power_cfg(struct mxt_data *data, u8 sleep)
 	error = __mxt_write_reg(data->client, data->T7_address,
 			sizeof(data->t7_cfg),
 			new_config);
-	if (error)
+	if (error) {
+		dev_err(dev, "%s: Set T7 cfg failed (%d)\n", __func__, error);
 		return error;
+	}
 
 	dev_dbg(dev, "Set T7 ACTV:%d IDLE:%d\n",
 		new_config->active, new_config->idle);
@@ -1944,8 +1953,11 @@ static int mxt_init_t7_power_cfg(struct mxt_data *data)
 recheck:
 	error = __mxt_read_reg(data->client, data->T7_address,
 				sizeof(data->t7_cfg), &data->t7_cfg);
-	if (error)
+	if (error) {
+		dev_err(dev, "%s: Read T7 config failed (%d)\n",
+				__func__, error);
 		return error;
+	}
 
 	if (data->t7_cfg.active == 0 || data->t7_cfg.idle == 0) {
 		if (!retry) {
@@ -1954,7 +1966,7 @@ recheck:
 			retry = true;
 			goto recheck;
 		} else {
-		    dev_dbg(dev, "T7 cfg zero after reset, overriding\n");
+		    dev_info(dev, "T7 cfg zero after reset, overriding\n");
 		    data->t7_cfg.active = 20;
 		    data->t7_cfg.idle = 100;
 		    return mxt_set_t7_power_cfg(data, MXT_POWER_CFG_RUN);
@@ -2164,8 +2176,11 @@ static int mxt_read_info_block(struct mxt_data *data)
 	}
 
 	error = __mxt_read_reg(client, 0, size, buf);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read info block (%d)\n",
+				__func__, error);
 		goto err_free_mem;
+	}
 
 	/* Resize buffer to give space for rest of info block */
 	num_objects = ((struct mxt_info *)buf)->object_num;
@@ -2183,8 +2198,11 @@ static int mxt_read_info_block(struct mxt_data *data)
 	error = __mxt_read_reg(client, MXT_OBJECT_START,
 			       size - MXT_OBJECT_START,
 			       buf + MXT_OBJECT_START);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read rest of info block (%d)\n",
+				__func__, error);
 		goto err_free_mem;
+	}
 
 	/* Extract & calculate checksum */
 	crc_ptr = buf + size - MXT_INFO_CHECKSUM_SIZE;
@@ -2243,8 +2261,11 @@ static int mxt_read_t9_resolution(struct mxt_data *data)
 	error = __mxt_read_reg(client,
 			       object->start_address + MXT_T9_RANGE,
 			       sizeof(range), &range);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read T9 range (%d)\n",
+				__func__, error);
 		return error;
+	}
 
 	le16_to_cpus(range.x);
 	le16_to_cpus(range.y);
@@ -2252,8 +2273,11 @@ static int mxt_read_t9_resolution(struct mxt_data *data)
 	error =  __mxt_read_reg(client,
 				object->start_address + MXT_T9_ORIENT,
 				1, &orient);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read T9 orient (%d)\n",
+				__func__, error);
 		return error;
+	}
 
 	/* Handle default values */
 	if (range.x == 0)
@@ -2353,30 +2377,42 @@ static int mxt_read_t100_config(struct mxt_data *data)
 	error = __mxt_read_reg(client,
 			       object->start_address + MXT_T100_XRANGE,
 			       sizeof(range_x), &range_x);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read T100 XRANGE (%d)\n",
+				__func__, error);
 		return error;
+	}
 
 	le16_to_cpus(range_x);
 
 	error = __mxt_read_reg(client,
 			       object->start_address + MXT_T100_YRANGE,
 			       sizeof(range_y), &range_y);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read T100 YRANGE (%d)\n",
+				__func__, error);
 		return error;
+	}
 
 	le16_to_cpus(range_y);
 
 	error =  __mxt_read_reg(client,
 				object->start_address + MXT_T100_CFG1,
 				1, &cfg);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read T100 CFG1 (%d)\n",
+				__func__, error);
 		return error;
+	}
 
 	error =  __mxt_read_reg(client,
 				object->start_address + MXT_T100_TCHAUX,
 				1, &tchaux);
-	if (error)
+	if (error) {
+		dev_err(&client->dev, "%s: Failed to read T100 TCHAUX (%d)\n",
+				__func__, error);
 		return error;
+	}
 
 	/* Handle default values */
 	if (range_x == 0)
@@ -2604,15 +2640,15 @@ static int mxt_configure_objects(struct mxt_data *data, bool force)
 
 	error = mxt_init_t7_power_cfg(data);
 	if (error) {
-		dev_err(&client->dev, "Failed to initialize power cfg\n");
-		return error;
+		dev_warn(&client->dev, "%s: Initialize power cfg failed (%d)\n",
+				__func__, error);
 	}
 
 	/* Check register init values */
 	error = mxt_check_reg_init(data, force);
 	if (error) {
-		dev_warn(&client->dev, "Initialize configuration failed (%d)\n",
-			error);
+		dev_warn(&client->dev, "%s: Initialize configuration failed (%d)\n",
+				__func__, error);
 	}
 
 	if (data->T9_reportid_min) {

@@ -696,7 +696,7 @@ static void snb_gt_irq_handler(struct drm_device *dev,
 		/* Stop the counter to prevent further interrupts */
 		ring = &dev_priv->ring[RCS];
 		I915_WRITE(RING_CNTR(ring->mmio_base), RCS_WATCHDOG_DISABLE);
-
+		dev_priv->hangcheck[RCS].watchdog_count++;
 		i915_handle_error(dev, &dev_priv->hangcheck[RCS], 1);
 	}
 
@@ -705,6 +705,7 @@ static void snb_gt_irq_handler(struct drm_device *dev,
 
 		/* Stop the counter to prevent further interrupts */
 		ring = &dev_priv->ring[VCS];
+		dev_priv->hangcheck[VCS].watchdog_count++;
 		I915_WRITE(RING_CNTR(ring->mmio_base), VCS_WATCHDOG_DISABLE);
 
 		i915_handle_error(dev, &dev_priv->hangcheck[VCS], 1);
@@ -2121,8 +2122,10 @@ static bool i915_hangcheck_hung(struct intel_hangcheck *hc)
 			DRM_DEBUG_TDR("hung=%d after kick ring\n", hung);
 		}
 
-		if (hung)
+		if (hung) {
+			hc->tdr_count++;
 			i915_handle_error(dev, hc, 0);
+		}
 
 		return hung;
 	}

@@ -161,6 +161,9 @@ enum {
 	ATA_DFLAG_DETACH	= (1 << 24),
 	ATA_DFLAG_DETACHED	= (1 << 25),
 
+	ATA_DFLAG_DA		= (1 << 26), /* device supports Device Attention */
+	ATA_DFLAG_DEVSLP	= (1 << 27), /* device supports Device Sleep */
+
 	ATA_DEV_UNKNOWN		= 0,	/* unknown device */
 	ATA_DEV_ATA		= 1,	/* ATA device */
 	ATA_DEV_ATA_UNSUP	= 2,	/* ATA device (unsupported) */
@@ -651,6 +654,9 @@ struct ata_device {
 		u16		id[ATA_ID_WORDS]; /* IDENTIFY xxx DEVICE data */
 		u32		gscr[SATA_PMP_GSCR_DWORDS]; /* PMP GSCR block */
 	};
+
+	/* Identify Device Data Log (30h), SATA Settings (page 08h) */
+	u8			sata_settings[ATA_SECT_SIZE];
 
 	/* error history */
 	int			spdn_cnt;
