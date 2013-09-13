@@ -272,23 +272,38 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 	 * some next enable sequence send turn on packet error is observed */
 	if (intel_dsi->dev.dev_ops->disable)
 		intel_dsi->dev.dev_ops->disable(&intel_dsi->dev);
+}
 
+void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
+{
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	int pipe = intel_crtc->pipe;
 
-	/* only if clock is disabled before pipe and plane, sending DCS
-	 * command works in next enable sequence works */
-	intel_disable_dsi_pll(intel_dsi);
+	DRM_DEBUG_KMS("\n");
 
-	/* If ULPS state is entered before disabling DSI PLL then sending
-	 * DSI commands failed in the next enable sequence. */
+	/*FIXME: enter ULPS sequence*/
+	/*
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
 							ULPS_STATE_MASK);
 	usleep_range(2000, 2500);
+	*/
 
 	I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), 0, LP_OUTPUT_HOLD);
 	usleep_range(1000, 1500);
 
+	/*FIXME: when ULPS sequence is fixed LP will go low*/
+	/*
+	if (wait_for(((I915_READ(MIPI_PORT_CTRL(pipe)) & 0x20000)
+					== 0x00000), 30))
+		DRM_ERROR("DSI LP not going Low\n");
+	*/
+
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), 0x00, DEVICE_READY);
 	usleep_range(2000, 2500);
+
+	intel_disable_dsi_pll(intel_dsi);
 
 	if (intel_dsi->dev.dev_ops->disable_panel_power)
 		intel_dsi->dev.dev_ops->disable_panel_power(&intel_dsi->dev);

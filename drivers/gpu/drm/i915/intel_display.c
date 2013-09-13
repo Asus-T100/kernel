@@ -3920,6 +3920,14 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	if (!dev_priv->is_mipi)
 		intel_disable_pll(dev_priv, pipe);
+	else {
+		for_each_encoder_on_crtc(dev, crtc, encoder) {
+			if (encoder->type == INTEL_OUTPUT_DSI) {
+				intel_dsi_clear_device_ready(encoder);
+				break;
+			}
+		}
+	}
 
 	intel_crtc->active = false;
 	if (dev_priv->disp_pm_in_progress == true)
