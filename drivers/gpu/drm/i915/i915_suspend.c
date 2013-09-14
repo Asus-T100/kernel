@@ -28,6 +28,7 @@
 #include "drm.h"
 #include "i915_drm.h"
 #include "intel_drv.h"
+#include "intel_clrmgr.h"
 #include "i915_reg.h"
 #include <linux/console.h>
 #include <linux/intel_mid_pm.h>
@@ -617,6 +618,9 @@ static void i915_save_display(struct drm_device *dev)
 	/* Don't save them in KMS mode */
 	i915_save_modeset_reg(dev);
 
+	/* Save Hue/Saturation/Brightness/Contrast status */
+	intel_save_clr_mgr_status(dev);
+
 	/* CRT state */
 	if (HAS_PCH_SPLIT(dev)) {
 		dev_priv->saveADPA = I915_READ(PCH_ADPA);
@@ -796,6 +800,10 @@ static void i915_restore_display(struct drm_device *dev)
 	I915_WRITE(VGA_PD, dev_priv->saveVGA_PD);
 	POSTING_READ(VGA_PD);
 	udelay(150);
+
+	/* Restore Gamma/Csc/Hue/Saturation/Brightness/Contrast */
+	if (!intel_restore_clr_mgr_status(dev))
+		DRM_ERROR("Restore Color manager status failed");
 
 	i915_restore_vga(dev);
 }
