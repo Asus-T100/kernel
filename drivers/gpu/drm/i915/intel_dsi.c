@@ -156,6 +156,12 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), DEVICE_READY,
 			DEVICE_READY | ULPS_STATE_MASK);
 	usleep_range(2000, 2500);
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), 0x00,
+			DEVICE_READY | ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), DEVICE_READY,
+			DEVICE_READY | ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
 
 	if (intel_dsi->dev.dev_ops->send_otp_cmds)
 		intel_dsi->dev.dev_ops->send_otp_cmds(&intel_dsi->dev);
@@ -283,22 +289,24 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 
 	DRM_DEBUG_KMS("\n");
 
-	/*FIXME: enter ULPS sequence*/
-	/*
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
 							ULPS_STATE_MASK);
 	usleep_range(2000, 2500);
-	*/
+
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_EXIT,
+							ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
+
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
+							ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
 
 	I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), 0, LP_OUTPUT_HOLD);
 	usleep_range(1000, 1500);
 
-	/*FIXME: when ULPS sequence is fixed LP will go low*/
-	/*
 	if (wait_for(((I915_READ(MIPI_PORT_CTRL(pipe)) & 0x20000)
 					== 0x00000), 30))
 		DRM_ERROR("DSI LP not going Low\n");
-	*/
 
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), 0x00, DEVICE_READY);
 	usleep_range(2000, 2500);
