@@ -423,7 +423,12 @@ static int suspend_iter(struct device *dev, void *data)
  */
 int pcie_port_device_suspend(struct device *dev)
 {
-	return device_for_each_child(dev, NULL, suspend_iter);
+	struct pci_dev *pdev = to_pci_dev(dev);
+	int ret;
+	ret = device_for_each_child(dev, NULL, suspend_iter);
+	if (ret)
+		return ret;
+	return pci_set_power_state(pdev, PCI_D3hot);
 }
 
 static int resume_iter(struct device *dev, void *data)
@@ -445,6 +450,11 @@ static int resume_iter(struct device *dev, void *data)
  */
 int pcie_port_device_resume(struct device *dev)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
+	int ret;
+	ret = pci_set_power_state(pdev, PCI_D0);
+	if (ret)
+		return ret;
 	return device_for_each_child(dev, NULL, resume_iter);
 }
 #endif /* PM */
