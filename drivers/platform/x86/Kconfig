@@ -856,4 +856,12 @@ config INTEL_BYT_M_BTN
 	help
 	  This driver provides the interface to access Intel Baytrail-M Key Buttons.
 
+config INTEL_CRYSTALCOVE_PAGE0
+	bool "Crystal Cove PMIC Page0 access"
+	depends on I2C
+	help
+	  This driver provides the access to crystal cove page0 register map.
+
+	  If unsure, say N.
+
 endif # X86_PLATFORM_DEVICES

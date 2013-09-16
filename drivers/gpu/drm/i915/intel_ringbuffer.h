@@ -119,12 +119,15 @@ struct  intel_ring_buffer {
 
 	int		(*enable)(struct intel_ring_buffer *ring);
 	int		(*disable)(struct intel_ring_buffer *ring);
+	int		(*start)(struct intel_ring_buffer *ring);
+	int		(*stop)(struct intel_ring_buffer *ring);
 	int		(*reset)(struct intel_ring_buffer *ring);
 	int		(*save)(struct intel_ring_buffer *ring,
 				uint32_t *data, uint32_t max,
 				u32 flags);
 	int		(*restore)(struct intel_ring_buffer *ring,
 				uint32_t *data, uint32_t max);
+	int		(*invalidate_tlb)(struct intel_ring_buffer *ring);
 
 	u32		semaphore_register[3]; /*our mbox written by others */
 	u32		signal_mbox[2]; /* mboxes this ring signals to */

@@ -94,6 +94,7 @@ struct sdhci_pci_chip {
 	unsigned int		quirks;
 	unsigned int		quirks2;
 	bool			allow_runtime_pm;
+	unsigned int		autosuspend_delay;
 	const struct sdhci_pci_fixes *fixes;
 
 	int			num_slots;	/* Slots on controller */
@@ -348,7 +349,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
 		slot->host->quirks2 |= SDHCI_QUIRK2_CARD_CD_DELAY |
 			SDHCI_QUIRK2_WAIT_FOR_IDLE;
-#if 0 //<asus-ych20130904>	
+#if 0 //<asus-ych20130916>	
 		if (!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP1) &&
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP2) &&
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP3) &&
@@ -356,32 +357,27 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP2) &&
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP3))
 			slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR;
-#endif	 //<asus-ych20130904>		
+#endif	 //<asus-ych20130916>		
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
-#if 0 ///<asus-ych2013004>	
 		if (!INTEL_MID_BOARDV2(TABLET, BYT, BLB, PRO) &&
 				!INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
-#endif //<asus-ych20130904>	
-		sdhci_alloc_panic_host(slot->host);
+			sdhci_alloc_panic_host(slot->host);
 		slot->rst_n_gpio = -EINVAL;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
-		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
-#if 0 //<asus-ych20130904>	
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC |
 			MMC_CAP2_CACHE_CTRL;
 		slot->host->mmc->qos = kzalloc(sizeof(struct pm_qos_request),
 				GFP_KERNEL);
-#endif //<asus-ych20130904>	
 		break;
 	}
 
 	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE;
 	slot->host->mmc->caps2 |= MMC_CAP2_HC_ERASE_SZ | MMC_CAP2_POLL_R1B_BUSY;
-#if 0 //<asus-ych20130904>	
+
 	if (slot->host->mmc->qos)
 		pm_qos_add_request(slot->host->mmc->qos, PM_QOS_CPU_DMA_LATENCY,
 				PM_QOS_DEFAULT_VALUE);
-#endif //<asus-ych20130904>	
+
 	return 0;
 }
 
@@ -395,17 +391,25 @@ static void mfd_emmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC1:
 		break;
 	}
-#if 0 //<asus-ych20130904>	
+
 	if (slot->host->mmc->qos) {
 		pm_qos_remove_request(slot->host->mmc->qos);
 		kfree(slot->host->mmc->qos);
 	}
-#endif //<asus-ych20130904>
 }
 
 static int mfd_sdio_probe_slot(struct sdhci_pci_slot *slot)
 {
 	slot->host->mmc->caps |= MMC_CAP_POWER_OFF_CARD | MMC_CAP_NONREMOVABLE;
+	switch (slot->chip->pdev->device) {
+	case PCI_DEVICE_ID_INTEL_BYT_SDIO:
+		/* add a delay after runtime resuming back from D0i3 */
+		slot->chip->pdev->d3_delay = 10;
+		/* reduce the auto suspend delay for SDIO to be 500ms */
+		slot->chip->autosuspend_delay = 500;
+		break;
+	}
+
 	return 0;
 }
 
@@ -619,11 +623,10 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 	int err;
 
 	/* On BYT-M, SD card is using to store ipanic as a W/A */
-#if 0 //<asus-ych20130904>	
 	if (INTEL_MID_BOARDV2(TABLET, BYT, BLB, PRO) ||
 			INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
 		sdhci_alloc_panic_host(slot->host);
-#endif //<asus-ych20130904>	
+
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	/*
 	 * change GPIOC_7 to alternate function 2
@@ -657,13 +660,12 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 	}
 
 	/* Bayley Bay board */
-#if 0 //<asus-ych20130904>
 	if (INTEL_MID_BOARD(2, TABLET, BYT, BLB, PRO) ||
 			INTEL_MID_BOARD(2, TABLET, BYT, BLB, ENG))
 		slot->host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
 
 	slot->host->mmc->caps2 |= MMC_CAP2_PWCTRL_POWER;
-#endif  //<asus-ych20130904>
+
 	return 0;
 }
 
@@ -740,28 +742,11 @@ static void mrfl_ioapic_rte_reg_addr_map(struct sdhci_pci_slot *slot)
 #define INTEL_MRFL_EMMC0H	1
 #define INTEL_MRFL_SD		2
 #define INTEL_MRFL_SDIO		3
-#define INTEL_MRFL_EMMC_1	1 //<asus-ych20130904>
 
 static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int ret = 0;
-//<asus-ych20130904+>
-	if ((PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0) ||
-		(PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_1))
-		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
-					MMC_CAP_NONREMOVABLE |
-					MMC_CAP_1_8V_DDR;
 
-	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_SDIO)
-		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
-
-	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0)
-		sdhci_alloc_panic_host(slot->host);
-
-	slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
-				MMC_CAP2_INIT_CARD_SYNC;
-
-#if 0 //<asus-ych20130904>
 	switch (PCI_FUNC(slot->chip->pdev->devfn)) {
 	case INTEL_MRFL_EMMC_0:
 		sdhci_alloc_panic_host(slot->host);
@@ -786,12 +771,13 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 		break;
 	case INTEL_MRFL_SD:
 		slot->host->quirks2 |= SDHCI_QUIRK2_WAIT_FOR_IDLE;
+		slot->host->mmc->caps2 |= MMC_CAP2_FIXED_NCRC;
 		break;
 	case INTEL_MRFL_SDIO:
 		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
 		break;
 	}
-#endif //<asus-ych20130904->
+
 	if (slot->data->platform_quirks & PLFM_QUIRK_NO_HIGH_SPEED) {
 		slot->host->quirks2 |= SDHCI_QUIRK2_DISABLE_HIGH_SPEED;
 		slot->host->mmc->caps &= ~MMC_CAP_1_8V_DDR;
@@ -811,11 +797,9 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 
 static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
-#if 0 //<asus-ych20130904>
 	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0)
 		if (slot->host->rte_addr)
 			iounmap(slot->host->rte_addr);
-#endif //<asus-ych20130904->
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
@@ -839,13 +823,13 @@ static int intel_moor_emmc_probe_slot(struct sdhci_pci_slot *slot)
 
 	slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
 				MMC_CAP2_INIT_CARD_SYNC;
-	//<asus-ych20130904>if (slot->data)
+	if (slot->data)
 		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HIGH_SPEED) {
 			slot->host->quirks2 |= SDHCI_QUIRK2_DISABLE_HIGH_SPEED;
 			slot->host->mmc->caps &= ~MMC_CAP_1_8V_DDR;
 		}
 
-	//<asus-ych20130904>if (slot->data)
+	if (slot->data)
 		if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
 			slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 
@@ -860,7 +844,7 @@ static int intel_moor_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int ret = 0;
 
-	//<asus-ych20130904>if (slot->data)
+	if (slot->data)
 		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
 			ret = -ENODEV;
 
@@ -877,7 +861,7 @@ static int intel_moor_sdio_probe_slot(struct sdhci_pci_slot *slot)
 
 	slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
 
-	//<asus-ych20130904>if (slot->data)
+	if (slot->data)
 		if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW)
 			ret = -ENODEV;
 
@@ -2224,11 +2208,20 @@ static void sdhci_pci_remove_slot(struct sdhci_pci_slot *slot)
 	sdhci_free_host(slot->host);
 }
 
-static void __devinit sdhci_pci_runtime_pm_allow(struct device *dev)
+static void __devinit sdhci_pci_runtime_pm_allow(struct sdhci_pci_chip *chip)
 {
+	struct device *dev;
+
+	if (!chip || !chip->pdev)
+		return;
+
+	dev = &chip->pdev->dev;
 	pm_runtime_put_noidle(dev);
 	pm_runtime_allow(dev);
-	pm_runtime_set_autosuspend_delay(dev, 50);
+	if (chip->autosuspend_delay)
+		pm_runtime_set_autosuspend_delay(dev, chip->autosuspend_delay);
+	else
+		pm_runtime_set_autosuspend_delay(dev, 50);
 	pm_runtime_use_autosuspend(dev);
 	pm_suspend_ignore_children(dev, 1);
 }
@@ -2326,7 +2319,7 @@ static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 	}
 
 	if (chip->allow_runtime_pm)
-		sdhci_pci_runtime_pm_allow(&pdev->dev);
+		sdhci_pci_runtime_pm_allow(chip);
 
 	return 0;
 

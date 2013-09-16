@@ -89,6 +89,7 @@ obj-$(CONFIG_VIDEO_S5K6AA)	+= s5k6aa.o
 obj-$(CONFIG_VIDEO_SMIAPP)	+= smiapp/
 obj-$(CONFIG_VIDEO_ADP1653)	+= adp1653.o
 obj-$(CONFIG_VIDEO_AS3645A)	+= as3645a.o
+#//<asus-ych20130916>
 obj-$(CONFIG_VIDEO_MT9M114)	+= asus_mt9m114.o
 obj-$(CONFIG_VIDEO_OV8830)	+= ov8830.o
 obj-$(CONFIG_VIDEO_IMX)		+= imx/

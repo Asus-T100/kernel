@@ -2239,7 +2239,6 @@ static unsigned hub_is_wusb(struct usb_hub *hub)
 #define GET_DESCRIPTOR_TRIES	2
 #define SET_CONFIG_TRIES	(2 * (use_both_schemes + 1))
 #define USE_NEW_SCHEME(i)	((i) / 2 == (int)old_scheme_first)
-#define PORT_RESUME_TRIES	10
 
 #define HUB_ROOT_RESET_TIME	50	/* times are in msec */
 #define HUB_SHORT_RESET_TIME	10
@@ -2732,7 +2731,6 @@ static int finish_port_resume(struct usb_device *udev)
 {
 	int	status = 0;
 	u16	devstatus = 0;
-	int	i;
 
 	/* caller owns the udev device lock */
 	dev_dbg(&udev->dev, "%s\n",
@@ -2762,14 +2760,10 @@ static int finish_port_resume(struct usb_device *udev)
 	 */
 	if (status == 0) {
 		devstatus = 0;
-		for (i = 0; i < PORT_RESUME_TRIES; i++) {
-			status = usb_get_status(udev,
-				 USB_RECIP_DEVICE, 0, &devstatus);
-			if (status >= 0)
-				status = (status > 0 ? 0 : -ENODEV);
-			if (status == 0)
-				break;
-		}
+		status = usb_get_status(udev,
+			 USB_RECIP_DEVICE, 0, &devstatus);
+		if (status >= 0)
+			status = (status > 0 ? 0 : -ENODEV);
 
 		/* If a normal resume failed, try doing a reset-resume */
 		if (status && !udev->reset_resume && udev->persist_enabled) {
@@ -3538,6 +3532,14 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 	dev_dbg (hub_dev,
 		"port %d, status %04x, change %04x, %s\n",
 		port1, portstatus, portchange, portspeed(hub, portstatus));
+
+#ifdef CONFIG_USB_SUSPEND
+	/* add 5s time-out wakelock for delay system suspend */
+	wake_lock_timeout(&hcd->wake_lock, 5 * HZ);
+	dev_dbg(hub_dev,
+		"%s add 5s wake_lock for port connect change\n",
+		__func__);
+#endif
 
 	if (hub->has_indicators) {
 		set_port_led(hub, port1, HUB_LED_AUTO);

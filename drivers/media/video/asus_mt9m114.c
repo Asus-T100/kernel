@@ -37,7 +37,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
 
-#include "mt9m114.h"
+#include "asus_mt9m114.h" //<asus-ych20130916>
 
 #define to_mt9m114_sensor(sd) container_of(sd, struct mt9m114_device, sd)
 

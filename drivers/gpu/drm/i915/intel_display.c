@@ -46,14 +46,32 @@
 
 #define HAS_eDP (intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 
+/* TBD, move the declaration to a header file */
+int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
+		bool interruptible, struct timespec *timeout);
+
+struct i915_flip_data {
+	struct drm_crtc *crtc;
+	u32 seqno;
+	u32 addr;
+	u32 plane;
+};
+struct i915_flip_work {
+	struct i915_flip_data flipdata;
+	struct work_struct  work;
+};
+
+/* Need one work item only for each plane,
+ * as we support only one outstanding flip request
+ * on each plane at a time.
+ */
+static struct i915_flip_work flip_works[I915_MAX_PLANES];
+
 bool intel_pipe_has_type(struct drm_crtc *crtc, int type);
 static void intel_increase_pllclock(struct drm_crtc *crtc);
 static void intel_crtc_update_cursor(struct drm_crtc *crtc, bool on);
 static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 			int x, int y);
-static int vlv_set_pixel_format(struct drm_i915_private *dev_priv, u32 pipe,
-			u32 pixel_format);
-
 typedef struct {
 	/* given values */
 	int n;
@@ -976,7 +994,6 @@ void intel_wait_for_vblank(struct drm_device *dev, int pipe)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int pipestat_reg = PIPESTAT(pipe);
-
 	if (INTEL_INFO(dev)->gen >= 5) {
 		ironlake_wait_for_vblank(dev, pipe);
 		return;
@@ -1916,7 +1933,15 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 		return;
 
 	I915_WRITE(reg, val | PIPECONF_ENABLE);
-	intel_wait_for_vblank(dev_priv->dev, pipe);
+	/* No need to wait in case of mipi.
+	 * Since data will flow only when port is enabled.
+	 * wait for vblank will time out for mipi
+	 */
+	if (!dev_priv->is_mipi)
+		intel_wait_for_vblank(dev_priv->dev, pipe);
+	else
+		POSTING_READ(reg);
+
 	if (dev_priv->disp_pm_in_progress == true) {
 		DRM_DEBUG_DRIVER("Enable the sprites if disabled\n");
 		enable_sprites(dev_priv, pipe);
@@ -2000,7 +2025,14 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
 
 	I915_WRITE(reg, val | DISPLAY_PLANE_ENABLE);
 	intel_flush_display_plane(dev_priv, plane);
-	intel_wait_for_vblank(dev_priv->dev, pipe);
+	/* No need to wait in case of mipi.
+	 * Since data will flow only when port is enabled.
+	 * wait for vblank will time out for mipi
+	 */
+	if (!dev_priv->is_mipi)
+		intel_wait_for_vblank(dev_priv->dev, pipe);
+	else
+		POSTING_READ(reg);
 }
 
 /**
@@ -2567,15 +2599,25 @@ intel_pipe_set_base_atomic(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 }
 
 static int
-intel_finish_fb(struct drm_framebuffer *old_fb)
+intel_finish_fb(struct intel_crtc *crtc, struct drm_framebuffer *old_fb)
 {
 	struct drm_i915_gem_object *obj = to_intel_framebuffer(old_fb)->obj;
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
 	bool was_interruptible = dev_priv->mm.interruptible;
 	int ret;
 
-	wait_event(dev_priv->pending_flip_queue,
-		   atomic_read(&obj->pending_flip) == 0);
+	if (wait_event_timeout(dev_priv->pending_flip_queue,
+		   atomic_read(&obj->pending_flip), 5) == 0) {
+		DRM_DEBUG_DRIVER("flip wait timed out.\n");
+
+		/* cleanup */
+		if (crtc->unpin_work) {
+			intel_unpin_work_fn(&crtc->unpin_work->work);
+			crtc->unpin_work = NULL;
+			atomic_clear_mask(1 << crtc->plane,
+					  &obj->pending_flip.counter);
+		}
+	}
 
 	/* Big Hammer, we also need to ensure that any pending
 	 * MI_WAIT_FOR_EVENT inside a user batch buffer on the
@@ -2626,7 +2668,7 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	}
 
 	if (old_fb)
-		intel_finish_fb(old_fb);
+		intel_finish_fb(intel_crtc, old_fb);
 
 	ret = dev_priv->display.update_plane(crtc, crtc->fb, x, y);
 	if (ret) {
@@ -2637,7 +2679,11 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	}
 
 	if (old_fb) {
-		intel_wait_for_vblank(dev, intel_crtc->pipe);
+		/* Wait for vblank only if pipe is actually running
+		 * and if the framebuffers have changed.
+		 */
+		if (intel_crtc->active && old_fb != crtc->fb)
+			intel_wait_for_vblank(dev, intel_crtc->pipe);
 		intel_unpin_fb_obj(to_intel_framebuffer(old_fb)->obj);
 	}
 
@@ -3219,12 +3265,13 @@ static void ironlake_fdi_disable(struct drm_crtc *crtc)
 static void intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
 	if (crtc->fb == NULL)
 		return;
 
 	mutex_lock(&dev->struct_mutex);
-	intel_finish_fb(crtc->fb);
+	intel_finish_fb(intel_crtc, crtc->fb);
 	mutex_unlock(&dev->struct_mutex);
 }
 
@@ -3837,7 +3884,9 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	if (dev_priv->is_mipi) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
-				intel_dsi_enable(encoder);
+				intel_enable_dsi_pll(enc_to_intel_dsi(
+						&encoder->base));
+				intel_dsi_device_ready(encoder);
 				break;
 			}
 		}
@@ -3860,22 +3909,13 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_encoder *encoder;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
-	struct intel_encoder *encoder;
 	int val;
 
 	if (!intel_crtc->active)
 		return;
-
-	if (dev_priv->is_mipi) {
-		for_each_encoder_on_crtc(dev, crtc, encoder) {
-			if (encoder->type == INTEL_OUTPUT_DSI) {
-				intel_dsi_disable(encoder);
-				break;
-			}
-		}
-	}
 
 	/* Give the overlay scaler a chance to disable if it's on this pipe */
 	intel_crtc_wait_for_pending_flips(crtc);
@@ -3915,7 +3955,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 		}
 	}
 
-	intel_disable_pll(dev_priv, pipe);
+	if (!dev_priv->is_mipi)
+		intel_disable_pll(dev_priv, pipe);
 
 	intel_crtc->active = false;
 	if (dev_priv->disp_pm_in_progress == true)
@@ -4022,6 +4063,13 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	u32 data = 0;
+	/* If device is resuming, no need of prepare.
+	 * ALready the pipe is off and inactive
+	 */
+	if (dev_priv->is_resuming == true) {
+		DRM_DEBUG("device is resuming. returning\n");
+		return;
+	}
 
 	i9xx_crtc_disable(crtc);
 
@@ -4057,19 +4105,6 @@ static void i9xx_crtc_commit(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	/* Enable RefA clock enable bit (bit 29) of DPLL A) for LUT access */
-	if (dev_priv->is_mipi) {
-		if (I915_READ(_DPLL_A) & DPLL_VCO_ENABLE) {
-			I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) &
-					~DPLL_VCO_ENABLE);
-			POSTING_READ(_DPLL_A);
-			udelay(150);
-		}
-		I915_WRITE(_DPLL_A, I915_READ(_DPLL_A) |
-			DPLL_REFA_CLK_ENABLE_VLV);
-		POSTING_READ(_DPLL_A);
-		udelay(150);
-	}
 	i9xx_crtc_enable(crtc);
 }
 
@@ -4086,6 +4121,15 @@ static void ironlake_crtc_commit(struct drm_crtc *crtc)
 void intel_encoder_prepare(struct drm_encoder *encoder)
 {
 	struct drm_encoder_helper_funcs *encoder_funcs = encoder->helper_private;
+	struct drm_device *dev = encoder->dev;
+	/* If device is resuming, no need of prepare.
+	 * Already the pipe is off and inactive
+	 */
+	if (i915_is_device_resuming(dev)) {
+		DRM_DEBUG("device is resuming. returning\n");
+		return;
+	}
+
 	/* lvds has its own version of prepare see intel_lvds_prepare */
 	encoder_funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
 }
@@ -5182,7 +5226,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		if (is_dsi) {
 			/* enable dsi pll */
 			intel_configure_dsi_pll(intel_dsi, mode);
-			intel_enable_dsi_pll(intel_dsi);
 		} else {
 			refclk = i9xx_get_refclk(crtc, num_connectors);
 			vlv_update_pll(crtc, mode, adjusted_mode, &clock,
@@ -5300,10 +5343,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 
 	I915_WRITE(PIPECONF(pipe), pipeconf);
 	POSTING_READ(PIPECONF(pipe));
-	if (!is_dsi) {
-		intel_enable_pipe(dev_priv, pipe, false);
-		intel_wait_for_vblank(dev, pipe);
-	}
 
 	I915_WRITE(DSPCNTR(plane), dspcntr);
 	POSTING_READ(DSPCNTR(plane));
@@ -6898,7 +6937,7 @@ static void intel_crtc_destroy(struct drm_crtc *crtc)
 	kfree(intel_crtc);
 }
 
-static void intel_unpin_work_fn(struct work_struct *__work)
+void intel_unpin_work_fn(struct work_struct *__work)
 {
 	struct intel_unpin_work *work =
 		container_of(__work, struct intel_unpin_work, work);
@@ -7189,6 +7228,93 @@ err:
 	return ret;
 }
 
+static void intel_vlv_queue_flip_work(struct work_struct *__work)
+{
+	struct i915_flip_work *flipwork =
+		container_of(__work, struct i915_flip_work, work);
+	int ret = 0;
+	struct drm_crtc *crtc = flipwork->flipdata.crtc;
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
+
+	if (dev_priv->mm.suspended || (ring->obj == NULL)) {
+		DRM_ERROR("flip attempted while device/ring is not ready\n");
+		return;
+	}
+
+	/* sleep wait until the seqno has passed */
+	ret = __wait_seqno(ring, flipwork->flipdata.seqno, true, NULL);
+
+	if (ret)
+		DRM_ERROR("wait_seqno failed\n");
+
+	i9xx_update_plane(crtc, crtc->fb, 0, 0);
+}
+
+/*
+ * Using MMIO based flips for VLV for Media power well residency
+ * optimization. The other alternative of having Render ring based
+ * flip calls is not being used, as the performance (FPS) of certain
+ * 3D Apps was getting severly affected.
+ */
+static int intel_vlv_queue_flip(struct drm_device *dev,
+				 struct drm_crtc *crtc,
+				 struct drm_framebuffer *fb,
+				 struct drm_i915_gem_object *obj)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
+	struct i915_flip_work *work = &flip_works[intel_crtc->plane];
+	int ret;
+
+	/* Make sure the ring is accessible.
+	* mm.suspend alone might be usable for this purpose.
+	* But put additional check until it is confirmed. */
+	if (dev_priv->mm.suspended || (ring->obj == NULL)) {
+		DRM_ERROR("flip attempted while the ring is not ready\n");
+		ret = -EINVAL;
+		goto err;
+	}
+
+	ret = intel_pin_and_fence_fb_obj(dev, obj, ring);
+	if (ret)
+		goto err;
+
+	switch (intel_crtc->plane) {
+	case PLANE_A:
+	case PLANE_B:
+	case PLANE_C:
+	break;
+	default:
+		WARN_ONCE(1, "unknown plane in flip command\n");
+		ret = -ENODEV;
+		goto err_unpin;
+	}
+
+	work->flipdata.crtc = crtc;
+	work->flipdata.addr = obj->gtt_offset +
+			      intel_crtc->dspaddr_offset;
+	work->flipdata.seqno = obj->last_read_seqno;
+	work->flipdata.plane = intel_crtc->plane;
+
+	INIT_WORK(&work->work, intel_vlv_queue_flip_work);
+
+	/* Queue the MMIO flip work in our private workqueue,
+	 * from which the work items will be dequeued sequentially
+	 * one by one
+	 */
+	queue_work(dev_priv->flipwq, &work->work);
+
+	return 0;
+
+err_unpin:
+	intel_unpin_fb_obj(obj);
+err:
+	return ret;
+}
+
 /*
  * On gen7 we currently use the blit ring because (in early silicon at least)
  * the render ring doesn't give us interrpts for page flip completion, which
@@ -7308,39 +7434,16 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	unsigned long flags;
 	int ret;
 
-
-	if (dev_priv->shut_down_state)
+	if (dev_priv->shut_down_state || !intel_crtc->active)
 		return -EINVAL;
 
 	/* Can't change pixel format via MI display flips. */
-	if (fb->pixel_format != crtc->fb->pixel_format) {
-		if (IS_VALLEYVIEW(dev)) {
-			DRM_DEBUG("pixel format = %d", fb->pixel_format);
-			vlv_set_pixel_format(dev_priv, intel_crtc->pipe,
-				fb->pixel_format);
-		} else
+	if (fb->pixel_format != crtc->fb->pixel_format)
+		if (!IS_VALLEYVIEW(dev))
 			return -EINVAL;
-	}
 
 	intel_fb = to_intel_framebuffer(crtc->fb);
 	intel_new_fb = to_intel_framebuffer(fb);
-	/*
-	 * TILEOFF/LINOFF registers can't be changed via MI display flips.
-	 * Note that pitch changes could also affect these register.
-	 */
-	if (INTEL_INFO(dev)->gen > 3 &&
-	    (fb->offsets[0] != crtc->fb->offsets[0] ||
-	     fb->pitches[0] != crtc->fb->pitches[0] ||
-	     intel_new_fb->obj->tiling_mode != intel_fb->obj->tiling_mode)) {
-		if (IS_VALLEYVIEW(dev)) {
-			DRM_DEBUG(" crtc fb: pitch = %d offset = %d", \
-			crtc->fb->pitches[0], crtc->fb->offsets[0]);
-			DRM_DEBUG(" input fb: pitch = %d offset = %d", \
-			fb->pitches[0], fb->offsets[0]);
-			i9xx_update_plane(crtc, fb, 0, 0);
-		} else
-			return -EINVAL;
-	}
 
 	work = kzalloc(sizeof *work, GFP_KERNEL);
 	if (work == NULL)
@@ -7518,6 +7621,34 @@ static void intel_pch_pll_init(struct drm_device *dev)
 	}
 }
 
+/*
+Simulate like a hpd event at sleep/resume
+hpd_on =0 >  while suspend, this will clear the modes
+hpd_on =1 >  only at resume  */
+void i915_simulate_hpd(struct drm_device *dev, int hpd_on)
+{
+	struct drm_connector *connector = NULL;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+		if (connector->polled == DRM_CONNECTOR_POLL_HPD) {
+			if (hpd_on) {
+				/* Resuming, detect and read modes again */
+				connector->funcs->fill_modes(connector,
+				dev->mode_config.max_width,
+				dev->mode_config.max_height);
+			} else {
+				/* Suspend, reset previous detects and modes */
+				if (connector->funcs->reset)
+					connector->funcs->reset(connector);
+			}
+			DRM_DEBUG_KMS("Simulated HPD %s for connector %s\n",
+			(hpd_on ? "On" : "Off"),
+			drm_get_connector_name(connector));
+		}
+	}
+	drm_sysfs_hotplug_event(dev);
+}
+
 static int display_disable_wq(struct drm_device *drm_dev)
 {
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
@@ -7539,6 +7670,17 @@ static int display_disable_wq(struct drm_device *drm_dev)
 			}
 		}
 	}
+
+	/* No need to explictly flush the flipwq here. There is already
+	 * a wait for pending flips to get completed in crtc_disable,
+	 * and that wait will be over only when the pending flip work
+	 * items, if any, gets scheduled & a corresponding flip done
+	 * interrupt is generated.
+	 * And once the wait for pending flips in crtc_disable is completed
+	 * & crtc itself is also disabled, no new flip calls will be
+	 * accepted(TBD??) which can queue new flip work items.
+	 */
+
 	/* flush any delayed tasks or pending work */
 	flush_scheduled_work();
 	return 0;
@@ -7569,6 +7711,9 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	struct intel_encoder *intel_encoder;
 	int audiosts = 0;
 
+	/* Force a re-detection on Hot-pluggable displays */
+	i915_simulate_hpd(drm_dev, false);
+
 	audiosts = mid_hdmi_audio_suspend(drm_dev);
 	if (audiosts != true)
 		DRM_DEBUG_DRIVER("Audio active, CRTC will not be suspended\n");
@@ -7587,9 +7732,9 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 		if ((intel_crtc->pipe == PIPE_B) && (audiosts != true))
 			continue;
-		i9xx_crtc_disable(crtc);
 		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder)
 			intel_encoder_prepare(&intel_encoder->base);
+		i9xx_crtc_disable(crtc);
 	}
 	dev_priv->disp_pm_in_progress = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
@@ -7602,6 +7747,10 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
 	i915_rpm_get_disp(drm_dev);
+
+	/* Re-detect hot pluggable displays */
+	i915_simulate_hpd(drm_dev, true);
+
 	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
 
@@ -7622,6 +7771,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	display_save_restore_hotplug(drm_dev, RESTOREHPD);
 	drm_kms_helper_poll_enable(drm_dev);
+	dev_priv->is_resuming = false;
 	return 0;
 }
 
@@ -7817,12 +7967,18 @@ static void intel_setup_outputs(struct drm_device *dev)
 		 * both.
 		 *
 		 * FIXME:
-		 * Support dynamic detection based on VBT and AUX transaction
-		 * later. Also for now eDP is trated as DP and PPS is done by
-		 * GOP.
+		 * Support eDP Vs MIPI detection based on VBT and AUX
+		 * transaction later. As of now if mipi panel id > 0 is
+		 * given as kernel param we treat MIPI is there else we
+		 * always initialize on eDP.
+		 *
+		 * Can be fixed later when VBT or equivalent is available
 		 */
-		intel_dp_init(dev, DP_C, PORT_C);
-		intel_dsi_init(dev);
+		//<asus-ych20130916>if (i915_mipi_panel_id <= 0)
+			intel_dp_init(dev, DP_C, PORT_C);
+		//<asus-ych20130916>else
+			intel_dsi_init(dev);
+
 		intel_hdmi_init(dev, SDVOB, PORT_B);
 	} else if (SUPPORTS_DIGITAL_OUTPUTS(dev)) {
 		bool found = false;
@@ -8075,6 +8231,9 @@ static void intel_init_display(struct drm_device *dev)
 		dev_priv->display.queue_flip = intel_gen7_queue_flip;
 		break;
 	}
+
+	if (IS_VALLEYVIEW(dev))
+		dev_priv->display.queue_flip = intel_vlv_queue_flip;
 }
 
 /*
@@ -8503,51 +8662,3 @@ int i915_disp_screen_control(struct drm_device *dev, void *data,
 
 	return 0;
 }
-
-static int vlv_set_pixel_format(struct drm_i915_private *dev_priv, u32 pipe,
-		u32 pixel_format)
-{
-	u32 dspcntr;
-	u32 reg;
-	int ret = 0;
-	reg = DSPCNTR(pipe);
-	dspcntr = I915_READ(reg);
-
-	/* Mask out pixel format bits in case we change it */
-	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
-	switch (pixel_format) {
-	case DRM_FORMAT_C8:
-		dspcntr |= DISPPLANE_8BPP;
-		break;
-	case DRM_FORMAT_XRGB1555:
-	case DRM_FORMAT_ARGB1555:
-		dspcntr |= DISPPLANE_BGRX555;
-		break;
-	case DRM_FORMAT_RGB565:
-		dspcntr |= DISPPLANE_BGRX565;
-		break;
-	case DRM_FORMAT_XRGB8888:
-	case DRM_FORMAT_ARGB8888:
-		dspcntr |= DISPPLANE_BGRX888;
-		break;
-	case DRM_FORMAT_XBGR8888:
-	case DRM_FORMAT_ABGR8888:
-		dspcntr |= DISPPLANE_RGBX888;
-		break;
-	case DRM_FORMAT_XRGB2101010:
-	case DRM_FORMAT_ARGB2101010:
-		dspcntr |= DISPPLANE_BGRX101010;
-		break;
-	case DRM_FORMAT_XBGR2101010:
-	case DRM_FORMAT_ABGR2101010:
-		dspcntr |= DISPPLANE_RGBX101010;
-		break;
-	default:
-		DRM_ERROR("Unknown pixel format 0x%08x\n", pixel_format);
-		return -EINVAL;
-	}
-	DRM_DEBUG("dspcntr = %0x", dspcntr);
-	I915_WRITE(reg, dspcntr);
-	return ret;
-}
-

@@ -365,6 +365,10 @@ int intel_enable_dsi_pll(struct intel_dsi *intel_dsi)
 	struct drm_i915_private *dev_priv =
 			intel_dsi->base.base.dev->dev_private;
 
+	/* enable DPLL ref clock */
+	I915_WRITE_BITS(_DPLL_A, DPLL_REFA_CLK_ENABLE_VLV,
+						DPLL_REFA_CLK_ENABLE_VLV);
+
 	udelay(1000);	/*wait 0.5us after ungating before enabling again */
 	intel_cck_write32_bits(dev_priv, 0x48, 1 << 31,  1 << 31);
 
@@ -375,5 +379,25 @@ int intel_enable_dsi_pll(struct intel_dsi *intel_dsi)
 	}
 
 	DRM_DEBUG_KMS("DSI PLL locked\n");
+	return 0;
+}
+
+int intel_disable_dsi_pll(struct intel_dsi *intel_dsi)
+{
+	struct drm_i915_private *dev_priv =
+			intel_dsi->base.base.dev->dev_private;
+
+	intel_cck_write32_bits(dev_priv, 0x48, 0x00000000, 0x80000000);
+	udelay(500);
+
+	/* FIXME: DSI PLL is disable before pipe is disabled, because of this
+	 * ref clock will not be disabled when only mipi panel is connected.
+	 * Need to fix this.
+	 */
+	if ((PIPECONF(PIPE_A) & PIPECONF_ENABLE == 0) &&
+		(PIPECONF(PIPE_B) & PIPECONF_ENABLE == 0)
+		)
+		I915_WRITE_BITS(_DPLL_A, 0x00000000, DPLL_REFA_CLK_ENABLE_VLV);
+
 	return 0;
 }

@@ -76,6 +76,7 @@ obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_R69001_I2C))			+= platform_r69001.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_WM5102))				+= platform_wm5102.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_CS42L73))                              += platform_cs42l73.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_WM8994))				+= platform_wm8994.o
+obj-$(subst m,y,$(CONFIG_INTEL_CRYSTALCOVE_PAGE0))			+= platform_crystalcove_page0.o
 # Camera
 obj-$(subst m,y,$(CONFIG_VIDEO_ATOMISP_TMP))				+= platform_camera.o
 ifdef CONFIG_VIDEO_ATOMISP_TMP

@@ -177,12 +177,6 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 	}
 	hcd->power_budget = otg_pdata->power_budget;
 
-#ifdef CONFIG_USB_SUSPEND
-	/*get wakelock from itog*/
-	hcd->wake_lock = &iotg->wake_lock;
-	dev_dbg(&pdev->dev, "get usb_hcd wakelock from iotg\n");
-#endif
-
 	/* Mandatorily set the controller as remote-wakeup enabled */
 	device_set_wakeup_enable(&pdev->dev, true);
 

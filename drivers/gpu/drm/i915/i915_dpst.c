@@ -253,8 +253,12 @@ int i915_dpst_enable_hist_interrupt(struct drm_device *dev, bool enable)
 					DPST_IEHCR_HIST_MODE_SELECT;
 
 		I915_WRITE(VLV_DISPLAY_BASE + DPST_VLV_IEHCR_REG, hcr_data);
-		/* Wait for VBLANK */
-		intel_wait_for_vblank(dev, 0);
+		/* No need to wait in case of mipi.
+		 * Since data will flow only when port is enabled.
+		 * wait for vblank will time out for mipi
+		 */
+		if (!dev_priv->is_mipi)
+			intel_wait_for_vblank(dev, 0);
 
 		I915_WRITE(VLV_DISPLAY_BASE + DPST_VLV_BTGR_REG, btgr_data);
 

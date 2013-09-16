@@ -285,6 +285,8 @@ struct mmc_host {
 #define MMC_CAP2_POLL_R1B_BUSY	(1 << 12)	/* host poll R1B busy*/
 #define MMC_CAP2_LED_SUPPORT	(1 << 13)	/* led support */
 #define MMC_CAP2_PWCTRL_POWER	(1 << 14)	/* power control card power */
+#define MMC_CAP2_FIXED_NCRC	(1 << 15)	/* Fixed 2 cycles Ncrc */
+#define MMC_CAP2_PWOFF_DELAY	(1 << 16)	/* delay after power off */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 

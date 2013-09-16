@@ -3345,19 +3345,15 @@ static int rt5640_suspend(struct snd_soc_codec *codec)
 	 */
 	rt5640_dsp_suspend(codec);
 #endif
-	rt5640_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	return 0;
 }
 
 static int rt5640_resume(struct snd_soc_codec *codec)
 {
-	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
-	rt5640_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
 	/* After opening LDO of codec, then close LDO of DSP. */
 	rt5640_dsp_resume(codec);
 #endif
-	rt5640->jd_status = false;
 	return 0;
 }
 #else

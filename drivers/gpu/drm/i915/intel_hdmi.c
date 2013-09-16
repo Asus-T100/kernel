@@ -716,6 +716,13 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		int pipe = crtc ? to_intel_crtc(crtc)->pipe : -1;
 
 		if (mode != DRM_MODE_DPMS_ON) {
+			/* If device is resuming, no need of dpms off.
+			 * ALready the pipe is off and inactive
+			 */
+			if (dev_priv->is_resuming == true) {
+				DRM_DEBUG("device is resuming.Returning\n");
+				goto exit;
+			}
 			if (temp & SDVO_PIPE_B_SELECT) {
 				temp &= ~SDVO_PIPE_B_SELECT;
 				I915_WRITE(intel_hdmi->sdvox_reg, temp);
@@ -739,6 +746,7 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		}
 	}
 
+exit:
 	/* HW workaround, need to toggle enable bit off and on for 12bpc, but
 	 * we do this anyway which shows more stable in testing.
 	 */
@@ -830,13 +838,16 @@ void intel_hdmi_reset(struct drm_connector *connector)
 static enum drm_connector_status
 intel_hdmi_detect(struct drm_connector *connector, bool force)
 {
+	struct drm_device *dev = connector->dev;
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct edid *edid;
 	enum drm_connector_status status = connector_status_disconnected;
 
+	i915_rpm_get_callback(dev);
+
 	if (IS_G4X(connector->dev) && !g4x_hdmi_connected(intel_hdmi))
-		return status;
+		goto out;
 
 #if 0
         /* HOTPLUG Detect is not working in some of VLV A0
@@ -847,13 +858,17 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 #endif
 
 	/* If its force detection, dont read EDID again */
-	if (force && dev_priv->is_hdmi)
-		return connector->status;
+	if (force && dev_priv->is_hdmi) {
+		status = connector->status;
+		goto out;
+	}
 
 	/* Suppress spurious IRQ, if current status is same as live status*/
 	if ((connector->status == connector_status_connected)
-		&& g4x_hdmi_connected(intel_hdmi))
-		return connector->status;
+		&& g4x_hdmi_connected(intel_hdmi)) {
+		status = connector->status;
+		goto out;
+	}
 
 	dev_priv->is_hdmi = false;
 	intel_hdmi->has_hdmi_sink = false;
@@ -917,6 +932,8 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	/* Added for HDMI Audio */
 	i915_hdmi_state = status;
 
+out:
+	i915_rpm_put_callback(dev);
 	return status;
 }
 

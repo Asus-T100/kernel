@@ -1337,12 +1337,19 @@ static void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode)
 static void intel_dp_prepare(struct drm_encoder *encoder)
 {
 	struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
-
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	/* Make sure the panel is off before trying to change the mode. But also
 	 * ensure that we have vdd while we switch off the panel. */
 	ironlake_edp_panel_vdd_on(intel_dp);
-	ironlake_edp_backlight_off(intel_dp);
+	/* If device is resuming, no need of backlight off.
+	 * Already the pipe is off and inactive
+	 */
+	if (dev_priv->is_resuming != true) {
+		DRM_DEBUG("device resuming.BL off not called\n");
+		ironlake_edp_backlight_off(intel_dp);
+	}
 	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
 	ironlake_edp_panel_off(intel_dp);
 	intel_dp_link_down(intel_dp);
@@ -1637,12 +1644,20 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 	i915_rpm_get_callback(dev);
 
 	if (mode != DRM_MODE_DPMS_ON) {
+		/* If device is resuming, no need of dpms off.
+		 * ALready the pipe is off and inactive
+		 */
+		if (dev_priv->is_resuming == true) {
+			DRM_DEBUG("device is resuming. returning\n");
+			goto exit;
+		}
 		/* Switching the panel off requires vdd. */
 		ironlake_edp_panel_vdd_on(intel_dp);
 		ironlake_edp_backlight_off(intel_dp);
 		intel_dp_sink_dpms(intel_dp, mode);
 		ironlake_edp_panel_off(intel_dp);
 		intel_dp_link_down(intel_dp);
+		ironlake_panel_vdd_off_sync(intel_dp);
 
 		if (is_cpu_edp(intel_dp))
 			ironlake_edp_pll_off(encoder);
@@ -1661,6 +1676,7 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 			ironlake_edp_panel_vdd_off(intel_dp, false);
 		ironlake_edp_backlight_on(intel_dp);
 	}
+exit:
 	intel_dp->dpms_mode = mode;
 
 	i915_rpm_put_callback(dev);
@@ -2654,6 +2670,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	if (force && dev_priv->is_edp)
 		return connector->status;
 
+	ironlake_edp_panel_vdd_on(intel_dp);
 
 	if (HAS_PCH_SPLIT(dev))
 		status = ironlake_dp_detect(intel_dp);

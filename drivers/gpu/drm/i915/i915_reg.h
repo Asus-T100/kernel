@@ -192,6 +192,8 @@
 #define   MI_WAIT_FOR_PLANE_B_FLIP      (1<<6)
 #define   MI_WAIT_FOR_PLANE_A_FLIP      (1<<2)
 #define   MI_WAIT_FOR_PLANE_A_SCANLINES (1<<1)
+#define   GEN6_MI_WAIT_FOR_PLANE_B_FLIP      (1<<9)
+#define   GEN6_MI_WAIT_FOR_PLANE_A_FLIP      (1<<1)
 #define MI_FLUSH		MI_INSTR(0x04, 0)
 #define   MI_READ_FLUSH		(1 << 0)
 #define   MI_EXE_FLUSH		(1 << 1)
@@ -559,10 +561,6 @@
 #define HWSTAM		0x02098
 #define DMA_FADD_I8XX	0x020d0
 
-#define RCS_RING_TLB_INVALIDATE_VAL 0x02a002a0
-#define BLT_RING_TLB_INVALIDATE_VAL 0x02200220
-#define BSD_RING_TLB_INVALIDATE_VAL 0x02200220
-
 #define ERROR_GEN6	0x040a0
 
 /* GM45+ chicken bits -- debug workaround bits that may be required
@@ -695,6 +693,8 @@
 					will not assert AGPBUSY# and will only
 					be delivered when out of C3. */
 #define   INSTPM_FORCE_ORDERING				(1<<7) /* GEN6+ */
+#define   INSTPM_TLB_INVALIDATE	(1<<9)
+#define   INSTPM_SYNC_FLUSH	(1<<5)
 #define ACTHD	        0x020c8
 #define FW_BLC		0x020d8
 #define FW_BLC2		0x020dc

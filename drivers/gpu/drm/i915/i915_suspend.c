@@ -606,33 +606,6 @@ static void i915_restore_modeset_reg(struct drm_device *dev)
 	return;
 }
 
-/*
-Simulate like a hpd event at sleep/resume
-hpd_on =0 >  while suspend, this will clear the modes
-hpd_on =1 >  only at resume  */
-void i915_simulate_hpd(struct drm_device *dev, int hpd_on)
-{
-	struct drm_connector *connector = NULL;
-
-	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-		if (connector->polled == DRM_CONNECTOR_POLL_HPD) {
-			if (hpd_on) {
-				/* Resuming, detect and read modes again */
-				connector->funcs->fill_modes(connector,
-				dev->mode_config.max_width,
-				dev->mode_config.max_height);
-			} else {
-				/* Suspend, reset previous detects and modes */
-				if (connector->funcs->reset)
-					connector->funcs->reset(connector);
-			}
-			DRM_DEBUG_KMS("Simulated HPD %s for connector %s\n",
-			(hpd_on ? "On" : "Off"),
-			drm_get_connector_name(connector));
-		}
-	}
-}
-
 static void i915_save_display(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -643,9 +616,6 @@ static void i915_save_display(struct drm_device *dev)
 	/* This is only meaningful in non-KMS mode */
 	/* Don't save them in KMS mode */
 	i915_save_modeset_reg(dev);
-
-	/* Force a re-detection on Hot-pluggable displays */
-	i915_simulate_hpd(dev, false);
 
 	/* CRT state */
 	if (HAS_PCH_SPLIT(dev)) {
@@ -750,9 +720,6 @@ static void i915_restore_display(struct drm_device *dev)
 	/* This is only meaningful in non-KMS mode */
 	/* Don't restore them in KMS mode */
 	i915_restore_modeset_reg(dev);
-
-	/* Re-detect hot pluggable displays */
-	i915_simulate_hpd(dev, true);
 
 	/* CRT state */
 	if (HAS_PCH_SPLIT(dev))
@@ -989,6 +956,9 @@ static int i915_drm_thaw(struct drm_device *dev, bool is_hibernate_restore)
 		dev_priv->mm.suspended = 0;
 
 		error = i915_gem_init_hw(dev);
+		if (error)
+			DRM_ERROR("get_init_hw failed with error %x\n", error);
+
 		mutex_unlock(&dev->struct_mutex);
 
 		intel_modeset_init_hw(dev);
@@ -1178,7 +1148,6 @@ static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
 			OSPM_ISLAND_UP, VLV_IOSFSB_PWRGT_CNT_CTRL);
 }
 
-
 static void display_cancel_works(struct drm_device *drm_dev)
 {
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
@@ -1327,6 +1296,7 @@ static int valleyview_thaw(struct drm_device *dev, bool is_hibernate_restore)
 	int error = 0;
 	u32 reg;
 
+	dev_priv->is_resuming = true;
 	/* Only restore if it is resuming from hibernate */
 	if (is_hibernate_restore) {
 		if (drm_core_check_feature(dev, DRIVER_MODESET)) {
@@ -1381,6 +1351,9 @@ static int valleyview_thaw(struct drm_device *dev, bool is_hibernate_restore)
 		dev_priv->mm.suspended = 0;
 
 		error = i915_gem_init_hw(dev);
+		if (error)
+			DRM_ERROR("get_init_hw failed with error %x\n", error);
+
 		mutex_unlock(&dev->struct_mutex);
 
 		intel_modeset_init_hw(dev);
