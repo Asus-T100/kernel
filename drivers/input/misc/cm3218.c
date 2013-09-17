@@ -534,12 +534,56 @@ static int lightsensor_release(struct inode *inode, struct file *file)
 	lpi->lightsensor_opened = 0;
 	return 0;
 }
+//<ASUS-Hollie 20130912+>
+static int set_cali_to_file(uint16_t calibuf){
+	struct cm3218_info *lpi = lp_info;	
+	struct file *cal_filp = NULL;
+	mm_segment_t old_fs;
+	int err = 0;
+
+	if (calibuf != 0)
+	{
+		lpi->cal_data = calibuf;
+	}
+	else  // reset calibration data
+	{
+		lpi->cal_data = 80;
+	}
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	cal_filp = filp_open(CALIBRATION_FILE_PATH,
+			O_CREAT | O_TRUNC | O_RDWR, 0666);
+	if (IS_ERR(cal_filp))
+	{
+		pr_err("%s: Can't open calibration file\n", __func__);
+		set_fs(old_fs);
+		err = PTR_ERR(cal_filp);
+		return err;
+	}
+
+	err = cal_filp->f_op->write(cal_filp,
+		(char *)&lpi->cal_data, sizeof(uint16_t), &cal_filp->f_pos);
+	if (err != sizeof(uint16_t))
+	{
+		pr_err("%s: Can't write the calibration data to file\n", __func__);
+		err = -EIO;
+	}
+
+	filp_close(cal_filp, current->files);	
+	return 0;
+}
+//<ASUS-Hollie 20130912->
+
 
 static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 		unsigned long arg)
 {
 	int rc, val;
 	struct cm3218_info *lpi = lp_info;
+	uint16_t cali_buf, adc_value;
+	int adc_luxbuf=0;
 
 	/*D("[CM3218] %s cmd %d\n", __func__, _IOC_NR(cmd));*/
 
@@ -559,6 +603,35 @@ static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 			__func__, val);
 		rc = put_user(val, (unsigned long __user *)arg);
 		break;
+	//<ASUS-Hollie 20130912+>
+	case ASUS_LSENSOR_SETCALI_DATA:
+		if (copy_from_user(&cali_buf, arg, sizeof(uint16_t)))
+		{
+			rc = -EFAULT;
+			break;
+		}	
+		//printk("[Hollie]ASUS_SETCALI_DATA :%d \n", cali_buf);
+		set_cali_to_file(cali_buf);
+		break;
+	case ASUS_LSENSOR_GETCALI_DATA:
+		lightsensor_get_cal_data(lpi);
+		if (copy_to_user(arg,&lpi->cal_data, sizeof(uint16_t) ) ) {
+	            printk("[Hollie]LightSensor failed to copy Cali data to user space.\n");
+				rc = -EFAULT;			
+				break;
+	    }
+		//printk("[Hollie]ASUS_LSENSOR_GETCALI_DATA OK\n");
+		break;
+	case ASUS_LSENSOR_IOCTL_GETLUXDATA:
+		control_and_report(lpi, CONTROL_ALS, 1);
+		if (copy_to_user(arg,&lpi->current_lux_level, sizeof(int) ) ) {
+	            printk("[Hollie]LightSensor failed to copy lux data to user space.\n");
+				rc = -EFAULT;			
+				break;
+	    }		
+		//printk("[Hollie]ASUS_LSENSOR_IOCTL_GETDATA OK\n");
+		break;
+	//<ASUS-Hollie 20130912->	
 	default:
 		pr_err("[LS][CM3218 error]%s: invalid cmd %d\n",
 			__func__, _IOC_NR(cmd));
@@ -593,6 +666,7 @@ static ssize_t ls_adc_show(struct device *dev,
 	if (lpi->als_enable)
 	{
 		get_ls_adc_value(&adc_value, 0);
+		lightsensor_get_cal_data(lpi);//<ASUS-Hollie 20130912+>
 		lux_level = (uint32_t)(adc_value * lpi->als_gadc * lpi->cal_data / lpi->als_kadc / 1000);		
 		lpi->current_lux_level = lux_level;
 		lpi->current_adc = adc_value;
@@ -882,6 +956,44 @@ static ssize_t ls_cal_data_store(struct device *dev,
 
 	return count;
 }
+//<ASUS-Hollie 20130911+>
+static ssize_t lightsensor_status_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{   //status --
+	uint16_t adc_value = 0;
+	if(!get_ls_adc_value(&adc_value, 0)){
+		return sprintf(buf, "%d\n", 1);
+	}
+	else{
+		return sprintf(buf, "%d\n", 0);
+	}
+}
+
+static ssize_t lightsensor_adc_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", lp_info->current_adc);
+}
+
+static ssize_t lightsensor_lux_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", lp_info->current_lux_level);
+}
+
+static ssize_t lightsensor_default_lux_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", lp_info->current_lux_level);
+}
+
+static ssize_t enLightConfig_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", lp_info->als_enable);
+}
+//<ASUS-Hollie 20130911->
+
 
 static struct device_attribute dev_attr_light_enable =
 __ATTR(enable, S_IRUGO | S_IWUSR | S_IWGRP, ls_enable_show, ls_enable_store);
@@ -907,6 +1019,24 @@ __ATTR(adc, S_IRUGO | S_IWUSR | S_IWGRP, ls_adc_show, NULL);
 static struct device_attribute dev_attr_light_cal_data =
 __ATTR(cali, S_IRUGO | S_IWUSR | S_IWGRP, ls_cal_data_show, ls_cal_data_store);
 
+//<ASUS-Hollie 20130911+>
+static struct device_attribute dev_attr_lightsensor_status =
+__ATTR(lightsensor_status, S_IRUGO | S_IWUSR | S_IWGRP, lightsensor_status_show, NULL);
+
+static struct device_attribute dev_attr_lightsensor_adc =
+__ATTR(lightsensor_adc, S_IRUGO | S_IWUSR | S_IWGRP, lightsensor_adc_show, NULL);
+
+static struct device_attribute dev_attr_lightsensor_lux =
+__ATTR(lightsensor_lux, S_IRUGO | S_IWUSR | S_IWGRP, lightsensor_lux_show, NULL);
+
+static struct device_attribute dev_attr_lightsensor_default_lux =
+__ATTR(lightsensor_default_lux, S_IRUGO | S_IWUSR | S_IWGRP, lightsensor_default_lux_show, NULL);
+
+static struct device_attribute dev_attr_enLightConfig =
+__ATTR(enLightConfig, S_IRUGO | S_IWUSR | S_IWGRP, enLightConfig_show, NULL);
+//<ASUS-Hollie 20130911->
+
+
 static struct attribute *light_sysfs_attrs[] = {
 &dev_attr_light_enable.attr,
 &dev_attr_light_kadc.attr,
@@ -916,6 +1046,13 @@ static struct attribute *light_sysfs_attrs[] = {
 &dev_attr_light_fLevel.attr,
 &dev_attr_light_adc.attr,
 &dev_attr_light_cal_data.attr,
+//<ASUS-Hollie 20130911+>
+&dev_attr_lightsensor_status.attr,
+&dev_attr_lightsensor_adc.attr,
+&dev_attr_lightsensor_lux.attr,
+&dev_attr_lightsensor_default_lux.attr,
+&dev_attr_enLightConfig.attr,
+//<ASUS-Hollie 20130911->
 NULL
 };
 
@@ -1332,6 +1469,7 @@ static int control_and_report( struct cm3218_info *lpi, uint8_t mode, uint8_t cm
 	if (lpi->als_enable)
 	{
 		get_ls_adc_value(&adc_value, 0);
+		lightsensor_get_cal_data(lpi);//<ASUS-Hollie 20130912+>
 		lux_level = (uint32_t)(adc_value * lpi->als_gadc * lpi->cal_data / lpi->als_kadc /1000);		
   
 		D("[LS][CM3218] %s: raw adc = 0x%04X, ls_calibrate = %d\n",
