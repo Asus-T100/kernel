@@ -45,6 +45,8 @@
 #include "sysfs.h"
 #include "inv_test/inv_counters.h"
 
+#define ACCEL_FSR_4G 0
+
 s64 get_time_ns(void)
 {
 	struct timespec ts;
@@ -60,6 +62,9 @@ static const short AKM8972_ST_Upper[3] = {50, 50, -100};
 
 static const short AKM8963_ST_Lower[3] = {-200, -200, -3200};
 static const short AKM8963_ST_Upper[3] = {200, 200, -800};
+
+static const short AKM09911_ST_Lower[3] = {-30, -30, -400};
+static const short AKM09911_ST_Upper[3] = {30, 30, -50};
 
 static const struct inv_hw_s hw_info[INV_NUM_PARTS] = {
 	{119, "ITG3500"},
@@ -349,9 +354,15 @@ static int inv_init_config(struct iio_dev *indio_dev)
 	if (INV_ITG3500 != st->chip_type) {
 		st->chip_config.accl_enable = 1;
 		st->chip_config.accl_fifo_enable = 1;
-		st->chip_config.accl_fs = INV_FS_02G;
+#if ACCEL_FSR_4G
+		st->chip_config.accl_fs = INV_FS_04G;
 		result = inv_i2c_single_write(st, reg->accl_config,
-			(INV_FS_02G << ACCL_CONFIG_FSR_SHIFT));
+			(INV_FS_04G << ACCL_CONFIG_FSR_SHIFT));
+#else
+        st->chip_config.accl_fs = INV_FS_02G;
+        result = inv_i2c_single_write(st, reg->accl_config,
+            (INV_FS_02G << ACCL_CONFIG_FSR_SHIFT));
+#endif
 		if (result)
 			return result;
 		st->tap.time = INIT_TAP_TIME;
@@ -384,10 +395,14 @@ static int inv_compass_scale_show(struct inv_mpu_iio_s *st, int *scale)
 	else if (COMPASS_ID_AK8972 == st->plat_data.sec_slave_id)
 		*scale = DATA_AKM8972_SCALE;
 	else if (COMPASS_ID_AK8963 == st->plat_data.sec_slave_id)
+    {
 		if (st->compass_scale)
 			*scale = DATA_AKM8963_SCALE1;
 		else
 			*scale = DATA_AKM8963_SCALE0;
+    }
+    else if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id)
+        *scale = DATA_AKM09911_SCALE;
 	else
 		return -EINVAL;
 
@@ -463,17 +478,19 @@ static int mpu_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_CALIBBIAS:
 		/* return bias=0 for both accel and gyro for MPU6500;
 		   self test not supported yet */
-		if (INV_MPU6500 == st->chip_type) {
-			*val = 0;
-			return IIO_VAL_INT;
-		}
-		//<asus-guc20130819>if (st->chip_config.self_test_run_once == 0) 
-		{
+#if 0		
+		if (st->chip_config.self_test_run_once == 0)
+#else
+        if (chan->channel2 == IIO_MOD_X)//for Y,Z no need to do test again
+#endif
+        {
+        	mutex_lock(&st->mutex);
 			result = inv_do_test(st, 0,  st->gyro_bias,
 				st->accel_bias);
 			/* Reset Accel and Gyro full scale range
 			   back to default value */
 			inv_recover_setting(st);
+            mutex_unlock(&st->mutex);
 			if (result)
 				return result;
 			st->chip_config.self_test_run_once = 1;
@@ -699,6 +716,9 @@ static ssize_t inv_fifo_rate_store(struct device *dev,
 	result = inv_i2c_single_write(st, reg->sample_rate_div, data);
 	if (result)
 		return result;
+	/* wait for the sampling rate change to stabilize */
+	mdelay(INV_MPU_SAMPLE_RATE_CHANGE_STABLE);
+
 	st->chip_config.fifo_rate = fifo_rate;
 	result = inv_set_lpf(st, fifo_rate);
 	if (result)
@@ -948,8 +968,8 @@ static ssize_t inv_attr_show(struct device *dev,
 	case ATTR_SELF_TEST:
 		if (INV_MPU3050 == st->chip_type)
 			result = 1;
-		else if (INV_MPU6500 == st->chip_type)
-			result = inv_hw_self_test_6500(st);
+		//else if (INV_MPU6500 == st->chip_type)
+		//	result = inv_hw_self_test_6500(st);
 		else
 			result = inv_hw_self_test(st);
 		return sprintf(buf, "%d\n", result);
@@ -1312,6 +1332,212 @@ static ssize_t inv_reg_write_store(struct device *dev,
 }
 #endif /* CONFIG_INV_TESTING */
 
+#if CAL_DATA_AUTO_LOAD == 1
+static ssize_t inv_cal_data_auto_load_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct inv_mpu_iio_s *st = iio_priv(indio_dev);
+	return sprintf(buf, "%d\n", st->cal_data_auto_load);
+}
+
+static ssize_t inv_cal_data_auto_load_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct inv_mpu_iio_s *st = iio_priv(indio_dev);
+	unsigned int result;
+    unsigned long enable;
+
+	result = kstrtoul(buf, 10, &enable);
+	if (result)
+		return result;
+    st->cal_data_auto_load = enable;
+	return count;
+}
+#endif
+#if 1//INV_RAW_DATA_VIA_I2C
+static ssize_t get_mpu65xx_gyro_rawdata(struct device *dev, struct device_attribute *devattr, char *buf)
+{	
+	u8 data, mgmt_1;
+	int result;
+	
+	//struct i2c_client *client = to_i2c_client(dev);
+	struct inv_mpu_iio_s *st = iio_priv(dev_get_drvdata(dev));
+	uint8_t buffer[8];
+	int err=0;
+	short rawdata_x=0,rawdata_y=0,rawdata_z=0;
+
+        mutex_lock(&st->mutex);
+        result = inv_i2c_read(st, REG_PWR_MGMT_1, 1,&data);
+        buffer[7]=data;
+        data&=(~0x50);//disable SLEEP and GYRO_STNADBY
+        result = inv_i2c_single_write(st, REG_PWR_MGMT_1, data);
+
+	result = inv_i2c_read(st, REG_PWR_MGMT_2, 1,&data);
+				//<asus-guc20130906>printk("get_mpu65xx_gyro_rawdata power reg:%x (%x) +\n",REG_PWR_MGMT_2,data);
+	buffer[6] = data;
+        data&=(~BIT_PWR_GYRO_STBY);
+        //printk("set_mpu65xx_gyro_rawdata power (%x) +\n",data);
+
+	result = inv_i2c_single_write(st, REG_PWR_MGMT_2, data);
+
+	result = inv_i2c_read(st, REG_RAW_GYRO, 6, &(buffer[0]));
+
+	//<asus-guc20130906>printk("Gyro rawdataX : (%d) | (%d)\n",buffer[0], buffer[1]);
+	//<asus-guc20130906>printk("Gyro rawdataY : (%d) | (%d)\n",buffer[2], buffer[3]);
+	//<asus-guc20130906>printk("Gyro rawdataZ : (%d) | (%d)\n",buffer[4], buffer[5]);
+	rawdata_x =(short) ( buffer[1] | (buffer[0]<<8) );
+	rawdata_y =(short) ( buffer[3] | (buffer[2]<<8) );
+	rawdata_z = (short)( buffer[5] | (buffer[4]<<8) );
+	/*if(rawdata_x>0x7FFF)
+		rawdata_x = rawdata_x-0x10000;
+	if(rawdata_y>0x7FFF)
+		rawdata_y = rawdata_y-0x10000;
+	if(rawdata_z>0x7FFF)
+		rawdata_z = rawdata_z-0x10000;
+	*/	
+	//<asus-guc20130906>printk("Gyro Rawdata : (%d), (%d), (%d)\n",rawdata_x, rawdata_y, rawdata_z);
+	result = inv_i2c_single_write(st, REG_PWR_MGMT_2, &(buffer[6]));
+        result = inv_i2c_single_write(st, REG_PWR_MGMT_1, &(buffer[7]));
+
+        mutex_unlock(&st->mutex);
+
+	return sprintf(buf, "%d , %d , %d\n",rawdata_x, rawdata_y, rawdata_z);
+}
+
+static ssize_t get_mpu65xx_gsensor_rawdata(struct device *dev, struct device_attribute *devattr, char *buf)
+{	
+	//struct i2c_client *client = to_i2c_client(dev);
+  struct inv_mpu_iio_s *st = iio_priv(dev_get_drvdata(dev));
+	
+	uint8_t buffer[8];
+	uint8_t data;
+	short rawdata_x=0,rawdata_y=0,rawdata_z=0;
+        int result;
+        mutex_lock(&st->mutex);
+
+        result = inv_i2c_read(st, REG_PWR_MGMT_1, 1,&data);
+        buffer[7]=data;
+        data&=(~0x50);
+       	result = inv_i2c_single_write(st, REG_PWR_MGMT_1, data);
+	      result = inv_i2c_read(st, REG_PWR_MGMT_2, 1, &data);
+	      buffer[6]=data;
+        data&=(~BIT_PWR_ACCL_STBY);
+	result = inv_i2c_single_write(st, REG_PWR_MGMT_2, data);
+	result = inv_i2c_read(st, REG_RAW_ACCEL, 6, &(buffer[0]));
+	
+	//<asus-guc20130906>printk("Accel rawdataX : (%d) | (%d)\n",buffer[0], buffer[1]);
+	//<asus-guc20130906>printk("Accel rawdataY : (%d) | (%d)\n",buffer[2], buffer[3]);
+	//<asus-guc20130906>printk("Accel rawdataZ : (%d) | (%d)\n",buffer[4], buffer[5]);
+	rawdata_x = (short)( buffer[1] | (buffer[0]<<8) );
+	rawdata_y = (short)( buffer[3] | (buffer[2]<<8) );
+	rawdata_z = (short)( buffer[5] | (buffer[4]<<8) );
+/*	if(rawdata_x>0x7FFF)
+		rawdata_x = rawdata_x-0x10000;
+	if(rawdata_y>0x7FFF)
+		rawdata_y = rawdata_y-0x10000;
+	if(rawdata_z>0x7FFF)
+		rawdata_z = rawdata_z-0x10000;
+*/		
+	//<asus-guc20130906>printk("Accel Rawdata : (%d), (%d), (%d)\n",rawdata_x, rawdata_y, rawdata_z);
+	result = inv_i2c_single_write(st, REG_PWR_MGMT_2, &(buffer[6]));
+  result = inv_i2c_single_write(st, REG_PWR_MGMT_1, &(buffer[7]));
+ 
+	mutex_unlock(&st->mutex);
+
+	return sprintf(buf, "%d , %d , %d\n",rawdata_x, rawdata_y, rawdata_z);
+}
+
+#define INV_MPU_BIT_I2C_READ	0x80
+#define INV_MPU_BIT_SLV_EN		0x80
+
+#define REG_AKM_ID	0x00
+#define REG_AKM_INFO          0x01
+#define REG_AKM_STATUS	0x02
+#define DATA_AKM_NUM_BYTES  6
+#define DATA_AKM_DRDY	0x01
+
+static ssize_t get_mpu65xx_compass_rawdata(struct device *dev, struct device_attribute *devattr, char *buf)
+{	
+	//struct i2c_client *client = to_i2c_client(dev);
+  struct inv_mpu_iio_s *st = iio_priv(dev_get_drvdata(dev));
+	
+	uint8_t buffer[9];
+	uint8_t data;
+	int result;
+  	int i=0;
+	int counter=0;
+	u8 d[DATA_AKM_NUM_BYTES];
+	u8 *sens;
+        short o[3];
+
+	sens = st->chip_info.compass_sens;
+	        
+        mutex_lock(&st->mutex);
+	
+	/* Disable the sleep bit */
+        result = inv_i2c_read(st, 0x6B, 1,&data);
+        buffer[8]=data;
+        data&=~BIT_SLEEP;
+        result = inv_i2c_single_write(st,0x6B, data);
+ 
+	/* Disable I2C master mode for bypass*/
+        result = inv_i2c_read(st, REG_USER_CTRL, 1,&data);
+        buffer[7]=data;
+        data&=~BIT_I2C_MST_EN;
+        result = inv_i2c_single_write(st, REG_USER_CTRL, data);
+	/* set bypass*/
+        result = inv_i2c_read(st, REG_INT_PIN_CFG, 1,&data);
+        buffer[6]=data;
+        data|=BIT_BYPASS_EN;
+       	result = inv_i2c_single_write(st, REG_INT_PIN_CFG, data);
+       	/*read secondary i2c ID register */
+	//<asus-guc20130906>printk("secondary i2c addr:%x\n",st->plat_data.secondary_i2c_addr);
+	result = inv_secondary_read(REG_AKM_ID, 1, &data);
+	//<asus-guc20130906>printk("get_mpu65xx_compassreg:%x_id: %x \n",REG_AKM_ID,data);
+	/*set AKM to single measure access mode*/
+	result=inv_secondary_write(REG_AKM_MODE,DATA_AKM_MODE_SM);
+		counter = 10;//DEF_ST_COMPASS_TRY_TIMES;
+		while (counter > 0) {
+			msleep(10);
+			result = inv_secondary_read(REG_AKM_STATUS, 1, &data);
+			if ((data & DATA_AKM_DRDY) == 0)
+				counter--;
+			else
+				counter = 0;
+		}
+		if ((data & DATA_AKM_DRDY) == 0) {
+			printk("AKM compass data not ready retry over 10 times\r\n");
+			for (i = 0; i < 6; i++)
+				buffer[i]=0;
+		}
+		result = inv_secondary_read(REG_AKM_MEASURE_DATA,
+						DATA_AKM_NUM_BYTES, buffer);
+
+	  for (i = 0; i < 3; i++) {
+			o[i] = (short)((buffer[i * 2 + 1] << 8) | buffer[i * 2]);
+			// adjusting sensitivity for AK8975, AK8963
+			o[i] = (short)(((int)o[i] * (sens[i] + 128)) >> 8);
+	 }
+	
+	//<asus-guc20130906>printk("compass rawdataX : (%d) | (%d)\n",buffer[0], buffer[1]);
+	//<asus-guc20130906>printk("compass rawdataY : (%d) | (%d)\n",buffer[2], buffer[3]);
+	//<asus-guc20130906>printk("compass rawdataZ : (%d) | (%d)\n",buffer[4], buffer[5]);
+
+        data=buffer[8];
+        result = inv_i2c_single_write(st,0x6B,data);
+        data=buffer[7];
+        result = inv_i2c_single_write(st, REG_USER_CTRL,data);
+	data=buffer[6];
+	result = inv_i2c_single_write(st, REG_INT_PIN_CFG,data);
+       
+	mutex_unlock(&st->mutex);
+	return sprintf(buf, "%d , %d , %d\n",o[0], o[1], o[2]);
+
+}
+#endif
+
 #define INV_MPU_CHAN(_type, _channel2, _index)                \
 	{                                                         \
 		.type = _type,                                        \
@@ -1439,6 +1665,10 @@ static IIO_DEVICE_ATTR(compass_enable, S_IRUGO | S_IWUSR, inv_attr_show,
 static IIO_DEVICE_ATTR(reg_write, S_IRUGO | S_IWUSR, inv_attr_show,
 	inv_reg_write_store, ATTR_REG_WRITE);
 #endif
+#if CAL_DATA_AUTO_LOAD == 1
+static DEVICE_ATTR(cal_data_auto_load, S_IRUGO | S_IWUSR,
+		inv_cal_data_auto_load_show, inv_cal_data_auto_load_store);
+#endif
 
 static const struct attribute *inv_gyro_attributes[] = {
 	&iio_dev_attr_gyro_enable.dev_attr.attr,
@@ -1452,6 +1682,9 @@ static const struct attribute *inv_gyro_attributes[] = {
 #endif
 	&iio_dev_attr_sampling_frequency.dev_attr.attr,
 	&iio_const_attr_sampling_frequency_available.dev_attr.attr,
+#if CAL_DATA_AUTO_LOAD == 1
+    &dev_attr_cal_data_auto_load,
+#endif	
 };
 
 static const struct attribute *inv_mpu6050_attributes[] = {
@@ -1488,8 +1721,20 @@ static const struct attribute *inv_mpu3050_attributes[] = {
 	&iio_dev_attr_accl_matrix.dev_attr.attr,
 	&iio_dev_attr_accl_enable.dev_attr.attr,
 };
+#if 1//INV_RAW_DATA_VIA_I2C
+static DEVICE_ATTR(rawdata_gyro, S_IRUGO| S_IWUSR, get_mpu65xx_gyro_rawdata, NULL);
+static DEVICE_ATTR(rawdata_accel, S_IRUGO| S_IWUSR, get_mpu65xx_gsensor_rawdata, NULL);
+static DEVICE_ATTR(rawdata_compass, S_IRUGO| S_IWUSR, get_mpu65xx_compass_rawdata, NULL);
+
+static struct attribute *inv_raw_i2c_mpu65xx_attributes[] = {
+        &dev_attr_rawdata_gyro.attr,
+        &dev_attr_rawdata_accel.attr,
+        &dev_attr_rawdata_compass.attr,
+};
+#endif
 
 static struct attribute *inv_attributes[ARRAY_SIZE(inv_gyro_attributes) +
+                                ARRAY_SIZE(inv_raw_i2c_mpu65xx_attributes)+ //INV_RAW_DATA_VIA_I2C
 				ARRAY_SIZE(inv_mpu6050_attributes) +
 				ARRAY_SIZE(inv_compass_attributes) + 1];
 
@@ -1512,6 +1757,7 @@ static int inv_setup_compass(struct inv_mpu_iio_s *st)
 {
 	int result;
 	u8 data[4];
+    u8 temp;
 
 	result = inv_i2c_read(st, REG_YGOFFS_TC, 1, data);
 	if (result)
@@ -1534,18 +1780,40 @@ static int inv_setup_compass(struct inv_mpu_iio_s *st)
 		return result;
 	if (data[0] != DATA_AKM_ID)
 		return -ENXIO;
+    if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {
+        result = inv_secondary_read(AK09911_REG_WIA2, 1, data);
+        if (result)
+            return result;
+        if (data[0] != DATA_AK09911_DEVICE_ID)
+            return -ENXIO;
+    }
+    
 	/*set AKM to Fuse ROM access mode */
-	result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_FR);
-	if (result)
-		return result;
-	result = inv_secondary_read(REG_AKM_SENSITIVITY, THREE_AXIS,
-					st->chip_info.compass_sens);
-	if (result)
-		return result;
-	/*revert to power down mode */
-	result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_PD);
-	if (result)
-		return result;
+    if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {
+    	result = inv_secondary_write(AK09911_REG_CNTL2, AK09911_MODE_FUSE_ACCESS);
+    	if (result)
+    		return result;
+    	result = inv_secondary_read(AK09911_FUSE_ASAX, THREE_AXIS,
+    					st->chip_info.compass_sens);
+    	if (result)
+    		return result;
+        /*revert to power down mode */
+        result = inv_secondary_write(AK09911_REG_CNTL2, AK09911_MODE_POWERDOWN);
+        if (result)
+            return result;
+    } else {
+    	result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_FR);
+    	if (result)
+    		return result;
+    	result = inv_secondary_read(REG_AKM_SENSITIVITY, THREE_AXIS,
+    					st->chip_info.compass_sens);
+    	if (result)
+    		return result;
+        /*revert to power down mode */
+        result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_PD);
+        if (result)
+            return result;
+    }    
 	pr_debug("%s senx=%d, seny=%d, senz=%d\n",
 		 st->hw->name,
 		 st->chip_info.compass_sens[0],
@@ -1568,23 +1836,38 @@ static int inv_setup_compass(struct inv_mpu_iio_s *st)
 	if (result)
 		return result;
 	/* AKM status register address is 2 */
-	result = inv_i2c_single_write(st, REG_I2C_SLV0_REG, REG_AKM_STATUS);
-	if (result)
-		return result;
+    if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {    
+        temp = AK09911_REG_ST1;
+    } else {
+        temp = REG_AKM_STATUS;
+    }    
+    result = inv_i2c_single_write(st, REG_I2C_SLV0_REG, temp);
+    if (result)
+        return result;    
 	/* slave 0 is enabled at the beginning, read 8 bytes from here */
-	result = inv_i2c_single_write(st, REG_I2C_SLV0_CTRL, BIT_SLV_EN |
-				NUM_BYTES_COMPASS_SLAVE);
-	if (result)
-		return result;
+    if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {    
+        temp = NUM_BYTES_COMPASS_SLAVE_AK09911;
+    } else {
+        temp = NUM_BYTES_COMPASS_SLAVE;
+    }        
+    result = inv_i2c_single_write(st, REG_I2C_SLV0_CTRL, BIT_SLV_EN | temp);
+    if (result)
+        return result;
+    
 	/*slave 1 is used for AKM mode change only*/
 	result = inv_i2c_single_write(st, REG_I2C_SLV1_ADDR,
 		st->plat_data.secondary_i2c_addr);
 	if (result)
-		return result;
+		return result;    
 	/* AKM mode register address is 0x0A */
-	result = inv_i2c_single_write(st, REG_I2C_SLV1_REG, REG_AKM_MODE);
-	if (result)
-		return result;
+    if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {    
+        temp = AK09911_REG_CNTL2;
+    } else {
+        temp = REG_AKM_MODE;
+    }        
+    result = inv_i2c_single_write(st, REG_I2C_SLV1_REG, temp);
+    if (result)
+        return result;    
 	/* slave 1 is enabled, byte length is 1 */
 	result = inv_i2c_single_write(st, REG_I2C_SLV1_CTRL, BIT_SLV_EN | 1);
 	if (result)
@@ -1604,6 +1887,10 @@ static int inv_setup_compass(struct inv_mpu_iio_s *st)
 		st->compass_st_lower = AKM8963_ST_Lower;
 		data[0] = DATA_AKM_MODE_SM |
 			  (st->compass_scale << AKM8963_SCALE_SHIFT);
+    } else if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {
+		st->compass_st_upper = AKM09911_ST_Upper;
+		st->compass_st_lower = AKM09911_ST_Lower;
+		data[0] = AK09911_MODE_SNG_MEASURE;
 	}
 	result = inv_i2c_single_write(st, REG_I2C_SLV1_DO, data[0]);
 	if (result)
@@ -1642,16 +1929,47 @@ static int inv_detect_6xxx(struct inv_mpu_iio_s *st)
 	u8 d;
 
 	result = inv_i2c_read(st, REG_WHOAMI, 1, &d);
+printk("%s, REG_WHOAMI = 0x%x, result=%d", __func__, d, result);
 	if (result)
 		return result;
 	if (d == MPU6500_ID) {
 		st->chip_type = INV_MPU6500;
 		strcpy(st->name, "mpu6500");
+    } else if (d == MPU6515_ID) {
+		st->chip_type = INV_MPU6500;
+		strcpy(st->name, "mpu6515");    
 	} else {
 		strcpy(st->name, "mpu6050");
 	}
 
 	return 0;
+}
+
+static int inv_set_65XX_gyro_config(struct inv_mpu_iio_s *st)
+{
+#define MPU6500_GYRO_CFG   0x49
+#define MPU6500_REG_BANK_SEL 0x76
+#define MPU6500_CFG_SET_BIT  0x20
+	u8 d, cfg;
+	int result;
+
+	result = inv_i2c_read(st, MPU6500_REG_BANK_SEL, 1, &cfg);
+	if (result)
+		return result;
+	result = inv_i2c_single_write(st, MPU6500_REG_BANK_SEL,
+					cfg | MPU6500_CFG_SET_BIT);
+	if (result)
+		return result;
+	result = inv_i2c_read(st, MPU6500_GYRO_CFG, 1, &d);
+	if (result)
+		return result;
+	d |= 1;
+	result = inv_i2c_single_write(st, MPU6500_GYRO_CFG, d);
+	if (result)
+		return result;
+	result = inv_i2c_single_write(st, MPU6500_REG_BANK_SEL, cfg);
+
+	return result;
 }
 
 /**
@@ -1757,6 +2075,13 @@ static int inv_check_chip_type(struct inv_mpu_iio_s *st,
 		st->set_power_state(st, false);
 		return result;
 	}
+
+    if (INV_MPU6500 == st->chip_type) {
+        result = inv_set_65XX_gyro_config(st);
+        if (result)
+            return result;
+    }
+    
 	if (st->chip_config.has_compass) {
 		result = inv_setup_compass(st);
 		if (result) {
@@ -1790,6 +2115,12 @@ static int inv_check_chip_type(struct inv_mpu_iio_s *st,
 		       sizeof(inv_compass_attributes));
 		t_ind += ARRAY_SIZE(inv_compass_attributes);
 	}
+#if 1//INV_RAW_DATA_VIA_I2C add for get raw data via I2C device attr
+        memcpy(&inv_attributes[t_ind], inv_raw_i2c_mpu65xx_attributes,
+                sizeof(inv_raw_i2c_mpu65xx_attributes));
+        t_ind += ARRAY_SIZE(inv_raw_i2c_mpu65xx_attributes);
+//=============
+#endif
 	inv_attributes[t_ind] = NULL;
 
 	return 0;
@@ -1944,6 +2275,7 @@ static int inv_mpu_probe(struct i2c_client *client,
 
 	INIT_KFIFO(st->timestamps);
 	spin_lock_init(&st->time_stamp_lock);
+	mutex_init(&st->mutex);    
 	dev_info(&client->adapter->dev, "%s is ready to go!\n",
 					indio_dev->name);
 
@@ -2042,6 +2374,7 @@ static const struct i2c_device_id inv_mpu_id[] = {
 	{"mpu6050", INV_MPU6050},
 	{"mpu9150", INV_MPU9150},
 	{"INVN6500:00", INV_MPU6500},	//<asus-guc20130802>
+    {"mpu6515", INV_MPU6500},
 	{"mpu9250", INV_MPU9250},
 	{"mpu6xxx", INV_MPU6XXX},
 	{}

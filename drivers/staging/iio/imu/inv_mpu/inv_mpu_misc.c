@@ -71,17 +71,17 @@
 //#define DEF_SELFTEST_GYRO_FULL_SCALE         (0 << 3)
 //#define DEF_SELFTEST_ACCL_FULL_SCALE         (2 << 3)
 #define DEF_SELFTEST_GYRO_FULL_SCALE         (0)//+-250dps
-#define DEF_SELFTEST_ACCL_FULL_SCALE         (2)//+-8g
-
-#define DEF_SELFTEST_GYRO_SENS            (32768 / 250)
+#define DEF_SELFTEST_ACCL_FULL_SCALE         (0)//(0)//+-2g //(2)//+-8g
+#define DEF_SELFTEST_GYRO_SENS            (32768L / (GYRO_DPS_SCALE << DEF_SELFTEST_GYRO_FULL_SCALE))//(32768 / 250)
 /* wait time before collecting data */
-#define DEF_GYRO_WAIT_TIME          30//50
-#define DEF_ST_STABLE_TIME          200
-#define DEF_GYRO_PACKET_THRESH      DEF_GYRO_WAIT_TIME
+#define DEF_GYRO_WAIT_TIME          10
+#define DEF_ST_STABLE_TIME          200	//Original value 200
+#define DEF_PACKET_THRESH           200//50
 #define DEF_GYRO_THRESH             10
 #define DEF_GYRO_SCALE              131
 #define DEF_ST_PRECISION            1000
-#define DEF_ST_ACCL_FULL_SCALE      8000UL
+//#define DEF_ST_ACCL_FULL_SCALE      //2000UL //8000UL //set FSR to 0 +- 2Gs
+#define DEF_ST_ACCL_FULL_SCALE      ((ACCL_G_SCALE << DEF_SELFTEST_ACCL_FULL_SCALE) * DEF_ST_PRECISION)
 #define DEF_ST_SCALE                (1L << 15)
 #define DEF_ST_TRY_TIMES            2
 #define DEF_ST_COMPASS_RESULT_SHIFT 2
@@ -105,14 +105,24 @@
 #define DEF_ACCEL_ST_SHIFT_MIN       300
 #define DEF_ACCEL_ST_SHIFT_MAX       950
 
-#define DEF_ACCEL_ST_SHIFT_DELTA     140
-#define DEF_GYRO_CT_SHIFT_DELTA      140
+#define DEF_ACCEL_ST_SHIFT_DELTA     500//140
+#define DEF_GYRO_CT_SHIFT_DELTA      500//140
 /* gyroscope Coriolis self test min and max bias shift (dps) */
 #define DEF_GYRO_CT_SHIFT_MIN        10
 #define DEF_GYRO_CT_SHIFT_MAX        105
 
-#define ACCL_G_SCALE    (2L)//+-2g
-#define DEF_GYRO_PRECISION	(1000)
+/*---- MPU6500 Self Test Pass/Fail Criteria ----*/
+/* Gyro Offset Max Value (dps) */
+#define DEF_GYRO_OFFSET_MAX	20
+/* Gyro Self Test Absolute Limits ST_AL (dps) */
+#define DEF_GYRO_ST_AL		60
+#define DEF_GYRO_PRECISION	(1000)	//<asus-guc20130822+>
+/* Accel Self Test Absolute Limits ST_AL (mg) */
+#define DEF_ACCEL_ST_AL_MIN	225
+#define DEF_ACCEL_ST_AL_MAX	675
+/* Note: The ST_AL values are only used when ST_OTP = 0, 
+ * i.e no factory self test values for reference
+ */
 
 static struct test_setup_t test_setup = {
 	.gyro_sens     = DEF_SELFTEST_GYRO_SENS,
@@ -197,16 +207,55 @@ static const struct prod_rev_map_t sw_rev_map[] = {
 	{2, MPU_SILICON_REV_B1, 131, 16384}	/* rev D */
 };
 
+static const u16 mpu_6500_st_tb[256] = {
+	2620,2646,2672,2699,2726,2753,2781,2808,
+	2837,2865,2894,2923,2952,2981,3011,3041,
+	3072,3102,3133,3165,3196,3228,3261,3293,
+	3326,3359,3393,3427,3461,3496,3531,3566,
+	3602,3638,3674,3711,3748,3786,3823,3862,
+	3900,3939,3979,4019,4059,4099,4140,4182,
+	4224,4266,4308,4352,4395,4439,4483,4528,
+	4574,4619,4665,4712,4759,4807,4855,4903,
+	4953,5002,5052,5103,5154,5205,5257,5310,
+	5363,5417,5471,5525,5581,5636,5693,5750,
+	5807,5865,5924,5983,6043,6104,6165,6226,
+	6289,6351,6415,6479,6544,6609,6675,6742,
+	6810,6878,6946,7016,7086,7157,7229,7301,
+	7374,7448,7522,7597,7673,7750,7828,7906,
+	7985,8065,8145,8227,8309,8392,8476,8561,
+	8647,8733,8820,8909,8998,9088,9178,9270,
+	9363,9457,9551,9647,9743,9841,9939,10038,
+	10139,10240,10343,10446,10550,10656,10763,10870,
+	10979,11089,11200,11312,11425,11539,11654,11771,
+	11889,12008,12128,12249,12371,12495,12620,12746,
+	12874,13002,13132,13264,13396,13530,13666,13802,
+	13940,14080,14221,14363,14506,14652,14798,14946,
+	15096,15247,15399,15553,15709,15866,16024,16184,
+	16346,16510,16675,16842,17010,17180,17352,17526,
+	17701,17878,18057,18237,18420,18604,18790,18978,
+	19167,19359,19553,19748,19946,20145,20347,20550,
+	20756,20963,21173,21385,21598,21814,22033,22253,
+	22475,22700,22927,23156,23388,23622,23858,24097,
+	24338,24581,24827,25075,25326,25579,25835,26093,
+	26354,26618,26884,27153,27424,27699,27976,28255,
+	28538,28823,29112,29403,29697,29994,30294,30597,
+	30903,31212,31524,31839
+};
+
 static const int accl_st_tb[31] = {
 	340, 351, 363, 375, 388, 401, 414, 428,
 	443, 458, 473, 489, 506, 523, 541, 559,
 	578, 597, 617, 638, 660, 682, 705, 729,
-	753, 779, 805, 832, 860, 889, 919};
+	753, 779, 805, 832, 860, 889, 919
+};
+
 static const int gyro_6050_st_tb[31] = {
 	3275, 3425, 3583, 3748, 3920, 4100, 4289, 4486,
 	4693, 4909, 5134, 5371, 5618, 5876, 6146, 6429,
 	6725, 7034, 7358, 7696, 8050, 8421, 8808, 9213,
-	9637, 10080, 10544, 11029, 11537, 12067, 12622};
+	9637, 10080, 10544, 11029, 11537, 12067, 12622
+};
+
 static const int gyro_3500_st_tb[255] = {
 	2620, 2646, 2672, 2699, 2726, 2753, 2781, 2808,
 	2837, 2865, 2894, 2923, 2952, 2981, 3011, 3041,
@@ -239,7 +288,8 @@ static const int gyro_3500_st_tb[255] = {
 	24338, 24581, 24827, 25075, 25326, 25579, 25835, 26093,
 	26354, 26618, 26884, 27153, 27424, 27699, 27976, 28255,
 	28538, 28823, 29112, 29403, 29697, 29994, 30294, 30597,
-	30903, 31212, 31524, 31839, 32157, 32479, 32804};
+	30903, 31212, 31524, 31839, 32157, 32479, 32804
+};
 
 char *wr_pr_debug_begin(u8 const *data, u32 len, char *string)
 {
@@ -287,55 +337,16 @@ int mpu_memory_write(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 	msgs[0].flags = 0;
 	msgs[0].buf = bank;
 	msgs[0].len = sizeof(bank);
-	//<asus-guc20130820+>
-	res = i2c_transfer(st->sl_handle, msgs, 1);		
-	if (res != 1) {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		if (res >= 0) {
-			printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-			res = -EIO;
-		}
-	} else {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		res = 0;
-	}
-	//<asus-guc20130820->
 
-	//<asus-guc20130820+>
-	msgs[0].addr = mpu_addr;
-	msgs[0].flags = 0;
-	msgs[0].buf = addr;
-	msgs[0].len = sizeof(addr);
-	res = i2c_transfer(st->sl_handle, msgs, 1);		
-	if (res != 1) {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		if (res >= 0) {
-			printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-			res = -EIO;
-		}
-	} else {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		res = 0;
-	}
-	//<asus-guc20130820->
+	msgs[1].addr = mpu_addr;
+	msgs[1].flags = 0;
+	msgs[1].buf = addr;
+	msgs[1].len = sizeof(addr);
 
-	//<asus-guc20130820+>
-	msgs[0].addr = mpu_addr;
-	msgs[0].flags = 0;
-	msgs[0].buf = (u8 *)buf;
-	msgs[0].len = len + 1;
-	res = i2c_transfer(st->sl_handle, msgs, 1);		
-	if (res != 1) {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		if (res >= 0) {
-			printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-			res = -EIO;
-		}
-	} else {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		res = 0;
-	}
-	//<asus-guc20130820->
+	msgs[2].addr = mpu_addr;
+	msgs[2].flags = 0;
+	msgs[2].buf = (u8 *)buf;
+	msgs[2].len = len + 1;
 
 	INV_I2C_INC_MPUWRITE(3 + 3 + (2 + len));
 #if CONFIG_DYNAMIC_DEBUG
@@ -348,11 +359,8 @@ int mpu_memory_write(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 			 len);
 	}
 #endif
-return res;
 
-
-/*
-//	res = i2c_transfer(st->sl_handle, msgs, 3);
+	res = i2c_transfer(st->sl_handle, msgs, 3);
 	if (res != 3) {
 		if (res >= 0)
 			res = -EIO;
@@ -360,7 +368,6 @@ return res;
 	} else {
 		return 0;
 	}
-*/
 }
 
 int mpu_memory_read(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
@@ -389,68 +396,28 @@ int mpu_memory_read(struct inv_mpu_iio_s *st, u8 mpu_addr, u16 mem_addr,
 	msgs[0].flags = 0;
 	msgs[0].buf = bank;
 	msgs[0].len = sizeof(bank);
-	//<asus-guc20130820+>
-	res = i2c_transfer(st->sl_handle, msgs, 1);	
-	if (res != 1) {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		if (res >= 0) {
-			printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-			res = -EIO;
-		}
-	} else {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		res = 0;
-	}
-	//<asus-guc20130820->
 
-	//<asus-guc20130820+>
-	msgs[0].addr = mpu_addr;
-	msgs[0].flags = 0;
-	msgs[0].buf = addr;
-	msgs[0].len = sizeof(addr);
-	res = i2c_transfer(st->sl_handle, msgs, 1);	
-	if (res != 1) {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		if (res >= 0) {
-			printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-			res = -EIO;
-		}
-	} else {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		res = 0;
-	}
-	//<asus-guc20130820->
+	msgs[1].addr = mpu_addr;
+	msgs[1].flags = 0;
+	msgs[1].buf = addr;
+	msgs[1].len = sizeof(addr);
 
-	//<asus-guc20130820+>
-	msgs[0].addr = mpu_addr;
-	msgs[0].flags = 0;
-	msgs[0].buf = &buf;
-	msgs[0].len = 1;
-	res = i2c_transfer(st->sl_handle, msgs, 1);		
-	if (res != 1) {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		if (res >= 0) {
-			printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-			res = -EIO;
-		}
-	} else {
-		printk("<asus-ych> %s %d \n", __func__, __LINE__);		
-		res = 0;
-	}
-	//<asus-guc20130820->
+	msgs[2].addr = mpu_addr;
+	msgs[2].flags = 0;
+	msgs[2].buf = &buf;
+	msgs[2].len = 1;
 
-	//<asus-guc20130820+>
-	msgs[0].addr = mpu_addr;
-	msgs[0].flags = I2C_M_RD;
-	msgs[0].buf = data;
-	msgs[0].len = len;
-	res = i2c_transfer(st->sl_handle, msgs, 1);		
-	if (res != 1) {
+	msgs[3].addr = mpu_addr;
+	msgs[3].flags = I2C_M_RD;
+	msgs[3].buf = data;
+	msgs[3].len = len;
+
+	res = i2c_transfer(st->sl_handle, msgs, 4);
+	if (res != 4) {
 		if (res >= 0)
 			res = -EIO;
 	} else
 		res = 0;
-	//<asus-guc20130820->
 
 	INV_I2C_INC_MPUWRITE(3 + 3 + 3);
 	INV_I2C_INC_MPUREAD(len);
@@ -515,21 +482,24 @@ int inv_get_silicon_rev_mpu6500(struct inv_mpu_iio_s *st)
 	result = inv_i2c_read(st, REG_WHOAMI, 1, &whoami);
 	if (result)
 		return result;
-	if (whoami != MPU6500_ID && whoami != MPU9250_ID)
+	if (whoami != MPU6500_ID && whoami != MPU6515_ID && whoami != MPU9250_ID)
 		return -EINVAL;
 
 	/*memory read need more time after power up */
 	msleep(POWER_UP_TIME);
 	result = mpu_memory_read(st, st->i2c_addr,
 			MPU6500_MEM_REV_ADDR, 1, &sw_rev);
+    printk("%s, sw_rev(%d)\n", __func__, sw_rev);
 	if (sw_rev == 0) {
 		pr_warning("Rev 0 of MPU6500\n");
 		pr_warning("can't sit with other devices in same I2C bus\n");
 	}
 	if (result)
 		return result;
-	if (sw_rev > MPU6500_REV)
-		return -EINVAL;
+	if (sw_rev > MPU6500_REV) {        
+		//return -EINVAL;
+		printk("%s, sw_rev(%d) > MPU6500_REV\n", __func__, sw_rev);
+    }
 
 	/* these values are place holders and not real values */
 	chip_info->product_id = MPU6500_PRODUCT_REVISION;
@@ -583,8 +553,12 @@ int inv_get_silicon_rev_mpu6050(struct inv_mpu_iio_s *st)
 	sw_rev = (regs[4] & 0x01) << 2 |	/* 0x0b, bit 0 */
 		 (regs[2] & 0x01) << 1 |	/* 0x09, bit 0 */
 		 (regs[0] & 0x01);		/* 0x07, bit 0 */
+
+    printk("%s, prod_ver=%d, prod_rev=%d, sw_rev=%d\n", __func__, prod_ver, prod_rev, sw_rev);
+
 	/* if 0, use the product key to determine the type of part */
 	if (sw_rev == 0) {
+#if 0        
 		key = MPL_PROD_KEY(prod_ver, prod_rev);
 		if (key == 0)
 			return -EINVAL;
@@ -595,11 +569,19 @@ int inv_get_silicon_rev_mpu6050(struct inv_mpu_iio_s *st)
 		if (prod_rev_map[index].silicon_rev != MPU_SILICON_REV_B1)
 			return -EINVAL;
 		p_rev = (struct prod_rev_map_t *)&prod_rev_map[index];
+#else        
+		printk("%s, sw_rev=0, use latest id map:sw_rev_map[2]\n", __func__);
+        sw_rev = 2;
+		p_rev = (struct prod_rev_map_t *)&sw_rev_map[sw_rev];
+#endif        
 	/* if valid, use the software product key */
 	} else if (sw_rev < ARRAY_SIZE(sw_rev_map)) {
 		p_rev = (struct prod_rev_map_t *)&sw_rev_map[sw_rev];
-	} else {
-		return -EINVAL;
+	} else {	
+		//return -EINVAL;
+		printk("%s, silicon id not match, use latest id map:sw_rev_map[2]\n", __func__);
+        sw_rev = 2;
+		p_rev = (struct prod_rev_map_t *)&sw_rev_map[sw_rev];
 	}
 	chip_info->product_id = prod_ver;
 	chip_info->product_revision = prod_rev;
@@ -610,8 +592,11 @@ int inv_get_silicon_rev_mpu6050(struct inv_mpu_iio_s *st)
 	if (chip_info->accl_sens_trim == 0)
 		chip_info->accl_sens_trim = DEFAULT_ACCL_TRIM;
 	chip_info->multi = DEFAULT_ACCL_TRIM / chip_info->accl_sens_trim;
-	if (chip_info->multi != 1)
+	//if (chip_info->multi != 1)
 		pr_info("multi is %d\n", chip_info->multi);
+
+    printk("accl_sens_trim=%d\n", (int)chip_info->accl_sens_trim);
+    
 	return result;
 }
 
@@ -714,30 +699,64 @@ static int inv_check_accl_self_test(struct inv_mpu_iio_s *st,
 		test_setup.accl_sens[Z] /= st->chip_info.multi;
 	}
 	gravity = test_setup.accl_sens[Z];
-	reg_z_avg = reg_avg[Z] - g_z_sign * gravity*DEF_ST_PRECISION;
-	read_accel_hw_self_test_prod_shift(st, st_shift_prod);
+	reg_z_avg = reg_avg[Z] - g_z_sign * gravity * DEF_ST_PRECISION;
+	ret_val = read_accel_hw_self_test_prod_shift(st, st_shift_prod);
+	if (ret_val)
+		return ret_val;
+
 	for (j = 0; j < 3; j++) {
 		st_shift_cust[j] = abs(reg_avg[j] - st_avg[j]);
 		if (st_shift_prod[j]) {
 			tmp1 = st_shift_prod[j]/DEF_ST_PRECISION;
-			st_shift_ratio[j] = st_shift_cust[j]/tmp1
-				- DEF_ST_PRECISION;
-			if (st_shift_ratio[j] > DEF_ACCEL_ST_SHIFT_DELTA)
+			st_shift_ratio[j] = abs(st_shift_cust[j]/tmp1
+				- DEF_ST_PRECISION);
+			if (st_shift_ratio[j] > DEF_ACCEL_ST_SHIFT_DELTA) {
 				ret_val |= 1 << j;
-			if (st_shift_ratio[j] < -DEF_ACCEL_ST_SHIFT_DELTA)
-				ret_val |= 1 << j;
+                printk("%s, axis(%d) > DEF_ACCEL_ST_SHIFT_DELTA\n", __func__, j);
+            }
 		} else {
 			if (st_shift_cust[j] <
-				DEF_ACCEL_ST_SHIFT_MIN*gravity)
+				DEF_ACCEL_ST_SHIFT_MIN*gravity) {
 				ret_val |= 1 << j;
+                printk("%s, axis(%d) < DEF_ACCEL_ST_SHIFT_MIN\n", __func__, j);
+            }
 			if (st_shift_cust[j] >
-				DEF_ACCEL_ST_SHIFT_MAX*gravity)
+				DEF_ACCEL_ST_SHIFT_MAX*gravity) {
 				ret_val |= 1 << j;
+                printk("%s, axis(%d) > DEF_ACCEL_ST_SHIFT_MAX\n", __func__, j);
+            }
 		}
 	}
 
+//#define ACCEL_BIAS_THRESHOLD_SMT	500 //mg
+//    ret_val |= inv_check_accl_self_test_raw(st, reg_avg, ACCEL_BIAS_THRESHOLD_SMT);
+
 	return ret_val;
 }
+
+static int inv_check_gyro_self_test_raw(struct inv_mpu_iio_s *st, int *reg_avg)
+{
+#define GYRO_THRESHOLD_DPS  20L
+
+        int i, ret_val=0;
+    long thres;
+
+    thres = GYRO_THRESHOLD_DPS*(1L << 15)*DEF_GYRO_PRECISION/(GYRO_DPS_SCALE << DEF_SELFTEST_GYRO_FULL_SCALE);
+        for (i = 0; i < 3; i++) {
+#if 0        
+                if (abs(reg_avg[i])*4 > 20*2*1000*131)
+                        ret_val |= (1<<i);
+#else
+        if (abs(reg_avg[i]) > thres) {
+            ret_val |= (1<<i);
+            printk("%s, axis(%d) > GYRO_THRESHOLD_DPS\n", __func__, i);
+        }
+#endif
+        }
+
+    return ret_val;
+}
+
 /**
 * inv_check_3500_gyro_self_test() check gyro self test. this function returns
 *                                 zero as success. A non-zero return value
@@ -791,28 +810,6 @@ static int inv_check_3500_gyro_self_test(struct inv_mpu_iio_s *st,
 
 	return ret_val;
 }
-static int inv_check_gyro_self_test_raw(struct inv_mpu_iio_s *st, int *reg_avg)
-{
-#define GYRO_THRESHOLD_DPS  20L
-
-        int i, ret_val=0;
-    long thres;
-
-    thres = GYRO_THRESHOLD_DPS*(1L << 15)*DEF_GYRO_PRECISION/(GYRO_DPS_SCALE << DEF_SELFTEST_GYRO_FULL_SCALE);
-        for (i = 0; i < 3; i++) {
-#if 0        
-                if (abs(reg_avg[i])*4 > 20*2*1000*131)
-                        ret_val |= (1<<i);
-#else
-        if (abs(reg_avg[i]) > thres) {
-            ret_val |= (1<<i);
-            printk("%s, axis(%d) > GYRO_THRESHOLD_DPS\n", __func__, i);
-        }
-#endif
-        }
-
-    return ret_val;
-}
 
 /**
 * inv_check_6050_gyro_self_test() - check 6050 gyro self test. this function
@@ -849,147 +846,405 @@ static int inv_check_6050_gyro_self_test(struct inv_mpu_iio_s *st,
 	for (i = 0; i < 3; i++) {
 		st_shift_cust[i] = abs(reg_avg[i] - st_avg[i]);
 		if (ct_shift_prod[i]) {
-			st_shift_ratio[i] = st_shift_cust[i] /
-				ct_shift_prod[i] - DEF_ST_PRECISION;
-			if (st_shift_ratio[i] > DEF_GYRO_CT_SHIFT_DELTA)
+			st_shift_ratio[i] = abs(st_shift_cust[i] /
+				ct_shift_prod[i] - DEF_ST_PRECISION);
+			if (st_shift_ratio[i] > DEF_GYRO_CT_SHIFT_DELTA) {
 				ret_val |= 1 << i;
-			if (st_shift_ratio[i] < -DEF_GYRO_CT_SHIFT_DELTA)
-				ret_val |= 1 << i;
+                printk("%s, axis(%d) > DEF_GYRO_CT_SHIFT_DELTA\n", __func__, i);                
+            }
 		} else {
 			if (st_shift_cust[i] < DEF_ST_PRECISION *
-				DEF_GYRO_CT_SHIFT_MIN * test_setup.gyro_sens)
+				DEF_GYRO_CT_SHIFT_MIN * test_setup.gyro_sens) {
 				ret_val |= 1 << i;
+                printk("%s, axis(%d) < DEF_GYRO_CT_SHIFT_MIN\n", __func__, i);
+            }
 			if (st_shift_cust[i] > DEF_ST_PRECISION *
-				DEF_GYRO_CT_SHIFT_MAX * test_setup.gyro_sens)
+				DEF_GYRO_CT_SHIFT_MAX * test_setup.gyro_sens) {
 				ret_val |= 1 << i;
+                printk("%s, axis(%d) > DEF_GYRO_CT_SHIFT_MAX\n", __func__, i);
+            }
 		}
 	}
 	/* check for absolute value passing criterion. Using DEF_ST_TOR
 	 * for certain degree of tolerance */
 	for (i = 0; i < 3; i++) {
 		if (abs(reg_avg[i]) > DEF_ST_TOR * DEF_ST_ABS_THRESH *
-		    DEF_ST_PRECISION * DEF_GYRO_SCALE)
+		    DEF_ST_PRECISION * DEF_GYRO_SCALE) {
 			ret_val |= (1 << i);
+            printk("%s, axis(%d) > DEF_ST_ABS_THRESH\n", __func__, i);
+        }
 	}
 
 	return ret_val;
 }
 
 /**
+* inv_check_6500_gyro_self_test() - check 6500 gyro self test. this function
+*                                   returns zero as success. A non-zero return
+*                                   value indicates failure in self test.
+*  @*st: main data structure.
+*  @*reg_avg: average value of normal test.
+*  @*st_avg:  average value of self test
+*/
+static int inv_check_6500_gyro_self_test(struct inv_mpu_iio_s *st,
+	int *reg_avg, int *st_avg) {
+	int ret_val, result;
+	int ct_shift_prod[3], st_shift_cust[3], st_shift_ratio[3], i;
+	u8 regs[3];
+	const u16 *st_tb;
+	int otp_value_zero = 0;
+
+	int gyro_offset_max, gyro_st_al;
+
+	ret_val = 0;
+	st_tb = mpu_6500_st_tb;
+	result = inv_i2c_read(st, REG_6500_XG_ST_DATA, 3, regs);
+	
+	//<asus-guc20130904>printk("Gyro OTP:%d, %d, %d\n", regs[0], regs[1], regs[2]);	
+
+	for (i = 0; i < 3; i++) {
+		if (regs[i] != 0) {
+			ct_shift_prod[i] = st_tb[regs[i] - 1];
+		}
+		else {	
+			ct_shift_prod[i] = 0;
+			otp_value_zero = 1;
+		}
+	}
+
+	if(otp_value_zero == 0) {
+	/* Self Test Pass/Fail Criteria A */
+		//<asus-guc20130904>printk("GYRO:CRITERIA A\n");
+		for (i = 0; i < 3; i++) {
+			//st_shift_cust[i] = abs(reg_avg[i] - st_avg[i]);
+			st_shift_cust[i] = st_avg[i] - reg_avg[i];
+			//<asus-guc20130904>printk("shift_cust=%d, reg=%d, st=%d, prod=%d\n",
+				//st_shift_cust[i], reg_avg[i],
+				//st_avg[i], ct_shift_prod[i]);
+
+			st_shift_ratio[i] = st_shift_cust[i] / ct_shift_prod[i];
+			//<asus-guc20130904>printk("ratio=%d, threshold=%d\n", st_shift_ratio[i],
+							//DEF_GYRO_CT_SHIFT_DELTA);
+			if (st_shift_ratio[i] < DEF_GYRO_CT_SHIFT_DELTA) {
+    			ret_val |= 1 << i;	//Error condition
+                //<asus-guc20130904>printk("%s, axis(%d) < DEF_GYRO_CT_SHIFT_DELTA\n", __func__, i);
+            }
+					
+		}
+	}
+	else {
+	/* Self Test Pass/Fail Criteria B */
+		//<asus-guc20130904>printk("GYRO:CRITERIA B\n");
+		gyro_st_al = DEF_GYRO_ST_AL * DEF_SELFTEST_GYRO_SENS * DEF_ST_PRECISION;
+		for (i = 0; i < 3; i++) {
+			//st_shift_cust[i] = abs(reg_avg[i] - st_avg[i]);
+			st_shift_cust[i] = st_avg[i] - reg_avg[i];
+			//<asus-guc20130904>printk("shift_cust=%d, reg=%d, st=%d\n",
+			//	st_shift_cust[i], reg_avg[i], st_avg[i]);
+			if(st_shift_cust[i] < gyro_st_al) {
+				//<asus-guc20130904>printk("Gyro axis:%d < 60dps\n", i);
+				ret_val |= 1 << i;	//Error condition
+			}
+		}
+	}
+
+	if(ret_val == 0) {
+	/* Self Test Pass/Fail Criteria C */
+		gyro_offset_max = DEF_GYRO_OFFSET_MAX * DEF_SELFTEST_GYRO_SENS * DEF_ST_PRECISION;
+		for (i = 0; i < 3; i++) {
+			if(abs(reg_avg[i]) > gyro_offset_max) {
+				//<asus-guc20130904>printk("GYRO:CRITERIA C: Gyro axis:%d > 20dps\n", i);
+				ret_val |= 1 << i;	//Error condition
+			}
+		}
+	}
+
+	return ret_val;
+}
+
+/**
+* inv_check_6500_accl_self_test() - check 6500 accel self test. this function
+*                                   returns zero as success. A non-zero return
+*                                   value indicates failure in self test.
+*  @*st: main data structure.
+*  @*reg_avg: average value of normal test.
+*  @*st_avg:  average value of self test
+*/
+static int inv_check_6500_accl_self_test(struct inv_mpu_iio_s *st,
+	int *reg_avg, int *st_avg) {
+	int ret_val, result;
+	int ct_shift_prod[3], st_shift_cust[3], st_shift_ratio[3], i;
+	u8 regs[3];
+	const u16 *st_tb;
+	int otp_value_zero = 0;
+
+	int accel_st_al_min, accel_st_al_max;
+	int gravity;
+
+	ret_val = 0;
+	st_tb = mpu_6500_st_tb;
+	result = inv_i2c_read(st, REG_6500_XA_ST_DATA, 3, regs);
+	
+	//<asus-guc20130904>printk("Accel OTP:%d, %d, %d\n", regs[0], regs[1], regs[2]);
+
+	for (i = 0; i < 3; i++) {
+		if (regs[i] != 0) {
+			ct_shift_prod[i] = st_tb[regs[i] - 1];
+		}
+		else {
+			ct_shift_prod[i] = 0;
+			otp_value_zero = 1;
+		}
+	}
+
+	if(otp_value_zero == 0) {
+		//<asus-guc20130904>printk("ACCEL:CRITERIA A\n");
+		/* Self Test Pass/Fail Criteria A */
+		for (i = 0; i < 3; i++) {
+			//st_shift_cust[i] = abs(reg_avg[i] - st_avg[i]);
+			st_shift_cust[i] = st_avg[i] - reg_avg[i];
+			//<asus-guc20130904>printk("shift_cust=%d, reg=%d, st=%d, prod=%d\n",
+				//st_shift_cust[i], reg_avg[i],
+				//st_avg[i], ct_shift_prod[i]);
+
+			st_shift_ratio[i] = abs((st_shift_cust[i] /
+					ct_shift_prod[i]) - DEF_ST_PRECISION);
+			//<asus-guc20130904>printk("ratio=%d, threshold=%d\n", st_shift_ratio[i],
+			//				DEF_ACCEL_ST_SHIFT_DELTA);
+			if (st_shift_ratio[i] > DEF_ACCEL_ST_SHIFT_DELTA) {
+    			ret_val |= 1 << i;	//Error condition
+                //<asus-guc20130904>printk("%s, axis(%d) > DEF_ACCEL_ST_SHIFT_DELTA\n", __func__, i);
+            }
+		}
+	}
+	else {
+		//<asus-guc20130904>printk("ACCEL:CRITERIA B\n");
+		/* Self Test Pass/Fail Criteria B */
+		gravity = (u32)(DEF_ST_SCALE * DEF_ST_PRECISION / DEF_ST_ACCL_FULL_SCALE);
+		accel_st_al_min = DEF_ACCEL_ST_AL_MIN * gravity;
+		accel_st_al_max = DEF_ACCEL_ST_AL_MAX * gravity;
+		for (i = 0; i < 3; i++) {
+			//st_shift_cust[i] = abs(reg_avg[i] - st_avg[i]);
+			st_shift_cust[i] = st_avg[i] - reg_avg[i];
+			//<asus-guc20130904>printk("shift_cust=%d, reg=%d, st=%d\n",
+				//st_shift_cust[i], reg_avg[i], st_avg[i]);
+			if(st_shift_cust[i] < accel_st_al_min || st_shift_cust[i] > accel_st_al_max) {
+				//<asus-guc20130904>printk("Accel axis:%d <= 225mg or >= 675mg\n", i);
+				ret_val |= 1 << i;	//Error condition
+			}
+		}
+	}
+
+//#define ACCEL_BIAS_THRESHOLD_SMT  500 //mg
+//    ret_val |= inv_check_accl_self_test_raw(st, reg_avg, ACCEL_BIAS_THRESHOLD_SMT);
+
+	return ret_val;
+}
+
+/*
  *  inv_do_test() - do the actual test of self testing
  */
 int inv_do_test(struct inv_mpu_iio_s *st, int self_test_flag,
 		int *gyro_result, int *accl_result)
 {
-	struct inv_reg_map_s *reg;
-	int result, i, j, packet_size;
-	u8 data[BYTES_PER_SENSOR * 2], has_accl;
-	int fifo_count, packet_count, ind;
+#define INV_DO_TEST_DEBUG   0
+    struct inv_reg_map_s *reg;
+    int result, i, j, packet_size;
+    //u8 data[BYTES_PER_SENSOR * 2];
+    u8 data[512];
+    u8 d;
+    bool has_accl;
+    int fifo_count, packet_count, ind, s;
+    int read_size;
+#if INV_DO_TEST_DEBUG
+	short buf_debug[DEF_PACKET_THRESH * 6], index_debug=0;
+#endif
 
-	reg = &st->reg;
-	has_accl = (st->chip_type != INV_ITG3500);
-	packet_size = BYTES_PER_SENSOR*(1 + has_accl);
+    //<asus-guc20130904>printk("%s\n", __func__);
 
-	result = inv_i2c_single_write(st, reg->int_enable, 0);
-	if (result)
-		return result;
-	/* disable the sensor output to FIFO */
-	result = inv_i2c_single_write(st, reg->fifo_en, 0);
-	if (result)
-		return result;
-	/* disable fifo reading */
-	result = inv_i2c_single_write(st, reg->user_ctrl, 0);
-	if (result)
-		return result;
-	/* clear FIFO */
-	result = inv_i2c_single_write(st, reg->user_ctrl, BIT_FIFO_RST);
-	if (result)
-		return result;
-	/* setup parameters */
-	result = inv_i2c_single_write(st, reg->lpf, test_setup.lpf);
-	if (result)
-		return result;
-	result = inv_i2c_single_write(st, reg->sample_rate_div,
-		test_setup.sample_rate);
-	if (result)
-		return result;
-		if(st->chip_type == INV_MPU6500)
-			result = inv_i2c_single_write(st, reg->gyro_config,self_test_flag | (test_setup.fsr << GYRO_CONFIG_FSR_SHIFT));
-		else		
-			result = inv_i2c_single_write(st, reg->gyro_config,self_test_flag | test_setup.fsr);
-	if (result)
-		return result;
-	if (has_accl) {
-				if(st->chip_type == INV_MPU6500)
-					result = inv_i2c_single_write(st, reg->accl_config,self_test_flag | (test_setup.accl_fs << ACCL_CONFIG_FSR_SHIFT));
-				else
-					result = inv_i2c_single_write(st, reg->accl_config,self_test_flag | test_setup.accl_fs);
-		if (result)
-			return result;
-	}
-	/* wait for the output to get stable */
-	//if (self_test_flag)
-		msleep(DEF_ST_STABLE_TIME);
+    reg = &st->reg;
+    has_accl = (st->chip_type != INV_ITG3500);
+    if (has_accl)
+        packet_size = BYTES_PER_SENSOR * 2;
+    else
+        packet_size = BYTES_PER_SENSOR;
 
-	/* enable FIFO reading */
-	result = inv_i2c_single_write(st, reg->user_ctrl, BIT_FIFO_EN);
-	if (result)
-		return result;
-	/* enable sensor output to FIFO */
-	result = inv_i2c_single_write(st, reg->fifo_en, BITS_GYRO_OUT
-		| (has_accl << 3));
-	if (result)
-		return result;
-	mdelay(DEF_GYRO_WAIT_TIME);
-	/* stop sending data to FIFO */
-	result = inv_i2c_single_write(st, reg->fifo_en, 0);
-	if (result)
-		return result;
-	result = inv_i2c_read(st, reg->fifo_count_h, FIFO_COUNT_BYTE, data);
-	if (result)
-		return result;
-	fifo_count = be16_to_cpup((__be16 *)(&data[0]));
-	packet_count = fifo_count / packet_size;
-	for (i = 0; i < 3; i++) {
-		gyro_result[i] = 0;
-		accl_result[i] = 0;
-	}
-	if (abs(packet_count - DEF_GYRO_PACKET_THRESH) > DEF_GYRO_THRESH)
-		return -EAGAIN;
+    result = inv_i2c_single_write(st, reg->int_enable, 0);
+    if (result)
+        return result;
+    /* disable the sensor output to FIFO */
+    result = inv_i2c_single_write(st, reg->fifo_en, 0);
+    if (result)
+        return result;
+    /* disable fifo reading */
+    result = inv_i2c_single_write(st, reg->user_ctrl, 0);
+    if (result)
+        return result;
+    /* clear FIFO */
+    result = inv_i2c_single_write(st, reg->user_ctrl, BIT_FIFO_RST);
+    if (result)
+        return result;
+    /* setup parameters */
+    result = inv_i2c_single_write(st, reg->lpf, test_setup.lpf);
+    if (result)
+        return result;
 
-	for (i = 0; i < packet_count; i++) {
-		/* getting FIFO data */
-		result = inv_i2c_read(st, reg->fifo_r_w,
-			packet_size, data);
-		if (result)
-			return result;
-		ind = 0;
-		if (has_accl) {
-			for (j = 0; j < THREE_AXIS; j++)
-				accl_result[j] +=
-					(short)be16_to_cpup(
-						(__be16 *)(&data[ind + 2 * j]));
-				ind += BYTES_PER_SENSOR;
-		}
-		for (j = 0; j < THREE_AXIS; j++)
-			gyro_result[j] +=
-				(short)be16_to_cpup(
-					(__be16 *)(&data[ind + 2 * j]));
-	}
+    /* setup parameters */
+    result = inv_i2c_single_write(st, REG_6500_ACCEL_CONFIG2, 2);   //Accel LPF
+    if (result)
+        return result;
 
-	gyro_result[0] = gyro_result[0] * DEF_ST_PRECISION / packet_count;
-	gyro_result[1] = gyro_result[1] * DEF_ST_PRECISION / packet_count;
-	gyro_result[2] = gyro_result[2] * DEF_ST_PRECISION / packet_count;
-	if (has_accl) {
-		accl_result[0] =
-			accl_result[0] * DEF_ST_PRECISION / packet_count;
-		accl_result[1] =
-			accl_result[1] * DEF_ST_PRECISION / packet_count;
-		accl_result[2] =
-			accl_result[2] * DEF_ST_PRECISION / packet_count;
-	}
+    result = inv_i2c_single_write(st, reg->sample_rate_div,
+        test_setup.sample_rate);
+    if (result)
+        return result;
+    /* wait for the sampling rate change to stabilize */
+    mdelay(INV_MPU_SAMPLE_RATE_CHANGE_STABLE);
+    result = inv_i2c_single_write(st, reg->gyro_config,
+        self_test_flag | (test_setup.fsr << GYRO_CONFIG_FSR_SHIFT));
+    if (result)
+        return result;
+    if (has_accl) {
+        result = inv_i2c_single_write(st, reg->accl_config,
+            self_test_flag | (test_setup.accl_fs << ACCL_CONFIG_FSR_SHIFT));
+        if (result)
+            return result;
+    }
+    /* wait for the output to get stable */
+    //if (self_test_flag)
+        msleep(DEF_ST_STABLE_TIME);
 
-	return 0;
+    /* enable FIFO reading */
+    result = inv_i2c_single_write(st, reg->user_ctrl, BIT_FIFO_EN);
+    if (result)
+        return result;
+    /* enable sensor output to FIFO */
+    if (has_accl)
+        d = BITS_GYRO_OUT | BIT_ACCEL_OUT;
+    else
+        d = BITS_GYRO_OUT;
+    result = inv_i2c_single_write(st, reg->fifo_en, d);
+    if (result)
+        return result;
+
+    for (i = 0; i < THREE_AXIS; i++) {
+        gyro_result[i] = 0;
+        accl_result[i] = 0;
+    }
+    s = 0;
+
+    while (s < DEF_PACKET_THRESH) {
+        mdelay(DEF_GYRO_WAIT_TIME);
+        result = inv_i2c_read(st, reg->fifo_count_h,
+                    FIFO_COUNT_BYTE, data);
+        if (result)
+            return result;
+        fifo_count = be16_to_cpup((__be16 *)(&data[0]));
+        packet_count = fifo_count / packet_size;
+#if INV_DO_TEST_DEBUG
+//<asus-guc20130904>printk("sample_rate div=%d\n", test_setup.sample_rate);
+//<asus-guc20130904>printk("fifo_count=%d, packet_size=%d, packet_count=%d\n", fifo_count, packet_size, packet_count);
+#endif
+        if ((DEF_PACKET_THRESH - s) < packet_count)
+            packet_count = DEF_PACKET_THRESH - s;
+        read_size = packet_count * packet_size;
+        result = inv_i2c_read(st, reg->fifo_r_w, read_size, data);
+        if (result)
+            return result;
+        ind = 0;
+        for (i = 0; i < packet_count; i++){
+            if (has_accl) {
+                for (j = 0; j < THREE_AXIS; j++)
+                    accl_result[j] +=
+                    (short)be16_to_cpup(
+                    (__be16 *)(&data[ind + 2 * j]));
+#if INV_DO_TEST_DEBUG
+        buf_debug[index_debug++]=(short)be16_to_cpup((__be16 *)(&data[ind + 2 * 0]));
+        buf_debug[index_debug++]=(short)be16_to_cpup((__be16 *)(&data[ind + 2 * 1]));
+        buf_debug[index_debug++]=(short)be16_to_cpup((__be16 *)(&data[ind + 2 * 2]));        
+//        printk("accel, %d, %d, %d\n",
+//            (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 0])),
+//            (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 1])),
+//            (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 2])));
+#endif        
+                ind += BYTES_PER_SENSOR;
+            }
+            for (j = 0; j < THREE_AXIS; j++)
+                gyro_result[j] +=
+                    (short)be16_to_cpup(
+                    (__be16 *)(&data[ind + 2 * j]));
+#if INV_DO_TEST_DEBUG        
+        buf_debug[index_debug++]=(short)be16_to_cpup((__be16 *)(&data[ind + 2 * 0]));
+        buf_debug[index_debug++]=(short)be16_to_cpup((__be16 *)(&data[ind + 2 * 1]));
+        buf_debug[index_debug++]=(short)be16_to_cpup((__be16 *)(&data[ind + 2 * 2]));        
+//        printk("gyro, %d, %d, %d\n",
+//            (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 0])),
+//            (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 1])),
+//            (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 2])));
+#endif
+            ind += BYTES_PER_SENSOR;            
+        }
+        s += packet_count;
+    }
+
+    /* stop sending data to FIFO */
+    result = inv_i2c_single_write(st, reg->fifo_en, 0);
+    if (result)
+        return result;
+    for (j = 0; j < THREE_AXIS; j++) {
+        gyro_result[j] = gyro_result[j]/s;
+        gyro_result[j] *= DEF_ST_PRECISION;
+    }
+
+    if (has_accl) {
+        for (j = 0; j < THREE_AXIS; j++) {
+            accl_result[j] = accl_result[j]/s;
+            accl_result[j] *= DEF_ST_PRECISION;
+        }
+    }
+
+#if INV_DO_TEST_DEBUG
+{
+    unsigned char i;
+    for (i=0; i<DEF_PACKET_THRESH; i++){
+        printk("accel, %d, %d, %d\n",
+            (short)buf_debug[i*6],
+            (short)buf_debug[i*6+1],
+            (short)buf_debug[i*6+2]);
+        printk("gyro, %d, %d, %d\n",
+            (short)buf_debug[i*6+3],
+            (short)buf_debug[i*6+4],
+            (short)buf_debug[i*6+5]);
+    }
+    printk("buf_debug index=%d\n", index_debug);
+}
+{
+    unsigned char data[6], ind;
+    ind=0;
+    result = inv_i2c_read(st, reg->raw_accl, 6, data);
+    printk("accel raw, %d, %d, %d\n",
+        (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 0])),
+        (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 1])),
+        (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 2])));
+
+    ind=0;
+    result = inv_i2c_read(st, reg->raw_gyro, 6, data);
+    printk("gyro raw, %d, %d, %d\n",
+        (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 0])),
+        (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 1])),
+        (short)be16_to_cpup((__be16 *)(&data[ind + 2 * 2])));
+}
+#endif
+
+    //<asus-guc20130904>printk("Accel offset data ST=%d, AX=%d, AY=%d, AZ=%d\n",
+                //self_test_flag, accl_result[0], 
+                //accl_result[1], accl_result[2]);
+
+    //<asus-guc20130904>printk("Gyro offset data ST=%d, GX=%d, GY=%d, GZ=%d\n",
+                //self_test_flag, gyro_result[0], 
+                //gyro_result[1], gyro_result[2]);
+
+    return 0;
 }
 
 /**
@@ -1003,10 +1258,11 @@ void inv_recover_setting(struct inv_mpu_iio_s *st)
 	struct iio_dev *indio = iio_priv_to_dev(st);
 
 	reg = &st->reg;
-	set_inv_enable(indio, st->chip_config.enable);
+	//set_inv_enable(indio, st->chip_config.enable);
 	inv_i2c_single_write(st, reg->gyro_config,
 			     st->chip_config.fsr << GYRO_CONFIG_FSR_SHIFT);
 	inv_i2c_single_write(st, reg->lpf, st->chip_config.lpf);
+	inv_i2c_single_write(st, REG_6500_ACCEL_CONFIG2, 0);	//Recover Accel LPF
 	data = ONE_K_HZ/st->chip_config.fifo_rate - 1;
 	inv_i2c_single_write(st, reg->sample_rate_div, data);
 	if (INV_ITG3500 != st->chip_type) {
@@ -1014,6 +1270,12 @@ void inv_recover_setting(struct inv_mpu_iio_s *st)
 				     (st->chip_config.accl_fs <<
 				     ACCL_CONFIG_FSR_SHIFT));
 	}
+
+	/*wait for the output to stable*/
+    if (st->chip_config.enable)
+    	mdelay(DEF_ST_STABLE_TIME);
+
+	set_inv_enable(indio, st->chip_config.enable);    
 	st->set_power_state(st, !st->chip_config.is_asleep);
 }
 
@@ -1034,55 +1296,93 @@ static int inv_check_compass_self_test(struct inv_mpu_iio_s *st)
 				st->plat_data.int_config);
 		return result;
 	}
-	/* set to power down mode */
-	result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_PD);
-	if (result)
-		goto AKM_fail;
 
-	/* write 1 to ASTC register */
-	result = inv_secondary_write(REG_AKM_ST_CTRL, DATA_AKM_SELF_TEST);
-	if (result)
-		goto AKM_fail;
-	/* set self test mode */
-	result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_ST);
-	if (result)
-		goto AKM_fail;
-	counter = DEF_ST_COMPASS_TRY_TIMES;
-	while (counter > 0) {
-		usleep_range(DEF_ST_COMPASS_WAIT_MIN, DEF_ST_COMPASS_WAIT_MAX);
-		result = inv_secondary_read(REG_AKM_STATUS, 1, data);
-		if (result)
-			goto AKM_fail;
-		if ((data[0] & DATA_AKM_DRDY) == 0)
-			counter--;
-		else
-			counter = 0;
-	}
-	if ((data[0] & DATA_AKM_DRDY) == 0) {
-		result = -EINVAL;
-		goto AKM_fail;
-	}
-	result = inv_secondary_read(REG_AKM_MEASURE_DATA,
-					BYTES_PER_SENSOR, data);
-	if (result)
-		goto AKM_fail;
+    if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {
+    	/* set to power down mode */
+    	result = inv_secondary_write(AK09911_REG_CNTL2, AK09911_MODE_POWERDOWN);
+    	if (result)
+    		goto AKM_fail;
+        /* set self test mode */
+        result = inv_secondary_write(AK09911_REG_CNTL2, AK09911_MODE_SELF_TEST);
+        if (result)
+            goto AKM_fail;
+        counter = DEF_ST_COMPASS_TRY_TIMES;
+        while (counter > 0) {
+            usleep_range(DEF_ST_COMPASS_WAIT_MIN, DEF_ST_COMPASS_WAIT_MAX);
+            result = inv_secondary_read(AK09911_REG_ST1, 1, data);
+            if (result)
+                goto AKM_fail;
+            if ((data[0] & DATA_AKM_DRDY) == 0)
+                counter--;
+            else
+                counter = 0;
+        }
+        if ((data[0] & DATA_AKM_DRDY) == 0) {
+            result = -EINVAL;
+            goto AKM_fail;
+        }
+        result = inv_secondary_read(AK09911_REG_HXL,
+                        BYTES_PER_SENSOR, data);
+        if (result)
+            goto AKM_fail;
+        
+    	x = le16_to_cpup((__le16 *)(&data[0]));
+    	y = le16_to_cpup((__le16 *)(&data[2]));
+    	z = le16_to_cpup((__le16 *)(&data[4]));
+    	x = ((x * (sens[0] + 128)) >> 7);
+    	y = ((y * (sens[1] + 128)) >> 7);
+    	z = ((z * (sens[2] + 128)) >> 7);        
+    } else {    
+    	/* set to power down mode */
+    	result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_PD);
+    	if (result)
+    		goto AKM_fail;
 
-	x = le16_to_cpup((__le16 *)(&data[0]));
-	y = le16_to_cpup((__le16 *)(&data[2]));
-	z = le16_to_cpup((__le16 *)(&data[4]));
-	x = ((x * (sens[0] + 128)) >> 8);
-	y = ((y * (sens[1] + 128)) >> 8);
-	z = ((z * (sens[2] + 128)) >> 8);
-	if (COMPASS_ID_AK8963 == st->plat_data.sec_slave_id) {
-		result = inv_secondary_read(REG_AKM8963_CNTL1, 1, &cntl);
-		if (result)
-			goto AKM_fail;
-		if (0 == (cntl & DATA_AKM8963_BIT)) {
-			x <<= DEF_ST_COMPASS_8963_SHIFT;
-			y <<= DEF_ST_COMPASS_8963_SHIFT;
-			z <<= DEF_ST_COMPASS_8963_SHIFT;
-		}
-	}
+    	/* write 1 to ASTC register */
+    	result = inv_secondary_write(REG_AKM_ST_CTRL, DATA_AKM_SELF_TEST);
+    	if (result)
+    		goto AKM_fail;
+    	/* set self test mode */
+    	result = inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_ST);
+    	if (result)
+    		goto AKM_fail;
+    	counter = DEF_ST_COMPASS_TRY_TIMES;
+    	while (counter > 0) {
+    		usleep_range(DEF_ST_COMPASS_WAIT_MIN, DEF_ST_COMPASS_WAIT_MAX);
+    		result = inv_secondary_read(REG_AKM_STATUS, 1, data);
+    		if (result)
+    			goto AKM_fail;
+    		if ((data[0] & DATA_AKM_DRDY) == 0)
+    			counter--;
+    		else
+    			counter = 0;
+    	}
+    	if ((data[0] & DATA_AKM_DRDY) == 0) {
+    		result = -EINVAL;
+    		goto AKM_fail;
+    	}
+    	result = inv_secondary_read(REG_AKM_MEASURE_DATA,
+    					BYTES_PER_SENSOR, data);
+    	if (result)
+    		goto AKM_fail;
+
+    	x = le16_to_cpup((__le16 *)(&data[0]));
+    	y = le16_to_cpup((__le16 *)(&data[2]));
+    	z = le16_to_cpup((__le16 *)(&data[4]));
+    	x = ((x * (sens[0] + 128)) >> 8);
+    	y = ((y * (sens[1] + 128)) >> 8);
+    	z = ((z * (sens[2] + 128)) >> 8);
+    	if (COMPASS_ID_AK8963 == st->plat_data.sec_slave_id) {
+    		result = inv_secondary_read(REG_AKM8963_CNTL1, 1, &cntl);
+    		if (result)
+    			goto AKM_fail;
+    		if (0 == (cntl & DATA_AKM8963_BIT)) {
+    			x <<= DEF_ST_COMPASS_8963_SHIFT;
+    			y <<= DEF_ST_COMPASS_8963_SHIFT;
+    			z <<= DEF_ST_COMPASS_8963_SHIFT;
+    		}
+    	}
+    }
 	result = -EINVAL;
 	if (x > st->compass_st_upper[X] || x < st->compass_st_lower[X])
 		goto AKM_fail;
@@ -1092,10 +1392,15 @@ static int inv_check_compass_self_test(struct inv_mpu_iio_s *st)
 		goto AKM_fail;
 	result = 0;
 AKM_fail:
-	/*write 0 to ASTC register */
-	result |= inv_secondary_write(REG_AKM_ST_CTRL, 0);
-	/*set to power down mode */
-	result |= inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_PD);
+    if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {
+    	/* set to power down mode */
+    	result = inv_secondary_write(AK09911_REG_CNTL2, AK09911_MODE_POWERDOWN);
+    } else {
+    	/*write 0 to ASTC register */
+    	result |= inv_secondary_write(REG_AKM_ST_CTRL, 0);
+    	/*set to power down mode */
+    	result |= inv_secondary_write(REG_AKM_MODE, DATA_AKM_MODE_PD);
+    }
 	/*restore to non-bypass mode */
 	result |= inv_i2c_single_write(st, REG_INT_PIN_CFG,
 			st->plat_data.int_config);
@@ -1127,14 +1432,21 @@ int inv_hw_self_test(struct inv_mpu_iio_s *st)
 	int accl_bias_st[THREE_AXIS], accl_bias_regular[THREE_AXIS];
 	int test_times;
 	char compass_result, accel_result, gyro_result;
+
+	//<asus-guc20130904>printk("Starting MPU Sensitity Self Test\n");
+
 	if (st->chip_config.is_asleep      ||
 	    st->chip_config.lpa_mode       ||
 	    (!st->chip_config.gyro_enable) ||
 	    (!st->chip_config.accl_enable)) {
 		result = inv_power_up_self_test(st);
 		if (result)
+		{
+			//<asus-guc20130904>printk("Failed to run Self Test: Setup conditions fail\n");
 			return result;
+		}
 	}
+	mutex_lock(&st->mutex);    
 	compass_result = 0;
 	accel_result   = 0;
 	gyro_result    = 0;
@@ -1147,8 +1459,10 @@ int inv_hw_self_test(struct inv_mpu_iio_s *st)
 		else
 			test_times = 0;
 	}
-	if (result)
+	if (result) {
+		//<asus-guc20130904>printk("Failed to run Self Test 2: Unable to get biases\n");
 		goto test_fail;
+	}
 
 	test_times = DEF_ST_TRY_TIMES;
 	while (test_times > 0) {
@@ -1159,21 +1473,35 @@ int inv_hw_self_test(struct inv_mpu_iio_s *st)
 		else
 			break;
 	}
-	if (result)
+	if (result) {
+		//<asus-guc20130904>printk("Failed to run Self Test 3: Unable to get ST_biases\n");
 		goto test_fail;
+	}
 	if (st->chip_type == INV_ITG3500) {
 		gyro_result = !inv_check_3500_gyro_self_test(st,
 			gyro_bias_regular, gyro_bias_st);
 	} else {
 		if (st->chip_config.has_compass)
 			compass_result = !inv_check_compass_self_test(st);
-		accel_result = !inv_check_accl_self_test(st,
-			accl_bias_regular, accl_bias_st);
-		gyro_result = !inv_check_6050_gyro_self_test(st,
-			gyro_bias_regular, gyro_bias_st);
+
+		 if (INV_MPU6050 == st->chip_type) {
+			accel_result = !inv_check_accl_self_test(st,
+				accl_bias_regular, accl_bias_st);
+			gyro_result = !inv_check_6050_gyro_self_test(st,
+				gyro_bias_regular, gyro_bias_st);
+		} else if (INV_MPU6500 == st->chip_type) {
+			accel_result = !inv_check_6500_accl_self_test(st,
+				accl_bias_regular, accl_bias_st);
+			gyro_result = !inv_check_6500_gyro_self_test(st,
+				gyro_bias_regular, gyro_bias_st);
+		}
 	}
 test_fail:
 	inv_recover_setting(st);
+	mutex_unlock(&st->mutex);
+
+	//<asus-guc20130904>printk("ST Result = %d\n", (compass_result << DEF_ST_COMPASS_RESULT_SHIFT) |
+		//(accel_result << DEF_ST_ACCEL_RESULT_SHIFT) | gyro_result);
 
 	return (compass_result << DEF_ST_COMPASS_RESULT_SHIFT) |
 		(accel_result << DEF_ST_ACCEL_RESULT_SHIFT) | gyro_result;
@@ -1206,7 +1534,7 @@ int inv_hw_self_test_6500(struct inv_mpu_iio_s *st)
         if (result)
                 goto test_fail;
 
-                //if (st->has_compass)
+                if (st->chip_config.has_compass)
                         compass_result = !inv_check_compass_self_test(st);
 
        //accel_result = inv_check_accl_self_test(st, accl_bias_regular, accl_bias_st);
