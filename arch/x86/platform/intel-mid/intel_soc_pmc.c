@@ -38,15 +38,14 @@
 #include "intel_soc_pmc.h"
 
 
-u32 residency_total;
-
 char *states[] = {
 	"S0IR",
 	"S0I1",
 	"S0I2",
 	"S0I3",
 	"S0",
-	"S3"};
+	"S3"
+};
 
 struct mid_pmc_dev *mid_pmc_cxt;
 static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
@@ -177,22 +176,24 @@ static u32 pmc_register_read(int reg_offset)
 	return readl(mid_pmc_cxt->pmc_registers + reg_offset);
 }
 
-static void print_residency_per_state(struct seq_file *s, int state, u32 count)
+static void print_residency_per_state(struct seq_file *s,
+					int state, u32 total_time)
 {
 	u32 rem_time, rem_res = 0;
+	u32 count = mid_pmc_cxt->state_res[state];
 	u64 rem_res_reduced = 0;
 	/* Counter increments every 32 us. */
 	u64 time = (u64)count << 5;
 	u64 residency = (u64)count * 100;
-	if (residency_total) {
-		rem_res = do_div(residency, residency_total);
+	if (total_time) {
+		rem_res = do_div(residency, total_time);
 		rem_res_reduced = (u64)rem_res * 1000;
-		do_div(rem_res_reduced, residency_total);
+		do_div(rem_res_reduced, total_time);
 	}
 	rem_time = do_div(time, USEC_PER_SEC);
 	seq_printf(s, "%s \t\t %.6llu.%.6u \t\t %.2llu.%.3llu", states[state],
 			time, rem_time, residency, rem_res_reduced);
-	if (state == MAX_PLATFORM_STATES)
+	if (state == STATE_S3)
 		seq_printf(s, " \t\t %u\n", mid_pmc_cxt->s3_count);
 	else
 		seq_printf(s, " \t\t %s\n", "--");
@@ -200,34 +201,37 @@ static void print_residency_per_state(struct seq_file *s, int state, u32 count)
 
 static int pmu_devices_state_show(struct seq_file *s, void *unused)
 {
-	int i;
+	int state, device;
 	u32 val, nc_pwr_sts, reg;
 	unsigned int base_class, sub_class;
 	struct pci_dev *dev = NULL;
 	u16 pmcsr;
-	u32 s0ix_residency[MAX_PLATFORM_STATES];
+	u32 total_time = 0;
 
-	residency_total = 0;
+
 	/* Read s0ix residency counters */
-	for (i = 0; i < MAX_PLATFORM_STATES; i++) {
-		s0ix_residency[i] = pmc_register_read(i);
-		residency_total += s0ix_residency[i];
+	for (state = STATE_S0IR; state < STATE_S3; state++) {
+		mid_pmc_cxt->state_res[state] = pmc_register_read(state) -
+					mid_pmc_cxt->state_res_mark[state];
+		total_time += mid_pmc_cxt->state_res[state];
 	}
-	s0ix_residency[S0I3] -= mid_pmc_cxt->s3_residency;
+
+	/* In S3 (over S0i3), PMC will increase S0i3 residencey */
+	mid_pmc_cxt->state_res[STATE_S0I3] -= mid_pmc_cxt->state_res[STATE_S3];
 
 	seq_printf(s, "State \t\t Time[sec] \t\t Residency[%%] \t\t Count\n");
-	for (i = 0; i < MAX_PLATFORM_STATES; i++)
-		print_residency_per_state(s, i, s0ix_residency[i]);
-	print_residency_per_state(s, i, mid_pmc_cxt->s3_residency);
+	for (state = STATE_S0IR; state < STATE_MAX; state++)
+		print_residency_per_state(s, state, total_time);
 
 	seq_printf(s, "\n\nNORTH COMPLEX DEVICES :\n");
 
-	for (i = 0; i < no_of_nc_devices; i++) {
-		reg = nc_devices[i].reg;
+	for (device = 0; device < no_of_nc_devices; device++) {
+		reg = nc_devices[device].reg;
 		nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, reg);
-		nc_pwr_sts >>= nc_devices[i].sss_pos;
+		nc_pwr_sts >>= nc_devices[device].sss_pos;
 		val = nc_pwr_sts & D0I3_MASK;
-		seq_printf(s, "%9s : %s\n", nc_devices[i].name, dstates[val]);
+		seq_printf(s, "%9s : %s\n", nc_devices[device].name,
+							dstates[val]);
 	}
 
 	seq_printf(s, "\nSOUTH COMPLEX DEVICES :\n");
@@ -264,9 +268,35 @@ static int devices_state_open(struct inode *inode, struct file *file)
 	return single_open(file, pmu_devices_state_show, NULL);
 }
 
+static ssize_t pmu_devices_state_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int buf_size = min(count, sizeof(buf)-1), state;
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+
+	buf[buf_size] = 0;
+
+	if (((strlen("clear")+1) == buf_size) &&
+		!strncmp(buf, "clear", strlen("clear"))) {
+		mid_pmc_cxt->s3_count = 0;
+		mid_pmc_cxt->state_res[STATE_S3] = 0;
+		/* Mark the current value's of PMC counter */
+		for (state = STATE_S0IR; state < STATE_S3; state++)
+			mid_pmc_cxt->state_res_mark[state] =
+					pmc_register_read(state);
+	}
+
+	return buf_size;
+}
+
 static const struct file_operations devices_state_operations = {
 	.open           = devices_state_open,
 	.read           = seq_read,
+	.write		= pmu_devices_state_write,
 	.llseek         = seq_lseek,
 	.release        = single_release,
 };
@@ -405,12 +435,12 @@ static void mid_suspend_finish(void)
 
 static int mid_suspend_enter(suspend_state_t state)
 {
-	u32 temp = 0, count_before_entry, count_after_exit;
+	u32 temp = 0, count_before_entry, count_after_exit, s3_res;
 
 	if (state != PM_SUSPEND_MEM)
 		return -EINVAL;
 
-	count_before_entry = pmc_register_read(S0I3);
+	count_before_entry = pmc_register_read(STATE_S0I3);
 	trace_printk("s3_entry\n");
 
 	__monitor((void *)&temp, 0, 0);
@@ -418,9 +448,13 @@ static int mid_suspend_enter(suspend_state_t state)
 	__mwait(BYT_S3_HINT, 1);
 
 	trace_printk("s3_exit\n");
-	mid_pmc_cxt->s3_count += 1;
-	count_after_exit = pmc_register_read(S0I3);
-	mid_pmc_cxt->s3_residency += (count_after_exit - count_before_entry);
+
+	count_after_exit = pmc_register_read(STATE_S0I3);
+	s3_res = count_after_exit - count_before_entry;
+	if (s3_res > 0) {
+		mid_pmc_cxt->s3_count += 1;
+		mid_pmc_cxt->state_res[STATE_S3] += s3_res;
+	}
 	return 0;
 }
 
@@ -442,6 +476,7 @@ static const struct platform_suspend_ops mid_suspend_ops = {
 
 static int byt_pmu_init(void)
 {
+	int state;
 	suspend_set_ops(&mid_suspend_ops);
 
 	sema_init(&mid_pmc_cxt->nc_ready_lock, 1);
@@ -457,6 +492,11 @@ static int byt_pmu_init(void)
 	cstate_ignore_add_init();
 
 	writel(DISABLE_LPC_CLK_WAKE_EN, mid_pmc_cxt->s0ix_wake_en);
+
+	/* Initialize the mark with the current value's of PMC counter */
+	for (state = STATE_S0IR; state < STATE_S3; state++)
+		mid_pmc_cxt->state_res_mark[state] = pmc_register_read(state);
+
 	return 0;
 }
 
@@ -509,8 +549,6 @@ static int __devinit pmc_pci_probe(struct pci_dev *pdev,
 		error = -EFAULT;
 		goto exit_err1;
 	}
-
-	mid_pmc_cxt->s3_residency = 0;
 
 	error = byt_pmu_init();
 	if (error) {
