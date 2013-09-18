@@ -82,77 +82,6 @@ static int __init vlv2_pci_irq_fixup(void)
 }
 fs_initcall(vlv2_pci_irq_fixup);
 
-static unsigned long __init vlv2_calibrate_tsc(void)
-{
-	unsigned long fast_calibrate;
-	u32 lo, hi, ratio, fsb, bus_freq;
-
-	/* *********************** */
-	/* Compute TSC:Ratio * FSB */
-	/* *********************** */
-
-	/* Compute Ratio */
-	rdmsr(MSR_PLATFORM_INFO, lo, hi);
-	pr_debug("IA32 PLATFORM_INFO is 0x%x : %x\n", hi, lo);
-
-	ratio = (lo >> 8) & 0xFF;
-	pr_debug("ratio is %d\n", ratio);
-	if (!ratio) {
-		pr_err("Read a zero ratio, force tsc ratio to 4 ...\n");
-		ratio = 4;
-	}
-
-	/* Compute FSB */
-	rdmsr(MSR_FSB_FREQ, lo, hi);
-	pr_debug("Actual FSB frequency detected by SOC 0x%x : %x\n",
-		hi, lo);
-
-	bus_freq = lo & 0x7;
-	pr_debug("bus_freq = 0x%x\n", bus_freq);
-
-	if (bus_freq == 0)
-		fsb = FSB_FREQ_100SKU;
-	else if (bus_freq == 1)
-		fsb = FSB_FREQ_100SKU;
-	else if (bus_freq == 2)
-		fsb = FSB_FREQ_133SKU;
-	else if (bus_freq == 3)
-		fsb = FSB_FREQ_167SKU;
-	else if (bus_freq == 4)
-		fsb = FSB_FREQ_83SKU;
-	else if (bus_freq == 5)
-		fsb = FSB_FREQ_400SKU;
-	else if (bus_freq == 6)
-		fsb = FSB_FREQ_267SKU;
-	else if (bus_freq == 7)
-		fsb = FSB_FREQ_333SKU;
-	else {
-		BUG();
-		pr_err("Invalid bus_freq! Setting to minimal value!\n");
-		fsb = FSB_FREQ_100SKU;
-	}
-
-	/* TSC = FSB Freq * Resolved HFM Ratio */
-	fast_calibrate = ratio * fsb;
-	pr_debug("calculate tangier tsc %lu KHz\n", fast_calibrate);
-
-	/* ************************************ */
-	/* Calculate Local APIC Timer Frequency */
-	/* ************************************ */
-	lapic_timer_frequency = (fsb * 1000) / HZ;
-
-	pr_debug("Setting lapic_timer_frequency = %d\n",
-		lapic_timer_frequency);
-
-	/* mark tsc clocksource as reliable */
-	set_cpu_cap(&boot_cpu_data, X86_FEATURE_TSC_RELIABLE);
-
-	if (fast_calibrate)
-		return fast_calibrate;
-
-	return 0;
-}
-
 /* Restore x86_init to default */
 static void __init valleyview2_arch_setup(void)
 {
@@ -169,7 +98,7 @@ static void __init valleyview2_arch_setup(void)
 
 	x86_cpuinit.setup_percpu_clockev	= setup_secondary_APIC_clock;
 
-	x86_platform.calibrate_tsc		= vlv2_calibrate_tsc;
+	x86_platform.calibrate_tsc		= native_calibrate_tsc;
 
 	legacy_pic				= &default_legacy_pic;
 }
