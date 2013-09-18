@@ -128,6 +128,7 @@ static int mt9e013_reset_value;
 static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret = 0;
+    int CamInd;
 
 	if (flag) {
 		if (!camera_vprog1_on) {
@@ -148,6 +149,12 @@ static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 #endif
 			if (!ret)
 				camera_vprog1_on = 1;
+
+			// Enable LED indicator
+            CamInd = acpi_get_gpio("\\_SB.GPO2", 8);
+            ret = gpio_request(CamInd, "CAM LED MASK");
+            ret = gpio_direction_output(CamInd, 1);
+            
 			return ret;
 		}
 	} else {
@@ -163,6 +170,12 @@ static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 #endif
 			if (!ret)
 				camera_vprog1_on = 0;
+
+            // Disable LED indicator
+			CamInd = acpi_get_gpio("\\_SB.GPO2", 8);
+			ret = gpio_request(CamInd, "CAM LED MASK");
+			ret = gpio_direction_output(CamInd, 0);
+            
 			return ret;
 		}
 	}
