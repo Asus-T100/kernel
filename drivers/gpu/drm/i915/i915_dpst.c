@@ -163,7 +163,6 @@ int i915_dpst_context(struct drm_device *dev, void *data,
 		dev_priv->dpst_backlight_factor =
 		init_context->ie_container.dpst_blc_factor;
 
-		i915_dpst_set_brightness(dev, dev_priv->backlight_level);
 
 		temp = I915_READ(VLV_DISPLAY_BASE + DPST_VLV_IEHCR_REG);
 		temp2 = DPST_BIN_REG_FUNC_SELECT_MASK |
@@ -196,6 +195,8 @@ int i915_dpst_context(struct drm_device *dev, void *data,
 		I915_WRITE(VLV_DISPLAY_BASE + DPST_VLV_IEHCR_REG, hcr_data);
 
 		temp = I915_READ(VLV_DISPLAY_BASE + DPST_VLV_IEHCR_REG);
+		intel_wait_for_vblank(dev, 0);
+		i915_dpst_set_brightness(dev, dev_priv->backlight_level);
 	}
 	break;
 
