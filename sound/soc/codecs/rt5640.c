@@ -1960,7 +1960,31 @@ static int rt5640_dac1_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+//<asus-baron20130916+>
+static int rt5640_asrc_event(struct snd_soc_dapm_widget *w,
+				 struct snd_kcontrol *kcontrol, int event)
+{
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		snd_soc_write(w->codec, RT5640_ASRC_1, 0x9a00);
+		snd_soc_write(w->codec, RT5640_ASRC_2, 0xf800);
+		break;
+	case SND_SOC_DAPM_PRE_PMD:
+		snd_soc_write(w->codec, RT5640_ASRC_1, 0);
+		snd_soc_write(w->codec, RT5640_ASRC_2, 0);
+	default:
+		return 0;
+	}
+
+	return 0;
+}
+//<asus-baron20130916->
+
 static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
+	SND_SOC_DAPM_SUPPLY_S("ASRC ebable", 1, SND_SOC_NOPM, 0, 0,
+		rt5640_asrc_event, SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),//<asus-baron20130916+>
+
 	/* Input Side */
 	/* micbias */
 	SND_SOC_DAPM_SUPPLY("LDO2", RT5640_PWR_ANLG1,
@@ -2173,6 +2197,8 @@ static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
 			   SND_SOC_DAPM_PRE_PMU),
 
 	/* DACs */
+//<asus-baron20130916+>
+/*
 	SND_SOC_DAPM_DAC_E("DAC L1", NULL, RT5640_PWR_DIG1,
 			   RT5640_PWR_DAC_L1_BIT, 0, rt5640_dac1_event,
 			   SND_SOC_DAPM_PRE_PMD),
@@ -2183,6 +2209,26 @@ static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
 			   SND_SOC_DAPM_PRE_PMD),
 	SND_SOC_DAPM_DAC("DAC R2", NULL, RT5640_PWR_DIG1,
 			 RT5640_PWR_DAC_R2_BIT, 0),
+*/
+	SND_SOC_DAPM_SUPPLY("DAC L1 power",RT5640_PWR_DIG1,
+				RT5640_PWR_DAC_L1_BIT, 0, NULL, 0),
+	SND_SOC_DAPM_SUPPLY("DAC R1 power",RT5640_PWR_DIG1,
+				RT5640_PWR_DAC_R1_BIT, 0, NULL, 0),
+	SND_SOC_DAPM_SUPPLY("DAC L2 power",RT5640_PWR_DIG1,
+				RT5640_PWR_DAC_L2_BIT, 0, NULL, 0),
+	SND_SOC_DAPM_SUPPLY("DAC R2 power",RT5640_PWR_DIG1,
+				RT5640_PWR_DAC_R2_BIT, 0, NULL, 0),
+	SND_SOC_DAPM_DAC_E("DAC L1", NULL, SND_SOC_NOPM,
+				0, 0, rt5640_dac1_event,
+				SND_SOC_DAPM_PRE_PMD),
+	SND_SOC_DAPM_DAC("DAC L2", NULL, SND_SOC_NOPM,
+				0, 0),
+	SND_SOC_DAPM_DAC_E("DAC R1", NULL, SND_SOC_NOPM,
+				0, 0, rt5640_dac1_event,
+				SND_SOC_DAPM_PRE_PMD),
+	SND_SOC_DAPM_DAC("DAC R2", NULL, SND_SOC_NOPM,
+				0, 0),
+	//<asus-baron20130916+>
 	/* SPK/OUT Mixer */
 	SND_SOC_DAPM_MIXER("SPK MIXL", RT5640_PWR_MIXER, RT5640_PWR_SM_L_BIT,
 			   0, rt5640_spk_l_mix, ARRAY_SIZE(rt5640_spk_l_mix)),
@@ -2250,6 +2296,17 @@ static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
 };
 
 static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
+//<asus-baron20130916+>
+	{"DAC L1 power", NULL, "ASRC ebable"},
+	{"DAC R1 power", NULL, "ASRC ebable"},
+	{"DAC L2 power", NULL, "ASRC ebable"},
+	{"DAC R2 power", NULL, "ASRC ebable"},
+	{"ADC L power", NULL, "ASRC ebable"},
+	{"ADC R power", NULL, "ASRC ebable"},
+	{"I2S1", NULL, "ASRC ebable"},
+	{"I2S2", NULL, "ASRC ebable"},
+//<asus-baron20130916->
+
 	{"IN1P", NULL, "LDO2"},
 	{"IN2P", NULL, "LDO2"},
 	{"IN3P", NULL, "LDO2"},
@@ -2448,8 +2505,10 @@ static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
 
 	{"DAC MIXL", "Stereo ADC Switch", "Stereo ADC MIXL"},
 	{"DAC MIXL", "INF1 Switch", "IF1 DAC L"},
+	{"DAC MIXL", NULL, "DAC L1 power"}, //<asus-baron20130916+>
 	{"DAC MIXR", "Stereo ADC Switch", "Stereo ADC MIXR"},
 	{"DAC MIXR", "INF1 Switch", "IF1 DAC R"},
+	{"DAC MIXR", NULL, "DAC R1 power"}, //<asus-baron20130916+>
 
 	{"ANC", NULL, "Stereo ADC MIXL"},
 	{"ANC", NULL, "Stereo ADC MIXR"},
@@ -2461,10 +2520,12 @@ static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
 	{"DAC L2 Mux", "IF3", "IF3 DAC L"},
 	{"DAC L2 Mux", "Base L/R", "Audio DSP"},
 	{"DAC L2 Volume", NULL, "DAC L2 Mux"},
+	{"DAC L2 Volume", NULL, "DAC L2 power"}, //<asus-baron20130916+>
 
 	{"DAC R2 Mux", "IF2", "IF2 DAC R"},
 	{"DAC R2 Mux", "IF3", "IF3 DAC R"},
 	{"DAC R2 Volume", NULL, "Mono dacr Mux"},
+	{"DAC R2 Volume", NULL, "DAC R2 power"}, //<asus-baron20130916+>
 	{"Mono dacr Mux", "TxDC_R", "DAC R2 Mux"},
 	{"Mono dacr Mux", "TxDP_R", "IF2 ADC R Mux"},
 
@@ -2478,9 +2539,11 @@ static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
 	{"Mono DAC MIXL", "DAC L1 Switch", "DAC MIXL"},
 	{"Mono DAC MIXL", "DAC L2 Switch", "DAC L2 Volume"},
 	{"Mono DAC MIXL", "DAC R2 Switch", "DAC R2 Volume"},
+	{"Mono DAC MIXL", NULL, "DAC L2 power"}, //<asus-baron20130916+>
 	{"Mono DAC MIXR", "DAC R1 Switch", "DAC MIXR"},
 	{"Mono DAC MIXR", "DAC R2 Switch", "DAC R2 Volume"},
 	{"Mono DAC MIXR", "DAC L2 Switch", "DAC L2 Volume"},
+	{"Mono DAC MIXR", NULL, "DAC R2 power"}, //<asus-baron20130916+>
 
 	{"DIG MIXL", "DAC L1 Switch", "DAC MIXL"},
 	{"DIG MIXL", "DAC L2 Switch", "DAC L2 Volume"},
@@ -2488,9 +2551,13 @@ static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
 	{"DIG MIXR", "DAC R2 Switch", "DAC R2 Volume"},
 
 	{"DAC L1", NULL, "Stereo DAC MIXL"},
+	{"DAC L1", NULL, "DAC L1 power"}, //<asus-baron20130916+>
 	{"DAC R1", NULL, "Stereo DAC MIXR"},
+	{"DAC R1", NULL, "DAC R1 power"}, //<asus-baron20130916+>
 	{"DAC L2", NULL, "Mono DAC MIXL"},
+	{"DAC L2", NULL, "DAC L2 power"}, //<asus-baron20130916+>
 	{"DAC R2", NULL, "Mono DAC MIXR"},
+	{"DAC R2", NULL, "DAC R2 power"}, //<asus-baron20130916+>
 
 	{"SPK MIXL", "REC MIXL Switch", "RECMIXL"},
 	{"SPK MIXL", "INL Switch", "INL VOL"},
@@ -3157,10 +3224,14 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 		pr_debug("In case SND_SOC_BIAS_ON:\n");
+//<asus-baron20130916+>
+/*
 #ifdef USE_ASRC
 		snd_soc_write(codec, RT5640_ASRC_1, 0x9a00);
 		snd_soc_write(codec, RT5640_ASRC_2, 0xf800);
 #endif
+*/
+//<asus-baron20130916->
 		break;
 
 	case SND_SOC_BIAS_PREPARE:
@@ -3169,10 +3240,14 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_STANDBY:
 		pr_debug("In case SND_SOC_BIAS_STANDBY:\n");
+//<asus-baron20130916+>
+/*
 #ifdef USE_ASRC
 		snd_soc_write(codec, RT5640_ASRC_1, 0x00);
 		snd_soc_write(codec, RT5640_ASRC_2, 0x00);
 #endif
+*/
+//<asus-baron20130916->
 		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
 			snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 					    RT5640_PWR_VREF1 | RT5640_PWR_MB |
