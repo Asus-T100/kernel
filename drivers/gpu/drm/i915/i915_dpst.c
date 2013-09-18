@@ -89,10 +89,13 @@ int i915_dpst_context(struct drm_device *dev, void *data,
 		/* DPST is enabled only for videoplayback scenarios if source
 		 * content is 18 bpp, for higher bpp source content DPST is
 		 * enabled always */
-		if (dev_priv->dpst_feature_control)
-			i915_dpst_enable_hist_interrupt(dev,
-				(dev_priv->bpp18_video_dpst <= 0) ?
-					true : false);
+		if (dev_priv->dpst_feature_control) {
+			if (!dev_priv->bpp18_video_dpst ||
+					dev_priv->is_video_playing)
+				i915_dpst_enable_hist_interrupt(dev, true);
+			else
+				i915_dpst_enable_hist_interrupt(dev, false);
+		}
 
 		dev_priv->dpst_task = current;
 		dev_priv->dpst_signal = init_context->init_data.sig_num;
