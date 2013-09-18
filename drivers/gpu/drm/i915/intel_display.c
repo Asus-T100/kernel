@@ -443,46 +443,7 @@ static void vlv_init_dpio(struct drm_device *dev)
 	I915_WRITE(DPIO_CTL, 1);
 	POSTING_READ(DPIO_CTL);
 }
-//<ASUS-Larry 20130912 +> Bugzilla ¡V Attachment #1900: 130639.patch for bug #853
-/*
-void intel_iosf_rw(struct drm_i915_private *dev_priv,
-		u8 opcode, u32 port, u32 reg, u32 *val)
-{
-	u32 cmd, devfn, be, bar;
-	bar = 0;
-	be = 0xf;
-	devfn = 16;
-	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
-		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
-		(bar << IOSF_BAR_SHIFT);
 
-	if (I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) {
-		DRM_DEBUG_DRIVER("warning: pcode (%s) mailbox access failed\n",
-			opcode == OPCODE_REG_READ ?
-			"read" : "write");
-			return;
-	}
-
-	I915_WRITE(VLV_IOSF_ADDR, reg);
-	if (opcode == OPCODE_REG_WRITE)
-		I915_WRITE(VLV_IOSF_DATA, *val);
-	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
-
-	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
-		500)) {
-		DRM_ERROR("timeout waiting for pcode %s (%d) to finish\n",
-			opcode == OPCODE_REG_READ ? "read" : "write",
-			reg);
-		return;
-	}
-
-	if (opcode == OPCODE_REG_READ)
-		*val = I915_READ(VLV_IOSF_DATA);
-	I915_WRITE(VLV_IOSF_DATA, 0);
-
-	return;
-}*/
-//<ASUS-Larry 20130912 ->
 static int intel_dual_link_lvds_callback(const struct dmi_system_id *id)
 {
 	DRM_INFO("Forcing lvds to dual link mode on %s\n", id->ident);
@@ -4996,26 +4957,21 @@ void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 			}
 
 			/*program step size*/
-			//<ASUS-Larry 20130912 +> Bugzilla ¡V Attachment #1900: 130639.patch for bug #853
-			//intel_iosf_rw(dev_priv, OPCODE_REG_READ,IOSF_PORT_CCU, CCU_iCLK0_REG, &iClk0val);
 			intel_ccu_read(dev_priv, CCU_iCLK0_REG, &iClk0val);
 			writeval = bendstepsize << iCLK0_STEPSIZE_SHIFT;
 			iClk0val = iClk0val & ~iCLK0_BENDSTEPSIZE;
 			iClk0val = iClk0val | writeval;
-			//intel_iosf_rw(dev_priv, OPCODE_REG_WRITE,IOSF_PORT_CCU, CCU_iCLK0_REG,  &iClk0val);
 			intel_ccu_write(dev_priv, CCU_iCLK0_REG, iClk0val);
-			
+
 			/*program number of times to switch up/down*/
-			//intel_iosf_rw(dev_priv, OPCODE_REG_READ,IOSF_PORT_CCU, CCU_iCLK1_REG, &iClk1val);
 			intel_ccu_read(dev_priv, CCU_iCLK1_REG, &iClk1val);
 			writeval = (bendtimetosw << iCLK1_BENDTIME_SHIFT) |
 				(ssbendupdown << iCLK1_BENDUPDOWN_SHIFT);
 			iClk1val = iClk1val &
 				~(iCLK1_BENDTIMETOSW | iCLK1_BENDUPDOWN);
 			iClk1val = iClk1val | writeval;
-			//intel_iosf_rw(dev_priv, OPCODE_REG_WRITE,IOSF_PORT_CCU, CCU_iCLK1_REG, &iClk1val);
 			intel_ccu_write(dev_priv, CCU_iCLK1_REG, iClk1val);
-			//<ASUS-Larry 20130912 ->
+
 			/*enable clock bend*/
 			/* Alternative HW WA */
 			/* Handshake bit and bit 1 mapped to bit 16 of iclk5 */
@@ -5039,19 +4995,13 @@ void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 	if (false == clkbenden) {
 		/*Disable clock bending for non HDMI modes and
 			HDMI modes with 0 ppm*/
-		//<ASUS-Larry 20130912 +> Bugzilla ¡V Attachment #1900: 130639.patch for bug #853
-		//intel_iosf_rw(dev_priv, OPCODE_REG_READ,IOSF_PORT_CCU, CCU_iCLK0_REG, &iClk0val);
 		intel_ccu_read(dev_priv, CCU_iCLK0_REG, &iClk0val);
 		iClk0val = iClk0val & ~iCLK0_BENDSTEPSIZE;
-		//intel_iosf_rw(dev_priv, OPCODE_REG_WRITE, IOSF_PORT_CCU,CCU_iCLK0_REG, &iClk0val);
 		intel_ccu_write(dev_priv, CCU_iCLK0_REG, iClk0val);
-		
-		//intel_iosf_rw(dev_priv, OPCODE_REG_READ,IOSF_PORT_CCU, CCU_iCLK1_REG, &iClk1val);
+
 		intel_ccu_read(dev_priv, CCU_iCLK1_REG, &iClk1val);
 		iClk1val = iClk1val & ~(iCLK1_BENDTIMETOSW | iCLK1_BENDUPDOWN);
-		//intel_iosf_rw(dev_priv, OPCODE_REG_WRITE, IOSF_PORT_CCU,CCU_iCLK1_REG, &iClk1val);
 		intel_ccu_write(dev_priv, CCU_iCLK1_REG, iClk1val);
-		//<ASUS-Larry 20130912 ->
 
 		/* Alternative HW WA */
 		intel_pmc_write_bits(dev_priv,
