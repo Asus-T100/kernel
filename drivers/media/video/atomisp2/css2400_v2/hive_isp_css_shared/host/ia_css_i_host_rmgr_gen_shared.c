@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -185,7 +185,7 @@ set_resource_pool_size(ia_css_resource_list_t* pool, uint32_t size)
 	enum ia_css_err rval = IA_CSS_SUCCESS; 
 	uint32_t i = 0;
 
-	assert_exit_code(pool != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
+	assert(pool != NULL);
 
 	if (size > IA_CSS_RESOURCE_LIST_MAX_AMOUNT) 
 		return IA_CSS_ERR_RESOURCE_LIST_TO_SMALL; 
@@ -222,8 +222,8 @@ acquire_resource(ia_css_resource_list_t* pool, uint32_t* resource_id)
 	bool free_place_found = false;
 	uint16_t i = 0;
 
-	assert_exit_code(pool != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
-	assert_exit_code(resource_id != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
+	assert(resource_id != NULL);
+	assert(pool != NULL);
 
 	/* loop trough list */
 	for (;( i < pool->size); i++)
@@ -247,7 +247,7 @@ static enum ia_css_err release_resource(ia_css_resource_list_t* pool, uint32_t r
 	bool resource_found = false;
 	uint16_t i = 0;
 
-	assert_exit_code(pool != NULL, IA_CSS_ERR_RESOURCE_NOT_AVAILABLE);
+	assert(pool != NULL);
 
 	/* loop trough list */
 	for (;( i <= pool->size) || (resource_found == false); i++)

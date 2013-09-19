@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -271,6 +271,8 @@ struct ia_css_stream_config {
 	bool two_pixels_per_clock; /**< Enable/disable 2 pixels per clock */
 	bool online; /**< offline will activate RAW copy on SP, use this for
 		          continuous capture. */
+	unsigned init_num_cont_raw_buf;
+	unsigned target_num_cont_raw_buf;
 	bool continuous; /**< Use SP copy feature to continuously capture frames
 			      to system memory and run pipes in offline mode */
 	int32_t flash_gpio_pin; /**< pin on which the flash is connected, -1 for no flash */
@@ -498,7 +500,10 @@ struct ia_css_pipe_config {
 	struct ia_css_resolution dvs_envelope; /**< temporary */
 	enum ia_css_frame_delay dvs_frame_delay;
 	/**< indicates the DVS loop delay in frame periods */
-
+	int acc_num_execs;
+	/**< For acceleration pipes only: determine how many times the pipe
+	     should be run. Setting this to -1 means it will run until
+	     stopped. */
 };
 #else
 struct ia_css_pipe_config;

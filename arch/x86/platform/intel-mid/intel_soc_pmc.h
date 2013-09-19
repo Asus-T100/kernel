@@ -73,6 +73,11 @@
 #define PCI_ID_ANY			(~0)
 #define SUB_CLASS_MASK			0xFF00
 
+#define V1P0ACNT			0x55
+#define V1P8ACNT			0x5A
+#define VHDMICNT			0x6d
+#define PWM1CLKDIV			0x4c
+
 struct mid_pmc_dev {
 	u32 base_address;
 	u32 __iomem *pmc_registers;

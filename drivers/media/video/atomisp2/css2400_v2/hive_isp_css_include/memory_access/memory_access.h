@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * INTEL CONFIDENTIAL
  *

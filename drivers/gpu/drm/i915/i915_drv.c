@@ -580,6 +580,18 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 	return 0;
 }
 
+void intel_console_resume(struct work_struct *work)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(work, struct drm_i915_private,
+			     console_resume_work);
+	struct drm_device *dev = dev_priv->dev;
+
+	console_lock();
+	intel_fbdev_set_suspend(dev, 0);
+	console_unlock();
+}
+
 int i915_resume_common(struct drm_device *dev, bool is_hibernate_restore)
 {
 	int ret;
@@ -1504,6 +1516,8 @@ static bool IS_DISPLAYREG(u32 reg)
 	case VLV_GTICZPMW:
 	case VLV_RENDER_C0_COUNT_REG:
 	case VLV_MEDIA_C0_COUNT_REG:
+	case RING_TIMESTAMP_LO(RENDER_RING_BASE):
+	case RING_TIMESTAMP_HI(RENDER_RING_BASE):
 
 	/* Counter registers */
 	case PR_CTR_CTL:
@@ -1637,7 +1651,8 @@ static const struct register_whitelist {
 	uint32_t size;
 	uint32_t gen_bitmask; /* support gens, 0x10 for 4, 0x30 for 4 and 5, etc. */
 } whitelist[] = {
-	{ RING_TIMESTAMP(RENDER_RING_BASE), 8, 0xF0 },
+	{ RING_TIMESTAMP_LO(RENDER_RING_BASE), 4, 0xF0 },
+	{ RING_TIMESTAMP_HI(RENDER_RING_BASE), 4, 0xF0 }
 };
 
 int i915_reg_read_ioctl(struct drm_device *dev,

@@ -1369,10 +1369,9 @@ int atomisp_css_continuous_set_num_raw_frames(
 					struct atomisp_sub_device *asd,
 					int num_frames)
 {
-	if (ia_css_stream_set_buffer_depth(asd->stream_env.stream, num_frames)
-	    != IA_CSS_SUCCESS)
-		return -EINVAL;
-
+	asd->stream_env.stream_config.init_num_cont_raw_buf =
+		ATOMISP_CSS2_NUM_OFFLINE_INIT_CONTINUOUS_FRAMES;
+	asd->stream_env.stream_config.target_num_cont_raw_buf = num_frames;
 	return 0;
 }
 

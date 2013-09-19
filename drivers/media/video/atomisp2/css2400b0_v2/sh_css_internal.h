@@ -1,4 +1,4 @@
-/* Release Version: ci_master_byt_20130823_2200 */
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -246,6 +246,7 @@ struct sh_css_pipeline {
 	struct ia_css_frame out_frame;
 	struct ia_css_frame vf_frame;
 	enum ia_css_frame_delay dvs_frame_delay;
+	int                     acc_num_execs;
 };
 
 
@@ -383,6 +384,8 @@ struct sh_css_sp_pipeline {
 	uint32_t	dvs_frame_delay;
 	hrt_vaddress	sp_stage_addr[SH_CSS_MAX_STAGES];
 	struct sh_css_sp_stage *stage; /* Current stage for this pipeline */
+	int32_t         acc_num_execs; /* number of times to run if this is
+					  an acceleration pipe. */
 	union {
 		struct {
 			unsigned int	bytes_available;

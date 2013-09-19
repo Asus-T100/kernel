@@ -519,6 +519,8 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 
 	if (HAS_L3_GPU_CACHE(dev))
 		imr &= ~GEN6_RENDER_L3_PARITY_ERROR;
+	if (IS_VALLEYVIEW(dev))
+		imr &= ~GT_GEN6_PERFMON_BUFFER_INTERRUPT;
 
 	I915_WRITE_IMR(ring, imr);
 

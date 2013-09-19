@@ -523,6 +523,8 @@ typedef struct drm_i915_private {
 	u32 gt_irq_mask;
 	u32 pch_irq_mask;
 
+	bool perfmon_interrupt_enabled;
+
 	u32 hotplug_supported_mask;
 	struct work_struct hotplug_work;
 
@@ -908,6 +910,9 @@ typedef struct drm_i915_private {
 
 	struct intel_pch_pll pch_plls[I915_NUM_PLLS];
 
+	wait_queue_head_t perfmon_buffer_queue;
+	atomic_t perfmon_buffer_interrupts;
+
 	/* Reclocking support */
 	bool render_reclock_avail;
 	bool lvds_downclock_avail;
@@ -1013,6 +1018,12 @@ typedef struct drm_i915_private {
 
 	/* list of fbdev register on this device */
 	struct intel_fbdev *fbdev;
+
+	/*
+	 * The console may be contended at resume, but we don't
+	 * want it to block on it.
+	 */
+	struct work_struct console_resume_work;
 
 	struct backlight_device *backlight;
 
@@ -1476,6 +1487,7 @@ extern unsigned long i915_mch_val(struct drm_i915_private *dev_priv);
 extern unsigned long i915_gfx_val(struct drm_i915_private *dev_priv);
 extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 
+extern void intel_console_resume(struct work_struct *work);
 
 /* i915_irq.c */
 void i915_hangcheck_sample(unsigned long data);
