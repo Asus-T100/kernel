@@ -314,6 +314,7 @@ void intel_panel_disable_backlight(struct drm_device *dev)
 	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
 #ifdef CONFIG_CRYSTAL_COVE
 		intel_mid_pmic_writeb(0x51, 0x00);
+		intel_mid_pmic_writeb(0x4B, 0x7F);
 #else
 		DRM_ERROR("Backlight not supported yet\n");
 #endif
