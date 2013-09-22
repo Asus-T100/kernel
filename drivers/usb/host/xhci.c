@@ -3696,6 +3696,11 @@ int xhci_alloc_dev(struct usb_hcd *hcd, struct usb_device *udev)
 		return 0;
 	}
 
+	/* set xhci->slot_id to udev->slot_id just after Enable_Slot
+	 * successful to avoid race condition
+	 */
+	udev->slot_id = xhci->slot_id;
+
 	if ((xhci->quirks & XHCI_EP_LIMIT_QUIRK)) {
 		spin_lock_irqsave(&xhci->lock, flags);
 		ret = xhci_reserve_host_control_ep_resources(xhci);
@@ -3704,6 +3709,7 @@ int xhci_alloc_dev(struct usb_hcd *hcd, struct usb_device *udev)
 			xhci_warn(xhci, "Not enough host resources, "
 					"active endpoint contexts = %u\n",
 					xhci->num_active_eps);
+			udev->slot_id = 0;
 			goto disable_slot;
 		}
 		spin_unlock_irqrestore(&xhci->lock, flags);
@@ -3712,11 +3718,12 @@ int xhci_alloc_dev(struct usb_hcd *hcd, struct usb_device *udev)
 	 * xhci_discover_or_reset_device(), which may be called as part of
 	 * mass storage driver error handling.
 	 */
-	if (!xhci_alloc_virt_device(xhci, xhci->slot_id, udev, GFP_NOIO)) {
+	if (!xhci_alloc_virt_device(xhci, udev->slot_id, udev, GFP_NOIO)) {
 		xhci_warn(xhci, "Could not allocate xHCI USB device data structures\n");
+		udev->slot_id = 0;
 		goto disable_slot;
 	}
-	udev->slot_id = xhci->slot_id;
+
 	/* Is this a LS or FS device under a HS hub? */
 	/* Hub or peripherial? */
 	return 1;
