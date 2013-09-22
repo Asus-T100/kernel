@@ -986,9 +986,6 @@ static int ov2722_s_stream(struct v4l2_subdev *sd, int enable)
 	ret = ov2722_write_reg(client, OV2722_8BIT, OV2722_SW_STREAM,
 				enable ? OV2722_START_STREAMING :
 				OV2722_STOP_STREAMING);
-	/* restore settings */
-	ov2722_res = ov2722_res_preview;
-	N_RES = N_RES_PREVIEW;
 
 	mutex_unlock(&dev->input_lock);
 	return ret;
