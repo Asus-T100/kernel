@@ -3638,6 +3638,25 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 		dvs_env_w, dvs_env_h);
 
 	req_ffmt = ffmt;
+
+	/* Disable dvs if resolution can't be supported by sensor */
+	if (asd->params.video_dis_en) {
+		ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
+			video, try_mbus_fmt, &ffmt);
+		if (ret)
+			return ret;
+		if (ffmt.width < req_ffmt.width ||
+				ffmt.height < req_ffmt.height) {
+			req_ffmt.height -= dvs_env_h;
+			req_ffmt.width -= dvs_env_w;
+			ffmt = req_ffmt;
+			dev_warn(isp->dev,
+			  "can not enable video dis due to sensor limitation.");
+			asd->params.video_dis_en = 0;
+		}
+	}
+	dev_dbg(isp->dev, "sensor width: %d, height: %d\n",
+		ffmt.width, ffmt.height);
 	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera, video,
 			       s_mbus_fmt, &ffmt);
 	if (ret)
