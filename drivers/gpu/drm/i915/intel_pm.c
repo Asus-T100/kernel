@@ -5195,7 +5195,6 @@ void vlv_rs_setstate(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 regdata = 0;
-	unsigned long irqflags = 0;
 	regdata = I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG);
 
 	if (enable) {
@@ -5214,10 +5213,6 @@ void vlv_rs_setstate(struct drm_device *dev,
 	} else {
 		/* Forcewake all engines first */
 		vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
-
-		spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
-		dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
-		spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 
 		regdata &= ~(1 << 28);
 		regdata &= ~(1 << 24);

@@ -1222,11 +1222,6 @@ static int valleyview_freeze(struct drm_device *dev)
 				"GFX_CLK_ON timed out, suspend might fail\n");
 	}
 
-	/* ii) Set Global Force Wake to avoid waking up wells every
-	 * time during saving registers
-	 */
-	vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
-
 	/* If KMS is active, we do the leavevt stuff here */
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		int error = i915_gem_idle(dev);
