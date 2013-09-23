@@ -307,12 +307,7 @@ static void mfd_emmc_mutex_register(struct sdhci_pci_slot *slot)
 	}
 	spin_lock_init(&slot->host->dekker_lock);
 }
-//<asus-baron20130918+>
-#define BYT_EMMC45_DEDICATE_IRQ	44
-#define BYT_EMMC45_SHARED_IRQ	16
-#define BYT_ILB_EMMC45_BASE	0xfed0804e
-#define BYT_PIRQH	0x0007
-//<asus-baron20130918->
+
 static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	switch (slot->chip->pdev->device) {
@@ -352,33 +347,6 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->rst_n_gpio = -EINVAL;
 		break;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
-	//<asus-baron20130918+>
-		if (slot->host->irq == BYT_EMMC45_SHARED_IRQ) {
-			struct io_apic_irq_attr attr;
-			void __iomem *ilb_emmc;
-			int err;
-			attr.ioapic = mp_find_ioapic(BYT_EMMC45_DEDICATE_IRQ);
-			attr.ioapic_pin = BYT_EMMC45_DEDICATE_IRQ;
-			attr.trigger = IOAPIC_EDGE;
-			attr.polarity = 1;
-			err = io_apic_set_pci_routing(&slot->chip->pdev->dev,
-							BYT_EMMC45_DEDICATE_IRQ, &attr);
-			if (err) {
-					dev_err(&slot->chip->pdev->dev,
-						"%s: acquire dedicate IRQ failed\n",
-					__func__);
-				return -EINVAL;
-			}
-			slot->host->irq = BYT_EMMC45_DEDICATE_IRQ;
-			/*
-			* route emmc irq to PIRQH so that won't bother shared
-			* PIRQA
-			*/
-			ilb_emmc = ioremap_nocache(BYT_ILB_EMMC45_BASE, 4);
-			writew(BYT_PIRQH, ilb_emmc);
-			iounmap(ilb_emmc);
-		}
-		//<asus-baron20130918->
 		slot->host->quirks2 |= SDHCI_QUIRK2_CARD_CD_DELAY |
 			SDHCI_QUIRK2_WAIT_FOR_IDLE;
 #if 0 //<asus-ych20130916>	
