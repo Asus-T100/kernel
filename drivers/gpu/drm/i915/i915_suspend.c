@@ -926,9 +926,6 @@ static int i915_drm_freeze(struct drm_device *dev)
 	/* Modeset on resume, not lid events */
 	dev_priv->modeset_on_lid = 0;
 
-	/* make sure console resume work is cancelled before suspend */
-	cancel_work_sync(&dev_priv->console_resume_work);
-
 	console_lock();
 	intel_fbdev_set_suspend(dev, 1);
 	console_unlock();
@@ -978,17 +975,9 @@ static int i915_drm_thaw(struct drm_device *dev, bool is_hibernate_restore)
 
 	dev_priv->modeset_on_lid = 0;
 
-	/*
-	 * The console lock can be pretty contented on resume due
-	 * to all the printk activity.  Try to keep it out of the hot
-	 * path of resume if possible.
-	 */
-	if (console_trylock()) {
-		intel_fbdev_set_suspend(dev, 0);
-		console_unlock();
-	} else {
-		schedule_work(&dev_priv->console_resume_work);
-	}
+	console_lock();
+	intel_fbdev_set_suspend(dev, 0);
+	console_unlock();
 
 	return error;
 }
@@ -1243,9 +1232,6 @@ static int valleyview_freeze(struct drm_device *dev)
 	/* Modeset on resume, not lid events */
 	dev_priv->modeset_on_lid = 0;
 
-	/* make sure console resume work is cancelled before suspend */
-	cancel_work_sync(&dev_priv->console_resume_work);
-
 	console_lock();
 	intel_fbdev_set_suspend(dev, 1);
 	console_unlock();
@@ -1379,17 +1365,9 @@ static int valleyview_thaw(struct drm_device *dev, bool is_hibernate_restore)
 
 	dev_priv->modeset_on_lid = 0;
 
-	/*
-	 * The console lock can be pretty contented on resume due
-	 * to all the printk activity.  Try to keep it out of the hot
-	 * path of resume if possible.
-	 */
-	if (console_trylock()) {
-		intel_fbdev_set_suspend(dev, 0);
-		console_unlock();
-	} else {
-		schedule_work(&dev_priv->console_resume_work);
-	}
+	console_lock();
+	intel_fbdev_set_suspend(dev, 0);
+	console_unlock();
 
 	/* vii) RC6 init and Restore Hysteresis registers */
 	i915_restore_rc6_regs(dev);
