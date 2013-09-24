@@ -550,7 +550,8 @@ int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level)
 			snd_soc_write(codec, RT5640_PWR_ANLG1, 0xa814);
 
-		rt5640_index_write(codec, RT5640_BIAS_CUR4, 0xa800);
+//<asus-baron20130923->		rt5640_index_write(codec, RT5640_BIAS_CUR4, 0xa800);
+		rt5640_index_write(codec, RT5640_BIAS_CUR4, 0xab00); //<asus-baron20130923+>
 
 		snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 			RT5640_PWR_LDO2, RT5640_PWR_LDO2);
@@ -566,12 +567,23 @@ int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_1500UA
 				    | RT5640_PWR_CLK25M_PU);
 		*/
+		//<asus-baron20130923+>
+		/*
 		snd_soc_update_bits(codec, RT5640_MICBIAS,
 				    RT5640_MIC1_OVCD_MASK | RT5640_MIC1_OVTH_MASK
 				    | RT5640_PWR_CLK25M_MASK,
 				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_2000UA
 				    | RT5640_PWR_CLK25M_PU);
+		*/
+		//<asus-baron20130923->
 		//<asus-baron20130828->
+		//<asus-baron20130923+>
+		snd_soc_update_bits(codec, RT5640_MICBIAS,
+				    RT5640_MIC1_OVCD_MASK | RT5640_MIC1_OVTH_MASK
+				    | RT5640_PWR_CLK25M_MASK,
+				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_600UA
+				    | RT5640_PWR_CLK25M_PU);
+		//<asus-baron20130923->
 		snd_soc_update_bits(codec, RT5640_GEN_CTRL1, 0x1, 0x1);
 		pr_debug("%s:jack inserted", __func__);
 		/* After turning on over current detection, wait for a while before

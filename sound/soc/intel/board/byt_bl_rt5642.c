@@ -56,7 +56,8 @@ static struct snd_soc_jack_gpio hs_gpio = {
 		.report			= SND_JACK_HEADSET |
 					  SND_JACK_HEADPHONE |
 					  SND_JACK_BTN_0,
-		.debounce_time		= 100,
+//<asus-baron20130923->		.debounce_time		= 100,
+		.debounce_time		= 500, //<asus-baron20130923+>
 		.jack_status_check	= byt_hp_detection,
 };
 
@@ -102,10 +103,13 @@ static int byt_hp_detection(void)
 		set_mic_bias(codec, "micbias1", true);
 		set_mic_bias(codec, "LDO2", true);
 		status = rt5640_headset_detect(codec, true);
-		if (status == RT5640_HEADPHO_DET)
+		if (status == RT5640_HEADPHO_DET) {
 			jack_type = SND_JACK_HEADPHONE;
+			pr_err("<asus-baron> SND_JACK_HEADPHONE\n"); //<asus-baron20130923+>
+		}
 		else if (status == RT5640_HEADSET_DET) {
 			jack_type = SND_JACK_HEADSET;
+			pr_err("<asus-baron> SND_JACK_HEADSET\n"); //<asus-baron20130923+>
 			if (debounce)
 				gpio->debounce_time = debounce;
 			pr_debug("debounce = %d\n", gpio->debounce_time);
@@ -123,7 +127,9 @@ static int byt_hp_detection(void)
 		break;
 	case RT5640_J_OUT_EVENT:
 		pr_debug("Jack remove intr");
-		gpio->debounce_time = 100;
+		pr_err("<asus-baron> Jack remove intr\n"); //<asus-baron20130923+>
+//<asus-baron20130923->		gpio->debounce_time = 100;
+		gpio->debounce_time = 500; //<asus-baron20130923+>
 		status = rt5640_headset_detect(codec, false);
 		jack_type = 0;
 		byt_jack_report(jack_type);
