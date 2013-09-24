@@ -32,6 +32,7 @@
 #include <linux/semaphore.h>
 #include <linux/suspend.h>
 #include <linux/intel_mid_pm.h>
+#include <linux/mfd/intel_mid_pmic.h>
 #include <linux/time.h>
 
 #include "intel_soc_pmc.h"
@@ -364,12 +365,62 @@ static int mid_suspend_valid(suspend_state_t state)
 
 static int mid_suspend_prepare(void)
 {
+	int ret;
+
+	update_all_pci_devices();
+
+	/* V1P0A reduce voltage to 0.9v */
+	ret = intel_mid_pmic_writeb(V1P0ACNT, 0x0);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* V1P8A reduce voltage to 1.62v */
+	ret = intel_mid_pmic_writeb(V1P8ACNT, 0x0);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* Turn off VHDMI internal power switch */
+	ret = intel_mid_pmic_writeb(VHDMICNT, 0x2);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* Turn off PWM 1 */
+	ret = intel_mid_pmic_writeb(PWM1CLKDIV, 0x0);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
 	return 0;
 }
 
 static int mid_suspend_prepare_late(void)
 {
 	return 0;
+}
+
+static void mid_suspend_finish(void)
+{
+	int ret;
+
+	/* restore V1P0A to nominal voltage */
+	ret = intel_mid_pmic_writeb(0x55, 0x60);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* restore V1P8A to nominal voltage */
+	ret = intel_mid_pmic_writeb(0x5A, 0x60);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* Turn On VHDMI internal power switch */
+	ret = intel_mid_pmic_writeb(VHDMICNT, 0x3);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
+	/* Turn on PWM 1 */
+	ret = intel_mid_pmic_writeb(PWM1CLKDIV, 0x81);
+	if (ret)
+		printk(KERN_ALERT "pmic write failed\n");
+
 }
 
 static int mid_suspend_enter(suspend_state_t state)
@@ -405,6 +456,7 @@ static const struct platform_suspend_ops mid_suspend_ops = {
 	.prepare = mid_suspend_prepare,
 	.prepare_late = mid_suspend_prepare_late,
 	.enter = mid_suspend_enter,
+	.finish = mid_suspend_finish,
 	.end = mid_suspend_end,
 };
 
