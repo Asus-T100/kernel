@@ -861,7 +861,7 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
                     break;
 		case 0x06B:
                     //Fn+F9 (touchpad)
-                    map_key_clear(KEY_F2);
+                    map_key_clear(KEY_F24);
                     break;
 		default: goto ignore;
 		}
