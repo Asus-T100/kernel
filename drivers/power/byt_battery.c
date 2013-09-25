@@ -1115,6 +1115,40 @@ static inline struct power_supply *to_power_supply(struct device *dev)
 	return dev_get_drvdata(dev);    //&chip->bat
 }
 
+static u8 enable_charger(struct byt_chip_info *chip)
+{
+
+	int ret;
+	u8 write_buf[2];	
+
+	write_buf[0] = 0xB6;
+	write_buf[1] = 0x00;
+	ret = asusec_write(chip,write_buf,2);
+
+	if(!ret){
+		dev_info(&chip->client->dev,"%s enable_charger..\n", TAG);
+	}
+
+	return ret;
+}
+
+
+static u8 disable_charger(struct byt_chip_info *chip)
+{
+
+	int ret;
+	u8 write_buf[2];	
+
+	write_buf[0] = 0xB6;
+	write_buf[1] = 0x01;
+	ret = asusec_write(chip,write_buf,2);
+
+	if(!ret){
+		dev_info(&chip->client->dev,"%s disable_charger..\n", TAG);
+	}
+
+	return ret;
+}
 
 
 static u8 get_charger(struct byt_chip_info *chip)
@@ -1132,14 +1166,13 @@ static u8 get_charger(struct byt_chip_info *chip)
 	   dev_info(&chip->client->dev,"%s chargerIC[%x]=%x", TAG,i,charge_reg[i]);
 	   }
 	 */
-	if(!ret){
-		dev_info(&chip->client->dev,"%s chargerIC[8]=%x\n", TAG, charge_reg[8]);
+	if(ret) {
+		pr_err("failed read charge_reg\n");
+		return -EIO;
 	}
 
 	chip ->chargerReg = charge_reg[8];
-
-
-	return charge_reg[8];
+	return ret;
 }
 
 static int byt_usb_status(struct byt_chip_info *chip)
@@ -1347,7 +1380,7 @@ static int byt_battery_update( struct byt_chip_info *chip)
 	u8 offset;
 	int ret;
 
-	memset(&chip->ecbat,0,sizeof(struct byt_battery));
+	//memset(&chip->ecbat,0,sizeof(struct byt_battery));
 
 	offset = 0x81;
 
@@ -1456,15 +1489,16 @@ static int get_event_ID( struct byt_chip_info *chip)
 
 	if(!ret){
 		dev_info(&chip->client->dev,"%s get_event_ID = %x\n", TAG, event_id);
+		return event_id;
 	}
-	return event_id;
+	return 0;
 
 }
 
 static irqreturn_t byt_thread_handler(int id, void *dev)
 {
 	struct byt_chip_info *chip = dev;
-	int event_id, lid_value;
+	int event_id, lid_value, ret;
 
 	if((chip->ec_fw_mode == 1) || (chip->guage_rom_mode == 1))
 		return IRQ_HANDLED;
@@ -1501,8 +1535,8 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 	}
 
 	else{
-		byt_battery_update(chip);
-		/*dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
+		ret = byt_battery_update(chip);
+		dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
 		  {
 		  int i;
 		  u8 *p = (u8*)&chip->ecbat;
@@ -1510,9 +1544,11 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 		  dev_info(&chip->client->dev,"%s %x = %x\n", TAG, i,*p);
 		  }
 
-		  }*/
-		dev_err(&chip->client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
-		power_supply_changed(&chip->bat);
+		  }
+		if(!ret){
+			dev_err(&chip->client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
+			power_supply_changed(&chip->bat);
+		}
 	}
 
 
@@ -1527,11 +1563,11 @@ static void byt_init_irq(struct byt_chip_info *chip)
 
 	/* get kernel GPIO number */
 	gpio_num = acpi_get_gpio("\\_SB.GPO2", 18);
-	//printk(KERN_ALERT"Gpio_num=%d\n", gpio_num);
+	
 	dev_info(&chip->client->dev,"%s Gpio_num=%d\n", TAG,gpio_num);
 	/* get irq number */
 	chip->client->irq = gpio_to_irq(gpio_num);
-	//printk(KERN_ALERT"IRQ=%d\n", chip->client->irq);
+
 	dev_info(&chip->client->dev,"%s IRQ=%d\n", TAG,chip->client->irq);
 
 	ret = gpio_request(gpio_num, "asus_byt-battery");
@@ -1562,6 +1598,7 @@ static void byt_init_irq(struct byt_chip_info *chip)
 static void byt_batt_info_update_work_func(struct work_struct *work)
 {
 	int delay_time =10;
+	int ret;
 	struct byt_chip_info *chip;
 	chip = container_of(work, struct byt_chip_info, byt_batt_info_update_work.work);
 
@@ -1569,21 +1606,29 @@ static void byt_batt_info_update_work_func(struct work_struct *work)
 		return;
 
 	mutex_lock(&chip->lock);
-	byt_battery_update(chip);
+	ret = byt_battery_update(chip);
 	mutex_unlock(&chip->lock);
 
-	power_supply_changed(&chip->bat);
-	/*
-	   u16 mycurrent = chip->ecbat.AverageCurrent;
-	   short mycurrent2 = chip->ecbat.AverageCurrent;
-	   if(chip->ecbat.AverageCurrent & 0x8000){
-	   mycurrent= 0xffff - chip->ecbat.AverageCurrent;
-	   printk(KERN_ALERT"--- chip->ecbat.AverageCurrent = 0x%x , AverageCurrent=%x : %x\n",chip->ecbat.AverageCurrent, mycurrent, mycurrent2);
-	   }
-	   else{
-	   printk(KERN_ALERT"+++ chip->ecbat.AverageCurrent = 0x%x, AverageCurrent=%x : %x\n", chip->ecbat.AverageCurrent,mycurrent, mycurrent2);
-	   }
-	 */
+	if(!ret){
+
+    	// TEST:
+    	/*
+		if(byt_get_capacity(chip)==5){ //Shutdown_Percentage
+			disable_charger(chip);
+			power_supply_changed(&chip->bat);
+		}
+		else if(byt_get_capacity(chip)==0){ //Shutdown_Percentage
+			enable_charger(chip);
+		}
+		else{
+			power_supply_changed(&chip->bat);
+		}*/
+		power_supply_changed(&chip->bat);
+	}
+	else{
+		dev_err(&chip->client->dev,"%s i2c transfer error, do not update battery infos..\n", TAG);
+	}
+
 
 	queue_delayed_work(byt_wq, &chip->byt_batt_info_update_work, delay_time*HZ);
 
@@ -1968,24 +2013,28 @@ static int byt_battery_probe(struct i2c_client *client,
 	}
 
 	mutex_lock(&chip->lock);
-	byt_battery_update(chip);
+	ret = byt_battery_update(chip);
 	mutex_unlock(&chip->lock);
 
-	dev_info(&client->dev,"%s byt_battery_probe : get battery info\n", TAG);
-	{
-		int i;
-		u8 *p = (u8*)&chip->ecbat;
-		for(i=0;i<sizeof(chip->ecbat);i++,p++){
-			dev_info(&client->dev,"%s %x = %x\n", TAG,i,*p);
+	if(!ret){
+		dev_info(&client->dev,"%s byt_battery_probe : get battery info\n", TAG);
+		{
+			int i;
+			u8 *p = (u8*)&chip->ecbat;
+			for(i=0;i<sizeof(chip->ecbat);i++,p++){
+				dev_info(&client->dev,"%s %x = %x\n", TAG,i,*p);
+			}
+	
 		}
-
+		dev_err(&client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
 	}
-	dev_err(&client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
-
+	if(ret){
+		dev_err(&client->dev, "%s probe: EC failed, zero battery infos\n", TAG);
+	}
 	// if EC failed, skip...... (start)
 	if(chip->ecbat.FullChargeCapacity!=0){	
-
-
+		
+#ifdef CONFIG_LOGO_DISPLAY
 		//Logo
 		if(byt_get_capacity(chip)<= 5 && byt_ac_status(chip)==1){
 			int i;
@@ -2012,28 +2061,10 @@ static int byt_battery_probe(struct i2c_client *client,
 		   }
 		   }
 		 */
+		 
+#endif /* CONFIG_LOGO_DISPLAY */
 
-		chip->ac.name = "byt_ac";
-		chip->ac.type = POWER_SUPPLY_TYPE_MAINS;
-		chip->ac.properties = byt_ac_props;
-		chip->ac.num_properties = ARRAY_SIZE(byt_ac_props);
-		chip->ac.get_property = byt_get_ac_property;
-		ret = power_supply_register(&client->dev, &chip->ac);
-		if (ret) {
-			dev_err(&client->dev, "%s failed to register ac: %d\n", TAG, ret);
-			goto probe_failed_1;
-		}
-
-		chip->usb.name = "byt_usb";
-		chip->usb.type = POWER_SUPPLY_TYPE_USB;
-		chip->usb.properties = byt_ac_props;
-		chip->usb.num_properties = ARRAY_SIZE(byt_ac_props);
-		chip->usb.get_property = byt_get_usb_property;
-		ret = power_supply_register(&client->dev, &chip->usb);
-		if (ret) {
-			dev_err(&client->dev, "%s failed to register usb: %d\n", TAG, ret);
-			goto probe_failed_1;
-		}
+		
 
 		chip->bat.name = "byt_battery";
 		chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
@@ -2047,10 +2078,33 @@ static int byt_battery_probe(struct i2c_client *client,
 			goto probe_failed_1;
 		}
 
+		chip->ac.name = "byt_ac";
+		chip->ac.type = POWER_SUPPLY_TYPE_MAINS;
+		chip->ac.properties = byt_ac_props;
+		chip->ac.num_properties = ARRAY_SIZE(byt_ac_props);
+		chip->ac.get_property = byt_get_ac_property;
+		ret = power_supply_register(&client->dev, &chip->ac);
+		if (ret) {
+			dev_err(&client->dev, "%s failed to register ac: %d\n", TAG, ret);
+			goto fail_unregister1;
+		}
+
+		chip->usb.name = "byt_usb";
+		chip->usb.type = POWER_SUPPLY_TYPE_USB;
+		chip->usb.properties = byt_ac_props;
+		chip->usb.num_properties = ARRAY_SIZE(byt_ac_props);
+		chip->usb.get_property = byt_get_usb_property;
+		ret = power_supply_register(&client->dev, &chip->usb);
+		if (ret) {
+			dev_err(&client->dev, "%s failed to register usb: %d\n", TAG, ret);
+			goto fail_unregister2;
+		}
+
+
 		ret = sysfs_create_group(&chip->bat.dev->kobj, &byt_attr_group);
 		if (ret) {
 			dev_err(chip->bat.dev, "%s failed to create sysfs group\n", TAG);
-			goto fail_unregister;
+			goto fail_unregister3;
 		}
 
 
@@ -2076,13 +2130,18 @@ static int byt_battery_probe(struct i2c_client *client,
 	ret = sysfs_create_group(&client->dev.kobj, &asusec_attr_group);
 	if (ret) {
 		dev_err(&client->dev, "%s failed to create sysfs group\n", TAG);
-		goto fail_unregister;
+		goto fail_unregister3;
 	}
 
 
 
 	return 0;
-fail_unregister:
+	
+fail_unregister3:
+	power_supply_unregister(&chip->usb);
+fail_unregister2:
+	power_supply_unregister(&chip->ac);	
+fail_unregister1:
 	power_supply_unregister(&chip->bat);
 probe_failed_1:
 	kfree(chip);
@@ -2102,10 +2161,16 @@ static int byt_battery_remove(struct i2c_client *client)
 	sysfs_remove_group(&chip->client->dev.kobj, &asusec_attr_group);
 
 	sysfs_remove_group(&chip->bat.dev->kobj, &byt_attr_group);
-
+	
+	cancel_delayed_work(&chip->byt_batt_info_update_work);
+	destroy_workqueue(byt_wq);
+	
 	power_supply_unregister(&chip->ac);
 	power_supply_unregister(&chip->usb);
 	power_supply_unregister(&chip->bat);
+
+	mutex_destroy(&chip->lock);
+	input_unregister_device(chip->lid_dev);
 	kfree(chip);
 
 	return 0;
