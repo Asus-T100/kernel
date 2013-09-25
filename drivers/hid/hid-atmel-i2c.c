@@ -127,10 +127,13 @@ struct mxt_data {
 
 	int	T5_Index;
 	int 	T6_Index;
+	int 	T19_Index;
 	int 	T38_Index;
 	u8	T6_ReportID;	
+	u8	T19_ReportID;
 	u32	ConfigCheckSum;
 	u32	ConfigVersion;
+	u8	touch_sel;
 
 	u8	bootloader_addr;
 	const struct firmware *fw; 
@@ -430,6 +433,10 @@ static int mxt_init_object(struct mxt_data *data)
                         data->T6_Index = i;
 			data->T6_ReportID = report_id;
                 }
+                if(object_table[i].type == 0x13) {
+                        data->T19_Index = i;
+			data->T19_ReportID = report_id;
+                }
 		if(object_table[i].type == 0x26) {
                         data->T38_Index = i;
                 }
@@ -438,6 +445,37 @@ static int mxt_init_object(struct mxt_data *data)
                 object_num--;
 		i++;
 	}
+
+        mxt_hid_read_config(data,object_table[data->T19_Index].start_address,&cmd,1);
+
+	//set FORCEPT
+	cmd |= 0x04;
+
+	ret = mxt_hid_write_config(data,object_table[data->T19_Index].start_address,&cmd,1);
+
+        if(ret <0) {
+                mxt_err("<asus-cca> write FORCEPT err\n");
+        }
+
+        time_out = 1000;
+        do {
+                ret = mxt_hid_read_config(data,object_table[data->T5_Index].start_address,buf,object_table[data->T5_Index].size_minus_one+1);
+                if(ret <0) {
+                        mxt_err("<asus-cca> read REPORTALL err\n");
+                        break;
+                }
+                if(buf[0] == data->T19_ReportID) {
+                        break;
+                }
+                msleep(100);
+        }while(--time_out);
+        if(!time_out) {
+                mxt_err("<asus-cca> read REPORTALL time out\n");
+        }
+	//buf 0 Report ID
+	//Buf 1 Status 
+	data->touch_sel = buf[1];
+	mxt_dbg("touch sel = %x\n",data->touch_sel);
 
 	mxt_dbg("T5 addr = %x T6 addr = %x T6 report ID = %x\n",object_table[data->T5_Index].start_address,object_table[data->T6_Index].start_address,data->T6_ReportID);
 
@@ -484,6 +522,9 @@ static int mxt_init_object(struct mxt_data *data)
 }
 	
 	memcpy(&data->ConfigCheckSum,&buf[2],3);
+
+	mxt_err("<asus-cca> Config checksum = %x\n",data->ConfigCheckSum);
+
 	return 0;
 }
 
@@ -735,13 +776,12 @@ static int mxt_update_firmware(struct mxt_data *data)
 }
 
 
-static int mxt_update_config(struct mxt_data *data)
+static int mxt_update_config(struct mxt_data *data,char *config_data,int config_size)
 {
 	int 		i,j;
 	int 		argc;
 	char		**argv;
-	char		*config_data;
-	int 		config_size,size;
+	int 		size;
 	u8		type,inst,cd_size;	
 	u8		*cd_data,*pcd_data;
 	u8		config_object_found;	
@@ -752,19 +792,11 @@ static int mxt_update_config(struct mxt_data *data)
 	u32		config_check_sum;
 	char		*after;
 	struct mxt_object       *object_table;
-	const struct firmware *cfg = NULL;
-	int ret;	
+	u8      buf[32];
+	int ret;
+	int time_out;
 
 	object_table = data->object_table;
-	ret = request_firmware(&cfg, MXT_TOUCH_CONFIG, &data->client->dev);
-	if (ret < 0) {
-		mxt_err("<asus-cca> Failure to request config file %s\n",MXT_TOUCH_CONFIG);
-		return 0;
-	}
-	
-	config_data = kzalloc(sizeof(char*)*cfg->size, GFP_KERNEL);
-	memcpy(config_data,cfg->data,cfg->size);
-  	config_size = cfg->size;
 
 	mxt_dbg("config size = %x\n",config_size);
 	config_write_len = (data->hid_desc.output_len+2)-sizeof(struct mxt_hid_output);
@@ -782,13 +814,12 @@ static int mxt_update_config(struct mxt_data *data)
 	config_check_sum  = (u32)simple_strtoul(argv[0],&after,16);
 	mxt_err("<asus-cca> current checksum = %x ,config checksum %x\n",data->ConfigCheckSum,config_check_sum); 
 
-
+#if 0
 	if(data->ConfigCheckSum == config_check_sum) {
 		kfree(argv);
-		kfree(config_data);
-		release_firmware(cfg);
 		return 0;
 	}
+#endif
 
 	while(config_size) {
 		parse_line(&config_data,&size,&argc,argv);
@@ -842,8 +873,46 @@ static int mxt_update_config(struct mxt_data *data)
 	mxt_hid_write_config(data,object_table[data->T6_Index].start_address,&cmd,1);
 	msleep(200);
 
-	kfree(config_data);
-	release_firmware(cfg);
+	mxt_err("Config udpate end\n");
+
+
+        //Use REPORTALL  to generate checksum
+        cmd = 0x01;
+
+        ret = mxt_hid_write_config(data,object_table[data->T6_Index].start_address+3,&cmd,1);
+
+        if(ret <0) {
+                mxt_err("<asus-cca> write REPORTALL err\n");
+        }
+
+        time_out = 1000;
+        do {
+                ret = mxt_hid_read_config(data,object_table[data->T5_Index].start_address,buf,object_table[data->T5_Index].size_minus_one+1);
+                if(ret <0) {
+                        mxt_err("<asus-cca> read REPORTALL err\n");
+                        break;
+                }
+                if(buf[0] == data->T6_ReportID) {
+                        break;
+                }
+                msleep(100);
+        }while(--time_out);
+        if(!time_out) {
+                mxt_err("<asus-cca> read REPORTALL time out\n");
+        }
+
+{
+        int j =0 ;
+
+        mxt_dbg("config checksum:");
+        for(j=0;j<object_table[data->T5_Index].size_minus_one+1;j++)
+                mxt_dbg("%x= %x ",j,buf[j]);
+        mxt_dbg("\n");
+}
+
+        memcpy(&data->ConfigCheckSum,&buf[2],3);
+
+        mxt_err("<asus-cca> Config checksum = %x\n",data->ConfigCheckSum);
 
 	return 0;
 }
@@ -1036,6 +1105,81 @@ static void mxt_late_resume(struct early_suspend *es)
 }
 #endif
 
+static ssize_t touch_config_write(struct file *filp, struct kobject *kobj,
+                struct bin_attribute *bin_attr, char *buf, loff_t off,
+                size_t count)
+{
+        struct device *dev = container_of(kobj, struct device, kobj);
+        struct mxt_data *data = dev_get_drvdata(dev);
+	int ret;
+
+	free_irq(data->irq, data);
+	
+	mxt_update_config(data,buf,count);
+
+        ret = request_threaded_irq(data->irq, NULL,
+                                   mxt_thread_handler,
+                                   IRQF_TRIGGER_LOW|IRQF_TRIGGER_FALLING,
+                                   "mxt-touch", data);
+        return count;
+}
+
+
+static struct bin_attribute touch_config_attr = {
+        .attr.name = "config",
+        .attr.mode =  S_IWUSR|S_IWGRP|S_IWOTH,
+        .size = 0,
+        .read = NULL,
+        .write = touch_config_write
+};
+
+static ssize_t firmware_version_show(struct device *dev,struct device_attribute *attr,char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+
+	return sprintf(buf,"Version = %x Build = %x\n",data->info.version,data->info.build);
+}
+
+static ssize_t config_checksum_show(struct device *dev,struct device_attribute *attr,char *buf)
+{
+        struct mxt_data *data = dev_get_drvdata(dev);
+
+        return sprintf(buf,"Config checksum %x\n",data->ConfigCheckSum);
+}
+
+static ssize_t touch_sel_show(struct device *dev,struct device_attribute *attr,char *buf)
+{
+        struct mxt_data *data = dev_get_drvdata(dev);
+	char tp[4][64] = {			
+		"WTK VK",
+		"WTK",
+		"Cando",
+		"Laibao" 	
+	};
+
+        return sprintf(buf,"TOUCH_SEL0 = %x TOUCH_SEL1 = %x Touch Panel = %s\n",data->touch_sel&0x01,(data->touch_sel>>1)&0x01,tp[data->touch_sel&0x3]);
+}
+
+
+static DEVICE_ATTR(firmware_version, S_IRUGO | S_IWUSR,
+                firmware_version_show, NULL);
+static DEVICE_ATTR(config_checksum, S_IRUGO | S_IWUSR,
+                config_checksum_show, NULL);
+static DEVICE_ATTR(touch_sel, S_IRUGO | S_IWUSR,
+                touch_sel_show,NULL);
+
+
+static struct attribute *mxt_touch_attributes[] = {
+        &dev_attr_firmware_version.attr,
+        &dev_attr_config_checksum.attr,
+        &dev_attr_touch_sel.attr,
+        NULL
+};
+
+static const struct attribute_group mxt_attr_group = {
+        .attrs = mxt_touch_attributes,
+};
+
 static int __devinit mxt_probe(struct i2c_client *client,
                                const struct i2c_device_id *id)
 {
@@ -1091,6 +1235,16 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	if(ret)
 		goto err_free_data;
 
+        if (sysfs_create_bin_file(&client->dev.kobj,&touch_config_attr) < 0) {
+                mxt_err("Failed to create %s\n",touch_config_attr.attr.name);
+        }
+
+        if ( sysfs_create_group(&client->dev.kobj, &mxt_attr_group)) {
+                mxt_err("failed to create sysfs group\n");
+        }
+
+#if 0
+	//Auto update config and firmware
 	if(data->info.version != 0x10 || data->info.build != 0xAC) {
 		ret = mxt_update_firmware(data);
 		if(ret)
@@ -1100,7 +1254,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
         ret = mxt_update_config(data);
         if(ret)
         	goto err_free_data_object;
-
+#endif
 
         /* register interrupt */
         ret = request_threaded_irq(data->irq, NULL,
@@ -1169,6 +1323,10 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	struct mxt_data *data = i2c_get_clientdata(client);
 
 	mxt_dbg("mxt remove\n");
+
+	sysfs_remove_bin_file(&data->client->dev.kobj, &touch_config_attr);
+
+	sysfs_remove_group(&data->client->dev.kobj, &mxt_attr_group);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&data->early_suspend);
