@@ -154,8 +154,11 @@ static int inv_lpa_mode(struct inv_mpu_iio_s *st, int lpa_mode)
 						REG_6500_ACCEL_CONFIG2,
 						BIT_ACCEL_FCHOCIE_B);
 		else
-			result = inv_i2c_single_write(st, 0,
-						BIT_ACCEL_FCHOCIE_B);
+			//result = inv_i2c_single_write(st, 0,
+			//			BIT_ACCEL_FCHOCIE_B);
+            result = inv_i2c_single_write(st,
+                        REG_6500_ACCEL_CONFIG2,
+                        0);
 
 		if (result)
 			return result;
@@ -514,6 +517,8 @@ irqreturn_t inv_read_fifo_mpu3050(int irq, void *dev_id)
 	u32 copied;
 	s64 timestamp;
 	struct inv_reg_map_s *reg;
+
+	mutex_lock(&st->mutex);
 	reg = &st->reg;
 	/* It is impossible that chip is asleep or enable is
 	zero when interrupt is on
@@ -576,12 +581,14 @@ irqreturn_t inv_read_fifo_mpu3050(int irq, void *dev_id)
 	}
 
 end_session:
+	mutex_unlock(&st->mutex);
 	return IRQ_HANDLED;
 
 flush_fifo:
 	/* Flush HW and SW FIFOs. */
 	inv_reset_fifo(indio_dev);
 	inv_clear_kfifo(st);
+	mutex_unlock(&st->mutex);
 	return IRQ_HANDLED;
 }
 
@@ -595,7 +602,7 @@ static int inv_report_gyro_accl_compass(struct iio_dev *indio_dev,
 	int result, ind, d_ind;
 	s64 buf[8];
 	u32 word;
-	u8 d[8], compass_divider;
+	u8 d[9], compass_divider;
 	u8 *tmp;
 	int source, i;
 	struct inv_chip_config_s *conf;
@@ -653,30 +660,51 @@ static int inv_report_gyro_accl_compass(struct iio_dev *indio_dev,
 		else
 			compass_divider = st->compass_divider;
 		if (compass_divider == st->compass_counter) {
-			/*read from external sensor data register */
-			result = inv_i2c_read(st, REG_EXT_SENS_DATA_00,
-					      NUM_BYTES_COMPASS_SLAVE, d);
-			/* d[7] is status 2 register */
-			/*for AKM8975, bit 2 and 3 should be all be zero*/
-			/* for AMK8963, bit 3 should be zero*/
-			if ((DATA_AKM_DRDY == d[0]) &&
-			    (0 == (d[7] & DATA_AKM_STAT_MASK)) &&
-			    (!result)) {
-				u8 *sens;
-				sens = st->chip_info.compass_sens;
-				c[0] = (short)((d[2] << 8) | d[1]);
-				c[1] = (short)((d[4] << 8) | d[3]);
-				c[2] = (short)((d[6] << 8) | d[5]);
-				c[0] = (short)(((int)c[0] *
-					       (sens[0] + 128)) >> 8);
-				c[1] = (short)(((int)c[1] *
-					       (sens[1] + 128)) >> 8);
-				c[2] = (short)(((int)c[2] *
-					       (sens[2] + 128)) >> 8);
-				st->raw_compass[0] = c[0];
-				st->raw_compass[1] = c[1];
-				st->raw_compass[2] = c[2];
-			}
+            if (COMPASS_ID_AK09911 == st->plat_data.sec_slave_id) {
+    			/*read from external sensor data register */
+    			result = inv_i2c_read(st, REG_EXT_SENS_DATA_00,
+    					      NUM_BYTES_COMPASS_SLAVE_AK09911, d);
+    			if ((DATA_AKM_DRDY == (d[0]&DATA_AKM_DRDY)) &&
+    			    (0 == (d[8] & DATA_AKM_STAT_MASK)) &&
+    			    (!result)) {
+    				u8 *sens;
+    				sens = st->chip_info.compass_sens;
+    				c[0] = (short)((d[2] << 8) | d[1]);
+    				c[1] = (short)((d[4] << 8) | d[3]);
+    				c[2] = (short)((d[6] << 8) | d[5]);
+    				c[0] = (short)(((int)c[0] * (sens[0] + 128)) >> 7);
+    				c[1] = (short)(((int)c[1] * (sens[1] + 128)) >> 7);
+    				c[2] = (short)(((int)c[2] * (sens[2] + 128)) >> 7);
+    				st->raw_compass[0] = c[0];
+    				st->raw_compass[1] = c[1];
+    				st->raw_compass[2] = c[2];
+                }
+            } else {
+    			/*read from external sensor data register */
+    			result = inv_i2c_read(st, REG_EXT_SENS_DATA_00,
+    					      NUM_BYTES_COMPASS_SLAVE, d);
+    			/* d[7] is status 2 register */
+    			/*for AKM8975, bit 2 and 3 should be all be zero*/
+    			/* for AMK8963, bit 3 should be zero*/
+    			if ((DATA_AKM_DRDY == d[0]) &&
+    			    (0 == (d[7] & DATA_AKM_STAT_MASK)) &&
+    			    (!result)) {
+    				u8 *sens;
+    				sens = st->chip_info.compass_sens;
+    				c[0] = (short)((d[2] << 8) | d[1]);
+    				c[1] = (short)((d[4] << 8) | d[3]);
+    				c[2] = (short)((d[6] << 8) | d[5]);
+    				c[0] = (short)(((int)c[0] *
+    					       (sens[0] + 128)) >> 8);
+    				c[1] = (short)(((int)c[1] *
+    					       (sens[1] + 128)) >> 8);
+    				c[2] = (short)(((int)c[2] *
+    					       (sens[2] + 128)) >> 8);
+    				st->raw_compass[0] = c[0];
+    				st->raw_compass[1] = c[1];
+    				st->raw_compass[2] = c[2];
+    			}
+            }
 			st->compass_counter = 0;
 		} else if (compass_divider != 0) {
 			st->compass_counter++;
@@ -780,6 +808,7 @@ irqreturn_t inv_read_fifo(int irq, void *dev_id)
 	s8 *tmp;
 
 	mutex_lock(&indio_dev->mlock);
+	mutex_lock(&st->mutex);
 	if (!(iio_buffer_enabled(indio_dev)))
 		goto end_session;
 
@@ -855,6 +884,7 @@ irqreturn_t inv_read_fifo(int irq, void *dev_id)
 		inv_report_gyro_accl_compass(indio_dev, data, timestamp);
 
 end_session:
+	mutex_unlock(&st->mutex);
 	mutex_unlock(&indio_dev->mlock);
 
 	return IRQ_HANDLED;
@@ -863,6 +893,7 @@ flush_fifo:
 	/* Flush HW and SW FIFOs. */
 	inv_reset_fifo(indio_dev);
 	inv_clear_kfifo(st);
+	mutex_unlock(&st->mutex);
 	mutex_unlock(&indio_dev->mlock);
 
 	return IRQ_HANDLED;

@@ -35,6 +35,8 @@
 
 #include "dmpKey.h"
 
+#define CAL_DATA_AUTO_LOAD  1
+
 /**
  *  struct inv_reg_map_s - Notable slave registers.
  *  @sample_rate_div:	Divider applied to gyro output rate.
@@ -310,6 +312,7 @@ struct inv_mpu_iio_s {
 	const struct inv_hw_s *hw;
 	enum   inv_devices chip_type;
 	spinlock_t time_stamp_lock;
+	struct mutex mutex;
 	struct i2c_client *client;
 	struct mpu_platform_data plat_data;
 	struct inv_mpu_slave *mpu_slave;
@@ -353,6 +356,9 @@ struct inv_mpu_iio_s {
 	u64 last_isr_time;
 	u64 mpu6500_last_motion_time;
 	u8 name[20];
+#if CAL_DATA_AUTO_LOAD == 1
+    u8 cal_data_auto_load;
+#endif
 };
 
 /* produces an unique identifier for each device based on the
@@ -414,6 +420,41 @@ struct inv_mpu_slave {
 #define DATA_AKM8963_SCALE1      (4915 * (1L << 15))
 #define AKM8963_SCALE_SHIFT      4
 #define NUM_BYTES_COMPASS_SLAVE  8
+
+
+
+/* AK09911 */
+#define AK09911_REG_WIA1			0x00
+#define AK09911_REG_WIA2			0x01
+#define AK09911_REG_INFO1			0x02
+#define AK09911_REG_INFO2			0x03
+#define AK09911_REG_ST1				0x10
+#define AK09911_REG_HXL				0x11
+#define AK09911_REG_HXH				0x12
+#define AK09911_REG_HYL				0x13
+#define AK09911_REG_HYH				0x14
+#define AK09911_REG_HZL				0x15
+#define AK09911_REG_HZH				0x16
+#define AK09911_REG_TMPS			0x17
+#define AK09911_REG_ST2				0x18
+#define AK09911_REG_CNTL1			0x30
+#define AK09911_REG_CNTL2			0x31
+#define AK09911_REG_CNTL3			0x32
+
+#define AK09911_FUSE_ASAX			0x60
+#define AK09911_FUSE_ASAY			0x61
+#define AK09911_FUSE_ASAZ			0x62
+
+#define AK09911_MODE_SNG_MEASURE	0x01
+#define AK09911_MODE_SELF_TEST		0x10
+#define AK09911_MODE_FUSE_ACCESS	0x1F
+#define AK09911_MODE_POWERDOWN		0x00
+#define AK09911_RESET_DATA			0x01
+
+#define DATA_AK09911_DEVICE_ID      0x05
+#define DATA_AKM09911_SCALE      (19661 * (1L << 15))
+#define NUM_BYTES_COMPASS_SLAVE_AK09911  9
+
 
 /*register and associated bit definition*/
 #define REG_3050_FIFO_EN         0x12
@@ -537,6 +578,9 @@ struct inv_mpu_slave {
 #define REG_FIFO_R_W            0x74
 #define REG_WHOAMI              0x75
 
+#define REG_6500_XG_ST_DATA     0x0
+#define REG_6500_XA_ST_DATA     0xD
+
 #define REG_6500_ACCEL_CONFIG2  0x1D
 #define BIT_ACCEL_FCHOCIE_B              0x08
 
@@ -562,6 +606,7 @@ struct inv_mpu_slave {
 #define FIFO_THRESHOLD           500
 #define POWER_UP_TIME            100
 #define SENSOR_UP_TIME           30
+#define INV_MPU_SAMPLE_RATE_CHANGE_STABLE 50
 #define MPU_MEM_BANK_SIZE        256
 #define MPU3050_TEMP_OFFSET	 5383314L
 #define MPU3050_TEMP_SCALE       3834792L
@@ -584,6 +629,9 @@ struct inv_mpu_slave {
 #define INIT_ZMOT_DUR            128
 #define INIT_ZMOT_THR            128
 
+/*---- MPU6515 ----*/
+#define MPU6515_ID               0x74      /* unique WHOAMI */
+
 /*---- MPU6500 ----*/
 #define MPU6500_ID               0x70      /* unique WHOAMI */
 #define MPU6500_PRODUCT_REVISION 1
@@ -596,7 +644,8 @@ struct inv_mpu_slave {
 #define THREE_AXIS               3
 #define GYRO_CONFIG_FSR_SHIFT    3
 #define ACCL_CONFIG_FSR_SHIFT    3
-#define GYRO_DPS_SCALE           250
+#define GYRO_DPS_SCALE           (250L)// +-250dps
+#define ACCL_G_SCALE             (2L)// +-2g
 #define MEM_ADDR_PROD_REV        0x6
 #define SOFT_PROD_VER_BYTES      5
 #define CRC_FIRMWARE_SEED        0
