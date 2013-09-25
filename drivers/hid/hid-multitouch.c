@@ -806,6 +806,16 @@ static const struct hid_device_id mt_devices[] = {
 	  .vendor = USB_VENDOR_ID_ATMEL,
           .product = I2CHID_DEVICE_ID_ATMEL_1664T,	
 	},
+        { .driver_data = MT_CLS_SERIAL,
+          .bus = BUS_I2C,
+          .vendor = USB_VENDOR_ID_ATMEL,
+          .product = I2CHID_DEVICE_ID_ATMEL_1664T_WINTK,
+        },
+        { .driver_data = MT_CLS_SERIAL,
+          .bus = BUS_I2C,
+          .vendor = USB_VENDOR_ID_ATMEL,
+          .product = I2CHID_DEVICE_ID_ATMEL_1664T_LAIBAO,
+        },
 //ASUS-CCA20130820-
 
 	/* Baanto multitouch devices */
