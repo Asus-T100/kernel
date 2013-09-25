@@ -721,8 +721,6 @@ int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 	sizes.surface_bpp = 32;
 	sizes.fb_width = (unsigned)-1;
 	sizes.fb_height = (unsigned)-1;
-	sizes.surface_width = 8192;
-	sizes.surface_height = 8192;
 
 	/* if driver picks 8 or 16 by default use that
 	   for both depth/bpp */
