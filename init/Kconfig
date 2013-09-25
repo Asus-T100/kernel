@@ -1404,6 +1404,13 @@ config MODVERSIONS
 	  make them incompatible with the kernel you are running.  If
 	  unsure, say N.
 
+config MODULE_LOAD_SKIP_VERMAGIC
+	bool "load module without vermagic"
+	default n
+	help
+	  Allow loading of modules, even vermagic is not match. If
+	  unsure, say N.
+
 config MODULE_SRCVERSION_ALL
 	bool "Source checksum for all modules"
 	help

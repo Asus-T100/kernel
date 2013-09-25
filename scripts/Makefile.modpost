@@ -187,10 +187,16 @@ quiet_cmd_sign_ko_ko_stripped = SIGN [M] $@
       cmd_sign_ko_ko_stripped = \
 		sh $(SCRIPTS_DIR)/sign-file $(MODSECKEY) $(MODPUBKEY) $< $@
 else
+#ASUS-CCA20130924+
+#KEYRING_DEP :=
+#quiet_cmd_sign_ko_ko_unsigned = NO SIGN [M] $@
+#      cmd_sign_ko_ko_unsigned = \
+#		cp $< $@
 KEYRING_DEP :=
-quiet_cmd_sign_ko_ko_unsigned = NO SIGN [M] $@
-      cmd_sign_ko_ko_unsigned = \
-		cp $< $@
+quiet_cmd_sign_ko_ko_stripped = NO SIGN [M] $@
+      cmd_sign_ko_ko_stripped = \
+                cp $< $@
+#ASUS-CCA20130924-
 endif
 
 $(modules): %.ko :%.ko.stripped $(KEYRING_DEP) FORCE

@@ -2647,7 +2647,9 @@ static int check_modinfo(struct module *mod, struct load_info *info)
 	} else if (!same_magic(modmagic, vermagic, info->index.vers)) {
 		printk(KERN_ERR "%s: version magic '%s' should be '%s'\n",
 		       mod->name, modmagic, vermagic);
+#ifndef CONFIG_MODULE_LOAD_SKIP_VERMAGIC //ASUS-CCA20130924
 		return -ENOEXEC;
+#endif  //ASUS-CCA20130924
 	}
 
 	if (!get_modinfo(info, "intree"))
