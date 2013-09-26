@@ -913,22 +913,15 @@ static irqreturn_t hsu_port_irq(int irq, void *dev_id)
 			return IRQ_NONE;
 		}
 	} else {
-		if (unlikely(test_bit(flag_suspend, &up->flags)))
+		if (likely(!test_bit(flag_suspend, &up->flags))) {
+			/* On BYT, this IRQ may be shared with other HW */
+			up->iir = serial_in(up, UART_IIR);
+			if (up->iir & 0x1)
+				return IRQ_NONE;
+			if (up->iir == 0x7)
+				return IRQ_HANDLED;
+		} else
 			return IRQ_NONE;
-
-		/* On BYT, this IRQ may be shared with other HW */
-		up->iir = serial_in(up, UART_IIR);
-		if (unlikely(up->iir & 0x1)) {
-			/*
-			 * Read  UART_BYTE_COUNT and UART_OVERFLOW
-			 * registers to clear the overrun error on
-			 * Tx. This is a HW issue on VLV2 B0.
-			 * more information on HSD 4683358.
-			 */
-			serial_in(up, 0x818 / 4);
-			serial_in(up, 0x820 / 4);
-			return IRQ_NONE;
-		}
 	}
 
 	if (unlikely(!test_bit(flag_startup, &up->flags))) {

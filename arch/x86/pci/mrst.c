@@ -23,7 +23,6 @@
 #include <linux/ioport.h>
 #include <linux/init.h>
 #include <linux/dmi.h>
-#include <linux/intel_mid_pm.h>
 
 #include <asm/acpi.h>
 #include <asm/segment.h>
@@ -264,11 +263,7 @@ static void __devinit pci_d3delay_fixup(struct pci_dev *dev)
 	 */
 	if (type1_access_ok(dev->bus->number, dev->devfn, PCI_DEVICE_ID))
 		return;
-
-	if (!platform_is(INTEL_ATOM_BYT)) {
-		dev->d3_delay = 0;
-		dev->d3cold_delay = 0;
-	}
+	dev->d3_delay = 0;
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, PCI_ANY_ID, pci_d3delay_fixup);
 

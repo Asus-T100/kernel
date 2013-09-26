@@ -24,9 +24,6 @@
 #include <linux/pm_runtime.h>
 #include <asm/setup.h>
 #include "pci.h"
-#ifdef CONFIG_ATOM_SOC_POWER
-#include <linux/intel_mid_pm.h>
-#endif
 
 const char *pci_power_names[] = {
 	"error", "D0", "D1", "D2", "D3hot", "D3cold", "unknown",
@@ -618,16 +615,7 @@ static int pci_raw_set_power_state(struct pci_dev *dev, pci_power_t state)
 		pci_dev_d3_sleep(dev);
 	else if ((state == PCI_D2 || dev->current_state == PCI_D2)
 	 && (PCI_PM_D2_DELAY))
-#ifdef CONFIG_ATOM_SOC_POWER
-		/* On intel mid, the pci delay are already handled by SCU.
-		   No need to wait more. This isn't the case on BYT. */
-		if (platform_is(INTEL_ATOM_BYT))
-			udelay(PCI_PM_D2_DELAY);
-		else
-			udelay(0);
-#else
 		udelay(PCI_PM_D2_DELAY);
-#endif
 
 	pci_read_config_word(dev, dev->pm_cap + PCI_PM_CTRL, &pmcsr);
 	dev->current_state = (pmcsr & PCI_PM_CTRL_STATE_MASK);
