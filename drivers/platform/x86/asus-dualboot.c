@@ -39,12 +39,12 @@ static const struct file_operations ossw_file_ops = {
 	.write = ossw_write,
 };
 
-/*
- * Platform device
- */
-static int __devinit asus_dualboot_platform_probe(struct platform_device *device)
+static int __init asus_dualboot_init(void)
 {
+	int err;
 	struct proc_dir_entry *entry;
+
+	pr_info("asus_dualboot_init\n");
 
         //test write to cmos
 	entry = create_proc_entry("OSSW", S_IFREG | S_IRUGO | S_IWUGO, NULL);
@@ -54,58 +54,13 @@ static int __devinit asus_dualboot_platform_probe(struct platform_device *device
 	}
 
 	entry->proc_fops = &ossw_file_ops;
-}
-
-
-static struct platform_driver asus_dualboot_platform_driver = {
-	.driver = {
-		.name = "asus-dualboot",
-		.owner = THIS_MODULE,
-	},
-	.probe = asus_dualboot_platform_probe,
-};
-
-static struct platform_device *asus_dualboot_platform_device;
-
-static int __init asus_dualboot_init(void)
-{
-	int err;
-
-	pr_info("asus_dualboot_init\n");
-
-	err = platform_driver_register(&asus_dualboot_platform_driver);
-	if (err) {
-		pr_err("Unable to register platform driver\n");
-		goto error_platform_register;
-	}
-
-	asus_dualboot_platform_device = platform_device_alloc("asus-dualboot", -1);
-	if (!asus_dualboot_platform_device) {
-		err = -ENOMEM;
-		goto error_device_alloc;
-	}
-
-	err = platform_device_add(asus_dualboot_platform_device);
-	if (err)
-		goto error_device_add;
 
 	return 0;
-
-error_device_add:
-	platform_device_put(asus_dualboot_platform_device);
-error_device_alloc:
-	platform_driver_unregister(&asus_dualboot_platform_driver);
-error_platform_register:
-
-	return err;
 }
 
 static void __exit asus_dualboot_exit(void)
 {
         remove_proc_entry("OSSW", NULL);
-
-	platform_device_unregister(asus_dualboot_platform_device);
-	platform_driver_unregister(&asus_dualboot_platform_driver);
 
 	pr_info("asus_dualboot_exit\n");
 	return;

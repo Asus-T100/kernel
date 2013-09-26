@@ -864,4 +864,9 @@ config INTEL_CRYSTALCOVE_PAGE0
 
 	  If unsure, say N.
 
+config ASUS_DUAL_BOOT_SWITCH
+	bool "Asus dual OS switch"
+	help
+	  create a /proc file to write to switch OS.
+
 endif # X86_PLATFORM_DEVICES
