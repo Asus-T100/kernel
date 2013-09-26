@@ -35,13 +35,8 @@ static int __init intel_mid_gps_device_init(void)
 {
 	int ret = 0;
 
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		gps_data.gpio_reset  = -EINVAL;
-		gps_data.gpio_enable = 1;
-	} else {
-		gps_data.gpio_reset  = get_gpio_by_name(GPS_GPIO_RESET);
-		gps_data.gpio_enable = get_gpio_by_name(GPS_GPIO_ENABLE);
-	}
+	gps_data.gpio_reset  = get_gpio_by_name(GPS_GPIO_RESET);
+	gps_data.gpio_enable = get_gpio_by_name(GPS_GPIO_ENABLE);
 
 	ret = platform_device_register(&intel_mid_gps_device);
 
@@ -51,4 +46,6 @@ static int __init intel_mid_gps_device_init(void)
 	return ret;
 }
 
+#ifndef CONFIG_ACPI
 device_initcall(intel_mid_gps_device_init);
+#endif

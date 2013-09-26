@@ -164,6 +164,7 @@ extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
 
 /* external functions */
 void intel_dsi_device_ready(struct intel_encoder *encoder);
+void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 bool intel_dsi_init(struct drm_device *dev);
 
 #define	MIPI_DSI_RESERVED_PANEL_ID			0x01

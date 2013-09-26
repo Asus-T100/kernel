@@ -519,6 +519,9 @@ static int mei_txe_pm_runtime_resume(struct device *device)
 
 	mutex_lock(&dev->device_lock);
 
+	dev_dbg(&pdev->dev, "rpm: txe: runtime resume\n");
+
+	mei_enable_interrupts(dev);
 	ret = mei_txe_aliveness_set_sync(dev, 1);
 
 	mutex_unlock(&dev->device_lock);

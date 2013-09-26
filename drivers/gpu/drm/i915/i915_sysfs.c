@@ -94,6 +94,61 @@ static struct attribute_group rc6_attr_group = {
 	.attrs =  rc6_attrs
 };
 
+static const char playing[] = "1";
+static const char not_playing[] = "0";
+
+static ssize_t
+show_i915_videostatus(struct device *dev, struct device_attribute *attr,
+		const char *buf)
+{
+	/* This sysfs function return video status known to i915 */
+	struct drm_minor *dminor = container_of(dev, struct drm_minor, kdev);
+	struct drm_device *drm_dev = dminor->dev;
+	drm_i915_private_t *dev_priv = drm_dev->dev_private;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+				(dev_priv->is_video_playing ? 1 : 0));
+
+}
+static ssize_t
+store_i915_videostatus(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t n)
+{
+	struct drm_minor *dminor = container_of(dev, struct drm_minor, kdev);
+	struct drm_device *drm_dev = dminor->dev;
+	char *cp;
+	int len = n;
+	drm_i915_private_t *dev_priv = drm_dev->dev_private;
+
+	if (len == sizeof playing - 1 && strncmp(buf, playing, len) == 0) {
+		dev_priv->is_video_playing = true;
+		DRM_DEBUG_DRIVER("\nVideo Playing");
+		if (dev_priv->bpp18_video_dpst &&
+				dev_priv->dpst_feature_control)
+			i915_dpst_enable_disable(drm_dev, 1);
+	} else if (len == sizeof not_playing - 1 &&
+			strncmp(buf, not_playing, len) == 0) {
+		dev_priv->is_video_playing = false;
+		DRM_DEBUG_DRIVER("\nVideo Not Playing");
+		if (dev_priv->bpp18_video_dpst &&
+				dev_priv->dpst_feature_control)
+			i915_dpst_enable_disable(drm_dev, 0);
+	} else
+		n = -EINVAL;
+	return n;
+}
+
+static DEVICE_ATTR(i915_videostatus, S_IALLUGO, show_i915_videostatus,
+					store_i915_videostatus);
+static struct attribute *i915_videostatus_attrs[] = {
+	&dev_attr_i915_videostatus.attr,
+	NULL
+};
+static struct attribute_group i915_videostatus_attr_group = {
+	.name = power_group_name,
+	.attrs =  i915_videostatus_attrs
+};
+
 static int l3_access_valid(struct drm_device *dev, loff_t offset)
 {
 	if (!IS_IVYBRIDGE(dev))
@@ -205,12 +260,20 @@ static struct bin_attribute dpf_attrs = {
 void i915_setup_sysfs(struct drm_device *dev)
 {
 	int ret;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	if (INTEL_INFO(dev)->gen >= 6) {
 		ret = sysfs_merge_group(&dev->primary->kdev.kobj,
 					&rc6_attr_group);
 		if (ret)
 			DRM_ERROR("RC6 residency sysfs setup failed\n");
+	}
+
+	if (dev_priv->bpp18_video_dpst) {
+		ret = sysfs_merge_group(&dev->primary->kdev.kobj,
+					&i915_videostatus_attr_group);
+		if (ret)
+			DRM_ERROR("video status sysfs setup failed\n");
 	}
 
 	if (HAS_L3_GPU_CACHE(dev)) {
@@ -224,6 +287,8 @@ void i915_teardown_sysfs(struct drm_device *dev)
 {
 	device_remove_bin_file(&dev->primary->kdev,  &dpf_attrs);
 	sysfs_unmerge_group(&dev->primary->kdev.kobj, &rc6_attr_group);
+	sysfs_unmerge_group(&dev->primary->kdev.kobj,
+				&i915_videostatus_attr_group);
 }
 #else
 void i915_setup_sysfs(struct drm_device *dev)

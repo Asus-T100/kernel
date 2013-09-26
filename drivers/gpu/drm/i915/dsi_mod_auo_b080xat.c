@@ -56,6 +56,9 @@ static void b080xat_get_panel_info(int pipe, struct drm_connector *connector)
 
 bool b080xat_init(struct intel_dsi_device *dsi)
 {
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -77,6 +80,7 @@ bool b080xat_init(struct intel_dsi_device *dsi)
 	dsi->backlight_off_delay = 20;
 	dsi->send_shutdown = false;
 	dsi->shutdown_pkt_delay = 20;
+	dev_priv->mipi.panel_bpp = 18;
 
 	return true;
 }

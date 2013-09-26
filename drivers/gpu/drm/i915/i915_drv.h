@@ -583,7 +583,8 @@ typedef struct drm_i915_private {
 
 	/* MIPI panel info */
 	struct mipi_info mipi;
-
+	/* Is DPST enabled only for video play back on 18bpp */
+	bool bpp18_video_dpst;
 	/* Either of the below will be true based on detection
 	 * presence of one indicates absence of other as of now
 	 * till we have proper fix for dynamic detection
@@ -1019,6 +1020,12 @@ typedef struct drm_i915_private {
 	/* list of fbdev register on this device */
 	struct intel_fbdev *fbdev;
 
+	/*
+	 * The console may be contended at resume, but we don't
+	 * want it to block on it.
+	 */
+	struct work_struct console_resume_work;
+
 	struct backlight_device *backlight;
 
 	struct drm_property *broadcast_rgb_property;
@@ -1054,6 +1061,8 @@ typedef struct drm_i915_private {
 	u32 blc_data;
 	u32 blc_user;
 	bool is_dpst_enabled;
+	bool dpst_feature_control;
+	bool is_video_playing;
 
 	uint32_t watchdog_threshold[I915_NUM_RINGS];
 
@@ -1436,6 +1445,7 @@ extern int i915_lvds_channel_mode __read_mostly;
 extern int i915_panel_use_ssc __read_mostly;
 extern int i915_vbt_sdvo_panel_type __read_mostly;
 extern int i915_mipi_panel_id __read_mostly;
+extern int i915_bpp18_video_dpst __read_mostly;
 extern int i915_enable_rc6 __read_mostly;
 extern int i915_rotation __read_mostly;
 extern int i915_enable_fbc __read_mostly;
@@ -1481,6 +1491,7 @@ extern unsigned long i915_mch_val(struct drm_i915_private *dev_priv);
 extern unsigned long i915_gfx_val(struct drm_i915_private *dev_priv);
 extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 
+extern void intel_console_resume(struct work_struct *work);
 
 /* i915_irq.c */
 void i915_hangcheck_sample(unsigned long data);
@@ -1514,6 +1525,8 @@ int i915_reset_histogram(struct drm_device *dev);
 int i915_dpst_enable_hist_interrupt(struct drm_device *dev, bool enable);
 u32 i915_dpst_get_brightness(struct drm_device *dev);
 void i915_dpst_set_brightness(struct drm_device *dev, u32 brightness_val);
+int i915_dpst_enable_disable(struct drm_device *dev, unsigned int val);
+int i915_dpst_set_default_luma(struct drm_device *dev);
 
 /* i915_gem.c */
 int i915_gem_init_ioctl(struct drm_device *dev, void *data,

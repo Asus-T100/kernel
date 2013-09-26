@@ -314,6 +314,7 @@ void intel_panel_disable_backlight(struct drm_device *dev)
 	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
 #ifdef CONFIG_CRYSTAL_COVE
 		intel_mid_pmic_writeb(0x51, 0x00);
+		intel_mid_pmic_writeb(0x4B, 0x7F);
 #else
 		DRM_ERROR("Backlight not supported yet\n");
 #endif
@@ -399,7 +400,16 @@ static void intel_panel_init_backlight(struct drm_device *dev)
 	dev_priv->backlight_enabled = dev_priv->backlight_level != 0;
 	/* Initiliazing DPST default values */
 	dev_priv->is_dpst_enabled = false;
+	dev_priv->is_video_playing = false;
+	dev_priv->dpst_feature_control = true;
 	dev_priv->dpst_backlight_factor = DPST_MAX_FACTOR;
+	if (i915_bpp18_video_dpst <= 0) {
+		/* Default DPST policy */
+		dev_priv->bpp18_video_dpst = false;
+	} else {
+		/* Need DPST forVideo playback on 18BPP */
+		dev_priv->bpp18_video_dpst = true;
+	}
 }
 
 enum drm_connector_status

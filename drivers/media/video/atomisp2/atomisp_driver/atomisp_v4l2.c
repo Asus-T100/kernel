@@ -81,7 +81,6 @@ int pad_h = 16;
 module_param(pad_h, int, 0644);
 MODULE_PARM_DESC(pad_h, "extra data for ISP processing");
 
-
 struct v4l2_device atomisp_dev = {
 	.name = "atomisp",
 };
@@ -1094,6 +1093,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		atomisp_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
 	}
 
+	/* use mutex to avoid calling .open before .probe is done. */
+	mutex_lock(&isp->mutex);
 	err = atomisp_initialize_modules(isp);
 	if (err < 0) {
 		dev_err(&dev->dev, "atomisp_initialize_modules (%d)\n", err);
@@ -1134,6 +1135,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
+	mutex_unlock(&isp->mutex);
 	return 0;
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
@@ -1143,6 +1145,7 @@ css_init_fail:
 	atomisp_acc_cleanup(isp);
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 enable_msi_fail:
+	mutex_unlock(&isp->mutex);
 	destroy_workqueue(isp->delayed_init_workq);
 delayed_init_work_queue_fail:
 	destroy_workqueue(isp->wdt_work_queue);

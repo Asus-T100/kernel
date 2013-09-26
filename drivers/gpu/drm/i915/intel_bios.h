@@ -661,6 +661,7 @@ struct bdb_mipi {
 /* Expand to add more info as we work on mipi code */
 struct mipi_info {
 	u16 panel_id;
+	u16 panel_bpp;
 };
 
 #endif /* _I830_BIOS_H_ */

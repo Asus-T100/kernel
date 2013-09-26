@@ -85,6 +85,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
 #include <drm/i915_drm.h>
+#include <linux/sysfs.h>
 #include <linux/slab.h>
 #include "linux/mfd/intel_mid_pmic.h"
 #include "i915_drv.h"
@@ -151,6 +152,12 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 	usleep_range(1000, 1500);
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), DEVICE_READY |
 			ULPS_STATE_EXIT, DEVICE_READY | ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), DEVICE_READY,
+			DEVICE_READY | ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), 0x00,
+			DEVICE_READY | ULPS_STATE_MASK);
 	usleep_range(2000, 2500);
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), DEVICE_READY,
 			DEVICE_READY | ULPS_STATE_MASK);
@@ -271,14 +278,25 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 	 * some next enable sequence send turn on packet error is observed */
 	if (intel_dsi->dev.dev_ops->disable)
 		intel_dsi->dev.dev_ops->disable(&intel_dsi->dev);
+}
 
+void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
+{
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	int pipe = intel_crtc->pipe;
 
-	/* only if clock is disabled before pipe and plane, sending DCS
-	 * command works in next enable sequence works */
-	intel_disable_dsi_pll(intel_dsi);
+	DRM_DEBUG_KMS("\n");
 
-	/* If ULPS state is entered before disabling DSI PLL then sending
-	 * DSI commands failed in the next enable sequence. */
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
+							ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
+
+	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_EXIT,
+							ULPS_STATE_MASK);
+	usleep_range(2000, 2500);
+
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
 							ULPS_STATE_MASK);
 	usleep_range(2000, 2500);
@@ -286,8 +304,14 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 	I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), 0, LP_OUTPUT_HOLD);
 	usleep_range(1000, 1500);
 
+	if (wait_for(((I915_READ(MIPI_PORT_CTRL(pipe)) & 0x20000)
+					== 0x00000), 30))
+		DRM_ERROR("DSI LP not going Low\n");
+
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), 0x00, DEVICE_READY);
 	usleep_range(2000, 2500);
+
+	intel_disable_dsi_pll(intel_dsi);
 
 	if (intel_dsi->dev.dev_ops->disable_panel_power)
 		intel_dsi->dev.dev_ops->disable_panel_power(&intel_dsi->dev);
@@ -513,14 +537,6 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	u32 val;
 
 	DRM_DEBUG_KMS("\n");
-
-	/* bandgap reset */
-	intel_flisdsi_write32(dev_priv, 0x08, 0x0001);
-	intel_flisdsi_write32(dev_priv, 0x0F, 0x0005);
-	intel_flisdsi_write32(dev_priv, 0x0F, 0x0025);
-	udelay(150);
-	intel_flisdsi_write32(dev_priv, 0x0F, 0x0000);
-	intel_flisdsi_write32(dev_priv, 0x08, 0x0000);
 
 	dsi_config(encoder);
 
@@ -782,6 +798,26 @@ intel_dsi_add_properties(struct intel_dsi *intel_dsi,
 	intel_attach_force_pfit_property(connector);
 }
 
+static ssize_t panel_bpp_show(struct device *device,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	struct drm_connector *connector =
+			container_of(device, struct drm_connector, kdev);
+	struct drm_device *dev = connector->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	int bpp = dev_priv->mipi.panel_bpp;
+
+	snprintf(buf, sizeof(bpp), "%d\n", bpp);
+
+	return sizeof(bpp);
+}
+
+static struct device_attribute connector_bpp_attrs[] = {
+	__ATTR_RO(panel_bpp),
+};
+
 bool intel_dsi_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -879,6 +915,9 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 
 	drm_sysfs_connector_add(connector);
+
+	/* add panel bpp as another connector property */
+	device_create_file(&connector->kdev, &connector_bpp_attrs[0]);
 
 	/* XXX: Disable PPS to be done before eDP is disabled per BSPEC*/
 	/* FIXME: move to correct place */

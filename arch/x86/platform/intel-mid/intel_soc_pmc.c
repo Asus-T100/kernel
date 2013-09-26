@@ -324,6 +324,27 @@ static const struct file_operations nc_set_power_operations = {
 	.release        = single_release,
 };
 
+static void update_all_pci_devices(void)
+{
+	struct pci_dev *pdev = NULL;
+	u16 pmcsr;
+
+	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev))
+							!= NULL) {
+		pci_read_config_word(pdev, pdev->pm_cap +
+						PCI_PM_CTRL, &pmcsr);
+
+		/* In case, device doesn't have driver and it's in D0,
+		 * put it in D0i3 */
+		if (IS_ERR_OR_NULL(pdev->dev.driver) && !(pmcsr & D0I3_MASK)) {
+			dev_info(&pdev->dev, "put device in D0i3\n");
+			pmcsr |= D0I3_MASK;
+			pci_write_config_word(pdev, pdev->pm_cap +
+						PCI_PM_CTRL, pmcsr);
+		}
+	}
+}
+
 static int mid_suspend_begin(suspend_state_t state)
 {
 	return 0;
@@ -346,15 +367,7 @@ static int mid_suspend_prepare(void)
 {
 	int ret;
 
-	/* V1P0A reduce voltage to 0.9v */
-	ret = intel_mid_pmic_writeb(V1P0ACNT, 0x0);
-	if (ret)
-		printk(KERN_ALERT "pmic write failed\n");
-
-	/* V1P8A reduce voltage to 1.62v */
-	ret = intel_mid_pmic_writeb(V1P8ACNT, 0x0);
-	if (ret)
-		printk(KERN_ALERT "pmic write failed\n");
+	update_all_pci_devices();
 
 	/* Turn off VHDMI internal power switch */
 	ret = intel_mid_pmic_writeb(VHDMICNT, 0x2);
@@ -377,16 +390,6 @@ static int mid_suspend_prepare_late(void)
 static void mid_suspend_finish(void)
 {
 	int ret;
-
-	/* restore V1P0A to nominal voltage */
-	ret = intel_mid_pmic_writeb(0x55, 0x60);
-	if (ret)
-		printk(KERN_ALERT "pmic write failed\n");
-
-	/* restore V1P8A to nominal voltage */
-	ret = intel_mid_pmic_writeb(0x5A, 0x60);
-	if (ret)
-		printk(KERN_ALERT "pmic write failed\n");
 
 	/* Turn On VHDMI internal power switch */
 	ret = intel_mid_pmic_writeb(VHDMICNT, 0x3);
