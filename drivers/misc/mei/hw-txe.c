@@ -912,7 +912,7 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 	 * Detection of SeC having sent output to host
 	 */
 	slots = mei_count_full_read_slots(dev);
-	if (test_bit(TXE_INTR_OUT_DB_BIT, &hw->intr_cause)) {
+	if (test_and_clear_bit(TXE_INTR_OUT_DB_BIT, &hw->intr_cause)) {
 		/* TODO: Check if FW is doing Reset */
 
 		/* Read from TXE */
@@ -923,8 +923,6 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 			mutex_unlock(&dev->device_lock);
 			goto out;
 		}
-		/* clear the pending interrupt only if read hanlder suceeded */
-		clear_bit(TXE_INTR_OUT_DB_BIT, &hw->intr_cause);
 	}
 	/* Input Ready: Detection if host can write to SeC */
 	if (test_and_clear_bit(TXE_INTR_IN_READY_BIT, &hw->intr_cause))
