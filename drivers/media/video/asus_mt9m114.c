@@ -1563,10 +1563,12 @@ static int mt9m114_s_stream(struct v4l2_subdev *sd, int enable)
 	dev_err(&c->dev, "mt9m114_s_stream(%d)\n", enable);
 
 	if (enable) {
-		ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg,
-					POST_POLLING);
-		if (ret < 0)
-			return ret;
+// <ASUS-Ian20130927+> - Intel patch, solve non-ZSL black photo in lowlight
+		//ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg,
+		//			POST_POLLING);
+		//if (ret < 0)
+		//	return ret;
+// <ASUS-Ian20130927->		
 
 		ret = mt9m114_set_streaming(sd);
 	} else {
