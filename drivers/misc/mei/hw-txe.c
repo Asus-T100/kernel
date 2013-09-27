@@ -359,6 +359,22 @@ static void mei_txe_intr_enable(struct mei_device *dev)
 	mei_txe_br_reg_write(hw, HIER_REG, HIER_INT_EN_MSK);
 }
 
+void mei_txe_intr_save(struct mei_device *dev)
+{
+	struct mei_txe_hw *hw = to_txe_hw(dev);
+	hw->hhier = mei_txe_br_reg_read(hw, HHIER_REG);
+	dev_dbg(&dev->pdev->dev, "SAVE HHIER = 0x%08X HIER = 0x%08X",
+		 hw->hhier, mei_txe_br_reg_read(hw, HIER_REG));
+	mei_txe_br_reg_write(hw, HHIER_REG, 0);
+}
+
+void mei_txe_intr_restore(struct mei_device *dev)
+{
+	struct mei_txe_hw *hw = to_txe_hw(dev);
+	dev_dbg(&dev->pdev->dev, "RESTORE HHIER = 0x%08X HIER = 0x%08X",
+		 hw->hhier, mei_txe_br_reg_read(hw, HIER_REG));
+	mei_txe_br_reg_write(hw, HHIER_REG, hw->hhier);
+}
 /**
  * mei_txe_pending_interrupts - check if there are pending interrupts
  *	only Aliveness, Input ready, and output doorbell are of relevance
