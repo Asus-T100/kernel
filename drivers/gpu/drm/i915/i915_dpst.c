@@ -44,6 +44,11 @@ int i915_dpst_context(struct drm_device *dev, void *data,
 	u32 bdr_data = 0;
 	u32 bpcr_data = 0;
 
+	/* return back if the device is not active, do not entertain
+	 * any further calls */
+	if (dev_priv->early_suspended)
+		return -EINVAL;
+
 	init_context = (struct dpst_initialize_context *) data;
 	switch (init_context->dpst_ioctl_type) {
 	case DPST_ENABLE:
@@ -250,15 +255,11 @@ int i915_dpst_enable_hist_interrupt(struct drm_device *dev, bool enable)
 		hcr_data |= DPST_IEHCR_HIST_ENABLE |
 					DPST_IEHCR_HIST_MODE_SELECT;
 
+		/* Ensure the Bin reg index is reset to 0 */
+		hcr_data = hcr_data & ~(DPST_BIN_REG_INDEX_MASK);
 		I915_WRITE(VLV_DISPLAY_BASE + DPST_VLV_IEHCR_REG, hcr_data);
-		/* No need to wait in case of mipi.
-		 * Since data will flow only when port is enabled.
-		 * wait for vblank will time out for mipi
-		 */
-		if (!dev_priv->is_mipi)
-			intel_wait_for_vblank(dev, 0);
 
-		I915_WRITE(VLV_DISPLAY_BASE + DPST_VLV_BTGR_REG, btgr_data);
+		intel_wait_for_vblank(dev, 0);
 
 		i915_enable_pipestat(dev_priv, 0, PIPE_DPST_EVENT_ENABLE);
 	} else {

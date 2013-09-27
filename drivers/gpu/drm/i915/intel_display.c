@@ -7700,12 +7700,12 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	drm_kms_helper_poll_disable(drm_dev);
 	display_save_restore_hotplug(drm_dev, SAVEHPD);
 	display_disable_wq(drm_dev);
-	mutex_lock(&drm_dev->mode_config.mutex);
 	if (dev_priv->is_dpst_enabled) {
 		dev_priv->saveDPSTState = true;
 		i915_dpst_enable_hist_interrupt(drm_dev, false);
 	} else
 		dev_priv->saveDPSTState = false;
+	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
@@ -7748,15 +7748,17 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	/* Fix for the issue of display blankout during the resume
 	 * Reset the luma back to default value */
 	i915_dpst_set_default_luma(drm_dev);
+
+	mutex_unlock(&drm_dev->mode_config.mutex);
+	display_save_restore_hotplug(drm_dev, RESTOREHPD);
+	drm_kms_helper_poll_enable(drm_dev);
+
 	if (dev_priv->bpp18_video_dpst)
 		dev_priv->is_video_playing = false;
 	else {
 		if (dev_priv->saveDPSTState)
 			i915_dpst_enable_hist_interrupt(drm_dev, true);
 	}
-	mutex_unlock(&drm_dev->mode_config.mutex);
-	display_save_restore_hotplug(drm_dev, RESTOREHPD);
-	drm_kms_helper_poll_enable(drm_dev);
 	dev_priv->is_resuming = false;
 	return 0;
 }
