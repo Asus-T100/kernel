@@ -4383,7 +4383,12 @@ static bool intel_choose_pipe_bpp_dither(struct drm_crtc *crtc,
 		break;
 	}
 
-	display_bpc = min(display_bpc, bpc);
+	/*
+	 * To handle the case when display/panel BPC is 8
+	 * and pipe bpc is 6, we still want dithering.
+	 */
+	if (display_bpc != 8)
+		display_bpc = min(display_bpc, bpc);
 
 	DRM_DEBUG_KMS("setting pipe bpc to %d (max display bpc %d)\n",
 		      bpc, display_bpc);
