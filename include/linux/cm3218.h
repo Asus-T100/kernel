@@ -25,14 +25,12 @@
 
 /* Define Slave Address*/
 #if  defined(_CM3218_AD)
-#define		CM3218_ALS_cmd	0x90>>1	//0x48
+#define	CM3218_ALS_cmd (0x90 >> 1)
 #else
-#define		CM3218_ALS_cmd	0x20>>1
+#define	CM3218_ALS_cmd (0x20 >> 1)
 #endif  //ifdef CM3218_AD
 
-#define		CM3218_check_INI	0x19>>1	//0x0c
-
-#define ALS_CALIBRATED		0x6F17
+#define	CM3218_check_INI (0x19 >> 1)
 
 /*cm3218*/
 /*Define ALS Command Code*/
@@ -62,8 +60,6 @@
 
 struct cm3218_platform_data {
 	int intr;
-	uint16_t levels[10];
-	uint16_t golden_adc;
 	int (*power)(int, uint8_t); /* power to the chip */
 	uint8_t ALS_slave_address;  	
 	uint8_t check_interrupt_add;
