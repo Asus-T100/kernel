@@ -842,7 +842,11 @@ static int imx_get_intg_factor(struct i2c_client *client,
 			if (ret)
 				return ret;
 			buf->binning_factor_x = data[0] >> 4 & 0x0f;
+			if (!buf->binning_factor_x)
+				buf->binning_factor_x = 1;
 			buf->binning_factor_y = data[0] & 0xf;
+			if (!buf->binning_factor_y)
+				buf->binning_factor_y = 1;
 		} else {
 			buf->binning_factor_x = 1;
 			buf->binning_factor_y = 1;

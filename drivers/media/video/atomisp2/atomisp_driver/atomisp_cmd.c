@@ -42,6 +42,7 @@
 #include "atomisp_tables.h"
 #include "atomisp_acc.h"
 #include "atomisp_compat.h"
+#include "atomisp_subdev.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
@@ -1048,8 +1049,9 @@ void atomisp_delayed_init_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  delayed_init_work);
-	atomisp_css_allocate_continuous_frames(false);
-	atomisp_css_update_continuous_frames();
+	struct atomisp_sub_device *asd = &isp->asd;
+	atomisp_css_allocate_continuous_frames(false, asd);
+	atomisp_css_update_continuous_frames(asd);
 	isp->delayed_init = ATOMISP_DELAYED_INIT_WORK_DONE;
 }
 
@@ -1827,11 +1829,10 @@ static void atomisp_curr_user_grid_info(struct atomisp_sub_device *asd,
 #else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	memcpy(info, &asd->params.curr_grid_info.s3a_grid,
 			sizeof(struct atomisp_css_3a_grid_info));
-
 #endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
-static int atomisp_compare_grid(struct atomisp_sub_device *asd,
+int atomisp_compare_grid(struct atomisp_sub_device *asd,
 				struct atomisp_grid_info *atomgrid)
 {
 	struct atomisp_grid_info tmp = {0};
@@ -1985,63 +1986,7 @@ int atomisp_set_dis_vector(struct atomisp_sub_device *asd,
 int atomisp_get_dis_stat(struct atomisp_sub_device *asd,
 			 struct atomisp_dis_statistics *stats)
 {
-	struct atomisp_device *isp = asd->isp;
-	unsigned long flags;
-	int error;
-
-	if (stats->vertical_projections   == NULL ||
-	    stats->horizontal_projections == NULL ||
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	    asd->params.dvs_stat->hor_proj == NULL ||
-	    asd->params.dvs_stat->ver_proj == NULL)
-#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	    asd->params.dis_hor_proj_buf  == NULL ||
-	    asd->params.dis_ver_proj_buf  == NULL)
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-		return -EINVAL;
-
-	/* isp needs to be streaming to get DIS statistics */
-	spin_lock_irqsave(&isp->lock, flags);
-	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
-		spin_unlock_irqrestore(&isp->lock, flags);
-		return -EINVAL;
-	}
-	spin_unlock_irqrestore(&isp->lock, flags);
-
-	if (!asd->params.video_dis_en)
-		return -EINVAL;
-
-	if (atomisp_compare_grid(asd, &stats->grid_info) != 0)
-		/* If the grid info in the argument differs from the current
-		   grid info, we tell the caller to reset the grid size and
-		   try again. */
-		return -EAGAIN;
-
-	if (!asd->params.dis_proj_data_valid)
-		return -EBUSY;
-
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	error = copy_to_user(stats->vertical_projections,
-			     asd->params.dvs_stat->ver_proj,
-			     asd->params.dvs_ver_proj_bytes);
-
-	error |= copy_to_user(stats->horizontal_projections,
-			     asd->params.dvs_stat->hor_proj,
-			     asd->params.dvs_hor_proj_bytes);
-#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
-	error = copy_to_user(stats->vertical_projections,
-			     asd->params.dis_ver_proj_buf,
-			     asd->params.dis_ver_proj_bytes);
-
-	error |= copy_to_user(stats->horizontal_projections,
-			     asd->params.dis_hor_proj_buf,
-			     asd->params.dis_hor_proj_bytes);
-#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
-
-	if (error)
-		return -EFAULT;
-
-	return 0;
+	return atomisp_css_get_dis_stat(asd, stats);
 }
 
 int atomisp_set_dis_coefs(struct atomisp_sub_device *asd,
@@ -2415,6 +2360,105 @@ set_lsc:
 	return 0;
 }
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "ia_css_stream.h"	/* FIXME */
+int atomisp_set_dvs_6axis_config(struct atomisp_sub_device *asd,
+					  struct atomisp_dvs_6axis_config
+					  *user_6axis_config)
+{
+	struct atomisp_css_dvs_6axis_config *dvs_6axis_config;
+	struct atomisp_css_dvs_6axis_config *old_6axis_config;
+	struct ia_css_stream *stream = asd->stream_env.stream;
+	struct ia_css_dvs_6axis_config *stream_dvs_config =
+	    stream->isp_params_configs->dvs_6axis_config;
+	int ret = -EFAULT;
+
+	if (!user_6axis_config)
+		return 0;
+
+	if (!stream_dvs_config)
+		return -EAGAIN;
+
+	if (stream_dvs_config->width_y != user_6axis_config->width_y ||
+	    stream_dvs_config->height_y != user_6axis_config->height_y ||
+	    stream_dvs_config->width_uv != user_6axis_config->width_uv ||
+	    stream_dvs_config->height_uv != user_6axis_config->height_uv) {
+		dev_err(asd->isp->dev, "%s: mismatch 6axis config!", __func__);
+		dev_err(asd->isp->dev, "CSS expected:width_y:%d, height_y:%d, width_uv:%d, height_uv:%d.\n",
+			 stream_dvs_config->width_y,
+			 stream_dvs_config->height_y,
+			 stream_dvs_config->width_uv,
+			 stream_dvs_config->height_uv);
+		dev_err(asd->isp->dev, "User space:width_y:%d, height_y:%d, width_uv:%d, height_uv:%d.\n",
+			 user_6axis_config->width_y,
+			 user_6axis_config->height_y,
+			 user_6axis_config->width_uv,
+			 user_6axis_config->height_uv);
+		return -EINVAL;
+	}
+
+	/* check whether need to reallocate for 6 axis config */
+	old_6axis_config = asd->params.dvs_6axis;
+	dvs_6axis_config = old_6axis_config;
+	if (old_6axis_config &&
+	    (old_6axis_config->width_y != user_6axis_config->width_y ||
+	     old_6axis_config->height_y != user_6axis_config->height_y ||
+	     old_6axis_config->width_uv != user_6axis_config->width_uv ||
+	     old_6axis_config->height_uv != user_6axis_config->height_uv)) {
+		ia_css_dvs2_6axis_config_free(asd->params.dvs_6axis);
+		asd->params.dvs_6axis = NULL;
+
+		dvs_6axis_config = ia_css_dvs2_6axis_config_allocate(asd->
+								     stream_env.
+								     stream);
+		if (!dvs_6axis_config)
+			return -ENOMEM;
+	} else if (!dvs_6axis_config) {
+		dvs_6axis_config = ia_css_dvs2_6axis_config_allocate(asd->
+								     stream_env.
+								     stream);
+		if (!dvs_6axis_config)
+			return -ENOMEM;
+	}
+
+	if (copy_from_user(dvs_6axis_config->xcoords_y,
+			   user_6axis_config->xcoords_y,
+			   user_6axis_config->width_y *
+			   user_6axis_config->height_y *
+			   sizeof(*user_6axis_config->xcoords_y)))
+		goto error;
+	if (copy_from_user(dvs_6axis_config->ycoords_y,
+			   user_6axis_config->ycoords_y,
+			   user_6axis_config->width_y *
+			   user_6axis_config->height_y *
+			   sizeof(*user_6axis_config->ycoords_y)))
+		goto error;
+	if (copy_from_user(dvs_6axis_config->xcoords_uv,
+			   user_6axis_config->xcoords_uv,
+			   user_6axis_config->width_uv *
+			   user_6axis_config->height_uv *
+			   sizeof(*user_6axis_config->xcoords_uv)))
+		goto error;
+	if (copy_from_user(dvs_6axis_config->ycoords_uv,
+			   user_6axis_config->ycoords_uv,
+			   user_6axis_config->width_uv *
+			   user_6axis_config->height_uv *
+			   sizeof(*user_6axis_config->ycoords_uv)))
+		goto error;
+
+	asd->params.dvs_6axis = dvs_6axis_config;
+	atomisp_css_set_dvs_6axis(asd, asd->params.dvs_6axis);
+	asd->params.css_update_params_needed = true;
+
+	return 0;
+
+error:
+	if (dvs_6axis_config)
+		ia_css_dvs2_6axis_config_free(dvs_6axis_config);
+	return ret;
+}
+#endif
+
 static int __atomisp_set_morph_table(struct atomisp_sub_device *asd,
 				struct atomisp_morph_table *user_morph_table)
 {
@@ -2513,6 +2557,18 @@ int atomisp_param(struct atomisp_sub_device *asd, int flag,
 			return -EINVAL;
 		}
 		atomisp_curr_user_grid_info(asd, &config->info);
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		/* update dvs grid info */
+		memcpy(&config->dvs_grid, &asd->params.curr_grid_info.dvs_grid,
+			sizeof(struct atomisp_css_dvs_grid_info));
+		/* update dvs envelop info */
+		config->dvs_envelop.width =
+		    asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_VIDEO].
+		    dvs_envelope.width;
+		config->dvs_envelop.height =
+		    asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_VIDEO].
+		    dvs_envelope.height;
+#endif
 		return 0;
 	}
 
@@ -3036,9 +3092,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
 	int ret;
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
-#endif
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_err(isp->dev, "Wrong v4l2 buf type\n");
@@ -3072,34 +3125,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	snr_mbus_fmt.width = f->fmt.pix.width;
 	snr_mbus_fmt.height = f->fmt.pix.height;
 
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	if (isp->asd.continuous_mode->val &&
-	    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
-		if (f->fmt.pix.width != 0 && f->fmt.pix.height != 0
-		    && f->fmt.pix.width * f->fmt.pix.height <
-		    3264 * 2448) {
-			snr_mbus_fmt.width = 3264;
-			snr_mbus_fmt.height =
-			    DIV_ROUND_UP(3264 * f->fmt.pix.height,
-					 f->fmt.pix.width);
-			if (snr_mbus_fmt.height > 2448) {
-				snr_mbus_fmt.height = 2448;
-				snr_mbus_fmt.width =
-				    DIV_ROUND_UP(2448 *
-						 f->fmt.pix.width,
-						 f->fmt.pix.height);
-			}
-			/*WORKAROUND: for qvga offline still capture, isp
-			 * would timeout for 8MP output from sensor.
-			 * but won't timeout for 720p sensor output*/
-			if (f->fmt.pix.width == 320
-				&& f->fmt.pix.height == 240) {
-				snr_mbus_fmt.width = 1280;
-				snr_mbus_fmt.height = 720;
-			}
-		}
-	}
-#endif
 	dev_dbg(isp->dev, "try_mbus_fmt: asking for %ux%u\n",
 		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
@@ -3555,11 +3580,10 @@ static void atomisp_get_dis_envelop(struct atomisp_sub_device *asd,
 static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 			  struct v4l2_format *f, unsigned int pixelformat,
 			  unsigned int padding_w, unsigned int padding_h,
-			  unsigned int dvs_env_w, unsigned int dvs_env_h,
-			  uint16_t source_pad)
+			  unsigned int dvs_env_w, unsigned int dvs_env_h)
 {
 	const struct atomisp_format_bridge *format;
-	struct v4l2_mbus_framefmt ffmt;
+	struct v4l2_mbus_framefmt ffmt, req_ffmt;
 	struct atomisp_device *isp = asd->isp;
 	int ret;
 
@@ -3568,33 +3592,6 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 		return -EINVAL;
 
 	v4l2_fill_mbus_format(&ffmt, &f->fmt.pix, format->mbus_code);
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	if (asd->continuous_mode->val &&
-	    source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
-		if (f->fmt.pix.width * f->fmt.pix.height <
-		    2448 * 3264) {
-			ffmt.width = 3264;
-			ffmt.height =
-			    DIV_ROUND_UP(3264 * f->fmt.pix.height,
-					 f->fmt.pix.width);
-			if (ffmt.height > 2448) {
-				ffmt.height = 2448;
-				ffmt.width =
-				    DIV_ROUND_UP(2448 *
-						 f->fmt.pix.width,
-						 f->fmt.pix.height);
-			}
-			/*WORKAROUND: for qvga offline still capture, isp
-			 * would timeout for 8MP output from sensor.
-			 * but won't timeout for 720p sensor output*/
-			if (f->fmt.pix.width == 320
-				&& f->fmt.pix.height == 240) {
-				ffmt.width = 1280;
-				ffmt.height = 720;
-			}
-		}
-	}
-#endif
 	ffmt.height += padding_h + dvs_env_h;
 	ffmt.width += padding_w + dvs_env_w;
 
@@ -3602,6 +3599,7 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 		ffmt.width, ffmt.height, padding_w, padding_h,
 		dvs_env_w, dvs_env_h);
 
+	req_ffmt = ffmt;
 	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera, video,
 			       s_mbus_fmt, &ffmt);
 	if (ret)
@@ -3613,6 +3611,13 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 	if (ffmt.width < ATOM_ISP_STEP_WIDTH ||
 	    ffmt.height < ATOM_ISP_STEP_HEIGHT)
 			return -EINVAL;
+
+	if (asd->params.video_dis_en && (ffmt.width < req_ffmt.width ||
+	    ffmt.height < req_ffmt.height)) {
+		dev_warn(isp->dev,
+			 "can not enable video dis due to sensor limitation.");
+		asd->params.video_dis_en = 0;
+	}
 
 	atomisp_subdev_set_ffmt(&isp->asd.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
@@ -3631,7 +3636,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_format snr_fmt = *f;
 	unsigned int dvs_env_w = 0, dvs_env_h = 0;
 	unsigned int padding_w = pad_w, padding_h = pad_h;
-	bool res_overflow = false;
+	bool res_overflow = false, crop_needs_override = false;
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 	struct v4l2_mbus_framefmt isp_source_fmt = {0};
 	struct v4l2_rect isp_sink_crop;
@@ -3788,15 +3793,16 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 */
 	if (!isp->asd.continuous_mode->val ||
 	    isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
-	    (isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) &&
-	     isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
-				    dvs_env_h))) {
+	    isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) ||
+	    isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
+				    dvs_env_h)) {
 		ret = atomisp_set_fmt_to_snr(asd, f, f->fmt.pix.pixelformat,
 					     padding_w, padding_h,
-					     dvs_env_w, dvs_env_h,
-					     source_pad);
+					     dvs_env_w, dvs_env_h);
 		if (ret)
 			return -EINVAL;
+
+		crop_needs_override = true;
 	}
 
 	isp_sink_crop = *atomisp_subdev_get_rect(&isp->asd.subdev, NULL,
@@ -3811,8 +3817,24 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	    || (atomisp_subdev_format_conversion(isp, source_pad)
 		&& (isp->asd.run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || isp->asd.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER))) {
-		isp_sink_crop.width = f->fmt.pix.width;
-		isp_sink_crop.height = f->fmt.pix.height;
+		/* for continuous mode, preview size might be smaller than
+		 * still capture size. if preview size still needs crop,
+		 * pick the larger one between crop size of preview and
+		 * still capture */
+		if (isp->asd.continuous_mode->val
+		    && source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW
+		    && !crop_needs_override) {
+			isp_sink_crop.width =
+			    max_t(unsigned int, f->fmt.pix.width,
+				  isp_sink_crop.width);
+			isp_sink_crop.height =
+			    max_t(unsigned int, f->fmt.pix.height,
+				  isp_sink_crop.height);
+		} else {
+			isp_sink_crop.width = f->fmt.pix.width;
+			isp_sink_crop.height = f->fmt.pix.height;
+		}
+
 		atomisp_subdev_set_selection(&isp->asd.subdev, NULL,
 					     V4L2_SUBDEV_FORMAT_ACTIVE,
 					     ATOMISP_SUBDEV_PAD_SINK,

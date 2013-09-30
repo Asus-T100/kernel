@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -693,6 +694,7 @@ struct ia_css_gc_config {
 };
 
 struct ia_css_dvs_6axis_config {
+	unsigned int exp_id;
 	uint32_t width_y;
 	uint32_t height_y;
 	uint32_t width_uv;

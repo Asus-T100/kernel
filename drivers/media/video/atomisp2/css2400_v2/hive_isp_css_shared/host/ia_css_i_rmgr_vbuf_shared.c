@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -20,6 +21,7 @@
  */
 
 #include "ia_css_i_rmgr.h"
+
 #ifndef __KERNEL__
 #include <stdbool.h>
 #endif
@@ -71,7 +73,10 @@ void ia_css_i_host_refcount_retain_vbuf(
 {
 	int i;
 	struct ia_css_i_host_rmgr_vbuf_handle *h;
-	assert_exit(handle && *handle);
+
+	assert(handle != NULL);
+	assert(*handle != NULL);
+
 	/* new vbuf to count on */
 	if ((*handle)->count == 0) {
 		h = *handle;
@@ -82,7 +87,14 @@ void ia_css_i_host_refcount_retain_vbuf(
 				break;
 			}
 		}
-		assert_exit(*handle);
+		/* if the loop dus not break and *handle == NULL this is an error
+		   handle and report it.
+		 */
+		if (*handle == NULL) {
+			sh_css_dtrace(SH_DBG_ERROR,
+				"ia_css_i_host_refcount_retain_vbuf() failed to find empty slot!\n");
+			return;
+		}
 		(*handle)->vptr = h->vptr;
 		(*handle)->size = h->size;
 	}
@@ -93,8 +105,10 @@ void ia_css_i_host_refcount_retain_vbuf(
 void ia_css_i_host_refcount_release_vbuf(
 		struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
-	assert_exit(handle && *handle);
+	assert(handle != NULL);
+	assert(*handle != NULL);
 	assert((*handle)->count != 0);
+
 	/* decrease reference count */
 	(*handle)->count--;
 	/* remove from admin */
@@ -109,7 +123,11 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 {
 	size_t bytes_needed;
 	ia_css_i_host_refcount_init_vbuf();
-	assert_exit(pool);
+
+	assert(pool != NULL);
+
+	if (pool == NULL)
+		return;
 	/* initialize the recycle pool if used */
 	if (pool->recycle && pool->size) {
 		/* allocate memory for storing the handles */
@@ -117,8 +135,7 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 			sizeof(struct ia_css_i_host_rmgr_vbuf_handle *) *
 			pool->size;
 		pool->handles = sh_css_malloc(bytes_needed);
-		if (pool->handles)
-			memset(pool->handles, 0, bytes_needed);
+		memset(pool->handles, 0, bytes_needed);
 	}
 	else {
 		/* just in case, set the size to 0 */
@@ -130,26 +147,30 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 void ia_css_i_host_rmgr_uninit_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 {
 	uint32_t i;
+
+	assert(pool != NULL);
+
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_i_host_rmgr_uninit_vbuf()\n");
-	assert_exit(pool);
-	/* free the hmm buffers */
-	for (i = 0; i < pool->size; i++) {
-		if (pool->handles[i] != NULL) {
-			sh_css_dtrace(SH_DBG_TRACE,
-				"   freeing/releasing %x (count=%d)\n",
-				pool->handles[i]->vptr,
-				pool->handles[i]->count);
-			/* free memory */
-			mmgr_free(pool->handles[i]->vptr);
-			/* remove from refcount admin*/
-			ia_css_i_host_refcount_release_vbuf(
-					&pool->handles[i]);
+	if (pool->handles != NULL) {
+		/* free the hmm buffers */
+		for (i = 0; i < pool->size; i++) {
+			if (pool->handles[i] != NULL) {
+				sh_css_dtrace(SH_DBG_TRACE,
+					"   freeing/releasing %x (count=%d)\n",
+					pool->handles[i]->vptr,
+					pool->handles[i]->count);
+				/* free memory */
+				mmgr_free(pool->handles[i]->vptr);
+				/* remove from refcount admin*/
+				ia_css_i_host_refcount_release_vbuf(
+						&pool->handles[i]);
+			}
 		}
+		/* now free the pool handles list */
+		sh_css_free(pool->handles);
+		pool->handles = NULL;
 	}
-	/* now free the pool handles list */
-	sh_css_free(pool->handles);
-	pool->handles = NULL;
 }
 
 static
@@ -158,17 +179,23 @@ void ia_css_i_host_rmgr_push_handle(
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
 	uint32_t i;
-	bool succes = false;
-	assert_exit(pool && pool->recycle && pool->handles && handle);
+	bool success = false;
+
+	assert(pool != NULL);
+	assert(pool->recycle);
+	assert(pool->handles != NULL);
+	assert(handle != NULL);
+
 	for (i = 0; i < pool->size; i++) {
 		if (pool->handles[i] == NULL) {
 			ia_css_i_host_refcount_retain_vbuf(handle);
 			pool->handles[i] = *handle;
-			succes = true;
+			success = true;
 			break;
 		}
 	}
-	assert(succes);
+	assert(success);
+	(void)success; /* to avoid KW issue */
 }
 
 static
@@ -177,18 +204,25 @@ void ia_css_i_host_rmgr_pop_handle(
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
 	uint32_t i;
-	bool succes = false;
-	assert_exit(pool && pool->recycle && pool->handles && handle);
+	bool success = false;
+
+	assert(pool != NULL);
+	assert(pool->recycle);
+	assert(pool->handles != NULL);
+	assert(handle != NULL);
+	assert(*handle != NULL);
+
 	for (i = 0; i < pool->size; i++) {
 		if (pool->handles[i] != NULL && pool->handles[i]->size == (*handle)->size) {
 			*handle = pool->handles[i];
 			pool->handles[i] = NULL;
 			/* dont release, we are returning it...
 			   ia_css_i_host_refcount_release_vbuf(handle); */
-			succes = true;
+			success = true;
 			break;
 		}
 	}
+	(void)success; /* to avoid KW issue */
 }
 
 void ia_css_i_host_rmgr_acq_vbuf(
@@ -196,7 +230,11 @@ void ia_css_i_host_rmgr_acq_vbuf(
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
 	uint32_t size;
-	assert_exit(pool && handle && *handle);
+
+	assert(pool != NULL);
+	assert(handle != NULL);
+	assert(*handle != NULL);
+
 	if (pool->copy_on_write) {
 		/* only one reference, reuse (no new retain) */
 		if ((*handle)->count == 1)
@@ -237,7 +275,10 @@ void ia_css_i_host_rmgr_rel_vbuf(
 	struct ia_css_i_host_rmgr_vbuf_pool *pool,
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
-	assert_exit(pool && handle && *handle);
+	assert(pool != NULL);
+	assert(handle != NULL);
+	assert(*handle != NULL);
+
 	/* release the handle */
 	if ((*handle)->count == 1) {
 		if (!pool->recycle) {
@@ -252,4 +293,3 @@ void ia_css_i_host_rmgr_rel_vbuf(
 	ia_css_i_host_refcount_release_vbuf(handle);
 	*handle = NULL;
 }
-

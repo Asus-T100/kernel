@@ -154,6 +154,22 @@ struct atomisp_3a_config {
 };
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
+struct atomisp_dvs_grid_info {
+	uint32_t enable;
+	uint32_t width;
+	uint32_t aligned_width;
+	uint32_t height;
+	uint32_t aligned_height;
+	uint32_t bqs_per_grid_cell;
+	uint32_t num_hor_coefs;
+	uint32_t num_ver_coefs;
+};
+
+struct atomisp_dvs_envelop {
+	unsigned int width;
+	unsigned int height;
+};
+
 struct atomisp_grid_info {
 	uint32_t enable;
 	uint32_t use_dmem;
@@ -191,16 +207,52 @@ struct atomisp_dis_vector {
 	int y;
 };
 
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+/** DVS 2.0 Coefficient types. This structure contains 4 pointers to
+ *  arrays that contain the coeffients for each type.
+ */
+struct atomisp_dvs2_coef_types {
+	short __user *odd_real; /**< real part of the odd coefficients*/
+	short __user *odd_imag; /**< imaginary part of the odd coefficients*/
+	short __user *even_real;/**< real part of the even coefficients*/
+	short __user *even_imag;/**< imaginary part of the even coefficients*/
+};
+
+/*
+ * DVS 2.0 Statistic types. This structure contains 4 pointers to
+ * arrays that contain the statistics for each type.
+ */
+struct atomisp_dvs2_stat_types {
+	int __user *odd_real; /**< real part of the odd statistics*/
+	int __user *odd_imag; /**< imaginary part of the odd statistics*/
+	int __user *even_real;/**< real part of the even statistics*/
+	int __user *even_imag;/**< imaginary part of the even statistics*/
+};
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+
 struct atomisp_dis_coefficients {
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_dvs_grid_info grid_info;
+	struct atomisp_dvs2_coef_types hor_coefs;
+	struct atomisp_dvs2_coef_types ver_coefs;
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	struct atomisp_grid_info grid_info;
 	short __user *vertical_coefficients;
 	short __user *horizontal_coefficients;
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 };
 
 struct atomisp_dis_statistics {
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_dvs_grid_info grid_info;
+	struct atomisp_dvs2_stat_types hor_prod;
+	struct atomisp_dvs2_stat_types ver_prod;
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	struct atomisp_grid_info grid_info;
 	int __user *vertical_projections;
 	int __user *horizontal_projections;
+#endif
 };
 
 struct atomisp_3a_rgby_output {
@@ -292,6 +344,10 @@ struct atomisp_xnr_config {
 
 struct atomisp_parm {
 	struct atomisp_grid_info info;
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_dvs_grid_info dvs_grid;
+	struct atomisp_dvs_envelop dvs_envelop;
+#endif
 	struct atomisp_wb_config wb_config;
 	struct atomisp_cc_config cc_config;
 	struct atomisp_ob_config ob_config;
@@ -301,6 +357,17 @@ struct atomisp_parm {
 	struct atomisp_nr_config nr_config;
 	struct atomisp_ee_config ee_config;
 	struct atomisp_tnr_config tnr_config;
+};
+
+struct atomisp_dvs_6axis_config {
+	uint32_t width_y;
+	uint32_t height_y;
+	uint32_t width_uv;
+	uint32_t height_uv;
+	uint32_t *xcoords_y;
+	uint32_t *ycoords_y;
+	uint32_t *xcoords_uv;
+	uint32_t *ycoords_uv;
 };
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
@@ -905,6 +972,9 @@ struct v4l2_private_int_data {
 
 #define ATOMISP_IOC_ACC_LOAD_TO_PIPE \
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 63, struct atomisp_acc_fw_load_to_pipe)
+
+#define ATOMISP_IOC_S_6AXIS_CONFIG \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 64, struct atomisp_dvs_6axis_config)
 
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \

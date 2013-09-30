@@ -73,10 +73,6 @@ static acpi_status txei_walk_resource(struct acpi_resource *res, void *data)
 		return AE_OK;
 
 	fixmem32 = &res->data.fixed_memory32;
-	if (!fixmem32) {
-		dev_err(&dev->pdev->dev, "TXE8086 MEMORY32 is NULL\n");
-		return AE_NO_MEMORY;
-	}
 
 	dev_dbg(&dev->pdev->dev, "TXE8086 MEMORY32 addr 0x%x len %d\n",
 		fixmem32->address, fixmem32->address_length);

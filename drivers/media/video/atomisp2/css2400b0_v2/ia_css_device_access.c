@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -28,6 +29,8 @@ static struct ia_css_hw_access_env my_env;
 void
 ia_css_device_access_init(const struct ia_css_hw_access_env *env)
 {
+	assert(env != NULL);
+
 	my_env = *env;
 }
 
@@ -52,8 +55,9 @@ device_load_uint32(const hrt_address addr)
 uint64_t
 device_load_uint64(const hrt_address addr)
 {
-	(void)addr;
 	assert(0);
+
+	(void)addr;
 	return 0;
 }
 
@@ -78,9 +82,10 @@ device_store_uint32(const hrt_address addr, const uint32_t data)
 void
 device_store_uint64(const hrt_address addr, const uint64_t data)
 {
+	assert(0);
+
 	(void)addr;
 	(void)data;
-	assert(0);
 }
 
 void

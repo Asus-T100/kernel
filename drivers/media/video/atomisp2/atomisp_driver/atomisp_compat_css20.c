@@ -455,24 +455,18 @@ static void __apply_additional_pipe_config(
 		return;
 	}
 
-	/*
-	 * Current ISP2.2 Firmware has issues with online still capture.
-	 * So still uses ISP1.5 firmware for online still capture cases
-	 */
-	if (asd->run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE)
-		asd->stream_env.pipe_configs[pipe_id].
-		    isp_pipe_version = 1;
-	else
-		asd->stream_env.pipe_configs[pipe_id].
-		    isp_pipe_version = 2;
-
+	/* apply default pipe config */
+	asd->stream_env.pipe_configs[pipe_id].
+				isp_pipe_version = 2;
 	/* apply isp 2.2 specific config for baytrail*/
 	switch (pipe_id) {
 	case IA_CSS_PIPE_ID_CAPTURE:
 		/* enable capture pp manually or digital zoom would
 		 * fail*/
-		asd->stream_env.pipe_configs[pipe_id]
-		    .default_capture_config.enable_capture_pp = true;
+		if (asd->stream_env.pipe_configs[pipe_id].
+			default_capture_config.mode != CSS_CAPTURE_MODE_RAW)
+			asd->stream_env.pipe_configs[pipe_id]
+			    .default_capture_config.enable_capture_pp = true;
 		break;
 	case IA_CSS_PIPE_ID_VIDEO:
 		/* enable reduced pipe to have binary
@@ -498,6 +492,10 @@ static int __create_pipe(struct atomisp_sub_device *asd)
 	int i;
 
 	ia_css_pipe_extra_config_defaults(&extra_config);
+	if (asd->run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+		extra_config.enable_dvs_6axis = true;
+		extra_config.enable_dz = false;
+	}
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
 		if (!asd->stream_env.pipe_configs[i].output_info.res.width)
 			continue;
@@ -924,7 +922,7 @@ void atomisp_css_free_3a_buffers(struct atomisp_s3a_buf *s3a_buf)
 
 void atomisp_css_free_dis_buffers(struct atomisp_dis_buf *dis_buf)
 {
-	ia_css_isp_dvs_statistics_free(dis_buf->dis_data);
+	ia_css_isp_dvs2_statistics_free(dis_buf->dis_data);
 }
 
 void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
@@ -934,8 +932,8 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 
 	/* 3A statistics use vmalloc, DIS use kmalloc */
 	if (asd->params.curr_grid_info.dvs_grid.enable) {
-		ia_css_dvs_coefficients_free(asd->params.dvs_coeff);
-		ia_css_dvs_statistics_free(asd->params.dvs_stat);
+		ia_css_dvs2_coefficients_free(asd->params.dvs_coeff);
+		ia_css_dvs2_statistics_free(asd->params.dvs_stat);
 		asd->params.dvs_coeff = NULL;
 		asd->params.dvs_stat = NULL;
 		asd->params.dvs_hor_proj_bytes = 0;
@@ -945,7 +943,7 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 		asd->params.dis_proj_data_valid = false;
 		list_for_each_entry_safe(dis_buf, _dis_buf,
 						&asd->dis_stats, list) {
-			ia_css_isp_dvs_statistics_free(dis_buf->dis_data);
+			ia_css_isp_dvs2_statistics_free(dis_buf->dis_data);
 			list_del(&dis_buf->list);
 			kfree(dis_buf);
 		}
@@ -961,6 +959,11 @@ void atomisp_css_free_3a_dis_buffers(struct atomisp_sub_device *asd)
 			list_del(&s3a_buf->list);
 			kfree(s3a_buf);
 		}
+	}
+
+	if (asd->params.dvs_6axis) {
+		ia_css_dvs2_6axis_config_free(asd->params.dvs_6axis);
+		asd->params.dvs_6axis = NULL;
 	}
 }
 
@@ -1025,40 +1028,38 @@ int atomisp_alloc_3a_output_buf(struct atomisp_sub_device *asd)
 
 int atomisp_alloc_dis_coef_buf(struct atomisp_sub_device *asd)
 {
-	if (!asd->params.curr_grid_info.dvs_grid.enable)
+	if (!asd->params.curr_grid_info.dvs_grid.enable) {
+		dev_err(asd->isp->dev, "%s: dvs_grid not enabled.\n", __func__);
 		return 0;
+	}
 
 	/* DIS coefficients. */
-	asd->params.dvs_coeff = ia_css_dvs_coefficients_allocate(
+	asd->params.dvs_coeff = ia_css_dvs2_coefficients_allocate(
 				&asd->params.curr_grid_info.dvs_grid);
 	if (!asd->params.dvs_coeff)
 		return -ENOMEM;
 
 	asd->params.dvs_hor_coef_bytes =
 		asd->params.curr_grid_info.dvs_grid.num_hor_coefs*
-		IA_CSS_DVS_NUM_COEF_TYPES *
-		sizeof(*asd->params.dvs_coeff->hor_coefs);
+		sizeof(*asd->params.dvs_coeff->hor_coefs.odd_real);
 
 	asd->params.dvs_ver_coef_bytes =
 		asd->params.curr_grid_info.dvs_grid.num_ver_coefs *
-		IA_CSS_DVS_NUM_COEF_TYPES *
-		sizeof(*asd->params.dvs_coeff->ver_coefs);
+		sizeof(*asd->params.dvs_coeff->ver_coefs.odd_real);
 
 	/* DIS projections. */
 	asd->params.dis_proj_data_valid = false;
-	asd->params.dvs_stat = ia_css_dvs_statistics_allocate(
+	asd->params.dvs_stat = ia_css_dvs2_statistics_allocate(
 				&asd->params.curr_grid_info.dvs_grid);
 	if (!asd->params.dvs_stat)
 		return -ENOMEM;
 	asd->params.dvs_hor_proj_bytes =
 		asd->params.curr_grid_info.dvs_grid.aligned_height *
-		IA_CSS_DVS_NUM_COEF_TYPES *
-		sizeof(*asd->params.dvs_stat->hor_proj);
+		sizeof(*asd->params.dvs_stat->hor_prod.odd_real);
 
 	asd->params.dvs_ver_proj_bytes =
 		asd->params.curr_grid_info.dvs_grid.aligned_width *
-		IA_CSS_DVS_NUM_COEF_TYPES *
-		sizeof(*asd->params.dvs_stat->ver_proj);
+		sizeof(*asd->params.dvs_stat->ver_prod.odd_real);
 
 	return 0;
 }
@@ -1080,7 +1081,7 @@ void atomisp_css_get_dis_statistics(struct atomisp_sub_device *asd,
 				    struct atomisp_css_buffer *isp_css_buffer)
 {
 	if (asd->params.dvs_stat) {
-		ia_css_get_dvs_statistics(asd->params.dvs_stat,
+		ia_css_get_dvs2_statistics(asd->params.dvs_stat,
 				  isp_css_buffer->css_buffer.data.stats_dvs);
 		asd->params.dis_proj_data_valid = true;
 	}
@@ -1139,8 +1140,10 @@ int atomisp_css_input_set_effective_resolution(
 void atomisp_css_video_set_dis_envelope(struct atomisp_sub_device *asd,
 					unsigned int dvs_w, unsigned int dvs_h)
 {
-	asd->stream_env.pipe_configs[0].dvs_envelope.width = dvs_w;
-	asd->stream_env.pipe_configs[0].dvs_envelope.height = dvs_h;
+	asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_VIDEO].dvs_envelope.width =
+	    dvs_w;
+	asd->stream_env.pipe_configs[IA_CSS_PIPE_ID_VIDEO].dvs_envelope.height =
+	    dvs_h;
 }
 
 void atomisp_css_input_set_two_pixels_per_clock(
@@ -1315,13 +1318,18 @@ int atomisp_css_set_black_frame(struct atomisp_sub_device *asd,
 	return 0;
 }
 
-int atomisp_css_allocate_continuous_frames(bool init_time)
+int atomisp_css_allocate_continuous_frames(bool init_time,
+				struct atomisp_sub_device *asd)
 {
+	if (ia_css_alloc_continuous_frame_remain(asd->stream_env.stream)
+			!= IA_CSS_SUCCESS)
+		return -EINVAL;
 	return 0;
 }
 
-void atomisp_css_update_continuous_frames(void)
+void atomisp_css_update_continuous_frames(struct atomisp_sub_device *asd)
 {
+	ia_css_update_continuous_frames(asd->stream_env.stream);
 }
 
 int atomisp_css_stop(struct atomisp_sub_device *asd,
@@ -1361,10 +1369,9 @@ int atomisp_css_continuous_set_num_raw_frames(
 					struct atomisp_sub_device *asd,
 					int num_frames)
 {
-	if (ia_css_stream_set_buffer_depth(asd->stream_env.stream, num_frames)
-	    != IA_CSS_SUCCESS)
-		return -EINVAL;
-
+	asd->stream_env.stream_config.init_num_cont_raw_buf =
+		ATOMISP_CSS2_NUM_OFFLINE_INIT_CONTINUOUS_FRAMES;
+	asd->stream_env.stream_config.target_num_cont_raw_buf = num_frames;
 	return 0;
 }
 
@@ -1957,6 +1964,12 @@ void atomisp_css_set_anr_thres(struct atomisp_sub_device *asd,
 	asd->params.config.anr_thres = anr_thres;
 }
 
+void atomisp_css_set_dvs_6axis(struct atomisp_sub_device *asd,
+			struct atomisp_css_dvs_6axis *dvs_6axis)
+{
+	asd->params.config.dvs_6axis_config = dvs_6axis;
+}
+
 void atomisp_css_set_gc_config(struct atomisp_sub_device *asd,
 			struct atomisp_css_gc_config *gc_config)
 {
@@ -1981,24 +1994,82 @@ void atomisp_css_video_set_dis_vector(struct atomisp_sub_device *asd,
 	asd->params.motion_vector.y = vector->y;
 }
 
+static int atomisp_compare_dvs_grid(struct atomisp_sub_device *asd,
+				struct atomisp_dvs_grid_info *atomgrid)
+{
+	struct atomisp_css_dvs_grid_info *cur =
+	    &asd->params.curr_grid_info.dvs_grid;
+
+	if (sizeof(*cur) != sizeof(*atomgrid)) {
+		dev_err(asd->isp->dev, "dvs grid mis-match!\n");
+		return -EINVAL;
+	}
+
+	if (!cur->enable) {
+		dev_err(asd->isp->dev, "dvs not enabled!\n");
+		return -EINVAL;
+	}
+
+	return memcmp(atomgrid, cur, sizeof(*cur));
+}
+
 int atomisp_css_set_dis_coefs(struct atomisp_sub_device *asd,
 			  struct atomisp_dis_coefficients *coefs)
 {
-	if (coefs->horizontal_coefficients == NULL ||
-	    coefs->vertical_coefficients   == NULL ||
-	    asd->params.dvs_coeff->hor_coefs == NULL ||
-	    asd->params.dvs_coeff->ver_coefs == NULL)
+	if (atomisp_compare_dvs_grid(asd, &coefs->grid_info) != 0)
+		/* If the grid info in the argument differs from the current
+		   grid info, we tell the caller to reset the grid size and
+		   try again. */
+		return -EAGAIN;
+
+	if (coefs->hor_coefs.odd_real == NULL ||
+	    coefs->hor_coefs.odd_imag == NULL ||
+	    coefs->hor_coefs.even_real == NULL ||
+	    coefs->hor_coefs.even_imag == NULL ||
+	    coefs->ver_coefs.odd_real == NULL ||
+	    coefs->ver_coefs.odd_imag == NULL ||
+	    coefs->ver_coefs.even_real == NULL ||
+	    coefs->ver_coefs.even_imag == NULL ||
+	    asd->params.dvs_coeff->hor_coefs.odd_real == NULL ||
+	    asd->params.dvs_coeff->hor_coefs.odd_imag == NULL ||
+	    asd->params.dvs_coeff->hor_coefs.even_real == NULL ||
+	    asd->params.dvs_coeff->hor_coefs.even_imag == NULL ||
+	    asd->params.dvs_coeff->ver_coefs.odd_real == NULL ||
+	    asd->params.dvs_coeff->ver_coefs.odd_imag == NULL ||
+	    asd->params.dvs_coeff->ver_coefs.even_real == NULL ||
+	    asd->params.dvs_coeff->ver_coefs.even_imag == NULL)
 		return -EINVAL;
 
-	if (copy_from_user(asd->params.dvs_coeff->hor_coefs,
-	    coefs->horizontal_coefficients, asd->params.dvs_hor_coef_bytes))
+	if (copy_from_user(asd->params.dvs_coeff->hor_coefs.odd_real,
+	    coefs->hor_coefs.odd_real, asd->params.dvs_hor_coef_bytes))
 		return -EFAULT;
-	if (copy_from_user(asd->params.dvs_coeff->ver_coefs,
-	    coefs->vertical_coefficients, asd->params.dvs_ver_coef_bytes))
+	if (copy_from_user(asd->params.dvs_coeff->hor_coefs.odd_imag,
+	    coefs->hor_coefs.odd_imag, asd->params.dvs_hor_coef_bytes))
+		return -EFAULT;
+	if (copy_from_user(asd->params.dvs_coeff->hor_coefs.even_real,
+	    coefs->hor_coefs.even_real, asd->params.dvs_hor_coef_bytes))
+		return -EFAULT;
+	if (copy_from_user(asd->params.dvs_coeff->hor_coefs.even_imag,
+	    coefs->hor_coefs.even_imag, asd->params.dvs_hor_coef_bytes))
 		return -EFAULT;
 
-	asd->params.config.dvs_coefs = asd->params.dvs_coeff;
-	asd->params.dis_proj_data_valid = false;
+	if (copy_from_user(asd->params.dvs_coeff->ver_coefs.odd_real,
+	    coefs->ver_coefs.odd_real, asd->params.dvs_ver_coef_bytes))
+		return -EFAULT;
+	if (copy_from_user(asd->params.dvs_coeff->ver_coefs.odd_imag,
+	    coefs->ver_coefs.odd_imag, asd->params.dvs_ver_coef_bytes))
+		return -EFAULT;
+	if (copy_from_user(asd->params.dvs_coeff->ver_coefs.even_real,
+	    coefs->ver_coefs.even_real, asd->params.dvs_ver_coef_bytes))
+		return -EFAULT;
+	if (copy_from_user(asd->params.dvs_coeff->ver_coefs.even_imag,
+	    coefs->ver_coefs.even_imag, asd->params.dvs_ver_coef_bytes))
+		return -EFAULT;
+
+	asd->params.config.dvs2_coefs = asd->params.dvs_coeff;
+	/* FIXME! */
+/*	asd->params.dis_proj_data_valid = false; */
+	asd->params.css_update_params_needed = true;
 
 	return 0;
 }
@@ -2286,6 +2357,80 @@ int atomisp_css_get_zoom_factor(struct atomisp_sub_device *asd,
 	*zoom = dz_config.dx;
 
 	return 0;
+}
+
+
+/*
+ * Function to set/get image stablization statistics
+ */
+int atomisp_css_get_dis_stat(struct atomisp_sub_device *asd,
+			 struct atomisp_dis_statistics *stats)
+{
+	struct atomisp_device *isp = asd->isp;
+	unsigned long flags;
+
+	if (asd->params.dvs_stat->hor_prod.odd_real == NULL ||
+	    asd->params.dvs_stat->hor_prod.odd_imag == NULL ||
+	    asd->params.dvs_stat->hor_prod.even_real == NULL ||
+	    asd->params.dvs_stat->hor_prod.even_imag == NULL ||
+	    asd->params.dvs_stat->ver_prod.odd_real == NULL ||
+	    asd->params.dvs_stat->ver_prod.odd_imag == NULL ||
+	    asd->params.dvs_stat->ver_prod.even_real == NULL ||
+	    asd->params.dvs_stat->ver_prod.even_imag == NULL)
+		return -EINVAL;
+
+	/* isp needs to be streaming to get DIS statistics */
+	spin_lock_irqsave(&isp->lock, flags);
+	if (asd->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+		spin_unlock_irqrestore(&isp->lock, flags);
+		return -EINVAL;
+	}
+	spin_unlock_irqrestore(&isp->lock, flags);
+
+	if (atomisp_compare_dvs_grid(asd, &stats->grid_info) != 0)
+		/* If the grid info in the argument differs from the current
+		   grid info, we tell the caller to reset the grid size and
+		   try again. */
+		return -EAGAIN;
+
+	if (!asd->params.dis_proj_data_valid)
+		return -EBUSY;
+
+	if (copy_to_user(stats->ver_prod.odd_real,
+			 asd->params.dvs_stat->ver_prod.odd_real,
+			 asd->params.dvs_ver_proj_bytes))
+		return -EFAULT;
+	if (copy_to_user(stats->ver_prod.odd_imag,
+			 asd->params.dvs_stat->ver_prod.odd_imag,
+			 asd->params.dvs_ver_proj_bytes))
+		return -EFAULT;
+	if (copy_to_user(stats->ver_prod.even_real,
+			 asd->params.dvs_stat->ver_prod.even_real,
+			 asd->params.dvs_ver_proj_bytes))
+		return -EFAULT;
+	if (copy_to_user(stats->ver_prod.even_imag,
+			 asd->params.dvs_stat->ver_prod.even_imag,
+			 asd->params.dvs_ver_proj_bytes))
+		return -EFAULT;
+	if (copy_to_user(stats->hor_prod.odd_real,
+			 asd->params.dvs_stat->hor_prod.odd_real,
+			 asd->params.dvs_hor_proj_bytes))
+		return -EFAULT;
+	if (copy_to_user(stats->hor_prod.odd_imag,
+			 asd->params.dvs_stat->hor_prod.odd_imag,
+			 asd->params.dvs_hor_proj_bytes))
+		return -EFAULT;
+	if (copy_to_user(stats->hor_prod.even_real,
+			 asd->params.dvs_stat->hor_prod.even_real,
+			 asd->params.dvs_hor_proj_bytes))
+		return -EFAULT;
+	if (copy_to_user(stats->hor_prod.even_imag,
+			 asd->params.dvs_stat->hor_prod.even_imag,
+			 asd->params.dvs_hor_proj_bytes))
+		return -EFAULT;
+
+	return 0;
+
 }
 
 struct atomisp_css_shading_table *atomisp_css_shading_table_alloc(

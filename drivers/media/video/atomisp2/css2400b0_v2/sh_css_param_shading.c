@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -19,6 +20,7 @@
  *
  */
 
+#include "assert_support.h"
 #include "sh_css_param_shading.h"
 #include "ia_css.h"
 #include "sh_css_defs.h"
@@ -79,10 +81,10 @@ crop_and_interpolate(unsigned int cropped_width,
 		     enum ia_css_sc_color color)
 {
 	unsigned int i, j,
-		     sensor_width  = in_table->sensor_width,
-		     sensor_height = in_table->sensor_height,
-		     table_width   = in_table->width,
-		     table_height  = in_table->height,
+		     sensor_width,
+		     sensor_height,
+		     table_width,
+		     table_height,
 		     table_cell_h,
 		     out_cell_size,
 		     in_cell_size,
@@ -90,8 +92,18 @@ crop_and_interpolate(unsigned int cropped_width,
 		     padded_width;
 	int out_start_col, /* can be negative to indicate padded space */
 	    table_cell_w;
-	unsigned short *in_ptr = in_table->data[color],
-		       *out_ptr = out_table->data[color];
+	unsigned short *in_ptr,
+		       *out_ptr;
+
+	assert(in_table != NULL);
+	assert(out_table != NULL);
+
+	sensor_width  = in_table->sensor_width;
+	sensor_height = in_table->sensor_height;
+	table_width   = in_table->width;
+	table_height  = in_table->height;
+	in_ptr = in_table->data[color];
+	out_ptr = out_table->data[color];
 
 	padded_width = cropped_width + left_padding + right_padding;
 	out_cell_size = CEIL_DIV(padded_width, out_table->width - 1);
@@ -189,6 +201,9 @@ generate_id_shading_table(struct ia_css_shading_table **target_table,
 	unsigned int i, j, table_width, table_height;
 	struct ia_css_shading_table *result;
 
+	assert(target_table != NULL);
+	assert(binary != NULL);
+
 	table_width  = binary->sctbl_width_per_color;
 	table_height = binary->sctbl_height;
 	result = ia_css_shading_table_alloc(table_width, table_height);
@@ -208,6 +223,7 @@ generate_id_shading_table(struct ia_css_shading_table **target_table,
 void
 prepare_shading_table(const struct ia_css_shading_table *in_table,
 		      unsigned int sensor_binning,
+		      bool raw_binning,
 		      struct ia_css_shading_table **target_table,
 		      const struct sh_css_binary *binary)
 {
@@ -219,6 +235,9 @@ prepare_shading_table(const struct ia_css_shading_table *in_table,
 		     right_padding,
 		     i;
 	struct ia_css_shading_table *result;
+
+	assert(target_table != NULL);
+	assert(binary != NULL);
 
 	if (!in_table) {
 		generate_id_shading_table(target_table, binary);
@@ -233,6 +252,13 @@ prepare_shading_table(const struct ia_css_shading_table *in_table,
 	left_padding  = binary->left_padding;
 	right_padding = binary->in_frame_info.padded_width -
 			(input_width + left_padding);
+
+	if ((binary->info->mode == SH_CSS_BINARY_MODE_PREVIEW)
+		&& raw_binning
+		&& binary->info->enable.raw_binning) {
+		input_width = input_width * 2 - binary->info->left_cropping;
+		input_height = input_height * 2 - binary->info->top_cropping;
+	}
 
 	/* We take into account the binning done by the sensor. We do this
 	   by cropping the non-binned part of the shading table and then

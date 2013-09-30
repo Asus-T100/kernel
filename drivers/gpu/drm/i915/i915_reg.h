@@ -505,7 +505,8 @@
 #define RING_ACTHD(base)	((base)+0x74)
 #define RING_NOPID(base)	((base)+0x94)
 #define RING_IMR(base)		((base)+0xa8)
-#define RING_TIMESTAMP(base)	((base)+0x358)
+#define RING_TIMESTAMP_LO(base)	((base)+0x358)
+#define RING_TIMESTAMP_HI(base)	((base)+0x35c)
 #define   TAIL_ADDR		0x001FFFF8
 #define   HEAD_WRAP_COUNT	0xFFE00000
 #define   HEAD_WRAP_ONE		0x00200000
@@ -3720,6 +3721,7 @@ EDP_PSR_SW_TIMER
 #define GT_GEN6_BSD_WATCHDOG_INTERRUPT          (1 << 18)
 #define GT_GEN6_BSD_CS_ERROR_INTERRUPT		(1 << 15)
 #define GT_GEN6_BSD_USER_INTERRUPT		(1 << 12)
+#define GT_GEN6_PERFMON_BUFFER_INTERRUPT	(1 << 9)
 #define GT_GEN6_RENDER_WATCHDOG_INTERRUPT       (1 << 6)
 #define GT_BSD_USER_INTERRUPT			(1 << 5) /* ilk only */
 #define GT_GEN7_L3_PARITY_ERROR_INTERRUPT	(1 << 5)

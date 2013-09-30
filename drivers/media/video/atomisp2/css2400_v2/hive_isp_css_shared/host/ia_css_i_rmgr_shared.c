@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -24,7 +25,6 @@
 #ifndef __KERNEL__
 #include <stdbool.h>
 #endif
-
 #include <assert_support.h>
 
 

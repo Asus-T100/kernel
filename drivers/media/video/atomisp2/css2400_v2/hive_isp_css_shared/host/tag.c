@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -19,6 +20,7 @@
  *
  */
 
+#include <stddef.h>             /* NULL */
 #include "assert_support.h"
 #include "tag_local.h"
 #include "tag.h"
@@ -37,6 +39,8 @@ sh_css_create_tag_descr(int num_captures,
 			unsigned int exp_id,
 			struct sh_css_tag_descr *tag_descr)
 {
+	assert(tag_descr != NULL);
+
 	tag_descr->num_captures = num_captures;
 	tag_descr->skip		= skip;
 	tag_descr->offset	= offset;
@@ -57,11 +61,9 @@ sh_css_encode_tag_descr(struct sh_css_tag_descr *tag)
 	int offset;
 	unsigned int offset_sign;
 	unsigned int exp_id;
-
 	unsigned int encoded_tag;
 
-	if(!tag)
-		return 0;
+	assert(tag != NULL);
 
 	if (tag->num_captures < 0) {
 		num_captures = -tag->num_captures;

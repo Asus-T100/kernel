@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -129,7 +130,7 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 
 /* The minimum dvs envelope is 8x8 to make sure the invalid rows/columns
    that result from filter initialization are skipped. */
-#define SH_CSS_MIN_DVS_ENVELOPE           12
+#define SH_CSS_MIN_DVS_ENVELOPE           12u
 
 /* The FPGA system (vec_nelems == 16) only supports upto 5MP */
 #if ISP_VEC_NELEMS == 16

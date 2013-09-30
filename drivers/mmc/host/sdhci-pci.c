@@ -27,6 +27,8 @@
 #include <linux/mmc/sdhci-pci-data.h>
 #include <linux/acpi_gpio.h>
 #include <linux/lnw_gpio.h>
+#include <linux/regulator/intel_crystal_cove_pmic.h>
+#include <linux/regulator/consumer.h>
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_flis.h>
@@ -104,6 +106,8 @@ struct sdhci_pci_chip {
 	bool			dma_enabled;
 };
 
+/* In BYT, emmc sits on V2P85S rail */
+struct regulator_info byt_v2p85s_regu_info;
 
 /*****************************************************************************\
  *                                                                           *
@@ -627,6 +631,7 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 			INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
 		sdhci_alloc_panic_host(slot->host);
 
+
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	/*
 	 * change GPIOC_7 to alternate function 2
@@ -666,6 +671,10 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 
 	slot->host->mmc->caps2 |= MMC_CAP2_PWCTRL_POWER;
 
+	if (slot->host->mmc->qos)
+		pm_qos_add_request(slot->host->mmc->qos, PM_QOS_CPU_DMA_LATENCY,
+				PM_QOS_DEFAULT_VALUE);
+
 	return 0;
 }
 
@@ -676,6 +685,11 @@ static void byt_sd_remove_slot(struct sdhci_pci_slot *slot, int dead)
 			gpio_free(slot->host->gpio_1p8_en);
 		if (gpio_is_valid(slot->host->gpio_pwr_en))
 			gpio_free(slot->host->gpio_pwr_en);
+	}
+
+	if (slot->host->mmc->qos) {
+		pm_qos_remove_request(slot->host->mmc->qos);
+		kfree(slot->host->mmc->qos);
 	}
 }
 
@@ -1882,6 +1896,11 @@ static int sdhci_pci_suspend(struct device *dev)
 	}
 	chip->dma_enabled = false;
 
+	if (pdev->device == PCI_DEVICE_ID_INTEL_BYT_MMC45 &&
+				byt_v2p85s_regu_info.regulator) {
+		regulator_disable(byt_v2p85s_regu_info.regulator);
+	}
+
 	return 0;
 
 err_pci_suspend:
@@ -1896,6 +1915,10 @@ static int sdhci_pci_resume(struct device *dev)
 	struct sdhci_pci_chip *chip;
 	struct sdhci_pci_slot *slot;
 	int i, ret;
+
+	if (pdev->device == PCI_DEVICE_ID_INTEL_BYT_MMC45 &&
+				byt_v2p85s_regu_info.regulator)
+		regulator_enable(byt_v2p85s_regu_info.regulator);
 
 	chip = pci_get_drvdata(pdev);
 	if (!chip)
@@ -2232,6 +2255,25 @@ static void __devexit sdhci_pci_runtime_pm_forbid(struct device *dev)
 	pm_runtime_get_noresume(dev);
 }
 
+static int emmc_regulator_ready_notifier(struct notifier_block *nb,
+						unsigned long val,
+						void *data)
+{
+	byt_v2p85s_regu_info.regulator =
+			regulator_get(byt_v2p85s_regu_info.dev, "v2p85s");
+	if (IS_ERR(byt_v2p85s_regu_info.regulator)) {
+		pr_info("emmc: no v2p85s regulator found\n");
+		byt_v2p85s_regu_info.regulator = NULL;
+	} else
+		regulator_enable(byt_v2p85s_regu_info.regulator);
+
+	return 0;
+}
+
+static struct notifier_block emmc_regulator_nb = {
+	.notifier_call = emmc_regulator_ready_notifier,
+};
+
 static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 				     const struct pci_device_id *ent)
 {
@@ -2321,6 +2363,11 @@ static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 	if (chip->allow_runtime_pm)
 		sdhci_pci_runtime_pm_allow(chip);
 
+	if (pdev->device == PCI_DEVICE_ID_INTEL_BYT_MMC45) {
+		byt_v2p85s_regu_info.dev = &pdev->dev;
+		vrf_notifier_register(&emmc_regulator_nb);
+	}
+
 	return 0;
 
 free:
@@ -2379,6 +2426,12 @@ static void __devexit sdhci_pci_remove(struct pci_dev *pdev)
 	}
 
 	pci_disable_device(pdev);
+
+	if (pdev->device == PCI_DEVICE_ID_INTEL_BYT_MMC45 &&
+				byt_v2p85s_regu_info.regulator) {
+		regulator_disable(byt_v2p85s_regu_info.regulator);
+		regulator_put(byt_v2p85s_regu_info.regulator);
+	}
 }
 
 static struct pci_driver sdhci_driver = {

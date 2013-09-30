@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -270,6 +271,8 @@ struct ia_css_stream_config {
 	bool two_pixels_per_clock; /**< Enable/disable 2 pixels per clock */
 	bool online; /**< offline will activate RAW copy on SP, use this for
 		          continuous capture. */
+	unsigned init_num_cont_raw_buf;
+	unsigned target_num_cont_raw_buf;
 	bool continuous; /**< Use SP copy feature to continuously capture frames
 			      to system memory and run pipes in offline mode */
 	int32_t flash_gpio_pin; /**< pin on which the flash is connected, -1 for no flash */
@@ -497,7 +500,10 @@ struct ia_css_pipe_config {
 	struct ia_css_resolution dvs_envelope; /**< temporary */
 	enum ia_css_frame_delay dvs_frame_delay;
 	/**< indicates the DVS loop delay in frame periods */
-
+	int acc_num_execs;
+	/**< For acceleration pipes only: determine how many times the pipe
+	     should be run. Setting this to -1 means it will run until
+	     stopped. */
 };
 #else
 struct ia_css_pipe_config;
@@ -748,6 +754,7 @@ struct ia_css_env {
  */
 struct ia_css_buffer {
 	enum ia_css_buffer_type type; /**< Buffer type. */
+	unsigned int exp_id; /**< exposure id for this buffer; 0 = not available; currently only implemented for buffered sensor mode */
 	union {
 		struct ia_css_isp_3a_statistics  *stats_3a; /**< 3A statistics & optionally RGBY statistics. */
 		struct ia_css_isp_dvs_statistics *stats_dvs;/**< DVS statistics. */
@@ -840,7 +847,7 @@ ia_css_unload_firmware(void);
  * @param[in]	env		Environment, provides functions to access the
  *				environment in which the CSS code runs. This is
  *				used for host side memory access and message
- *				printing.
+ *				printing. May not be NULL.
  * @param[in]	fw		Firmware package containing the firmware for all
  *				predefined ISP binaries.
  *				if fw is NULL the firmware must be loaded before
@@ -1675,6 +1682,22 @@ enum ia_css_err
 ia_css_mipi_frame_specify(const unsigned int	size_mem_words,
 				const bool contiguous);
 
+/** @brief Register size of a CSS MIPI frame for check during capturing.
+ *
+ * @param[in]	port	CSI-2 port this check is registered.
+ * @param[in]	size_mem_words	The frame size in memory words (32B).
+ * @return		Return the error in case of failure. E.g. MAX_NOF_ENTRIES REACHED
+ *
+ * Register size of a CSS MIPI frame to check during capturing. Up to
+ * 		IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES entries per port allowed. Entries are reset
+ * 		when stream is stopped.
+ *
+ *
+ */
+enum ia_css_err
+ia_css_mipi_frame_enable_check_on_size(const enum ia_css_csi2_port port,
+				const unsigned int	size_mem_words);
+
 /** @brief Dequeue param buffers from sp2host_queue
  *
  * @return                                       no return code
@@ -1684,5 +1707,24 @@ ia_css_mipi_frame_specify(const unsigned int	size_mem_words,
  */
 void
 ia_css_dequeue_param_buffers(void);
+
+/** @brief allocate continuous raw frames for continuous capture
+ *
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the allocation part
+ *  and next one is update part
+ */
+enum ia_css_err
+ia_css_alloc_continuous_frame_remain(struct ia_css_stream *stream);
+
+/** @brief allocate continuous raw frames for continuous capture
+ *
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the update part
+ */
+void
+ia_css_update_continuous_frames(struct ia_css_stream *stream);
 
 #endif /* _IA_CSS_H_ */

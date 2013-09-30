@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -18,7 +19,6 @@
  * 02110-1301, USA.
  *
  */
-
 
 #include "debug.h"
 
@@ -77,7 +77,7 @@ return;
 void debug_buffer_setmode(
 	const debug_buf_mode_t	mode)
 {
-assert(debug_buffer_address != ((hrt_address)-1));
+	assert(debug_buffer_address != ((hrt_address)-1));
 
 	sp_dmem_store_uint32(SP0_ID,
 		debug_buffer_address + DEBUG_DATA_BUF_MODE_ADDR, mode);

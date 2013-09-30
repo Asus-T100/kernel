@@ -29,6 +29,8 @@
 
 #include "drm.h"
 
+#define I915_PERFMON_WAIT_IRQ_MAX_TIMEOUT_MS 10000
+
 struct drm_i915_perfmon_set_rc6 {
 	__u32 enable;
 };
@@ -38,19 +40,36 @@ struct drm_i915_perfmon_set_max_freq {
 	__u32 enable;
 };
 
+struct drm_i915_perfmon_set_buffer_irqs {
+	__u32 enable;
+};
+
 struct drm_i915_perfmon_freq_info {
 	__u32 max_gpu_freq;
 	__u32 min_gpu_freq;
 	__u32 cur_gpu_freq;
 };
 
+enum I915_PERFMON_WAIT_IRQ_RET_CODE {
+	I915_PERFMON_IRQ_WAIT_OK,
+	I915_PERFMON_IRQ_WAIT_FAILED,
+	I915_PERFMON_IRQ_WAIT_TIMEOUT,
+	I915_PERFMON_IRQ_WAIT_INTERRUPTED,
+};
+
+struct drm_i915_perfmon_wait_irqs {
+	__u32 timeout;		/* in ms */
+	__u32 ret_code;
+};
+
 enum I915_PERFMON_IOCTL_OP {
 	I915_PERFMON_SET_RC6,
 	I915_PERFMON_SET_MAX_FREQ,
 	I915_PERFMON_GET_FREQ_INFO,
-	I915_PERFMON_ALLOC_OA_BUFFER,
-	I915_PERFMON_FREE_OA_BUFFER,
-	I915_PERFMON_SET_OA_IRQS,
+	I915_PERFMON_ALLOC_BUFFER,
+	I915_PERFMON_FREE_BUFFER,
+	I915_PERFMON_SET_BUFFER_IRQS,
+	I915_PERFMON_WAIT_BUFFER_IRQS,
 };
 
 struct drm_i915_perfmon {
@@ -59,6 +78,8 @@ struct drm_i915_perfmon {
 		struct drm_i915_perfmon_set_rc6	set_rc6;
 		struct drm_i915_perfmon_set_max_freq	set_max_freq;
 		struct drm_i915_perfmon_freq_info	freq_info;
+		struct drm_i915_perfmon_wait_irqs	wait_irqs;
+		struct drm_i915_perfmon_set_buffer_irqs set_irqs;
 		__u32 reserved[64];
 	} data;
 };

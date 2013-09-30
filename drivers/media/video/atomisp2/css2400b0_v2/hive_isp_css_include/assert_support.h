@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -22,6 +23,24 @@
 #ifndef __ASSERT_SUPPORT_H_INCLUDED__
 #define __ASSERT_SUPPORT_H_INCLUDED__
 
+#ifdef __KLOCWORK__
+/* Klocwork does not see that assert will lead to abortion
+ * as there is no good way to tell this to KW and the code
+ * should not depend on assert to function (actually the assert
+ * could be disabled in a release build) it was decided to
+ * disable the assert for KW scans (by defining NDEBUG)
+ * see also: http://www.klocwork.com/products/documentation/current/Tuning_C/C%2B%2B_analysis#Assertions
+ */
+#define NDEBUG
+#endif /* __KLOCWORK__ */
+
+#ifdef NDEBUG
+
+#define assert(cnd) ((void)0)
+#define OP___assert(cnd) ((void)0)
+
+#else
+
 #if defined(_MSC_VER)
 #include <wdm.h>
 #define assert(cnd) ASSERT(cnd)
@@ -44,17 +63,20 @@
 
 #elif defined(__KERNEL__) /* a.o. Android builds */
 
+#include <linux/bug.h>
 #include "sh_css_debug.h"
 #define __symbol2value( x ) #x
 #define __symbol2string( x ) __symbol2value( x )
-#define assert( expression )                                            \
-	do {                                                            \
-		if (!(expression))                                      \
-			sh_css_dtrace(SH_DBG_ERROR, "%s",               \
-				"Assertion failed: " #expression        \
-				  ", file " __FILE__                    \
-				  ", line " __symbol2string( __LINE__ ) \
-				  ".\n" );                              \
+#define assert(cnd)							\
+	do {								\
+		if (!(cnd)) {						\
+			sh_css_dtrace(SH_DBG_ERROR, "%s",		\
+				"Assertion failed: " #cnd		\
+				  ", file " __FILE__			\
+				  ", line " __symbol2string( __LINE__ )	\
+				  ".\n" );				\
+			BUG();						\
+		}							\
 	} while (0)
 
 #define OP___assert(cnd) assert(cnd)
@@ -71,18 +93,6 @@
 #define assert(cnd) ((void)0)
 #endif
 
-#define assert_exit(exp)						\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return;						\
-	} while (0)
-
-#define assert_exit_code(exp, code)					\
-	do {								\
-		assert(exp);						\
-		if (!(exp))						\
-			return code;					\
-	} while (0)
+#endif /* NDEBUG */
 
 #endif /* __ASSERT_SUPPORT_H_INCLUDED__ */

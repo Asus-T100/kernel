@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -25,8 +26,6 @@
 #include "event_public.h"
 
 #include "device_access.h"
-
-#include <bits.h>
 
 #include "assert_support.h"
 

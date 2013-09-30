@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -70,7 +71,10 @@
 #else
 #define NUM_CONTINUOUS_FRAMES	10
 #endif
-#define NUM_MIPI_FRAMES		8
+#define NUM_MIPI_FRAMES		4
+
+#define NUM_OFFLINE_INIT_CONTINUOUS_FRAMES     3
+#define NUM_ONLINE_INIT_CONTINUOUS_FRAMES      2
 
 #define NUM_TNR_FRAMES		2
 
@@ -242,6 +246,7 @@ struct sh_css_pipeline {
 	struct ia_css_frame out_frame;
 	struct ia_css_frame vf_frame;
 	enum ia_css_frame_delay dvs_frame_delay;
+	int                     acc_num_execs;
 };
 
 
@@ -335,6 +340,8 @@ struct sh_css_sp_input_formatter_set {
 	input_formatter_cfg_t	config_b;
 };
 
+#define IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT (3)
+
 /* SP configuration information */
 struct sh_css_sp_config {
 	uint8_t			is_offline;  /* Run offline, with continuous copy */
@@ -351,6 +358,7 @@ struct sh_css_sp_config {
 	prbs_cfg_t				prbs;
 	input_system_cfg_t		input_circuit;
 	uint8_t					input_circuit_cfg_changed;
+	uint32_t				mipi_sizes_for_check[N_CSI_PORTS][IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT];
 };
 
 enum sh_css_stage_type {
@@ -376,6 +384,8 @@ struct sh_css_sp_pipeline {
 	uint32_t	dvs_frame_delay;
 	hrt_vaddress	sp_stage_addr[SH_CSS_MAX_STAGES];
 	struct sh_css_sp_stage *stage; /* Current stage for this pipeline */
+	int32_t         acc_num_execs; /* number of times to run if this is
+					  an acceleration pipe. */
 	union {
 		struct {
 			unsigned int	bytes_available;
@@ -639,6 +649,7 @@ struct sh_css_circular_buf {
 
 struct sh_css_hmm_buffer {
 	hrt_vaddress kernel_ptr;
+	uint32_t exp_id;
 	union {
 		struct ia_css_isp_3a_statistics  s3a;
 		struct ia_css_isp_dvs_statistics dis;
@@ -689,7 +700,9 @@ struct host_sp_communication {
 	 */
 	hrt_vaddress host2sp_offline_frames[NUM_CONTINUOUS_FRAMES];
 	hrt_vaddress host2sp_mipi_frames[NUM_MIPI_FRAMES];
-	uint32_t host2sp_cont_num_raw_frames;
+	uint32_t host2sp_cont_avail_num_raw_frames;
+	uint32_t host2sp_cont_extra_num_raw_frames;
+	uint32_t host2sp_cont_target_num_raw_frames;
 	uint32_t host2sp_cont_num_mipi_frames;
 	struct sh_css_event_irq_mask host2sp_event_irq_mask[NR_OF_PIPELINES];
 
@@ -820,6 +833,8 @@ void
 sh_css_frame_info_set_width(struct ia_css_frame_info *info,
 			    unsigned int width,
 			    unsigned int aligned); // this can be used for an extra alignemt requirement. when 0, no extra alignment is done.
+
+unsigned int sh_css_get_mipi_sizes_for_check(const unsigned int port, const unsigned int idx);
 
 /* Return whether the sp copy process should be started */
 bool

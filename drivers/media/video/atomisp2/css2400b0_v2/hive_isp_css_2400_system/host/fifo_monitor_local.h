@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -38,14 +39,14 @@
 #define	FIFO_CHANNEL_ISP_VALID_MASK		0x15555555
 #define	FIFO_CHANNEL_MOD_VALID_MASK		0x55555555
 
-typedef enum {
+typedef enum fifo_switch {
 	FIFO_SWITCH_IF,
 	FIFO_SWITCH_GDC0,
 	FIFO_SWITCH_GDC1,
 	N_FIFO_SWITCH
 } fifo_switch_t;
 
-typedef enum {
+typedef enum fifo_channel {
 	FIFO_CHANNEL_ISP0_TO_SP0,
 	FIFO_CHANNEL_SP0_TO_ISP0,
 	FIFO_CHANNEL_ISP0_TO_IF0,

@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -36,6 +37,7 @@ struct ia_css_stream {
 	struct ia_css_pipe            *last_pipe;
 	int                            num_pipes;
 	struct ia_css_pipe           **pipes;
+	struct sh_css_pipe            *continuous_pipe;
 	struct ia_css_isp_parameters  *isp_params_configs;
 	bool                           continuous;
 	bool                           cont_capt;
@@ -52,6 +54,9 @@ ia_css_stream_input_format_bits_per_pixel(struct ia_css_stream *stream);
 
 bool
 sh_css_params_set_binning_factor(struct ia_css_stream *stream, unsigned int sensor_binning);
+
+bool
+sh_css_params_set_raw_binning(struct ia_css_stream *stream, bool sensor_binning);
 
 enum ia_css_err
 sh_css_params_write_to_ddr(struct ia_css_stream *stream,

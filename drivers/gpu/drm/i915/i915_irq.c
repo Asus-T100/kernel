@@ -696,7 +696,7 @@ static void snb_gt_irq_handler(struct drm_device *dev,
 		/* Stop the counter to prevent further interrupts */
 		ring = &dev_priv->ring[RCS];
 		I915_WRITE(RING_CNTR(ring->mmio_base), RCS_WATCHDOG_DISABLE);
-
+		dev_priv->hangcheck[RCS].watchdog_count++;
 		i915_handle_error(dev, &dev_priv->hangcheck[RCS], 1);
 	}
 
@@ -705,6 +705,7 @@ static void snb_gt_irq_handler(struct drm_device *dev,
 
 		/* Stop the counter to prevent further interrupts */
 		ring = &dev_priv->ring[VCS];
+		dev_priv->hangcheck[VCS].watchdog_count++;
 		I915_WRITE(RING_CNTR(ring->mmio_base), VCS_WATCHDOG_DISABLE);
 
 		i915_handle_error(dev, &dev_priv->hangcheck[VCS], 1);
@@ -764,6 +765,11 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 		ret = IRQ_HANDLED;
 
 		snb_gt_irq_handler(dev, dev_priv, gt_iir);
+
+		if (gt_iir & GT_GEN6_PERFMON_BUFFER_INTERRUPT) {
+			atomic_inc(&dev_priv->perfmon_buffer_interrupts);
+			wake_up_all(&dev_priv->perfmon_buffer_queue);
+		}
 
 		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 		for_each_pipe(pipe) {
@@ -2121,8 +2127,10 @@ static bool i915_hangcheck_hung(struct intel_hangcheck *hc)
 			DRM_DEBUG_TDR("hung=%d after kick ring\n", hung);
 		}
 
-		if (hung)
+		if (hung) {
+			hc->tdr_count++;
 			i915_handle_error(dev, hc, 0);
+		}
 
 		return hung;
 	}
@@ -2505,12 +2513,15 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 	dev_priv->gt_irq_mask = ~(GT_GEN7_L3_PARITY_ERROR_INTERRUPT |
 				GT_GEN6_BSD_WATCHDOG_INTERRUPT |
 				GT_GEN6_RENDER_WATCHDOG_INTERRUPT);
+	if (dev_priv->perfmon_interrupt_enabled)
+		dev_priv->gt_irq_mask &= ~GT_GEN6_PERFMON_BUFFER_INTERRUPT;
 	I915_WRITE(GTIMR, dev_priv->gt_irq_mask);
 
 	render_irqs = GT_USER_INTERRUPT | GEN6_BSD_USER_INTERRUPT |
 		GEN6_BLITTER_USER_INTERRUPT |
 		GEN6_RENDER_TIMEOUT_COUNTER_EXPIRED |
-		GEN6_BSD_TIMEOUT_COUNTER_EXPIRED;
+		GEN6_BSD_TIMEOUT_COUNTER_EXPIRED |
+		GT_GEN6_PERFMON_BUFFER_INTERRUPT;
 	I915_WRITE(GTIER, render_irqs);
 	POSTING_READ(GTIER);
 

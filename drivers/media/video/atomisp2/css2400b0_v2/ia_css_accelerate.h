@@ -1,3 +1,4 @@
+/* Release Version: ci_master_byt_20130905_2200 */
 /*
  * Support for Intel Camera Imaging ISP subsystem.
  *
@@ -62,11 +63,11 @@ void sh_css_acc_abort(struct ia_css_acc_fw *firmware);
 
 /* Load the firmware into xmem */
 enum ia_css_err
-sh_css_acc_load_extension(const struct ia_css_fw_info *firmware);
+sh_css_acc_load_extension(struct ia_css_fw_info *firmware);
 
 /* Unload the firmware*/
 void
-sh_css_acc_unload_extension(const struct ia_css_fw_info *firmware);
+sh_css_acc_unload_extension(struct ia_css_fw_info *firmware);
 
 
 #if 0
