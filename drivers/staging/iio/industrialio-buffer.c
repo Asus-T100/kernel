@@ -56,13 +56,7 @@ unsigned int iio_buffer_poll(struct file *filp,
 {
 	struct iio_dev *indio_dev = filp->private_data;
 	struct iio_buffer *rb = indio_dev->buffer;
-//<asus-ych20130904+>
-	if (!rb || !rb->access->read_first_n) 
-		return 0;
-		
-        if (rb->stufftoread)
-                return POLLIN | POLLRDNORM;
-//<asus-ych20130904->
+
 	poll_wait(filp, &rb->pollq, wait);
 	if (rb->stufftoread)
 		return POLLIN | POLLRDNORM;
