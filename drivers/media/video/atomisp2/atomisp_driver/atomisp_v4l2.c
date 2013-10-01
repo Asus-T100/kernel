@@ -81,7 +81,6 @@ int pad_h = 16;
 module_param(pad_h, int, 0644);
 MODULE_PARM_DESC(pad_h, "extra data for ISP processing");
 
-
 struct v4l2_device atomisp_dev = {
 	.name = "atomisp",
 };

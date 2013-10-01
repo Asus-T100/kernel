@@ -117,6 +117,12 @@ MODULE_PARM_DESC(mipi_panel_id,
 		"MIPI Panel selection in case MIPI block is not present in VBT "
 		"(-1=auto [default], mipi panel id)");
 
+int i915_bpp18_video_dpst __read_mostly = -1;
+module_param_named(bpp18_video_dpst, i915_bpp18_video_dpst, int, 0600);
+MODULE_PARM_DESC(bpp18_video_dpst,
+		"DPST Selection only for Video playback on 18BPP panels"
+		"(-1/0=Enable DPST Always[default], 1=Enable only for Video)");
+
 static bool i915_try_reset __read_mostly = true;
 module_param_named(reset, i915_try_reset, bool, 0600);
 MODULE_PARM_DESC(reset, "Attempt GPU resets (default: true)");
@@ -1496,6 +1502,9 @@ static bool IS_DISPLAYREG(u32 reg)
 	case GEN7_UCGCTL4:
 	case GEN7_CXT_SIZE:
 	case GEN7_CACHE_MODE_0:
+	case GEN7_L3CNTLREG1:
+	case GEN7_L3_CHICKEN_MODE_REGISTER:
+	case GEN7_L3SQCREG4:
 	/* TBD: Clean this up after Turbo registers are added */
 	case VLV_RENDER_C_STATE_CONTROL_1_REG:
 	case VLV_RC6_WAKE_RATE_LIMIT_REG:

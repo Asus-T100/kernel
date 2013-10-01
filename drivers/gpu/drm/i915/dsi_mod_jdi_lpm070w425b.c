@@ -58,6 +58,10 @@ static void lpm070w425b_get_panel_info(int pipe,
 
 bool lpm070w425b_init(struct intel_dsi_device *dsi)
 {
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	DRM_DEBUG_KMS("\n");
 
 	dsi->eotp_pkt = 1;
@@ -78,6 +82,7 @@ bool lpm070w425b_init(struct intel_dsi_device *dsi)
 	dsi->backlight_off_delay = 20;
 	dsi->send_shutdown = true;
 	dsi->shutdown_pkt_delay = 20;
+	dev_priv->mipi.panel_bpp = 24;
 
 	return true;
 }

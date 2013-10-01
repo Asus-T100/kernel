@@ -1917,7 +1917,8 @@ gen6_ring_save(struct intel_ring_buffer *ring, uint32_t *data, uint32_t max,
 		data[idx++] = I915_READ(RING_UHPTR(ring->mmio_base));
 		data[idx++] = I915_READ(RING_INSTPM(ring->mmio_base));
 		data[idx++] = I915_READ(RING_IMR(ring->mmio_base));
-		data[idx++] = I915_READ(CACHE_MODE_0);
+		data[idx++] = I915_READ(CACHE_MODE_0_OFFSET(dev));
+		data[idx++] = I915_READ(CACHE_MODE_1);
 		data[idx++] = I915_READ(RING_MI_MODE(ring->mmio_base));
 		data[idx++] = I915_READ(_3D_CHICKEN2);
 		data[idx++] = I915_READ(_3D_CHICKEN3);
@@ -1999,14 +2000,22 @@ gen6_ring_restore(struct intel_ring_buffer *ring, uint32_t *data,
 		I915_WRITE(RING_MAX_IDLE(ring->mmio_base), data[idx--]);
 		I915_WRITE(GEN7_FF_THREAD_MODE, data[idx--]);
 		I915_WRITE(GEN6_RBSYNC, data[idx--]);
-		I915_WRITE(RING_MODE_GEN7(ring), data[idx--]);
+		I915_WRITE(RING_MODE_GEN7(ring),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(GAM_ECOCHK, data[idx--]);
-		I915_WRITE(_3D_CHICKEN3, data[idx--]);
-		I915_WRITE(_3D_CHICKEN2, data[idx--]);
-		I915_WRITE(RING_MI_MODE(ring->mmio_base), data[idx--]);
-		I915_WRITE(CACHE_MODE_0, data[idx--]);
+		I915_WRITE(_3D_CHICKEN3,
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
+		I915_WRITE(_3D_CHICKEN2,
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
+		I915_WRITE(RING_MI_MODE(ring->mmio_base),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
+		I915_WRITE(CACHE_MODE_1,
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
+		I915_WRITE(CACHE_MODE_0_OFFSET(dev),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(RING_IMR(ring->mmio_base), data[idx--]);
-		I915_WRITE(RING_INSTPM(ring->mmio_base), data[idx--]);
+		I915_WRITE(RING_INSTPM(ring->mmio_base),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(RING_UHPTR(ring->mmio_base), data[idx--]);
 		I915_WRITE(RENDER_HWS_PGA_GEN7, data[idx--]);
 		break;
@@ -2019,13 +2028,17 @@ gen6_ring_restore(struct intel_ring_buffer *ring, uint32_t *data,
 
 		I915_WRITE(RING_MAX_IDLE(ring->mmio_base), data[idx--]);
 		I915_WRITE(GEN6_VRSYNC, data[idx--]);
-		I915_WRITE(RING_MODE_GEN7(ring), data[idx--]);
+		I915_WRITE(RING_MODE_GEN7(ring),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(GAC_ECO_BITS, data[idx--]);
-		I915_WRITE(RING_EXCC_GEN7(ring), data[idx--]);
-		I915_WRITE(RING_INSTPM(ring->mmio_base), data[idx--]);
+		I915_WRITE(RING_EXCC_GEN7(ring),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
+		I915_WRITE(RING_INSTPM(ring->mmio_base),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(RING_UHPTR(ring->mmio_base), data[idx--]);
 		I915_WRITE(RING_IMR(ring->mmio_base), data[idx--]);
-		I915_WRITE(RING_MI_MODE(ring->mmio_base), data[idx--]);
+		I915_WRITE(RING_MI_MODE(ring->mmio_base),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(BSD_HWS_PGA_GEN7, data[idx--]);
 		break;
 
@@ -2038,13 +2051,17 @@ gen6_ring_restore(struct intel_ring_buffer *ring, uint32_t *data,
 		I915_WRITE(RING_MAX_IDLE(ring->mmio_base), data[idx--]);
 		I915_WRITE(GEN6_BVSYNC, data[idx--]);
 		I915_WRITE(GEN6_BRSYNC, data[idx--]);
-		I915_WRITE(RING_MODE_GEN7(ring), data[idx--]);
+		I915_WRITE(RING_MODE_GEN7(ring),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(GAB_CTL, data[idx--]);
-		I915_WRITE(RING_EXCC_GEN7(ring), data[idx--]);
-		I915_WRITE(RING_INSTPM(ring->mmio_base), data[idx--]);
+		I915_WRITE(RING_EXCC_GEN7(ring),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
+		I915_WRITE(RING_INSTPM(ring->mmio_base),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(RING_UHPTR(ring->mmio_base), data[idx--]);
 		I915_WRITE(RING_IMR(ring->mmio_base), data[idx--]);
-		I915_WRITE(RING_MI_MODE(ring->mmio_base), data[idx--]);
+		I915_WRITE(RING_MI_MODE(ring->mmio_base),
+				_MASKED_BIT_ENABLE_ALL(data[idx--]));
 		I915_WRITE(BLT_HWS_PGA_GEN7, data[idx--]);
 		break;
 	}
