@@ -476,6 +476,19 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		set_bit(EV_REP, input->evbit);
 
 		if ((usage->hid & HID_USAGE) < 256) {
+//<asus-wanya20130930+>
+                        if (input->id.vendor == 0x0b05 && input->id.product == 0x17e0) {
+                                if ((usage->hid & HID_USAGE) == 0x65) {
+                                    //menu key
+                                    map_key_clear(KEY_MENU);
+                                    break;
+                                } else if ((usage->hid & HID_USAGE) == 0xe3) {
+                                    //home key
+                                    map_key_clear(KEY_HOMEPAGE);
+                                    break;
+                                }
+                        }
+//<asus-wanya20130930->
 			if (!hid_keyboard[usage->hid & HID_USAGE]) goto ignore;
 			map_key_clear(hid_keyboard[usage->hid & HID_USAGE]);
 		} else
