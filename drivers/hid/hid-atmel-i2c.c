@@ -18,6 +18,7 @@
 #include <linux/hiddev.h>
 #include <linux/hid-debug.h>
 #include <linux/hidraw.h>
+#include <linux/switch.h>
 
 static int debug = 0;
 
@@ -141,6 +142,8 @@ struct mxt_data {
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;
 #endif
+	struct switch_dev 	pad_sdev;
+
 };
 
 
@@ -445,37 +448,6 @@ static int mxt_init_object(struct mxt_data *data)
                 object_num--;
 		i++;
 	}
-
-        mxt_hid_read_config(data,object_table[data->T19_Index].start_address,&cmd,1);
-
-	//set FORCEPT
-	cmd |= 0x04;
-
-	ret = mxt_hid_write_config(data,object_table[data->T19_Index].start_address,&cmd,1);
-
-        if(ret <0) {
-                mxt_err("<asus-cca> write FORCEPT err\n");
-        }
-
-        time_out = 1000;
-        do {
-                ret = mxt_hid_read_config(data,object_table[data->T5_Index].start_address,buf,object_table[data->T5_Index].size_minus_one+1);
-                if(ret <0) {
-                        mxt_err("<asus-cca> read REPORTALL err\n");
-                        break;
-                }
-                if(buf[0] == data->T19_ReportID) {
-                        break;
-                }
-                msleep(100);
-        }while(--time_out);
-        if(!time_out) {
-                mxt_err("<asus-cca> read REPORTALL time out\n");
-        }
-	//buf 0 Report ID
-	//Buf 1 Status 
-	data->touch_sel = buf[1];
-	mxt_dbg("touch sel = %x\n",data->touch_sel);
 
 	mxt_dbg("T5 addr = %x T6 addr = %x T6 report ID = %x\n",object_table[data->T5_Index].start_address,object_table[data->T6_Index].start_address,data->T6_ReportID);
 
@@ -1156,6 +1128,47 @@ static ssize_t touch_sel_show(struct device *dev,struct device_attribute *attr,c
 		"Cando",
 		"Laibao" 	
 	};
+	int     time_out = 1000;
+	struct  mxt_object      *object_table;
+	u8 	cmd;
+	int 	ret;
+	u8	T5buf[32];	
+
+	object_table = data->object_table;
+
+        mxt_hid_read_config(data,object_table[data->T19_Index].start_address,&cmd,1);
+
+        //set FORCEPT
+        cmd |= 0x04;
+
+        ret = mxt_hid_write_config(data,object_table[data->T19_Index].start_address,&cmd,1);
+
+        if(ret <0) {
+                mxt_err("<asus-cca> write FORCEPT err\n");
+		return sprintf(buf,"Access touch gpio error, T19\n");
+        }
+
+        time_out = 1000;
+        do {
+                ret = mxt_hid_read_config(data,object_table[data->T5_Index].start_address,T5buf,object_table[data->T5_Index].size_minus_one+1);
+                if(ret <0) {
+                        mxt_err("<asus-cca> read REPORTALL err\n");
+                        break;
+                }
+                if(T5buf[0] == data->T19_ReportID) {
+                        break;
+                }
+                msleep(100);
+        }while(--time_out);
+        if(!time_out) {
+                mxt_err("<asus-cca> read REPORTALL time out\n");
+		return sprintf(buf,"Access touch gpio error, T5\n");
+		
+        }
+        //buf 0 Report ID
+        //Buf 1 Status
+        data->touch_sel = T5buf[1];
+        mxt_dbg("touch sel = %x\n",data->touch_sel);
 
         return sprintf(buf,"TOUCH_SEL0 = %x TOUCH_SEL1 = %x Touch Panel = %s\n",data->touch_sel&0x01,(data->touch_sel>>1)&0x01,tp[data->touch_sel&0x3]);
 }
@@ -1179,6 +1192,13 @@ static struct attribute *mxt_touch_attributes[] = {
 static const struct attribute_group mxt_attr_group = {
         .attrs = mxt_touch_attributes,
 };
+
+static ssize_t touch_switch_name(struct switch_dev *sdev, char *buf)
+{
+	struct mxt_data	*data = container_of(sdev, struct mxt_data, pad_sdev);
+
+	return sprintf(buf, "Version %2x Build %2x CheckSum = %4x\n",data->info.version,data->info.build,data->ConfigCheckSum);
+}
 
 static int __devinit mxt_probe(struct i2c_client *client,
                                const struct i2c_device_id *id)
@@ -1300,6 +1320,11 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	data->early_suspend.resume = mxt_late_resume;
 	register_early_suspend(&data->early_suspend);
 #endif
+	data->pad_sdev.name = "touch";
+	data->pad_sdev.print_name = touch_switch_name;
+	if(switch_dev_register(&data->pad_sdev) < 0){
+		mxt_err("switch_dev_register for pad failed!\n");
+	}
 
 	mxt_err("<asus-cca> add HID %s\n",hid->name);
 
