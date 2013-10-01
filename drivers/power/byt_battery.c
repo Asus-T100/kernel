@@ -50,6 +50,8 @@
 
 #include <linux/input.h>
 #include <linux/firmware.h>
+#include <linux/switch.h>
+
 
 #define TAG "<asus-hollie>"
 #define ASUS_EC_FIRMWARE "asusec/t2bt0036.EC"
@@ -115,7 +117,7 @@ static int charger_logo_display(struct linux_logo *logo)
 	return 0;
 }
 
-
+static int Shutdown_Percentage=16;
 
 static struct workqueue_struct *byt_wq = NULL;
 
@@ -142,6 +144,7 @@ struct byt_chip_info {
 	int chargerIC_status_ack;
 
 	struct input_dev *lid_dev;
+	struct switch_dev dock_sdev;
 
 	struct mutex lock;
 
@@ -767,16 +770,14 @@ static int asusec_get_battery_id(struct byt_chip_info *chip,u8 *battery_id)
 		return -EIO;
 	}
 
-	pr_err("%s cell_voltage[0] = %x\n", TAG, cell_voltage[0]);
-	pr_err("%s cell_voltage[1] = %x\n", TAG, cell_voltage[1]);
-
+	
 
 	voltage = cell_voltage[0];
-	pr_err("%s voltage = cell_voltage[0] = %x\n", TAG, voltage);
+	
 	voltage <<=8;
-	pr_err("%s voltage <<=8, voltage = %x\n", TAG, voltage);
+	
 	voltage |= cell_voltage[1];
-	pr_err("%s voltage |= cell_voltage[1], voltage = %x\n", TAG, voltage);
+	pr_err("%s voltage = %x\n", TAG, voltage);
 
 
 	if((voltage>1000) && (voltage<1050))	//Typical 0x03FB
@@ -1317,7 +1318,7 @@ static int byt_get_battery_property(struct power_supply *psy,
 			break;
 		case POWER_SUPPLY_PROP_CAPACITY:
 			val->intval = byt_get_capacity(chip);
-			//val->intval = 80;
+			//val->intval = Shutdown_Percentage;
 			break;
 
 		case POWER_SUPPLY_PROP_HEALTH:
@@ -1517,6 +1518,15 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 		input_sync(chip->lid_dev);
 		dev_info(&chip->client->dev,"%s handler :LID = %s \n", TAG, lid_value ? "closed" : "opened");
 	}
+	else if(event_id ==0xA7){
+		switch_set_state(&chip->dock_sdev, 10);
+		dev_info(&chip->client->dev,"%s switch_set_state():10, dock in\n", TAG);
+	}
+	else if(event_id ==0xA8){
+		switch_set_state(&chip->dock_sdev, 0);
+		dev_info(&chip->client->dev,"%s switch_set_state():0, dock out\n", TAG);
+	}
+
 	//*/
 	else if(event_id ==0xA0){
 
@@ -1859,6 +1869,24 @@ static ssize_t skip_prepare_store(struct device *dev,struct device_attribute *at
 	return count;
 }
 
+static ssize_t shutdown_percentage_show(struct device *dev,struct device_attribute *attr,char *buf)
+
+{
+	return sprintf(buf, "%d\n", Shutdown_Percentage);
+}
+
+static ssize_t shutdown_percentage_store(struct device *dev,struct device_attribute *attr,const char *buf, size_t count)
+{
+	
+	Shutdown_Percentage = (int)simple_strtol(buf,NULL,10);
+	printk("Shutdown_Percentage = %d\n", Shutdown_Percentage);
+	return count;
+}
+
+
+static DEVICE_ATTR(shutdown_percentage, S_IRUGO | S_IWUSR,
+		shutdown_percentage_show, shutdown_percentage_store);
+
 static DEVICE_ATTR(battery_charge_status, S_IRUGO | S_IWUSR,
 		byt_battery_show_charge_status, NULL);
 static DEVICE_ATTR(battery_current_now, S_IRUGO | S_IWUSR,
@@ -1888,6 +1916,7 @@ static struct attribute *byt_attributes[] = {
 	&dev_attr_battery_charge_status.attr,
 	&dev_attr_battery_current_now.attr,
 	&dev_attr_battery_status.attr,
+	&dev_attr_shutdown_percentage.attr,
 
 	&dev_attr_gaugeIC_FW.attr,
 	&dev_attr_chargerIC_inputcurrent.attr,
@@ -1946,7 +1975,17 @@ static void byt_set_lid_bit(struct input_dev *dev){
 	set_bit(SW_LID, dev->swbit);
 }
 
+static ssize_t asusdec_switch_name(struct switch_dev *sdev, char *buf)
+{
+	get_EC_version(byt_chip);	
+	return sprintf(buf, "%s\n", byt_chip->ec_ver);
+}
 
+static ssize_t asusdec_switch_state(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%d\n", sdev->state);
+
+}
 
 static int byt_battery_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
@@ -2015,6 +2054,17 @@ static int byt_battery_probe(struct i2c_client *client,
 	if (input_register_device(chip->lid_dev)) {
 		dev_err(&client->dev, "%s input_allocate_device fail\n", TAG);
 	}
+
+	//dock
+	chip->dock_sdev.name = "dock";
+    	chip->dock_sdev.print_name = asusdec_switch_name;
+    	chip->dock_sdev.print_state = asusdec_switch_state;
+    	if(switch_dev_register(&chip->dock_sdev) < 0){
+		dev_err(&client->dev, "%s switch_dev_register for dock failed!\n", TAG);
+        	goto probe_failed_1;
+    	}
+    	switch_set_state(&chip->dock_sdev, 0);
+	//
 
 	mutex_lock(&chip->lock);
 	ret = byt_battery_update(chip);
