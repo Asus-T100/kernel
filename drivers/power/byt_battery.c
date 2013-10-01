@@ -1531,7 +1531,11 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 			power_supply_changed(&chip->ac);
 
 		}
-
+		ret = byt_battery_update(chip);
+                if(!ret){
+                        dev_err(&chip->client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
+                        power_supply_changed(&chip->bat);
+                }
 	}
 
 	else{
