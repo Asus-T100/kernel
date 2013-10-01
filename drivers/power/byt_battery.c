@@ -145,6 +145,7 @@ struct byt_chip_info {
 
 	struct input_dev *lid_dev;
 	struct switch_dev dock_sdev;
+	struct switch_dev pad_sdev;
 
 	struct mutex lock;
 
@@ -1401,7 +1402,7 @@ static int get_EC_version( struct byt_chip_info *chip)
 	ret = asusec_write_read(chip,&offset,1,chip->ec_ver,9);
 
 	if(!ret){
-		dev_err(&chip->client->dev,"%s get_EC_version=%s\n", TAG, chip->ec_ver);
+		//dev_err(&chip->client->dev,"%s get_EC_version=%s\n", TAG, chip->ec_ver);
 	}
 	return ret;
 }
@@ -1987,6 +1988,12 @@ static ssize_t asusdec_switch_state(struct switch_dev *sdev, char *buf)
 
 }
 
+static ssize_t asusdec_pad_switch_name(struct switch_dev *sdev, char *buf)
+{
+	get_EC_version(byt_chip);	
+	return sprintf(buf, "%s\n", byt_chip->ec_ver);
+}
+
 static int byt_battery_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -2064,6 +2071,16 @@ static int byt_battery_probe(struct i2c_client *client,
         	goto probe_failed_1;
     	}
     	switch_set_state(&chip->dock_sdev, 0);
+	//
+
+	//pad
+	chip->pad_sdev.name = "pad";
+    	chip->pad_sdev.print_name = asusdec_pad_switch_name;
+    	if(switch_dev_register(&chip->pad_sdev) < 0){
+		dev_err(&client->dev, "%s switch_dev_register for pad failed!\n", TAG);
+        	goto probe_failed_1;
+    	}
+    	
 	//
 
 	mutex_lock(&chip->lock);
