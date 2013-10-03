@@ -385,6 +385,12 @@ static void notify_ring(struct drm_device *dev,
 	trace_i915_gem_request_complete(ring, ring->last_irq_seqno);
 
 	wake_up_all(&ring->irq_queue);
+
+#if defined(CONFIG_I915_HW_SYNC)
+	if (ring->timeline)
+		i915_sync_timeline_signal(ring->timeline,
+			ring->get_seqno(ring, false), 1);
+#endif
 }
 
 /**
@@ -796,6 +802,12 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 				intel_prepare_page_flip(dev, pipe);
 				intel_finish_page_flip(dev, pipe);
 			}
+
+			if (pipe_stats[pipe] & SPRITE0_FLIPDONE_INT_ST_VLV) {
+				intel_prepare_sprite_page_flip(dev, pipe);
+				intel_finish_sprite_page_flip(dev, pipe);
+			}
+
 			if (pipe_stats[pipe] & PIPE_DPST_EVENT_STATUS) {
 #ifdef CONFIG_DEBUG_FS
 				dev_priv->dpst.num_interrupt++;
@@ -2455,7 +2467,8 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 	u32 enable_mask;
 	u32 lpe_status_clear;
 	u32 hotplug_en = I915_READ(PORT_HOTPLUG_EN);
-	u32 pipestat_enable = PLANE_FLIP_DONE_INT_EN_VLV;
+	u32 pipestat_enable = PLANE_FLIP_DONE_INT_EN_VLV |
+			SPRITE0_FLIP_DONE_INT_EN_VLV;
 	u32 render_irqs;
 
 	enable_mask = I915_DISPLAY_PORT_INTERRUPT;
@@ -2512,9 +2525,14 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 	I915_WRITE(GTIIR, I915_READ(GTIIR));
 	dev_priv->gt_irq_mask = ~(GT_GEN7_L3_PARITY_ERROR_INTERRUPT |
 				GT_GEN6_BSD_WATCHDOG_INTERRUPT |
-				GT_GEN6_RENDER_WATCHDOG_INTERRUPT);
+				GT_GEN6_RENDER_WATCHDOG_INTERRUPT |
+				GT_USER_INTERRUPT |
+				GT_GEN6_BSD_USER_INTERRUPT |
+				GT_GEN6_BLT_USER_INTERRUPT);
+
 	if (dev_priv->perfmon_interrupt_enabled)
 		dev_priv->gt_irq_mask &= ~GT_GEN6_PERFMON_BUFFER_INTERRUPT;
+
 	I915_WRITE(GTIMR, dev_priv->gt_irq_mask);
 
 	render_irqs = GT_USER_INTERRUPT | GEN6_BSD_USER_INTERRUPT |

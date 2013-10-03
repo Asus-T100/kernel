@@ -171,6 +171,10 @@ struct  intel_ring_buffer {
 	uint32_t last_irq_seqno;
 
 	void *private;
+
+	struct i915_sync_timeline *timeline;
+	u32 tdr_seqno; /* Contains the failing seqno when signal called */
+
 };
 
 static inline bool
@@ -237,9 +241,10 @@ intel_write_status_page(struct intel_ring_buffer *ring,
  *
  * The area from dword 0x20 to 0x3ff is available for driver usage.
  */
-#define I915_GEM_HWS_INDEX		0x20
-#define I915_GEM_SCRATCH_INDEX		0x28 /* Some commands need a scratch store */
-#define I915_GEM_PGFLIP_INDEX           0x30
+#define I915_GEM_HWS_INDEX	    0x20
+#define I915_GEM_SCRATCH_INDEX	    0x28 /*Some commands need a scratch store*/
+#define I915_GEM_PGFLIP_INDEX       0x30
+#define I915_GEM_ACTIVE_SEQNO_INDEX 0x34 /*Executing seqno used for TDR only*/
 
 void intel_cleanup_ring_buffer(struct intel_ring_buffer *ring);
 

@@ -1061,20 +1061,31 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		goto err;
 
 	seqno = i915_gem_next_request_seqno(ring);
-	for (i = 0; i < ARRAY_SIZE(ring->sync_seqno); i++) {
-		if (seqno < ring->sync_seqno[i]) {
-			/* The GPU can not handle its semaphore value wrapping,
-			 * so every billion or so execbuffers, we need to stall
-			 * the GPU in order to reset the counters.
-			 */
-			ret = i915_gpu_idle(dev);
-			if (ret)
-				goto err;
-			i915_gem_retire_requests(dev);
 
-			BUG_ON(ring->sync_seqno[i]);
+	/* The GPU and the native sync timelines cannot handle the
+	* semaphore value wrapping so we need to idle the GPU
+	* whenever the seqno wraps. Previously it only idled if
+	* one of the other rings was waiting on a lower seqno */
+	if (seqno < dev_priv->last_seqno) {
+		ret = i915_gpu_idle(dev);
+
+		if (ret)
+			goto err;
+
+		i915_gem_retire_requests(dev);
+
+#if defined(CONFIG_I915_HW_SYNC)
+		/* Reset all ring timelines to 0 */
+		for (i = 0; i < I915_NUM_RINGS; i++) {
+			struct intel_ring_buffer *sync_ring =
+				&dev_priv->ring[i];
+			i915_sync_timeline_signal(sync_ring->timeline, 0, 0);
 		}
+#endif
 	}
+
+	/* Track the last assigned seqno for any of the rings */
+	dev_priv->last_seqno = seqno;
 
 	ret = i915_switch_context(ring, file, ctx_id);
 	if (ret)
@@ -1113,6 +1124,19 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 			goto err;
 	}
 
+	/* Write the current seqno to the HWS page so that
+	* we can identify the cause of any hangs */
+	ret = intel_ring_begin(ring, 4);
+	if (ret)
+		goto err;
+
+	intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+	intel_ring_emit(ring, I915_GEM_ACTIVE_SEQNO_INDEX <<
+			MI_STORE_DWORD_INDEX_SHIFT);
+	intel_ring_emit(ring, seqno);
+	intel_ring_emit(ring, MI_NOOP);
+	intel_ring_advance(ring);
+
 	exec_start = batch_obj->gtt_offset + args->batch_start_offset;
 	exec_len = args->batch_len;
 	if (cliprects) {
@@ -1137,6 +1161,18 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 			goto err;
 	}
 
+	/* Clear the active seqno */
+	ret = intel_ring_begin(ring, 4);
+	if (ret)
+		goto err;
+
+	intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+	intel_ring_emit(ring, I915_GEM_ACTIVE_SEQNO_INDEX <<
+				MI_STORE_DWORD_INDEX_SHIFT);
+	intel_ring_emit(ring, 0);
+	intel_ring_emit(ring, MI_NOOP);
+	intel_ring_advance(ring);
+
 	/* Cancel watchdog timer */
 	if ((args->flags & I915_EXEC_ENABLE_WATCHDOG) &&
 		i915_enable_watchdog &&
@@ -1149,6 +1185,26 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 
 	i915_gem_execbuffer_move_to_active(&objects, ring, seqno);
 	i915_gem_execbuffer_retire_commands(dev, file, ring);
+
+#if defined(CONFIG_I915_HW_SYNC)
+	if (args->flags & I915_EXEC_REQUEST_FENCE) {
+		/* Caller has requested a sync fence.
+		* User interrupts are permanently enabled to make sure that
+		* the timeline is signalled on completion */
+		if (ring->timeline) {
+			int fd = -1;
+			fd = i915_sync_fence_create(ring->timeline, "I915",
+							seqno);
+
+			if (fd < 0)
+				DRM_ERROR("Fence creation failed for %d\n",
+							ring->id);
+
+			/* Return the fence through the rsvd2 field */
+			args->rsvd2 = (__u64)fd;
+		}
+	}
+#endif
 
 err:
 	eb_destroy(eb);

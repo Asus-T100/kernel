@@ -105,8 +105,8 @@ static struct atomisp_map *acc_get_map(struct atomisp_device *isp,
 
 static void acc_stop_acceleration(struct atomisp_device *isp)
 {
-	atomisp_css_stop_acc_pipe(&isp->asd);
-	atomisp_css_destroy_acc_pipe(&isp->asd);
+	atomisp_css_stop_acc_pipe(isp->asd);
+	atomisp_css_destroy_acc_pipe(isp->asd);
 }
 
 void atomisp_acc_init(struct atomisp_device *isp)
@@ -253,9 +253,9 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	return 0;
 }
 
-int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
+int atomisp_acc_start(struct atomisp_sub_device *asd, unsigned int *handle)
 {
-	struct atomisp_sub_device *asd = &isp->asd;
+	struct atomisp_device *isp = asd->isp;
 	struct atomisp_acc_fw *acc_fw;
 	int ret;
 	unsigned int nbin;
@@ -313,9 +313,9 @@ err_stage:
 	return ret;
 }
 
-int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
+int atomisp_acc_wait(struct atomisp_sub_device *asd, unsigned int *handle)
 {
-	struct atomisp_sub_device *asd = &isp->asd;
+	struct atomisp_device *isp = asd->isp;
 	int ret;
 
 	if (!isp->acc.pipeline)
@@ -425,12 +425,12 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
  * Appends the loaded acceleration binary extensions to the
  * current ISP mode. Must be called just before sh_css_start().
  */
-int atomisp_acc_load_extensions(struct atomisp_device *isp)
+int atomisp_acc_load_extensions(struct atomisp_sub_device *asd)
 {
 	struct atomisp_acc_fw *acc_fw;
 	bool ext_loaded = false;
 	int ret = 0, i;
-	struct atomisp_sub_device *asd = &isp->asd;
+	struct atomisp_device *isp = asd->isp;
 
 	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
@@ -498,9 +498,9 @@ error:
 	return ret;
 }
 
-void atomisp_acc_unload_extensions(struct atomisp_device *isp)
+void atomisp_acc_unload_extensions(struct atomisp_sub_device *asd)
 {
-	struct atomisp_sub_device *asd = &isp->asd;
+	struct atomisp_device *isp = asd->isp;
 	struct atomisp_acc_fw *acc_fw;
 	int i;
 

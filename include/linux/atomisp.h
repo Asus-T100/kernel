@@ -822,8 +822,14 @@ struct v4l2_private_int_data {
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 14, struct atomisp_dis_statistics)
 #define ATOMISP_IOC_S_DIS_COEFS \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 15, struct atomisp_dis_coefficients)
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#define ATOMISP_IOC_S_DIS_VECTOR \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 16, struct atomisp_dvs_6axis_config)
+#else
 #define ATOMISP_IOC_S_DIS_VECTOR \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 16, struct atomisp_dis_vector)
+#endif
 
 #define ATOMISP_IOC_G_3A_STAT \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 17, struct atomisp_3a_statistics)
@@ -979,9 +985,6 @@ struct v4l2_private_int_data {
 
 #define ATOMISP_IOC_ACC_LOAD_TO_PIPE \
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 63, struct atomisp_acc_fw_load_to_pipe)
-
-#define ATOMISP_IOC_S_6AXIS_CONFIG \
-	_IOWR('v', BASE_VIDIOC_PRIVATE + 64, struct atomisp_dvs_6axis_config)
 
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \

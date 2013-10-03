@@ -38,8 +38,6 @@
 /* IPC base address and mailbox, timestamp offsets */
 #define SST_MAILBOX_SIZE 0x0400
 #define SST_MAILBOX_SEND 0x0000
-#define SST_MAILBOX_RCV_MRFLD 0x0400
-#define SST_MAILBOX_RCV 0x0800
 #define SST_TIME_STAMP 0x1800
 #define SST_TIME_STAMP_MRFLD 0x800
 #define SST_RESERVED_OFFSET 0x1A00

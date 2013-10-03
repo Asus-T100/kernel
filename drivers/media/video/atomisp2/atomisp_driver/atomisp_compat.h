@@ -508,4 +508,8 @@ void atomisp_css_unload_acc_binary(struct atomisp_sub_device *asd);
 struct atomisp_acc_fw;
 int atomisp_css_set_acc_parameters(struct atomisp_acc_fw *acc_fw);
 
+int atomisp_css_isr_thread(struct atomisp_device *isp,
+			   bool *frame_done_found,
+			   bool *css_pipe_done,
+			   bool *reset_wdt_timer);
 #endif

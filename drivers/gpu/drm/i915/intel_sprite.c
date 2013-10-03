@@ -389,7 +389,8 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 		 struct drm_i915_gem_object *obj, int crtc_x, int crtc_y,
 		 unsigned int crtc_w, unsigned int crtc_h,
 		 uint32_t x, uint32_t y,
-		 uint32_t src_w, uint32_t src_h)
+		 uint32_t src_w, uint32_t src_h,
+		 struct drm_pending_vblank_event *event)
 {
 	struct drm_device *dev = dplane->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -511,7 +512,8 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 	I915_WRITE(SPCNTR(pipe, plane), sprctl);
 	I915_MODIFY_DISPBASE(SPSURF(pipe, plane), obj->gtt_offset +
 			     sprsurf_offset);
-	POSTING_READ(SPSURF(pipe, plane));
+	if (event == NULL)
+		POSTING_READ(SPSURF(pipe, plane));
 }
 
 static void
@@ -981,12 +983,123 @@ ilk_get_colorkey(struct drm_plane *plane, struct drm_intel_sprite_colorkey *key)
 		key->flags = I915_SET_COLORKEY_NONE;
 }
 
+void intel_prepare_sprite_page_flip(struct drm_device *dev, int plane)
+{
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc =
+			to_intel_crtc(dev_priv->plane_to_crtc_mapping[plane]);
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+	if (intel_crtc->sprite_unpin_work) {
+		if ((++intel_crtc->sprite_unpin_work->pending) > 1)
+			DRM_ERROR("Prepared flip multiple times\n");
+		} else {
+			DRM_DEBUG_DRIVER("prepare flip with no unpin work?\n");
+		}
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+}
+
+void intel_finish_sprite_page_flip(struct drm_device *dev, int pipe)
+{
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_unpin_work *work;
+	struct drm_i915_gem_object *obj;
+	struct drm_pending_vblank_event *e;
+	struct timeval tnow, tvbl;
+	unsigned long flags;
+
+	/* Ignore early vblank irqs */
+	if (intel_crtc == NULL)
+		return;
+
+	do_gettimeofday(&tnow);
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+	work = intel_crtc->sprite_unpin_work;
+	if (work == NULL || !work->pending) {
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+		return;
+	}
+
+	intel_crtc->sprite_unpin_work = NULL;
+
+	if (work->event) {
+		e = work->event;
+		e->event.sequence = drm_vblank_count_and_time(dev,
+			intel_crtc->pipe, &tvbl);
+
+		/* Called before vblank count and timestamps have
+		* been updated for the vblank interval of flip
+		* completion? Need to increment vblank count and
+		* add one videorefresh duration to returned timestamp
+		* to account for this. We assume this happened if we
+		* get called over 0.9 frame durations after the last
+		* timestamped vblank.
+		*
+		* This calculation can not be used with vrefresh rates
+		* below 5Hz (10Hz to be on the safe side) without
+		* promoting to 64 integers.
+		*/
+
+		if (10 * (timeval_to_ns(&tnow) - timeval_to_ns(&tvbl)) >
+			9 * crtc->framedur_ns) {
+			e->event.sequence++;
+			tvbl = ns_to_timeval(timeval_to_ns(&tvbl) +
+				crtc->framedur_ns);
+		}
+
+		e->event.tv_sec = tvbl.tv_sec;
+		e->event.tv_usec = tvbl.tv_usec;
+		list_add_tail(&e->base.link,
+			&e->base.file_priv->event_list);
+		wake_up_interruptible(&e->base.file_priv->event_wait);
+	}
+
+	drm_vblank_put(dev, intel_crtc->pipe);
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+
+	if (work->old_fb_obj != NULL) {
+		obj = work->old_fb_obj;
+
+		atomic_clear_mask(1 << intel_crtc->plane,
+			&obj->pending_flip.counter);
+
+		if (atomic_read(&obj->pending_flip) == 0)
+			wake_up(&dev_priv->pending_flip_queue);
+	} else
+		wake_up(&dev_priv->pending_flip_queue);
+
+	schedule_work(&work->work);
+	trace_i915_flip_complete(intel_crtc->plane, work->pending_flip_obj);
+}
+
+void intel_unpin_sprite_work_fn(struct work_struct *__work)
+{
+	struct intel_unpin_work *work =
+		container_of(__work, struct intel_unpin_work, work);
+	mutex_lock(&work->dev->struct_mutex);
+
+	if (work->old_fb_obj != NULL)
+		intel_unpin_fb_obj(work->old_fb_obj);
+
+	drm_gem_object_unreference(&work->pending_flip_obj->base);
+
+	if (work->old_fb_obj != NULL)
+		drm_gem_object_unreference(&work->old_fb_obj->base);
+	mutex_unlock(&work->dev->struct_mutex);
+	kfree(work);
+}
+
 static int
 intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
-		   struct drm_framebuffer *fb, int crtc_x, int crtc_y,
-		   unsigned int crtc_w, unsigned int crtc_h,
-		   uint32_t src_x, uint32_t src_y,
-		   uint32_t src_w, uint32_t src_h)
+			struct drm_framebuffer *fb, int crtc_x, int crtc_y,
+			unsigned int crtc_w, unsigned int crtc_h,
+			uint32_t src_x, uint32_t src_y,
+			uint32_t src_w, uint32_t src_h,
+			struct drm_pending_vblank_event *event)
 {
 	struct drm_device *dev = plane->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -994,16 +1107,50 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	struct intel_plane *intel_plane = to_intel_plane(plane);
 	struct intel_framebuffer *intel_fb;
 	struct drm_i915_gem_object *obj, *old_obj;
+	unsigned long flags;
 	int pipe = intel_plane->pipe;
 	int ret = 0;
 	int x = src_x >> 16, y = src_y >> 16;
 	int primary_w = crtc->mode.hdisplay, primary_h = crtc->mode.vdisplay;
 	bool disable_primary = false;
+	struct intel_unpin_work *work = NULL;
+
+	if (event == NULL)
+		intel_enable_primary(crtc);
+	else
+		intel_disable_primary(crtc);
 
 	intel_fb = to_intel_framebuffer(fb);
 	obj = intel_fb->obj;
-
 	old_obj = intel_plane->obj;
+
+	if (event) {
+		work = kzalloc(sizeof *work, GFP_KERNEL);
+		if (work == NULL)
+			return -ENOMEM;
+		work->event = event;
+		work->dev = dev;
+		work->old_fb_obj = old_obj;
+		INIT_WORK(&work->work, intel_unpin_sprite_work_fn);
+
+		ret = drm_vblank_get(dev, intel_crtc->pipe);
+		if (ret)
+			goto free_work;
+
+		/* We borrow the event spin lock for protecting unpin_work */
+		spin_lock_irqsave(&dev->event_lock, flags);
+		if (intel_crtc->sprite_unpin_work) {
+			spin_unlock_irqrestore(&dev->event_lock, flags);
+			kfree(work);
+			drm_vblank_put(dev, intel_crtc->pipe);
+			intel_crtc->sprite_unpin_work = NULL;
+			DRM_ERROR("flip queue: crtc already busy\n");
+			return -EBUSY;
+		}
+
+		intel_crtc->sprite_unpin_work = work;
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+	}
 
 	src_w = src_w >> 16;
 	src_h = src_h >> 16;
@@ -1020,10 +1167,11 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 		return -EINVAL;
 
 	/*
-	 * Clamp the width & height into the visible area.  Note we don't
-	 * try to scale the source if part of the visible region is offscreen.
-	 * The caller must handle that by adjusting source offset and size.
-	 */
+	* Clamp the width & height into the visible area.  Note we don't
+	* try to scale the source if part of the visible region is offscreen.
+	* The caller must handle that by adjusting source offset and size.
+	*/
+
 	if ((crtc_x < 0) && ((crtc_x + crtc_w) > 0)) {
 		crtc_w += crtc_x;
 		crtc_x = 0;
@@ -1046,34 +1194,52 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 		goto out;
 
 	/*
-	 * If the sprite is completely covering the primary plane,
-	 * we can disable the primary and save power.
-	 */
+	* If the sprite is completely covering the primary plane,
+	* we can disable the primary and save power.
+	*/
 	if (!IS_VALLEYVIEW(dev)) {
 		if ((crtc_x == 0) && (crtc_y == 0) &&
-		(crtc_w == primary_w) && (crtc_h == primary_h))
+			(crtc_w == primary_w) && (crtc_h == primary_h))
 			disable_primary = true;
 	}
 
-	mutex_lock(&dev->struct_mutex);
+	if (event) {
+		ret = i915_mutex_lock_interruptible(dev);
+		if (ret)
+			goto cleanup;
+
+		/* Reference the objects for the scheduled work. */
+		if (work->old_fb_obj != NULL)
+			drm_gem_object_reference(&work->old_fb_obj->base);
+
+		drm_gem_object_reference(&obj->base);
+		work->pending_flip_obj = obj;
+
+		/* Block clients from rendering to the new back buffer until
+		* the flip occurs and the object is no longer visible.
+		*/
+		if (work->old_fb_obj != NULL)
+			atomic_add(1 << intel_crtc->plane,
+				&work->old_fb_obj->pending_flip);
+	} else
+		mutex_lock(&dev->struct_mutex);
 
 	ret = intel_pin_and_fence_fb_obj(dev, obj, NULL);
 	if (ret)
 		goto out_unlock;
-
 	intel_plane->obj = obj;
 
 	/*
-	 * Be sure to re-enable the primary before the sprite is no longer
-	 * covering it fully.
-	 */
+	* Be sure to re-enable the primary before the sprite is no longer
+	* covering it fully.
+	*/
 	if (!IS_VALLEYVIEW(dev)) {
 		if (!disable_primary)
 			intel_enable_primary(crtc);
 	}
 
 	intel_plane->update_plane(plane, fb, obj, crtc_x, crtc_y,
-				  crtc_w, crtc_h, x, y, src_w, src_h);
+			crtc_w, crtc_h, x, y, src_w, src_h, event);
 
 	if (!IS_VALLEYVIEW(dev)) {
 		if (disable_primary)
@@ -1081,14 +1247,16 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	}
 
 	/* Unpin old obj after new one is active to avoid ugliness */
-	if (old_obj) {
+	if (old_obj && (event == NULL)) {
+
 		if (!IS_VALLEYVIEW(dev)) {
+
 			/*
-			 * It's fairly common to simply update the position of
-			 * an existing object.  In that case, we don't need to
-			 * wait for vblank to avoid ugliness, we only need to
-			 * do the pin & ref bookkeeping.
-			 */
+			* It's fairly common to simply update the position of
+			* an existing object.  In that case, we don't need to
+			* wait for vblank to avoid ugliness, we only need to
+			* do the pin & ref bookkeeping.
+			*/
 			if (old_obj != obj) {
 				mutex_unlock(&dev->struct_mutex);
 				intel_wait_for_vblank(dev,
@@ -1097,10 +1265,23 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 			}
 		}
 		intel_unpin_fb_obj(old_obj);
+
+		if (intel_plane->plane == 0)
+			intel_crtc->sprite_unpin_work = NULL;
 	}
 
 out_unlock:
 	mutex_unlock(&dev->struct_mutex);
+	if (event)
+		trace_i915_flip_request(intel_crtc->plane, obj);
+	return ret;
+cleanup:
+	spin_lock_irqsave(&dev->event_lock, flags);
+	intel_crtc->sprite_unpin_work = NULL;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+	drm_vblank_put(dev, intel_crtc->pipe);
+free_work:
+	kfree(work);
 out:
 	return ret;
 }

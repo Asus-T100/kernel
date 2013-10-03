@@ -2436,6 +2436,8 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	xhci_dbg(xhci, "Wrote ERST address to ir_set 0.\n");
 	xhci_print_ir_set(xhci, 0);
 
+	init_completion(&xhci->enable_slot);
+
 	/*
 	 * XXX: Might need to set the Interrupter Moderation Register to
 	 * something other than the default (~1ms minimum between interrupts).

@@ -30,7 +30,7 @@
 #include "asm/cacheflush.h"
 
 #include "atomisp_internal.h"
-#include "atomisp_common.h"
+
 #include "hmm/hmm_pool.h"
 
 /*
@@ -103,13 +103,12 @@ static void free_pages_to_dynamic_pool(void *pool,
 	hmm_page = atomisp_kernel_malloc(sizeof(struct hmm_page));
 #endif
 	if (!hmm_page) {
-		v4l2_err(&atomisp_dev, "out of memory for hmm_page.\n");
+		dev_err(atomisp_dev, "out of memory for hmm_page.\n");
 
 		/* free page directly */
 		ret = set_pages_wb(page_obj->page, 1);
 		if (ret)
-			v4l2_err(&atomisp_dev,
-					"set page to WB err ...\n");
+			dev_err(atomisp_dev, "set page to WB err ...\n");
 		__free_pages(page_obj->page, 0);
 
 		return;
@@ -135,8 +134,7 @@ static int hmm_dynamic_pool_init(void **pool, unsigned int pool_size)
 	dypool_info = atomisp_kernel_malloc(
 					sizeof(struct hmm_dynamic_pool_info));
 	if (unlikely(!dypool_info)) {
-		v4l2_err(&atomisp_dev,
-			"out of memory for repool_info.\n");
+		dev_err(atomisp_dev, "out of memory for repool_info.\n");
 		return -ENOMEM;
 	}
 
@@ -186,8 +184,7 @@ static void hmm_dynamic_pool_exit(void **pool)
 		/* can cause thread sleep, so cannot be put into spin_lock */
 		ret = set_pages_wb(hmm_page->page, 1);
 		if (ret)
-			v4l2_err(&atomisp_dev,
-				"set page to WB err...\n");
+			dev_err(atomisp_dev, "set page to WB err...\n");
 		__free_pages(hmm_page->page, 0);
 
 #ifdef USE_KMEM_CACHE

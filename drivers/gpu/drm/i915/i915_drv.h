@@ -30,8 +30,11 @@
 #ifndef _I915_DRV_H_
 #define _I915_DRV_H_
 
+#define CONFIG_I915_HW_SYNC 1
+
 #include "i915_reg.h"
 #include "intel_bios.h"
+#include "intel_sync.h"
 #include "intel_ringbuffer.h"
 #include <linux/io-mapping.h>
 #include <linux/i2c.h>
@@ -492,6 +495,7 @@ typedef struct drm_i915_private {
 	struct pci_dev *bridge_dev;
 	struct intel_ring_buffer ring[I915_NUM_RINGS];
 	uint32_t next_seqno;
+	uint32_t last_seqno;
 
 	drm_dma_handle_t *status_page_dmah;
 	uint32_t counter;
