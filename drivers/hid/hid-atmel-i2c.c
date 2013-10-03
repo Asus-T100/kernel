@@ -1092,14 +1092,14 @@ static ssize_t touch_config_write(struct file *filp, struct kobject *kobj,
         ret = request_threaded_irq(data->irq, NULL,
                                    mxt_thread_handler,
                                    IRQF_TRIGGER_LOW|IRQF_TRIGGER_FALLING,
-                                   "mxt-touch", data);
+                                   "mxt`-touch", data);
         return count;
 }
 
 
 static struct bin_attribute touch_config_attr = {
         .attr.name = "config",
-        .attr.mode =  S_IWUSR|S_IWGRP|S_IWOTH,
+        .attr.mode = S_IRUGO | S_IWUSR, 
         .size = 0,
         .read = NULL,
         .write = touch_config_write
