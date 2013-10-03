@@ -7713,6 +7713,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 
 	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
+	dev_priv->late_resume = true;
 
 	/* No need of separate crct enable and encoder commit calls
 	 * Move the modeset sequence in late resume instead of resume.
@@ -7730,6 +7731,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	 * Reset the luma back to default value */
 	i915_dpst_set_default_luma(drm_dev);
 
+	dev_priv->late_resume = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	display_save_restore_hotplug(drm_dev, RESTOREHPD);
 	drm_kms_helper_poll_enable(drm_dev);

@@ -1441,6 +1441,7 @@ void i915_pm_init(struct drm_device *dev)
 	}
 	dev_priv->shut_down_state = 0;
 	dev_priv->audio_suspended = true;
+	dev_priv->late_resume = false;
 	i915_rpm_init(dev);
 }
 

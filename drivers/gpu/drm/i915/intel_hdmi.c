@@ -626,7 +626,7 @@ int intel_hdmi_encoder_status(struct drm_encoder *encoder)
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 status = I915_READ(I915_LPE_AUDIO_HDMI_CONFIG_B);
-	if (status & I915_LPE_AUDIO_HDMI_ENABLE)
+	if ((status & I915_LPE_AUDIO_HDMI_ENABLE) && dev_priv->late_resume)
 		return true;
 	else
 		return false;
