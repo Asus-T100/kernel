@@ -2387,6 +2387,11 @@ int atomisp_css_get_dis_stat(struct atomisp_sub_device *asd,
 	}
 	spin_unlock_irqrestore(&isp->lock, flags);
 
+// <ASUS-Ian20131003+> - Intel patch
+	if (!asd->params.video_dis_en)
+        return -EINVAL;
+// <ASUS-Ian20131003->
+
 	if (atomisp_compare_dvs_grid(asd, &stats->grid_info) != 0)
 		/* If the grid info in the argument differs from the current
 		   grid info, we tell the caller to reset the grid size and

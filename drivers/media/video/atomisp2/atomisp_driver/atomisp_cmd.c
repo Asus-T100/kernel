@@ -3583,7 +3583,10 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 			  unsigned int dvs_env_w, unsigned int dvs_env_h)
 {
 	const struct atomisp_format_bridge *format;
-	struct v4l2_mbus_framefmt ffmt, req_ffmt;
+// <ASUS-Ian20131003+> - Intel patch
+	//struct v4l2_mbus_framefmt ffmt, req_ffmt;
+	struct v4l2_mbus_framefmt ffmt;
+// <ASUS-Ian20131003->	
 	struct atomisp_device *isp = asd->isp;
 	int ret;
 
@@ -3599,7 +3602,9 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 		ffmt.width, ffmt.height, padding_w, padding_h,
 		dvs_env_w, dvs_env_h);
 
-	req_ffmt = ffmt;
+// <ASUS-Ian20131003+> - Intel patch
+	//req_ffmt = ffmt;
+// <ASUS-Ian20131003->	
 	ret = v4l2_subdev_call(isp->inputs[asd->input_curr].camera, video,
 			       s_mbus_fmt, &ffmt);
 	if (ret)
@@ -3612,12 +3617,16 @@ static int atomisp_set_fmt_to_snr(struct atomisp_sub_device *asd,
 	    ffmt.height < ATOM_ISP_STEP_HEIGHT)
 			return -EINVAL;
 
+// <ASUS-Ian20131003+> - Intel patch
+/*
 	if (asd->params.video_dis_en && (ffmt.width < req_ffmt.width ||
 	    ffmt.height < req_ffmt.height)) {
 		dev_warn(isp->dev,
 			 "can not enable video dis due to sensor limitation.");
 		asd->params.video_dis_en = 0;
 	}
+*/
+// <ASUS-Ian20131003->
 
 	atomisp_subdev_set_ffmt(&isp->asd.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
