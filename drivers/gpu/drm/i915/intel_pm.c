@@ -4876,10 +4876,6 @@ static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
 		/* FIXME: confirm VLV behavior with Punit folks */
 		POSTING_READ(VLV_RENDER_FORCE_WAKE_REG);
 
-		if (wait_for_atomic_us(!(I915_READ_NOTRACE(
-			VLV_RENDER_FORCE_WAKE_STATUS_REG) & 0x1), 500))
-			DRM_ERROR("Render Force wake put wait timed out\n");
-
 	}
 
 	/* Check for Media Engine */
@@ -4890,10 +4886,6 @@ static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
 
 		/* FIXME: confirm VLV behavior with Punit folks */
 		POSTING_READ(VLV_MEDIA_FORCE_WAKE_REG);
-
-		if (wait_for_atomic_us(!(I915_READ_NOTRACE(
-			VLV_MEDIA_FORCE_WAKE_STATUS_REG) & 0x1), 500))
-			DRM_ERROR("Force wake put media  wait timed out\n");
 
 	}
 
