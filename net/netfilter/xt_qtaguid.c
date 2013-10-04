@@ -864,7 +864,11 @@ static int iface_stat_fmt_proc_read(char *page, char **num_items_returned,
 	list_for_each_entry(iface_entry, &iface_stat_list, list) {
 		if (item_index++ < items_to_skip)
 			continue;
-
+		//<asus-ethan20131004+>
+        if (strcmp(iface_entry->ifname, "lo") == 0){
+		    continue;
+		}
+		//<asus-ethan20131004->
 		if (iface_entry->active) {
 			stats = dev_get_stats(iface_entry->net_dev,
 					      &dev_stats);
