@@ -4801,14 +4801,17 @@ int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv)
 {
 	int ret = 0;
 
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		dev_priv->gt_fifo_count =
+				I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
 	if (dev_priv->gt_fifo_count < GT_FIFO_NUM_RESERVED_ENTRIES) {
 		int loop = 500;
 		u32 fifo = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
-		while (fifo <= GT_FIFO_NUM_WRITE_THRESHOLD && loop--) {
+		while (fifo <= GT_FIFO_NUM_RESERVED_ENTRIES && loop--) {
 			udelay(10);
 			fifo = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
 		}
-		if (WARN_ON(loop < 0 && fifo <= GT_FIFO_NUM_WRITE_THRESHOLD))
+		if (WARN_ON(loop < 0 && fifo <= GT_FIFO_NUM_RESERVED_ENTRIES))
 			++ret;
 		dev_priv->gt_fifo_count = fifo;
 	}
