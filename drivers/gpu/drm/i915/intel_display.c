@@ -3874,7 +3874,7 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	intel_crtc_update_cursor(crtc, true);
 }
 
-static void i9xx_crtc_disable(struct drm_crtc *crtc)
+void i9xx_crtc_disable(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -7660,10 +7660,9 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 	struct drm_crtc *crtc;
 	struct intel_encoder *intel_encoder;
-	int audiosts = 0;
 
-	audiosts = mid_hdmi_audio_suspend(drm_dev);
-	if (audiosts != true)
+	dev_priv->audio_suspended = mid_hdmi_audio_suspend(drm_dev);
+	if (!dev_priv->audio_suspended)
 		DRM_DEBUG_DRIVER("Audio active, CRTC will not be suspended\n");
 
 	drm_kms_helper_poll_disable(drm_dev);
@@ -7678,7 +7677,8 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-		if ((intel_crtc->pipe == PIPE_B) && (audiosts != true))
+		if ((intel_crtc->pipe == PIPE_B) &&
+				(!dev_priv->audio_suspended))
 			continue;
 		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder)
 			intel_encoder_prepare(&intel_encoder->base);

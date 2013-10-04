@@ -1192,6 +1192,9 @@ static void display_cancel_works(struct drm_device *drm_dev)
 /* ===========================================================================
  * D0 - Dx Power Transition
  * +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * 0)	If Audio was active during early suspend, we would not have disabled
+ *	corrosponding crtc. We should do that now, as reaching here means that
+ *	crtc is not needed now and should be disabled
  * i)   Set Graphics Clocks to Forced ON
  * ii)  Set Global Force Wake to avoid waking up wells every time during saving
  *      registers
@@ -1206,7 +1209,29 @@ static void display_cancel_works(struct drm_device *drm_dev)
 static int valleyview_freeze(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_crtc *crtc;
+	struct intel_encoder *intel_encoder;
 	u32 reg;
+
+	/* Disable crct if audio driver prevented that earlier */
+	if (!dev_priv->audio_suspended) {
+		/* audio was not suspended earlier; now we should
+		 * disable the crtc */
+		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+			struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+			if (intel_crtc->pipe == PIPE_B) {
+				for_each_encoder_on_crtc(
+							dev, crtc,
+							intel_encoder)
+					intel_encoder_prepare(
+							&intel_encoder->base);
+
+				i9xx_crtc_disable(crtc);
+				dev_priv->audio_suspended = true;
+				break;
+			}
+		}
+	}
 
 	drm_kms_helper_poll_disable(dev);
 
@@ -1421,6 +1446,7 @@ void i915_pm_init(struct drm_device *dev)
 		dev_priv->pm.drm_thaw = i915_drm_thaw;
 	}
 	dev_priv->shut_down_state = 0;
+	dev_priv->audio_suspended = true;
 	i915_rpm_init(dev);
 }
 

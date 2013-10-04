@@ -474,6 +474,7 @@ extern void intel_encoder_commit(struct drm_encoder *encoder);
 extern void intel_encoder_noop(struct drm_encoder *encoder);
 extern void intel_encoder_destroy(struct drm_encoder *encoder);
 extern void intel_hdmi_simulate_hpd(struct drm_device *dev, int hpd_on);
+extern void i9xx_crtc_disable(struct drm_crtc *crtc);
 
 static inline struct intel_encoder *intel_attached_encoder(struct drm_connector *connector)
 {
