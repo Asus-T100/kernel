@@ -145,6 +145,7 @@ struct byt_chip_info {
 
 	struct input_dev *lid_dev;
 	struct switch_dev dock_sdev;
+	int	dock_status;
 	struct switch_dev pad_sdev;
 
 	struct mutex lock;
@@ -1375,6 +1376,22 @@ static int get_lid_status( struct byt_chip_info *chip)
 
 }
 
+static int get_dock_status( struct byt_chip_info *chip) 
+{
+	u8	offset;
+	chip->dock_status = 0;
+	int ret;
+
+	offset = 0x85;
+
+	ret = asusec_write_read(chip,&offset,1,&chip->dock_status,1);
+
+	if(!ret){
+		dev_info(&chip->client->dev,"%s get_dock_status=%d\n", TAG, chip->dock_status);
+	}
+	return ret;
+
+}
 
 
 static int byt_battery_update( struct byt_chip_info *chip) 
@@ -2065,7 +2082,13 @@ static int byt_battery_probe(struct i2c_client *client,
 		dev_err(&client->dev, "%s switch_dev_register for dock failed!\n", TAG);
         	goto probe_failed_1;
     	}
-    	switch_set_state(&chip->dock_sdev, 0);
+	get_dock_status(chip);
+	if(chip->dock_status){
+    	switch_set_state(&chip->dock_sdev, 10);
+	}
+	else{
+		switch_set_state(&chip->dock_sdev, 0);
+	}
 	//
 
 	//pad
