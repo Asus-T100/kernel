@@ -136,7 +136,6 @@ enum drm_connector_status b101uan01_detect(struct intel_dsi_device *dsi)
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	dev_priv->is_mipi = true;
 	return connector_status_connected;
 }
 

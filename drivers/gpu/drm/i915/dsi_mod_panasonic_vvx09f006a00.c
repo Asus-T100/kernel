@@ -115,7 +115,6 @@ static enum drm_connector_status vvx09f006a00_detect(
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	dev_priv->is_mipi = true;
 	return connector_status_connected;
 }
 

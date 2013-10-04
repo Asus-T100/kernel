@@ -491,7 +491,7 @@ enum drm_connector_status generic_detect(struct intel_dsi_device *dsi)
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	dev_priv->is_mipi = true;
+	dev_priv->lfp_type = INTEL_OUTPUT_DSI;
 
 	return connector_status_connected;
 }

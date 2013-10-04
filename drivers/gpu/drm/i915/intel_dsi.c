@@ -672,18 +672,17 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 	 * assume no MIPI
 	 * TBD: Fix proper MIPI detection logic
 	 */
-	if (dev_priv->is_edp) {
-		dev_priv->is_mipi = false;
+	if (dev_priv->lfp_type == INTEL_OUTPUT_EDP)
 		return connector_status_disconnected;
-	}
 
 	/* Fix panel, No need to detect again If force on */
-	if (dev_priv->is_mipi)
+	if (dev_priv->lfp_type == INTEL_OUTPUT_DSI)
 		return connector_status_connected;
 
 	status =  intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
 	if (status == connector_status_connected) {
 		/* Enable backlight class driver */
+		dev_priv->lfp_type = INTEL_OUTPUT_DSI;
 		dev_priv->int_mipi_connector = connector;
 		intel_panel_setup_backlight(dev_priv->dev);
 	}

@@ -1866,6 +1866,7 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 {
 	int reg;
 	u32 val;
+	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
 
 	/*
 	 * A pipe without a PLL won't actually be able to drive bits from
@@ -1873,7 +1874,8 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 	 * need the check.
 	 */
 	if (!HAS_PCH_SPLIT(dev_priv->dev)) {
-		if ((pipe == PIPE_A) && dev_priv->is_mipi) {
+		if ((pipe == PIPE_A) &&
+				intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)) {
 			/* XXX
 			 * for MIPI need to check dsi pll
 			 */
@@ -1898,7 +1900,7 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 	 * Since data will flow only when port is enabled.
 	 * wait for vblank will time out for mipi
 	 */
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI))
 		intel_wait_for_vblank(dev_priv->dev, pipe);
 	else
 		POSTING_READ(reg);
@@ -1977,6 +1979,7 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
 {
 	int reg;
 	u32 val;
+	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
 
 	/* If the pipe isn't enabled, we can't pump pixels and may hang */
 	assert_pipe_enabled(dev_priv, pipe);
@@ -1992,7 +1995,7 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
 	 * Since data will flow only when port is enabled.
 	 * wait for vblank will time out for mipi
 	 */
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI))
 		intel_wait_for_vblank(dev_priv->dev, pipe);
 	else
 		POSTING_READ(reg);
@@ -3848,10 +3851,10 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	if (dev_priv->disp_pm_in_progress == true)
 		intel_crtc->disp_suspend_state = false;
 
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI))
 		intel_enable_pll(dev_priv, pipe);
 
-	if (dev_priv->is_mipi) {
+	else{
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
 				intel_enable_dsi_pll(enc_to_intel_dsi(
@@ -3882,6 +3885,7 @@ void i9xx_crtc_disable(struct drm_crtc *crtc)
 	struct intel_encoder *encoder;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
+	static bool do_once;
 	int val;
 
 	if (!intel_crtc->active)
@@ -3896,13 +3900,15 @@ void i9xx_crtc_disable(struct drm_crtc *crtc)
 	if (dev_priv->cfb_plane == plane)
 		intel_disable_fbc(dev);
 
-	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
+	if ((pipe == 0) && (intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)
+					|| dev_priv->is_hdmi) && !do_once) {
 		/* XXX: Disable PPS */
 		/* temporary fix for the IA firwware issue */
 		I915_WRITE_BITS(VLV_PIPE_PP_CONTROL(pipe), 0, 0x00000001);
 		if (wait_for((I915_READ(VLV_PIPE_PP_STATUS(pipe)) &
 						0x80000000) == 0, 50))
 			DRM_DEBUG_KMS("PPS Disableing timedout\n");
+		do_once = true;
 	}
 
 	intel_disable_plane(dev_priv, plane, pipe);
@@ -3926,8 +3932,9 @@ void i9xx_crtc_disable(struct drm_crtc *crtc)
 		}
 	}
 
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)) {
 		intel_disable_pll(dev_priv, pipe);
+	}
 	else {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
@@ -4042,6 +4049,8 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	u32 data = 0;
+	static bool do_once;
+
 	/* If device is resuming, no need of prepare.
 	 * ALready the pipe is off and inactive
 	 */
@@ -4052,7 +4061,8 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 	i9xx_crtc_disable(crtc);
 
-	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
+	if ((pipe == 0) && (intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)
+					|| dev_priv->is_hdmi) && !do_once) {
 		/* Ensure that port, plane, pipe, pf, pll are all disabled
 		 * XXX Fis the register constants
 		 */
@@ -4067,6 +4077,7 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 		I915_WRITE_BITS(0x61230, 0, 0x80000000);
 		I915_WRITE_BITS(0x6014, 0, 0x80000000);
+		do_once = true;
 	}
 
 	intel_punit_read32(dev_priv, VLV_IOSFSB_PWRGT_STATUS, &data);

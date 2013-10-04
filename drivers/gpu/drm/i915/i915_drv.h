@@ -590,12 +590,8 @@ typedef struct drm_i915_private {
 	struct mipi_info mipi;
 	/* Is DPST enabled only for video play back on 18bpp */
 	bool bpp18_video_dpst;
-	/* Either of the below will be true based on detection
-	 * presence of one indicates absence of other as of now
-	 * till we have proper fix for dynamic detection
-	 */
-	bool is_edp;
-	bool is_mipi;
+	/* Store the type of local panel attached to board */
+	int lfp_type;
 	bool is_hdmi;
 	bool csc_enabled;
 	bool gamma_enabled;

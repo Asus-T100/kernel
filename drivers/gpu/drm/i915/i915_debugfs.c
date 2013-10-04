@@ -208,8 +208,8 @@ ssize_t i915_gamma_enable_write(struct file *filp,
 	/* Search for a CRTC,
 	Assumption: Either MIPI or EDP is fix panel */
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		if (intel_pipe_has_type(crtc, dev_priv->is_mipi ?
-			INTEL_OUTPUT_DSI : INTEL_OUTPUT_EDP))
+		if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI) ||
+			intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 			break;
 	}
 
@@ -518,8 +518,8 @@ ssize_t i915_csc_enable_write(struct file *filp,
 	/* Search for a CRTC,
 	Assumption: Either MIPI or EDP is fix panel */
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		if (intel_pipe_has_type(crtc, dev_priv->is_mipi ?
-			INTEL_OUTPUT_DSI : INTEL_OUTPUT_EDP))
+		if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI) ||
+			intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 			break;
 	}
 
@@ -3492,7 +3492,7 @@ i915_read_dpst_api(struct file *filp,
 		if (len < 0)
 			return len;
 
-		if (dev_priv->is_mipi) {
+		if (dev_priv->lfp_type == INTEL_OUTPUT_DSI) {
 
 #ifdef CONFIG_CRYSTAL_COVE
 			len += snprintf(&buf[len], (sizeof(buf) - len),
