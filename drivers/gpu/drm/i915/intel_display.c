@@ -7600,34 +7600,6 @@ static void intel_pch_pll_init(struct drm_device *dev)
 	}
 }
 
-/*
-Simulate like a hpd event at sleep/resume
-hpd_on =0 >  while suspend, this will clear the modes
-hpd_on =1 >  only at resume  */
-void i915_simulate_hpd(struct drm_device *dev, int hpd_on)
-{
-	struct drm_connector *connector = NULL;
-
-	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-		if (connector->polled == DRM_CONNECTOR_POLL_HPD) {
-			if (hpd_on) {
-				/* Resuming, detect and read modes again */
-				connector->funcs->fill_modes(connector,
-				dev->mode_config.max_width,
-				dev->mode_config.max_height);
-			} else {
-				/* Suspend, reset previous detects and modes */
-				if (connector->funcs->reset)
-					connector->funcs->reset(connector);
-			}
-			DRM_DEBUG_KMS("Simulated HPD %s for connector %s\n",
-			(hpd_on ? "On" : "Off"),
-			drm_get_connector_name(connector));
-		}
-	}
-	drm_sysfs_hotplug_event(dev);
-}
-
 static int display_disable_wq(struct drm_device *drm_dev)
 {
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
@@ -7690,9 +7662,6 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	struct intel_encoder *intel_encoder;
 	int audiosts = 0;
 
-	/* Force a re-detection on Hot-pluggable displays */
-	i915_simulate_hpd(drm_dev, false);
-
 	audiosts = mid_hdmi_audio_suspend(drm_dev);
 	if (audiosts != true)
 		DRM_DEBUG_DRIVER("Audio active, CRTC will not be suspended\n");
@@ -7728,7 +7697,6 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	i915_rpm_get_disp(drm_dev);
 
 	/* Re-detect hot pluggable displays */
-	i915_simulate_hpd(drm_dev, true);
 
 	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
@@ -7760,6 +7728,10 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 			i915_dpst_enable_hist_interrupt(drm_dev, true);
 	}
 	dev_priv->is_resuming = false;
+
+	/* Simulate HPD: If there is a change in hot pluggable devices
+	scan and take action */
+	intel_hdmi_simulate_hpd(drm_dev, true);
 	return 0;
 }
 
@@ -7837,7 +7809,6 @@ int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 
 	crtc = to_intel_crtc(obj_to_crtc(drmmode_obj));
 	pipe_from_crtc_id->pipe = crtc->pipe;
-
 	return 0;
 }
 
