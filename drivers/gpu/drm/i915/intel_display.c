@@ -3906,6 +3906,7 @@ void i9xx_crtc_disable(struct drm_crtc *crtc)
 	}
 
 	intel_disable_plane(dev_priv, plane, pipe);
+	mdelay(1);
 	intel_disable_pipe(dev_priv, pipe);
 
 	/* disable panel fitter if enabled */
