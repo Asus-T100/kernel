@@ -93,6 +93,9 @@ int dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
 	if (dev_priv->mipi.panel_id == MIPI_DSI_AUO_B080XAT_PANEL_ID) {
 		*dsi_clk = 513;
 		return 0;
+	} else if (dev_priv->mipi.panel_id == MIPI_DSI_HV101HD1_PANEL_ID) { //<asus-baron20131004+>
+		*dsi_clk = 415; //<asus-baron20131004+>
+		return 0; //<asus-baron20131004+>
 	}
 
 	/* DSI data rate = pixel clock * bits per pixel / lane count
