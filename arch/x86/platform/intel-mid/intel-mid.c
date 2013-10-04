@@ -10,6 +10,7 @@
  * of the License.
  */
 #define	SFI_SIG_OEM0	"OEM0"
+#define BobTAG			"<ASUS-Bob>"	//<ASUS-Bob20131003+>
 
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -55,6 +56,7 @@
 #include "intel_mid_scu.h"
 #include "intel_mid_sfi.h"
 
+#include <linux/switch.h>	//<ASUS-Bob20131003+>
 /*
  * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
  * cmdline option x86_intel_mid_timer can be used to override the configuration
@@ -1212,6 +1214,18 @@ static struct attribute_group pidv_attr_group = {
 	.attrs = pidv_attrs,
 };
 
+//<ASUS-Bob20131003+>
+static ssize_t iafw_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%02X.%02X\n", pidv.iafw_major, pidv.iafw_minor);
+}
+
+static ssize_t secfw_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%04d\n", (pidv.secfw_major << 8) | pidv.secfw_minor);
+}
+//<ASUS-Bob20131003->
+
 #else
 #define acpi_parse_pidv NULL
 #endif
@@ -1219,6 +1233,10 @@ static struct attribute_group pidv_attr_group = {
 static int __init intel_mid_platform_init(void)
 {
 	int ret = 0;
+//<ASUS-Bob20131003+>
+	static struct switch_dev iafw_sdev;
+	static struct switch_dev secfw_sdev;
+//<ASUS-Bob20131003->
 
 	/* create sysfs entries for soft platform id */
 	spid_kobj = kobject_create_and_add("spid", NULL);
@@ -1259,6 +1277,18 @@ static int __init intel_mid_platform_init(void)
 			pr_err("SPID: failed to create /sys/spid\n");
 			return ret;
 		}
+//<ASUS-Bob20131003+>
+		iafw_sdev.name = "ia_fw";
+		iafw_sdev.print_name = iafw_switch_name;
+		if(switch_dev_register(&iafw_sdev) < 0)
+			pr_err("%s switch_dev_register for iafw_sdev failed!\n", BobTAG);
+
+		secfw_sdev.name = "sec_fw";
+		secfw_sdev.print_name = secfw_switch_name;
+		if(switch_dev_register(&secfw_sdev) < 0)
+			pr_err("%s switch_dev_register for secfw_sdev failed!\n", BobTAG);
+//<ASUS-Bob20131003->
+
 #endif
 		break;
 	default:
