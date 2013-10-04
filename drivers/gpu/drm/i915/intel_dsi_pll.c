@@ -93,18 +93,23 @@ int dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
 	if (dev_priv->mipi.panel_id == MIPI_DSI_AUO_B080XAT_PANEL_ID) {
 		*dsi_clk = 513;
 		return 0;
-	} else if (dev_priv->mipi.panel_id == MIPI_DSI_HV101HD1_PANEL_ID) { //<asus-baron20131004+>
+	}
+//<asus-baron20131004+>
+/*
+	else if (dev_priv->mipi.panel_id == MIPI_DSI_HV101HD1_PANEL_ID) { //<asus-baron20131004+>
 		*dsi_clk = 415; //<asus-baron20131004+>
 		return 0; //<asus-baron20131004+>
 	}
-
+*/
+//<asus-baron20131004->
 	/* DSI data rate = pixel clock * bits per pixel / lane count
 	   pixel clock is converted from KHz to Hz */
 	dsi_bit_clock_hz = (((mode->clock * 1000) * pkt_pixel_size) \
 				/ intel_dsi->dev.lane_count);
 
 	/* return DSI data rate as Mbps */
-	*dsi_clk = dsi_bit_clock_hz / (1024 * 1024);
+	//<asus-baron20131004->*dsi_clk = dsi_bit_clock_hz / (1024 * 1024); 
+	*dsi_clk = dsi_bit_clock_hz / (1000 * 1000); //<asus-baron20131004+>
 	return 0;
 }
 
