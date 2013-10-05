@@ -1122,7 +1122,7 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
 	intel_fb = to_intel_framebuffer(fb);
 	obj = intel_fb->obj;
-	old_obj = intel_plane->obj;
+	old_obj = intel_plane->old_obj;
 
 	if (event) {
 		work = kzalloc(sizeof *work, GFP_KERNEL);
@@ -1227,6 +1227,7 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	ret = intel_pin_and_fence_fb_obj(dev, obj, NULL);
 	if (ret)
 		goto out_unlock;
+	intel_plane->old_obj = intel_plane->obj;
 	intel_plane->obj = obj;
 
 	/*
@@ -1296,16 +1297,19 @@ intel_disable_plane(struct drm_plane *plane)
 	if (plane->crtc)
 		intel_enable_primary(plane->crtc);
 
+	mutex_lock(&dev->struct_mutex);
+
 	intel_plane->disable_plane(plane);
 
-	if (!intel_plane->obj)
-		goto out;
-
-	mutex_lock(&dev->struct_mutex);
-	intel_unpin_fb_obj(intel_plane->obj);
-	intel_plane->obj = NULL;
+	if (intel_plane->obj) {
+		intel_unpin_fb_obj(intel_plane->obj);
+		intel_plane->obj = NULL;
+	}
+	if (intel_plane->old_obj) {
+		intel_unpin_fb_obj(intel_plane->old_obj);
+		intel_plane->old_obj = NULL;
+	}
 	mutex_unlock(&dev->struct_mutex);
-out:
 
 	return ret;
 }
