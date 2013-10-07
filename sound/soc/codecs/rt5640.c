@@ -43,7 +43,7 @@
 #define HEADSET_DET_DELAY    200 /* Delay(ms) before reading over current
 				    status for headset detection */
 /*#define USE_EQ*/
-//<asus-baron20130906-> #define USE_EQ 1 //realtek EQ control //<asus-baron20130830+> 
+#define USE_EQ 1 //realtek EQ control //<asus-baron20131007+> 
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
 static int delay_work = 500;
