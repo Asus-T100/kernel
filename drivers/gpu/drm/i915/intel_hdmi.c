@@ -904,15 +904,16 @@ void intel_hdmi_simulate_hpd(struct drm_device *dev, int hpd_on)
 	struct drm_connector *connector = NULL;
 	struct intel_hdmi *intel_hdmi = NULL;
 	char uevent[20] = {"\0"};
-
+	bool live_status = 0;
 
 	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-		if (connector->polled == DRM_CONNECTOR_POLL_HPD &&
-			connector->status == connector_status_connected) {
+		if (connector->polled == DRM_CONNECTOR_POLL_HPD) {
 			intel_hdmi = intel_attached_hdmi(connector);
+			live_status = g4x_hdmi_connected(intel_hdmi);
 
-			if (g4x_hdmi_connected(intel_hdmi)) {
-
+			switch (connector->status) {
+			case connector_status_connected:
+			if (live_status) {
 				/* If Monitor is same, no need for an event */
 				if (intel_hdmi_identify_monitor(connector, dev))
 					return;
@@ -925,10 +926,23 @@ void intel_hdmi_simulate_hpd(struct drm_device *dev, int hpd_on)
 				snprintf(uevent, strlen("HDMI-Changed"),
 							"HDMI-Changed");
 				send_uevent(dev, uevent);
-		} else
-			/* HDMI monitor status change detectd,
-			cleanup old edid and modes */
-			intel_hdmi_reset(connector);
+			} else {
+				/* HDMI monitor status change detectd,
+				cleanup old edid and modes */
+				intel_hdmi_reset(connector);
+				drm_sysfs_hotplug_event(dev);
+				DRM_ERROR("vikas : unplug in sleep");
+			}
+			break;
+			case connector_status_disconnected:
+			if (live_status)
+				drm_sysfs_hotplug_event(dev);
+			break;
+
+			default:
+			DRM_ERROR("Invalid HDMI state to detect");
+			return;
+			}
 		}
 	}
 }
