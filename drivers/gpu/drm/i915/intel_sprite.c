@@ -1224,9 +1224,12 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	} else
 		mutex_lock(&dev->struct_mutex);
 
+	drm_gem_object_reference(&obj->base);
 	ret = intel_pin_and_fence_fb_obj(dev, obj, NULL);
-	if (ret)
+	if (ret) {
+		drm_gem_object_unreference(&obj->base);
 		goto out_unlock;
+	}
 	intel_plane->old_obj = intel_plane->obj;
 	intel_plane->obj = obj;
 
@@ -1266,6 +1269,7 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 			}
 		}
 		intel_unpin_fb_obj(old_obj);
+		drm_gem_object_unreference(&old_obj->base);
 
 		if (intel_plane->plane == 0)
 			intel_crtc->sprite_unpin_work = NULL;
@@ -1297,19 +1301,24 @@ intel_disable_plane(struct drm_plane *plane)
 	if (plane->crtc)
 		intel_enable_primary(plane->crtc);
 
-	mutex_lock(&dev->struct_mutex);
-
 	intel_plane->disable_plane(plane);
 
-	if (intel_plane->obj) {
-		intel_unpin_fb_obj(intel_plane->obj);
-		intel_plane->obj = NULL;
+	if (intel_plane->obj || intel_plane->old_obj) {
+		mutex_lock(&dev->struct_mutex);
+
+		if (intel_plane->obj) {
+			intel_unpin_fb_obj(intel_plane->obj);
+			drm_gem_object_unreference(&intel_plane->obj->base);
+			intel_plane->obj = NULL;
+		}
+
+		if (intel_plane->old_obj) {
+			intel_unpin_fb_obj(intel_plane->old_obj);
+			drm_gem_object_unreference(&intel_plane->old_obj->base);
+			intel_plane->old_obj = NULL;
+		}
+		mutex_unlock(&dev->struct_mutex);
 	}
-	if (intel_plane->old_obj) {
-		intel_unpin_fb_obj(intel_plane->old_obj);
-		intel_plane->old_obj = NULL;
-	}
-	mutex_unlock(&dev->struct_mutex);
 
 	return ret;
 }
