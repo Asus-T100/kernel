@@ -101,7 +101,7 @@ int dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
 				/ intel_dsi->dev.lane_count);
 
 	/* return DSI data rate as Mbps */
-	*dsi_clk = dsi_bit_clock_hz / (1024 * 1024);
+	*dsi_clk = dsi_bit_clock_hz / (1000 * 1000);
 	return 0;
 }
 
