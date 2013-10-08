@@ -869,4 +869,9 @@ config ASUS_DUAL_BOOT_SWITCH
 	help
 	  create a /proc file to write to switch OS.
 
+config ASUS_PANEL_ID
+        bool "Tell diffrent Panel on T100TA"
+        help
+          create /proc/panel_id file for telling diffrent panel
+
 endif # X86_PLATFORM_DEVICES
