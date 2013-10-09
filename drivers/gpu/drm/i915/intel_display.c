@@ -43,6 +43,7 @@
 #include "drm_crtc_helper.h"
 #include "intel_dsi.h"
 #include "intel_dsi_pll.h"
+#include "intel_clrmgr.h"
 
 #define HAS_eDP (intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 
@@ -7740,6 +7741,10 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 			i915_dpst_enable_hist_interrupt(drm_dev, true);
 	}
 	dev_priv->is_resuming = false;
+
+	  /* Restore Gamma/Csc/Hue/Saturation/Brightness/Contrast */
+	if (!intel_restore_clr_mgr_status(drm_dev))
+		DRM_ERROR("Restore Color manager status failed");
 
 	/* Simulate HPD: If there is a change in hot pluggable devices
 	scan and take action */
