@@ -28,7 +28,7 @@ enum iio_chan_type {
 	IIO_TIMESTAMP,
 	IIO_CAPACITANCE,
 	IIO_QUATERNION, //<asus-bob20130830+>
-	IIO_RESISTANCE,	//<asus-bob20130830+>
+	IIO_RESISTANCE,
 };
 
 enum iio_modifier {
