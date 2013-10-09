@@ -71,9 +71,9 @@ static int __init asus_panel_id_init(void)
     pr_info("panel_id_init\n");
   
 
-	res =  create_proc_read_entry ("Panel_ID", 0, NULL, panel_id_read, NULL);
+	res =  create_proc_read_entry ("panel_id", 0, NULL, panel_id_read, NULL);
 	if (!res) {
-		pr_err("failed to create /proc/Panel_ID entry\n");
+		pr_err("failed to create /proc/panel_id entry\n");
 		return 0;
 	}
 
@@ -85,7 +85,7 @@ static int __init asus_panel_id_init(void)
 
 static void __exit asus_panel_id_exit(void)
 {
-    remove_proc_entry("Panel_ID", NULL);
+    remove_proc_entry("panel_id", NULL);
 	pr_info("asus_dualboot_exit\n");
 	return;
 }
