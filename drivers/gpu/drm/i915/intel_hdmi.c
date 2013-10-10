@@ -931,20 +931,31 @@ void intel_hdmi_simulate_hpd(struct drm_device *dev, int hpd_on)
 				cleanup old edid and modes */
 				intel_hdmi_reset(connector);
 				drm_sysfs_hotplug_event(dev);
-				DRM_ERROR("vikas : unplug in sleep");
+
+				i915_notify_had = 0;
+				/* Added for HDMI Audio */
+				mid_hdmi_audio_signal_event(dev,
+						HAD_EVENT_HOT_UNPLUG);
+				i915_hdmi_state = connector_status_disconnected;
 			}
 			break;
 			case connector_status_disconnected:
-			if (live_status)
+			if (live_status) {
+				/* Resuming, detect and read modes again */
+				intel_hdmi_reset(connector);
+				connector->funcs->fill_modes(connector,
+						dev->mode_config.max_width,
+						dev->mode_config.max_height);
 				drm_sysfs_hotplug_event(dev);
+			}
 			break;
-
 			default:
-			DRM_ERROR("Invalid HDMI state to detect");
-			return;
+				DRM_ERROR("Invalid HDMI state to detect");
 			}
 		}
 	}
+
+	return;
 }
 
 static enum drm_connector_status
@@ -955,6 +966,7 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct edid *edid = NULL;
 	enum drm_connector_status status = connector_status_disconnected;
+	bool has_audio = intel_hdmi->has_audio;
 
 
 	i915_rpm_get_callback(dev);
@@ -1003,20 +1015,36 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 					drm_detect_hdmi_monitor(edid);
 			intel_hdmi->has_audio =
 				drm_detect_monitor_audio(edid);
+
+			/* Do we need to force Audio support */
+			if (intel_hdmi->force_audio != HDMI_AUDIO_AUTO)
+				intel_hdmi->has_audio =
+				(intel_hdmi->force_audio == HDMI_AUDIO_ON);
 		}
+
 		/* Free previously saved EDID and save new one */
 		kfree(intel_hdmi->edid);
 		intel_hdmi->edid = edid;
 		connector->display_info.raw_edid = (char *)edid;
+		if (intel_hdmi->has_audio)
+			i915_notify_had = 1;
 	} else {
 		/* Connector is disconneted, so remove old EDID */
 		kfree(intel_hdmi->edid);
 		intel_hdmi->edid = NULL;
 		connector->display_info.raw_edid = NULL;
+		if (has_audio) {
+			i915_notify_had = 0;
+
+			/* Notify Audio driver */
+			mid_hdmi_audio_signal_event(dev_priv->dev,
+							HAD_EVENT_HOT_UNPLUG);
+		}
 	}
 
 	/* Disable CRTC on HDMI hot un-plug */
-	if (status == connector_status_disconnected) {
+	if ((status == connector_status_disconnected) &&
+				(status != connector->status)) {
 		if (intel_hdmi->base.base.crtc) {
 			struct drm_crtc *crtc = intel_hdmi->base.base.crtc;
 			struct drm_device *dev = crtc->dev;
@@ -1027,22 +1055,6 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 			if (is_maxfifo_needed(dev_priv))
 				I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
 		}
-	}
-
-	if ((status == connector_status_connected)
-			&& (status != i915_hdmi_state)) {
-		/* Added for HDMI Audio */
-	if (intel_hdmi->has_audio)
-		i915_notify_had = 1;
-		if (intel_hdmi->force_audio != HDMI_AUDIO_AUTO)
-			intel_hdmi->has_audio =
-			(intel_hdmi->force_audio == HDMI_AUDIO_ON);
-	} else if (status != i915_hdmi_state)  {
-		/* Added for HDMI Audio */
-		mid_hdmi_audio_signal_event(dev_priv->dev,
-			HAD_EVENT_HOT_UNPLUG);
-	if (intel_hdmi->has_audio)
-		i915_notify_had = 0;
 	}
 
 	/* Added for HDMI Audio */
