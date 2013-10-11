@@ -329,10 +329,11 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 deregister_mei:
 	mei_deregister(dev);
 release_irq:
+
+	mei_cancel_work(dev);
+
 	/* disable interrupts */
 	mei_disable_interrupts(dev);
-
-	flush_workqueue(dev->wq);
 
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);
@@ -494,10 +495,18 @@ static int mei_txe_pm_runtime_suspend(struct device *device)
 	mutex_lock(&dev->device_lock);
 
 	if (mei_write_is_idle(dev))
-		/* FIXME: need to check API what error is epxected */
 		ret = mei_txe_aliveness_set_sync(dev, 0);
 	else
 		ret = -EAGAIN;
+
+	/*
+	 * If everything is okay we're about to enter PCI low
+	 * power state there fore we need to save and disable
+	 * the interrupts towards host.
+	 * However If D3 is disabled by platform we cannot do that
+	 */
+	 if (!ret && (pdev->dev_flags & PCI_DEV_FLAGS_NO_D3) == 0)
+		mei_txe_intr_save(dev);
 
 	dev_dbg(&pdev->dev, "rpm: txe: runtime suspend ret=%d\n", ret);
 
@@ -522,6 +531,7 @@ static int mei_txe_pm_runtime_resume(struct device *device)
 	dev_dbg(&pdev->dev, "rpm: txe: runtime resume\n");
 
 	mei_enable_interrupts(dev);
+
 	ret = mei_txe_aliveness_set_sync(dev, 1);
 
 	mutex_unlock(&dev->device_lock);

@@ -46,6 +46,7 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  dsi_mod_panasonic_vvx09f006a00.o \
 	  dsi_mod_auo_b080xat.o \
 	  dsi_mod_jdi_lpm070w425b.o \
+	  dsi_mod_vbt_generic.o	\
 	  dvo_ch7xxx.o \
 	  dvo_ch7017.o \
 	  dvo_ivch.o \

@@ -693,8 +693,8 @@ bool intel_restore_clr_mgr_status(struct drm_device *dev)
 
 	/* Search for a CRTC */
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		if (intel_pipe_has_type(crtc, dev_priv->is_mipi ?
-			INTEL_OUTPUT_DSI : INTEL_OUTPUT_EDP))
+		if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI) ||
+			intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 			break;
 	}
 

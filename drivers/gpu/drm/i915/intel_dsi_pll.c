@@ -346,7 +346,10 @@ int intel_configure_dsi_pll(struct intel_dsi *intel_dsi,
 	u32 dsi_clk;
 
 
-	get_dsi_clk(intel_dsi, mode, &dsi_clk);
+	if (intel_dsi->dev.dsi_clock_freq)
+		dsi_clk = intel_dsi->dev.dsi_clock_freq;
+	else
+		get_dsi_clk(intel_dsi, mode, &dsi_clk);
 	ret = dsi_calc_mnp(dsi_clk, &dsi_mnp);
 	/*ret = mnp_from_clk_table(dsi_clk, &dsi_mnp);*/
 

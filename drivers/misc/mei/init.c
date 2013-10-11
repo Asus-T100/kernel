@@ -43,34 +43,6 @@ const char *mei_dev_state_str(int state)
 #undef MEI_DEV_STATE
 }
 
-void mei_device_init(struct mei_device *dev)
-{
-	/* setup our list array */
-	INIT_LIST_HEAD(&dev->file_list);
-	INIT_LIST_HEAD(&dev->device_list);
-	mutex_init(&dev->device_lock);
-	init_waitqueue_head(&dev->wait_hw_ready);
-	init_waitqueue_head(&dev->wait_recvd_msg);
-	init_waitqueue_head(&dev->wait_stop_wd);
-	dev->dev_state = MEI_DEV_INITIALIZING;
-
-	mei_io_list_init(&dev->read_list);
-	mei_io_list_init(&dev->write_list);
-	mei_io_list_init(&dev->write_waiting_list);
-	mei_io_list_init(&dev->ctrl_wr_list);
-	mei_io_list_init(&dev->ctrl_rd_list);
-
-	INIT_DELAYED_WORK(&dev->timer_work, mei_timer);
-	INIT_WORK(&dev->init_work, mei_host_client_init);
-
-	INIT_LIST_HEAD(&dev->wd_cl.link);
-	INIT_LIST_HEAD(&dev->iamthif_cl.link);
-	mei_io_list_init(&dev->amthif_cmd_list);
-	mei_io_list_init(&dev->amthif_rd_complete_list);
-
-}
-EXPORT_SYMBOL_GPL(mei_device_init);
-
 /**
  * mei_start - initializes host and fw to start work.
  *
@@ -124,6 +96,20 @@ err:
 EXPORT_SYMBOL_GPL(mei_start);
 
 /**
+ * mei_cancel_work. Cancel backround mei backround jobs
+ *
+ * @dev: the device structure
+ */
+void mei_cancel_work(struct mei_device *dev)
+{
+	cancel_work_sync(&dev->init_work);
+	cancel_work_sync(&dev->reset_work);
+
+	cancel_delayed_work(&dev->timer_work);
+}
+EXPORT_SYMBOL_GPL(mei_cancel_work);
+
+/**
  * mei_reset - resets host and fw.
  *
  * @dev: the device structure
@@ -153,7 +139,14 @@ void mei_reset(struct mei_device *dev, int interrupts_enabled)
 		    dev->dev_state != MEI_DEV_POWER_DOWN)
 			dev->dev_state = MEI_DEV_RESETTING;
 
+
+		/* remove all waiting requests */
+		mei_cl_all_write_clear(dev);
+
 		mei_cl_all_disconnect(dev);
+
+		/* wake up all readers and writers so they can be interrupted */
+		mei_cl_all_wakeup(dev);
 
 		/* remove entry if already in list */
 		dev_dbg(&dev->pdev->dev, "remove iamthif and wd from the file list.\n");
@@ -194,23 +187,28 @@ void mei_reset(struct mei_device *dev, int interrupts_enabled)
 	dev->dev_state = MEI_DEV_INIT_CLIENTS;
 
 	mei_hbm_start_req(dev);
-
-	/* wake up all readings so they can be interrupted */
-	mei_cl_all_read_wakeup(dev);
-
-	/* remove all waiting requests */
-	mei_cl_all_write_clear(dev);
 }
 EXPORT_SYMBOL_GPL(mei_reset);
+
+static void mei_reset_work(struct work_struct *work)
+{
+	struct mei_device *dev =
+		container_of(work, struct mei_device,  reset_work);
+
+	mutex_lock(&dev->device_lock);
+
+	mei_reset(dev, true);
+
+	mutex_unlock(&dev->device_lock);
+}
 
 void mei_stop(struct mei_device *dev)
 {
 	dev_dbg(&dev->pdev->dev, "stopping the device.\n");
 
+	mei_cancel_work(dev);
 
 	mutex_lock(&dev->device_lock);
-
-	cancel_delayed_work(&dev->timer_work);
 
 	mei_wd_stop(dev);
 
@@ -222,8 +220,6 @@ void mei_stop(struct mei_device *dev)
 	mutex_unlock(&dev->device_lock);
 
 	mei_watchdog_unregister(dev);
-
-	flush_workqueue(dev->wq);
 }
 EXPORT_SYMBOL_GPL(mei_stop);
 
@@ -250,3 +246,32 @@ bool mei_write_is_idle(struct mei_device *dev)
 	return idle;
 }
 EXPORT_SYMBOL_GPL(mei_write_is_idle);
+
+void mei_device_init(struct mei_device *dev)
+{
+	/* setup our list array */
+	INIT_LIST_HEAD(&dev->file_list);
+	INIT_LIST_HEAD(&dev->device_list);
+	mutex_init(&dev->device_lock);
+	init_waitqueue_head(&dev->wait_hw_ready);
+	init_waitqueue_head(&dev->wait_recvd_msg);
+	init_waitqueue_head(&dev->wait_stop_wd);
+	dev->dev_state = MEI_DEV_INITIALIZING;
+
+	mei_io_list_init(&dev->read_list);
+	mei_io_list_init(&dev->write_list);
+	mei_io_list_init(&dev->write_waiting_list);
+	mei_io_list_init(&dev->ctrl_wr_list);
+	mei_io_list_init(&dev->ctrl_rd_list);
+
+	INIT_DELAYED_WORK(&dev->timer_work, mei_timer);
+	INIT_WORK(&dev->init_work, mei_host_client_init);
+	INIT_WORK(&dev->reset_work, mei_reset_work);
+
+	INIT_LIST_HEAD(&dev->wd_cl.link);
+	INIT_LIST_HEAD(&dev->iamthif_cl.link);
+	mei_io_list_init(&dev->amthif_cmd_list);
+	mei_io_list_init(&dev->amthif_rd_complete_list);
+
+}
+EXPORT_SYMBOL_GPL(mei_device_init);

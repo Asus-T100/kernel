@@ -45,9 +45,9 @@
 #define DSI_VIDEO_MODE		0
 #define DSI_CMD_MODE		1
 
-#define DSI_VIDEO_NBURST_SPULSE		0
-#define DSI_VIDEO_NBURST_SEVENT		1
-#define DSI_VIDEO_BURST				2
+#define DSI_VIDEO_NBURST_SPULSE		1
+#define DSI_VIDEO_NBURST_SEVENT		2
+#define DSI_VIDEO_BURST			3
 
 #define DSI_HSS_PACKET_SIZE 4
 #define DSI_HSE_PACKET_SIZE 4
@@ -66,11 +66,17 @@ struct intel_dsi_device {
 	const struct intel_dsi_dev_ops *dev_ops;
 	void *dev_priv;
 	u8 eotp_pkt;
+	u16 dsi_clock_freq;
 	u8 operation_mode;
 	u8 video_mode_type;
 	u32 pixel_format;
+	u32 data_width;
+	u8 dither;
 	u32 port_bits;
+	u8 escape_clk_div;
+	u32 lp_rx_timeout;
 	u8 turn_arnd_val;
+	u16 init_count;
 	u16 rst_timer_val;
 	u16 hs_to_lp_count;
 	u16 lp_byte_clk;
@@ -161,16 +167,18 @@ extern struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops;
 extern struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
+extern struct intel_dsi_dev_ops vbt_generic_dsi_display_ops;
 
 /* external functions */
 void intel_dsi_device_ready(struct intel_encoder *encoder);
 void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 bool intel_dsi_init(struct drm_device *dev);
 
-#define	MIPI_DSI_RESERVED_PANEL_ID			0x01
+#define	MIPI_DSI_UNDEFINED_PANEL_ID			0x00
+#define	MIPI_DSI_GENERIC_PANEL_ID			0x01
 #define	MIPI_DSI_AUO_B101UAN01_PANEL_ID			0x02
 #define	MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID	0x03
 #define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
-#define MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
+#define	MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
 
 #endif /* _INTEL_DSI_H */

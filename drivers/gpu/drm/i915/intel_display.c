@@ -1866,6 +1866,7 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 {
 	int reg;
 	u32 val;
+	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
 
 	/*
 	 * A pipe without a PLL won't actually be able to drive bits from
@@ -1873,7 +1874,8 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 	 * need the check.
 	 */
 	if (!HAS_PCH_SPLIT(dev_priv->dev)) {
-		if ((pipe == PIPE_A) && dev_priv->is_mipi) {
+		if ((pipe == PIPE_A) &&
+				intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)) {
 			/* XXX
 			 * for MIPI need to check dsi pll
 			 */
@@ -1898,7 +1900,7 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 	 * Since data will flow only when port is enabled.
 	 * wait for vblank will time out for mipi
 	 */
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI))
 		intel_wait_for_vblank(dev_priv->dev, pipe);
 	else
 		POSTING_READ(reg);
@@ -1977,6 +1979,7 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
 {
 	int reg;
 	u32 val;
+	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
 
 	/* If the pipe isn't enabled, we can't pump pixels and may hang */
 	assert_pipe_enabled(dev_priv, pipe);
@@ -1992,7 +1995,7 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
 	 * Since data will flow only when port is enabled.
 	 * wait for vblank will time out for mipi
 	 */
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI))
 		intel_wait_for_vblank(dev_priv->dev, pipe);
 	else
 		POSTING_READ(reg);
@@ -3848,10 +3851,10 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	if (dev_priv->disp_pm_in_progress == true)
 		intel_crtc->disp_suspend_state = false;
 
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI))
 		intel_enable_pll(dev_priv, pipe);
 
-	if (dev_priv->is_mipi) {
+	else{
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
 				intel_enable_dsi_pll(enc_to_intel_dsi(
@@ -3874,7 +3877,7 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	intel_crtc_update_cursor(crtc, true);
 }
 
-static void i9xx_crtc_disable(struct drm_crtc *crtc)
+void i9xx_crtc_disable(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -3882,6 +3885,7 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	struct intel_encoder *encoder;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
+	static bool do_once;
 	int val;
 
 	if (!intel_crtc->active)
@@ -3896,16 +3900,19 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	if (dev_priv->cfb_plane == plane)
 		intel_disable_fbc(dev);
 
-	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
+	if ((pipe == 0) && (intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)
+					|| dev_priv->is_hdmi) && !do_once) {
 		/* XXX: Disable PPS */
 		/* temporary fix for the IA firwware issue */
 		I915_WRITE_BITS(VLV_PIPE_PP_CONTROL(pipe), 0, 0x00000001);
 		if (wait_for((I915_READ(VLV_PIPE_PP_STATUS(pipe)) &
 						0x80000000) == 0, 50))
 			DRM_DEBUG_KMS("PPS Disableing timedout\n");
+		do_once = true;
 	}
 
 	intel_disable_plane(dev_priv, plane, pipe);
+	mdelay(1);
 	intel_disable_pipe(dev_priv, pipe);
 
 	/* disable panel fitter if enabled */
@@ -3925,8 +3932,9 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 		}
 	}
 
-	if (!dev_priv->is_mipi)
+	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)) {
 		intel_disable_pll(dev_priv, pipe);
+	}
 	else {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
@@ -4041,6 +4049,8 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	u32 data = 0;
+	static bool do_once;
+
 	/* If device is resuming, no need of prepare.
 	 * ALready the pipe is off and inactive
 	 */
@@ -4051,7 +4061,8 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 	i9xx_crtc_disable(crtc);
 
-	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
+	if ((pipe == 0) && (intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)
+					|| dev_priv->is_hdmi) && !do_once) {
 		/* Ensure that port, plane, pipe, pf, pll are all disabled
 		 * XXX Fis the register constants
 		 */
@@ -4066,6 +4077,7 @@ static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 
 		I915_WRITE_BITS(0x61230, 0, 0x80000000);
 		I915_WRITE_BITS(0x6014, 0, 0x80000000);
+		do_once = true;
 	}
 
 	intel_punit_read32(dev_priv, VLV_IOSFSB_PWRGT_STATUS, &data);
@@ -7600,34 +7612,6 @@ static void intel_pch_pll_init(struct drm_device *dev)
 	}
 }
 
-/*
-Simulate like a hpd event at sleep/resume
-hpd_on =0 >  while suspend, this will clear the modes
-hpd_on =1 >  only at resume  */
-void i915_simulate_hpd(struct drm_device *dev, int hpd_on)
-{
-	struct drm_connector *connector = NULL;
-
-	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-		if (connector->polled == DRM_CONNECTOR_POLL_HPD) {
-			if (hpd_on) {
-				/* Resuming, detect and read modes again */
-				connector->funcs->fill_modes(connector,
-				dev->mode_config.max_width,
-				dev->mode_config.max_height);
-			} else {
-				/* Suspend, reset previous detects and modes */
-				if (connector->funcs->reset)
-					connector->funcs->reset(connector);
-			}
-			DRM_DEBUG_KMS("Simulated HPD %s for connector %s\n",
-			(hpd_on ? "On" : "Off"),
-			drm_get_connector_name(connector));
-		}
-	}
-	drm_sysfs_hotplug_event(dev);
-}
-
 static int display_disable_wq(struct drm_device *drm_dev)
 {
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
@@ -7688,28 +7672,25 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 	struct drm_crtc *crtc;
 	struct intel_encoder *intel_encoder;
-	int audiosts = 0;
 
-	/* Force a re-detection on Hot-pluggable displays */
-	i915_simulate_hpd(drm_dev, false);
-
-	audiosts = mid_hdmi_audio_suspend(drm_dev);
-	if (audiosts != true)
+	dev_priv->audio_suspended = mid_hdmi_audio_suspend(drm_dev);
+	if (!dev_priv->audio_suspended)
 		DRM_DEBUG_DRIVER("Audio active, CRTC will not be suspended\n");
 
 	drm_kms_helper_poll_disable(drm_dev);
 	display_save_restore_hotplug(drm_dev, SAVEHPD);
 	display_disable_wq(drm_dev);
-	mutex_lock(&drm_dev->mode_config.mutex);
 	if (dev_priv->is_dpst_enabled) {
 		dev_priv->saveDPSTState = true;
 		i915_dpst_enable_hist_interrupt(drm_dev, false);
 	} else
 		dev_priv->saveDPSTState = false;
+	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
 	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
 		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-		if ((intel_crtc->pipe == PIPE_B) && (audiosts != true))
+		if ((intel_crtc->pipe == PIPE_B) &&
+				(!dev_priv->audio_suspended))
 			continue;
 		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder)
 			intel_encoder_prepare(&intel_encoder->base);
@@ -7728,7 +7709,6 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	i915_rpm_get_disp(drm_dev);
 
 	/* Re-detect hot pluggable displays */
-	i915_simulate_hpd(drm_dev, true);
 
 	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
@@ -7748,16 +7728,22 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	/* Fix for the issue of display blankout during the resume
 	 * Reset the luma back to default value */
 	i915_dpst_set_default_luma(drm_dev);
+
+	mutex_unlock(&drm_dev->mode_config.mutex);
+	display_save_restore_hotplug(drm_dev, RESTOREHPD);
+	drm_kms_helper_poll_enable(drm_dev);
+
 	if (dev_priv->bpp18_video_dpst)
 		dev_priv->is_video_playing = false;
 	else {
 		if (dev_priv->saveDPSTState)
 			i915_dpst_enable_hist_interrupt(drm_dev, true);
 	}
-	mutex_unlock(&drm_dev->mode_config.mutex);
-	display_save_restore_hotplug(drm_dev, RESTOREHPD);
-	drm_kms_helper_poll_enable(drm_dev);
 	dev_priv->is_resuming = false;
+
+	/* Simulate HPD: If there is a change in hot pluggable devices
+	scan and take action */
+	intel_hdmi_simulate_hpd(drm_dev, true);
 	return 0;
 }
 
@@ -7835,7 +7821,6 @@ int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 
 	crtc = to_intel_crtc(obj_to_crtc(drmmode_obj));
 	pipe_from_crtc_id->pipe = crtc->pipe;
-
 	return 0;
 }
 

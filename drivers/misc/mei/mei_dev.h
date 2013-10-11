@@ -353,7 +353,6 @@ struct mei_device {
 	 */
 	struct mutex device_lock; /* device lock */
 	struct delayed_work timer_work;	/* MEI timer delayed work (timeouts) */
-	struct workqueue_struct *wq;	/* MEI workqueue */
 
 	bool recvd_hw_ready;
 	/*
@@ -424,6 +423,7 @@ struct mei_device {
 	bool iamthif_canceled;
 
 	struct work_struct init_work;
+	struct work_struct reset_work;
 
 	/* List of bus devices */
 	struct list_head device_list;
@@ -460,6 +460,7 @@ void mei_device_init(struct mei_device *dev);
 void mei_reset(struct mei_device *dev, int interrupts);
 int mei_start(struct mei_device *dev);
 void mei_stop(struct mei_device *dev);
+void mei_cancel_work(struct mei_device *dev);
 
 /*
  *  MEI interrupt functions prototype
