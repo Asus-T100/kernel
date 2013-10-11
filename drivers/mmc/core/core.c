@@ -230,6 +230,11 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 	}
 
 	WARN_ON(!host->claimed);
+	if (host->claimer != current) {
+		WARN_ON(1);
+		pr_warn("%s: claimer thread:\n", __func__);
+		sched_show_task(host->claimer);
+	}
 
 	mrq->cmd->error = 0;
 	mrq->cmd->mrq = mrq;
