@@ -240,12 +240,30 @@ bool hv101hd1_init(struct intel_dsi_device *dsi)
 	/* Program MIPI reset */
 	//hv101hd1_msgbus_reset(); //<asus-ych20130905>
 
-	intel_mid_pmic_writeb(0x52,1);//PANEL_EN
-	intel_mid_pmic_writeb(0x51,1);//BACKLIGHT_EN
-
+    //<asus-ethan20131011+>
+	//intel_mid_pmic_writeb(0x52,1);//PANEL_EN
+	//intel_mid_pmic_writeb(0x51,1);//BACKLIGHT_EN
+    //<asus-ethan20131011->
 	return true;
 }
 
+//<asus-ethan20131011+>
+void hv101hd1_panel_reset(struct intel_dsi_device *dsi)
+{
+     intel_mid_pmic_writeb(0x52,1);//PANEL_EN
+     msleep(300);
+
+}
+
+void  hv101hd1_disable_panel_power(struct intel_dsi_device *dsi)
+{
+
+     msleep(200);
+     intel_mid_pmic_writeb(0x52,0);//PANEL_EN
+     msleep(500);
+
+}
+//<asus-ethan20131011->
 
 /* Callbacks. We might not need them all. */
 struct intel_dsi_dev_ops hv101hd1_dsi_display_ops = {
@@ -255,6 +273,10 @@ struct intel_dsi_dev_ops hv101hd1_dsi_display_ops = {
 	.dpms = hv101hd1_dpms,
 	.mode_valid = hv101hd1_mode_valid,
 	.mode_fixup = hv101hd1_mode_fixup,
+	//<asus-ethan20131011+>
+	.panel_reset = hv101hd1_panel_reset,
+    .disable_panel_power = hv101hd1_disable_panel_power,
+    //<asus-ethan20131011->
 	//<asus-ych20130916>.prepare = hv101hd1_prepare,
 	//<asus-ych20130916>.commit = hv101hd1_commit,
 	//<asus-ych20130916>.mode_set = hv101hd1_mode_set,
