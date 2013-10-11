@@ -1551,14 +1551,9 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 		get_charger(chip);
 		asusec_battery_polling(chip,true);
 
-		if(byt_usb_status(chip) ==1){
-			power_supply_changed(&chip->usb);
+		power_supply_changed(&chip->usb);
+		power_supply_changed(&chip->ac);
 
-		}
-		else if(byt_ac_status(chip) ==1){
-			power_supply_changed(&chip->ac);
-
-		}
 	}
 
 	else{
@@ -2189,6 +2184,11 @@ static int byt_battery_probe(struct i2c_client *client,
 			goto fail_unregister2;
 		}
 
+		get_charger(chip);
+		asusec_battery_polling(chip,true);
+
+		//power_supply_changed(&chip->usb);
+		//power_supply_changed(&chip->ac);
 
 		ret = sysfs_create_group(&chip->bat.dev->kobj, &byt_attr_group);
 		if (ret) {
