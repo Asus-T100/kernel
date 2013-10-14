@@ -282,8 +282,11 @@ static inline int room_on_ring(struct xhci_hcd *xhci, struct xhci_ring *ring,
 /* Ring the host controller doorbell after placing a command on the ring */
 void xhci_ring_cmd_db(struct xhci_hcd *xhci)
 {
-	if (!(xhci->cmd_ring_state & CMD_RING_STATE_RUNNING))
+	if (!(xhci->cmd_ring_state & CMD_RING_STATE_RUNNING)) {
+		xhci_err(xhci, "xhci->cmd_ring_state(0x%x) not equals to RUNNING\n",
+				xhci->cmd_ring_state);
 		return;
+	}
 
 	xhci_dbg(xhci, "// Ding dong!\n");
 	xhci_writel(xhci, DB_VALUE_HOST, &xhci->dba->doorbell[0]);
@@ -1419,7 +1422,7 @@ static void handle_cmd_completion(struct xhci_hcd *xhci,
 			xhci->slot_id = slot_id;
 		else
 			xhci->slot_id = 0;
-		complete(&xhci->addr_dev);
+		complete(&xhci->enable_slot);
 		break;
 	case TRB_TYPE(TRB_DISABLE_SLOT):
 		if (xhci->devs[slot_id]) {

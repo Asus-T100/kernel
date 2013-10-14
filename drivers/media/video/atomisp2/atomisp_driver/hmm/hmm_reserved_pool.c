@@ -28,9 +28,7 @@
 #include <linux/mm.h>
 
 #include "asm/cacheflush.h"
-
 #include "atomisp_internal.h"
-#include "atomisp_common.h"
 #include "hmm/hmm_pool.h"
 
 /*
@@ -94,16 +92,14 @@ static int hmm_reserved_pool_setup(struct hmm_reserved_pool_info **repool_info,
 	pool_info = atomisp_kernel_malloc(
 					sizeof(struct hmm_reserved_pool_info));
 	if (unlikely(!pool_info)) {
-		v4l2_err(&atomisp_dev,
-			"out of memory for repool_info.\n");
+		dev_err(atomisp_dev, "out of memory for repool_info.\n");
 		return -ENOMEM;
 	}
 
 	pool_info->pages = atomisp_kernel_malloc(
 					sizeof(struct page *) * pool_size);
 	if (unlikely(!pool_info->pages)) {
-		v4l2_err(&atomisp_dev,
-			"out of memory for repool_info->pages.\n");
+		dev_err(atomisp_dev, "out of memory for repool_info->pages.\n");
 		atomisp_kernel_free(pool_info);
 		return -ENOMEM;
 	}
@@ -135,8 +131,7 @@ static int hmm_reserved_pool_init(void **pool, unsigned int pool_size)
 
 	ret = hmm_reserved_pool_setup(&repool_info, pool_size);
 	if (ret) {
-		v4l2_err(&atomisp_dev,
-			    "hmm_reserved_pool_setup failed.\n");
+		dev_err(atomisp_dev, "hmm_reserved_pool_setup failed.\n");
 		return ret;
 	}
 
@@ -149,7 +144,7 @@ static int hmm_reserved_pool_init(void **pool, unsigned int pool_size)
 		pages = alloc_pages(GFP_KERNEL | __GFP_NOWARN, order);
 		if (unlikely(!pages)) {
 			fail_number++;
-			v4l2_err(&atomisp_dev, "%s: alloc_pages failed: %d\n",
+			dev_err(atomisp_dev, "%s: alloc_pages failed: %d\n",
 					__func__, fail_number);
 			/* if fail five times, will goto end */
 
@@ -161,7 +156,7 @@ static int hmm_reserved_pool_init(void **pool, unsigned int pool_size)
 
 			ret = set_pages_uc(pages, blk_pgnr);
 			if (ret) {
-				v4l2_err(&atomisp_dev,
+				dev_err(atomisp_dev,
 						"set pages uncached failed\n");
 				__free_pages(pages, order);
 				goto end;
@@ -184,7 +179,7 @@ end:
 
 	*pool = repool_info;
 
-	v4l2_info(&atomisp_dev,
+	dev_info(atomisp_dev,
 			"hmm_reserved_pool init successfully,"
 			"hmm_reserved_pool is with %d pages.\n",
 			repool_info->pgnr);
@@ -215,8 +210,7 @@ static void hmm_reserved_pool_exit(void **pool)
 	for (i = 0; i < pgnr; i++) {
 		ret = set_pages_wb(repool_info->pages[i], 1);
 		if (ret)
-			v4l2_err(&atomisp_dev,
-				"set page to WB err...\n");
+			dev_err(atomisp_dev, "set page to WB err...\n");
 		__free_pages(repool_info->pages[i], 0);
 	}
 

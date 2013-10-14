@@ -20,15 +20,11 @@
  * 02110-1301, USA.
  *
  */
-#include <hmm/hmm.h>
 
-/* not sure if we need these two for page related macros,
- * need to double check */
-
-#include <linux/kernel.h>
-#include <linux/slab.h>
-#include <hive_isp_css_mm_hrt.h>
 #include "atomisp_internal.h"
+
+#include "hive_isp_css_mm_hrt.h"
+#include "hmm/hmm.h"
 
 #define __page_align(size)	(((size) + (PAGE_SIZE-1)) & (~(PAGE_SIZE-1)))
 
@@ -106,12 +102,12 @@ static void *__hrt_isp_css_mm_alloc(size_t bytes, unsigned int userptr,
 						 0, cached);
 		else {
 			if (num_pages < ((__page_align(bytes)) >> PAGE_SHIFT))
-				v4l2_err(&atomisp_dev,
+				dev_err(atomisp_dev,
 					 "user space memory size is less"
 					 " than the expected size..\n");
 			else if (num_pages > ((__page_align(bytes))
 					      >> PAGE_SHIFT))
-				v4l2_err(&atomisp_dev,
+				dev_err(atomisp_dev,
 					 "user space memory size is"
 					 " large than the expected size..\n");
 
@@ -119,7 +115,7 @@ static void *__hrt_isp_css_mm_alloc(size_t bytes, unsigned int userptr,
 						 userptr, cached);
 		}
 	} else {
-		v4l2_err(&atomisp_dev, "user ptr type is incorrect.\n");
+		dev_err(atomisp_dev, "user ptr type is incorrect.\n");
 		return NULL;
 	}
 }
@@ -149,11 +145,11 @@ void *hrt_isp_css_mm_alloc_cached(size_t bytes)
 						HMM_CACHED);
 	else {
 		if (my_num_pages < ((__page_align(bytes)) >> PAGE_SHIFT))
-			v4l2_err(&atomisp_dev,
+			dev_err(atomisp_dev,
 					"user space memory size is less"
 					" than the expected size..\n");
 		else if (my_num_pages > ((__page_align(bytes)) >> PAGE_SHIFT))
-			v4l2_err(&atomisp_dev,
+			dev_err(atomisp_dev,
 					"user space memory size is"
 					" large than the expected size..\n");
 

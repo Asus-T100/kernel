@@ -514,6 +514,9 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 		I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
 
 	imr = ~0;
+
+	imr &= ~GEN6_RENDER_USER_INTERRUPT;
+
 	if (INTEL_INFO(dev)->gen >= 7)
 		imr &= ~GEN6_RENDER_TIMEOUT_COUNTER_EXPIRED;
 
@@ -1175,6 +1178,18 @@ static int intel_init_ring_buffer(struct drm_device *dev,
 		goto err_unpin;
 	}
 
+#if defined(CONFIG_I915_HW_SYNC)
+	/* Create a timeline for HW Native Sync support*/
+	ring->timeline = i915_sync_timeline_create(ring->dev, ring->name, ring);
+
+	if (!ring->timeline) {
+		DRM_ERROR("Sync timeline creation failed for ring %s\n",
+			ring->name);
+		ret = -EINVAL;
+		goto err_unmap;
+	}
+#endif
+
 	ret = ring->init(ring);
 	if (ret)
 		goto err_unmap;
@@ -1190,6 +1205,11 @@ static int intel_init_ring_buffer(struct drm_device *dev,
 	return 0;
 
 err_unmap:
+#if defined(CONFIG_I915_HW_SYNC)
+	if (ring->timeline)
+		i915_sync_timeline_destroy(ring->timeline);
+#endif
+
 	iounmap(ring->virtual_start);
 err_unpin:
 	i915_gem_object_unpin(obj);
@@ -1217,6 +1237,11 @@ void intel_cleanup_ring_buffer(struct intel_ring_buffer *ring)
 			  ring->name, ret);
 
 	I915_WRITE_CTL(ring, 0);
+
+#if defined(CONFIG_I915_HW_SYNC)
+	if (ring->timeline)
+		i915_sync_timeline_destroy(ring->timeline);
+#endif
 
 	iounmap(ring->virtual_start);
 
@@ -2102,7 +2127,7 @@ int intel_init_render_ring_buffer(struct drm_device *dev)
 			ring->flush = gen6_render_ring_flush__wa;
 		ring->irq_get = gen6_ring_get_irq;
 		ring->irq_put = gen6_ring_put_irq;
-		ring->irq_enable_mask = GT_USER_INTERRUPT;
+		ring->irq_enable_mask = 0;
 		ring->get_seqno = gen6_ring_get_seqno;
 		ring->sync_to = gen6_ring_sync;
 		ring->enable = gen6_ring_enable;
@@ -2249,7 +2274,7 @@ int intel_init_bsd_ring_buffer(struct drm_device *dev)
 		ring->flush = gen6_ring_flush;
 		ring->add_request = gen6_add_request;
 		ring->get_seqno = gen6_ring_get_seqno;
-		ring->irq_enable_mask = GEN6_BSD_USER_INTERRUPT;
+		ring->irq_enable_mask = 0;
 		ring->irq_get = gen6_ring_get_irq;
 		ring->irq_put = gen6_ring_put_irq;
 		ring->dispatch_execbuffer = gen6_ring_dispatch_execbuffer;
@@ -2286,7 +2311,8 @@ int intel_init_bsd_ring_buffer(struct drm_device *dev)
 	ring->init = init_ring_common;
 
 	/* Enable the timeout counter for watchdog reset */
-	I915_WRITE_IMR(ring, ~GEN6_BSD_TIMEOUT_COUNTER_EXPIRED);
+	I915_WRITE_IMR(ring, ~(GEN6_BSD_TIMEOUT_COUNTER_EXPIRED |
+				GEN6_BSD_USER_INTERRUPT));
 
 	ret = intel_init_ring_buffer(dev, ring);
 
@@ -2307,7 +2333,7 @@ int intel_init_blt_ring_buffer(struct drm_device *dev)
 	ring->flush = blt_ring_flush;
 	ring->add_request = gen6_add_request;
 	ring->get_seqno = gen6_ring_get_seqno;
-	ring->irq_enable_mask = GEN6_BLITTER_USER_INTERRUPT;
+	ring->irq_enable_mask = 0;
 	ring->irq_get = gen6_ring_get_irq;
 	ring->irq_put = gen6_ring_put_irq;
 	ring->dispatch_execbuffer = gen6_ring_dispatch_execbuffer;
@@ -2326,6 +2352,9 @@ int intel_init_blt_ring_buffer(struct drm_device *dev)
 	ring->signal_mbox[0] = GEN6_RBSYNC;
 	ring->signal_mbox[1] = GEN6_VBSYNC;
 	ring->init = init_ring_common;
+
+	/* Enable the user interrupt */
+	I915_WRITE_IMR(ring, ~(GEN6_BLITTER_USER_INTERRUPT));
 
 	ret = intel_init_ring_buffer(dev, ring);
 

@@ -1446,7 +1446,9 @@ struct xhci_hcd {
 	/* Store LPM test failed devices' information */
 	struct list_head	lpm_failed_devs;
 
-	/* slot enabling and address device helpers */
+	/* slot enabling helpers */
+	struct completion	enable_slot;
+	/* address device helpers */
 	struct completion	addr_dev;
 	int slot_id;
 	/* Internal mirror of the HW's dcbaa */

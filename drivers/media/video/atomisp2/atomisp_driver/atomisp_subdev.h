@@ -294,6 +294,11 @@ struct atomisp_sub_device {
 	atomic_t sequence_temp;
 
 	unsigned int streaming; /* Hold both mutex and lock to change this */
+
+	/* subdev index: will be used to show which subdev is holding the
+	 * resource, like which camera is used by which subdev
+	 */
+	unsigned int index;
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];
@@ -305,7 +310,7 @@ const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
 	enum v4l2_mbus_pixelcode code);
 const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv_compressed(
 	enum v4l2_mbus_pixelcode code);
-bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
+bool atomisp_subdev_format_conversion(struct atomisp_sub_device *asd,
 				      unsigned int source_pad);
 uint16_t atomisp_subdev_source_pad(struct video_device *vdev);
 

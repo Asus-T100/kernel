@@ -723,9 +723,6 @@ static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 
 	memcpy(&spid, ctx->pdata->spid, sizeof(spid));
 	pr_debug("Enter:%s\n", __func__);
-#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
-	return sst_platform_clv_init(platform);
-#else
 	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
 	    INTEL_MID_BOARD(1, TABLET, CLVT) ||
 	    INTEL_MID_BOARD(1, TABLET, BYT))
@@ -734,7 +731,6 @@ static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 	    INTEL_MID_BOARD(1, TABLET, MRFL))
 		return sst_dsp_init(platform);
 	return 0;
-#endif
 }
 
 static int sst_soc_remove(struct snd_soc_platform *platform)
