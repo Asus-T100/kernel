@@ -39,7 +39,8 @@
 
 #define RT5640_REG_RW 0		/* for debug */
 #define RT5640_DET_EXT_MIC 1
-#define USE_ONEBIT_DEPOP 0	/* for one bit depop */
+//<asus-baron20131014-> #define USE_ONEBIT_DEPOP 0	/* for one bit depop */
+#define USE_ONEBIT_DEPOP 1	/* for one bit depop */ //<asus-baron20131014+>
 #define HEADSET_DET_DELAY    200 /* Delay(ms) before reading over current
 				    status for headset detection */
 /*#define USE_EQ*/
@@ -50,6 +51,7 @@ static int delay_work = 500;
 module_param(delay_work, int, 0644);
 struct delayed_work enable_push_button_int_work;
 struct snd_soc_codec *rt5640_codec;
+struct delayed_work hp_amp_work; //<asus-baron20131014+>
 
 struct rt5640_init_reg {
 	u8 reg;
@@ -1703,16 +1705,23 @@ static void rt5640_pmu_depop(struct snd_soc_codec *codec)
 {
 	hp_amp_power(codec, 1);
 	/* headphone unmute sequence */
+//<asus-baron20131014+>
+/*
 	usleep_range(5000, 5500);
 	snd_soc_update_bits(codec, RT5640_HP_VOL,
 			    RT5640_L_MUTE | RT5640_R_MUTE, 0);
 	msleep(65);
+*/
+//<asus-baron20131014->
+	schedule_delayed_work(&hp_amp_work,
+				msecs_to_jiffies(500)); //<asus-baron20131014+>
 	/*snd_soc_update_bits(codec, RT5640_HP_CALIB_AMP_DET,
 	   RT5640_HPD_PS_MASK, RT5640_HPD_PS_EN); */
 }
 
 static void rt5640_pmd_depop(struct snd_soc_codec *codec)
 {
+	cancel_delayed_work_sync(&hp_amp_work); //<asus-baron20131014+>
 	snd_soc_update_bits(codec, RT5640_DEPOP_M3,
 			    RT5640_CP_FQ1_MASK | RT5640_CP_FQ2_MASK |
 			    RT5640_CP_FQ3_MASK,
@@ -1729,7 +1738,15 @@ static void rt5640_pmd_depop(struct snd_soc_codec *codec)
 	hp_amp_power(codec, 0);
 
 }
-
+//<asus-baron20131014+>
+static void do_hp_amp(struct work_struct *work)
+{
+	msleep(5);
+	snd_soc_update_bits(rt5640_codec, RT5640_HP_VOL,
+			RT5640_L_MUTE | RT5640_R_MUTE, 0);
+	msleep(65);
+}
+//<asus-baron20131014->
 #else
 void hp_amp_power(struct snd_soc_codec *codec, int on)
 {
@@ -3404,6 +3421,7 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 	rt5640_codec = codec;
 	INIT_DELAYED_WORK(&enable_push_button_int_work,
 					do_enable_push_button_int);
+	INIT_DELAYED_WORK(&hp_amp_work, do_hp_amp); //<asus-baron20131014+>
 
 	return 0;
 }
