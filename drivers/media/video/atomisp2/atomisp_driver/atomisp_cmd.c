@@ -2331,8 +2331,9 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 		old_table->height == shading_table->height &&
 		old_table->fraction_bits == shading_table->fraction_bits &&
 		old_table->enable == shading_table->enable) {
+// <ASUS-Ian20131015+> - Intel patch, improve non-ZSL shading		
 		bool data_is_same = true;
-
+		
 		for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
 			if (memcmp(shading_table->data[i], old_table->data[i],
 				len_table) != 0) {
@@ -2341,10 +2342,11 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 			}
 		}
 
-		if (data_is_same) {
+		if (0) {
 			atomisp_css_shading_table_free(shading_table);
 			return 0;
 		}
+// <ASUS-Ian20131015->
 	}
 #endif
 
@@ -3772,8 +3774,10 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		padding_w = 0, padding_h = 0;
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		padding_w = 12;
-		padding_h = 12;
+// <ASUS-Ian20131014+>	
+		padding_w = 16;
+		padding_h = 16;
+// <ASUS-Ian20131014->		
 	}
 
 	/* construct resolution supported by isp */
