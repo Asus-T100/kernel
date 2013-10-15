@@ -435,6 +435,77 @@
 #define DPIO_DATA_CHANNEL1              0x8220
 #define DPIO_DATA_CHANNEL2              0x8420
 
+#define VLV_DDI0_TX_0			0x0080
+#define VLV_DDI0_TX_1			0x0280
+#define VLV_DDI0_TX_2			0x0480
+#define VLV_DDI0_TX_3			0x0680
+#define VLV_DDI0_GRP_TX			0x8280
+#define VLV_DDI0_TX_CMN			0x1080
+#define VLV_DDI0_PCS_0			0x0200
+#define VLV_DDI0_PCS_1			0x0400
+#define VLV_DDI0_GRP_PCS		0x8200
+#define VLV_DDI0_PCS_CMN		0x1000
+#define VLV_DDI0_RX_CMN			0x1100
+
+#define VLV_DDI1_TX_0			0x2480
+#define VLV_DDI1_TX_1			0x2680
+#define VLV_DDI1_TX_2			0x2880
+#define VLV_DDI1_TX_3			0x2A80
+#define VLV_DDI1_GRP_TX			0x8480
+#define VLV_DDI1_TX_CMN			0x3080
+#define VLV_DDI1_PCS_0			0x2600
+#define VLV_DDI1_PCS_1			0x2800
+#define VLV_DDI1_GRP_PCS		0x8400
+#define VLV_DDI1_PCS_CMN		0x3000
+#define VLV_DDI1_RX_CMN			0x3100
+
+#define VLV_BRD_CST_TX			0xC080
+#define VLV_BRD_CST_PCS			0xC000
+
+#define DPIO_TX_0			0x00
+#define DPIO_TX_1			0x04
+#define DPIO_TX_2			0x08
+#define DPIO_TX_3			0x0C
+#define DPIO_TX_4			0x10
+#define DPIO_TX_5			0x14
+#define DPIO_TX_6			0x18
+#define DPIO_TX_7			0x1C
+#define DPIO_TX_8			0x20
+#define DPIO_TX_9			0x24
+#define DPIO_TX_A			0x28
+#define DPIO_TX_B			0x2C
+#define DPIO_TX_C			0x30
+#define DPIO_TX_D			0x34
+#define DPIO_TX_E			0x38
+#define DPIO_TX_F			0x3C
+#define DPIO_TX_10			0x40
+
+#define DPIO_PCS_0			0x00
+#define DPIO_PCS_1			0x04
+#define DPIO_PCS_2			0x08
+#define DPIO_PCS_3			0x0C
+#define DPIO_PCS_4			0x10
+#define DPIO_PCS_5			0x14
+#define DPIO_PCS_6			0x18
+#define DPIO_PCS_7			0x1C
+#define DPIO_PCS_8			0x20
+#define DPIO_PCS_9			0x24
+#define DPIO_PCS_A			0x28
+#define DPIO_PCS_B			0x2C
+#define DPIO_PCS_C			0x30
+#define DPIO_PCS_D			0x34
+#define DPIO_PCS_E			0x38
+#define DPIO_PCS_F			0x3C
+#define DPIO_PCS_10			0x40
+#define DPIO_PCS_11			0x44
+#define DPIO_PCS_12			0x48
+#define DPIO_PCS_13			0x4C
+#define DPIO_PCS_14			0x50
+#define DPIO_PCS_15			0x54
+#define DPIO_PCS_16			0x58
+#define DPIO_PCS_17			0x5C
+#define DPIO_PCS_18			0x60
+
 /*
  * Fence registers
  */
