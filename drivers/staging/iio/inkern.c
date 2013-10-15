@@ -43,7 +43,10 @@ int iio_map_array_register(struct iio_dev *indio_dev, struct iio_map *maps)
 		}
 		mapi->map = &maps[i];
 		mapi->indio_dev = indio_dev;
-		list_add(&mapi->l, &iio_map_list); //<asus-ych20130904>
+//<asus-bob20131009+>modify thermal sensor ID error
+//		list_add(&mapi->l, &iio_map_list); //<asus-ych20130904>
+		list_add_tail(&mapi->l, &iio_map_list);
+//<asus-bob20131009+>
 		i++;
 	}
 error_ret:
