@@ -726,6 +726,12 @@ static int __atomisp_update_run_mode(struct atomisp_sub_device *asd)
 	/* Fall back to obsolete s_parm */
 	p.parm.capture.capturemode = modes[mode];
 
+// <ASUS-Ian20131016+> - Intel patch, fix lsc(lens shading correction)
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	asd->update_lsc_table = true;
+#endif
+// <ASUS-Ian20131016->
+
 	return v4l2_subdev_call(
 		isp->inputs[asd->input_curr].camera, video, s_parm, &p);
 }
