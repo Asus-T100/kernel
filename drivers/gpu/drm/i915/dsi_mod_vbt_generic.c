@@ -462,6 +462,10 @@ void generic_panel_reset(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->mipi.sequence[MIPI_SEQ_ASSERT_RESET];
+
+	if (!sequence)
+		return;
+
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
@@ -472,6 +476,9 @@ void generic_disable_panel_power(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->mipi.sequence[MIPI_SEQ_DEASSERT_RESET];
+	if (!sequence)
+		return;
+
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
@@ -482,6 +489,9 @@ void generic_disable(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->mipi.sequence[MIPI_SEQ_DISPLAY_OFF];
+	if (!sequence)
+		return;
+
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
