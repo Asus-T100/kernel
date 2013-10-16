@@ -482,6 +482,32 @@ void generic_disable_panel_power(struct intel_dsi_device *dsi)
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
+void generic_send_otp_cmds(struct intel_dsi_device *dsi)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	char *sequence = dev_priv->mipi.sequence[MIPI_SEQ_INIT_OTP];
+	if (!sequence)
+		return;
+
+	generic_exec_sequence(intel_dsi, sequence);
+}
+
+void generic_enable(struct intel_dsi_device *dsi)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	char *sequence = dev_priv->mipi.sequence[MIPI_SEQ_DISPLAY_ON];
+	if (!sequence)
+		return;
+
+	generic_exec_sequence(intel_dsi, sequence);
+}
+
 void generic_disable(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
@@ -535,6 +561,8 @@ struct intel_dsi_dev_ops vbt_generic_dsi_display_ops = {
 	.mode_fixup = generic_mode_fixup,
 	.panel_reset = generic_panel_reset,
 	.disable_panel_power = generic_disable_panel_power,
+	.send_otp_cmds = generic_send_otp_cmds,
+	.enable = generic_enable,
 	.disable = generic_disable,
 	.detect = generic_detect,
 	.get_hw_state = generic_get_hw_state,
