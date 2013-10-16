@@ -53,15 +53,23 @@ static struct intel_mid_thermal_sensor byt_sensors[] = {
 	{
 		.name = "skin0",
 		.index = 1,
-		.slope = 477,
-		.intercept = 22002,
+//<ASUS-Bob20131003+>
+//		.slope = 477,
+//		.intercept = 22002,
+		.slope = 1000,
+		.intercept = 0,
+//<ASUS-Bob20131003->
 		.temp_correlation = linear_correlation,
 	},
 	{
 		.name = "skin1",
 		.index = 2,
-		.slope = 347,
-		.intercept = 17940,
+//<ASUS-Bob20131003+>
+//		.slope = 347,
+//		.intercept = 17940,
+		.slope = 1000,
+		.intercept = 0,
+//<ASUS-Bob20131003->
 		.temp_correlation = linear_correlation,
 	},
 	{

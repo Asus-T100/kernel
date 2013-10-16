@@ -677,6 +677,10 @@ config HID_ZYDACRON
 	---help---
 	Support for Zydacron remote control.
 
+config HID_ELAN_TOUCH_PAD
+	bool "T100 elan touch pad multi-touch mode driver"
+	---help---
+	support multi-touch.
 endmenu
 
 endif # HID_SUPPORT

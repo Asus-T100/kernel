@@ -2362,6 +2362,11 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	shading_table->enable = user_st->enable;
 
+// <ASUS-Ian20131016+> - Intel patch, fix lsc(lens shading correction)
+	if (asd->update_lsc_table)
+		goto set_lsc;
+// <ASUS-Ian20131016->
+		
 	/* No need to update shading table if it is the same */
 	if (old_table != NULL &&
 		old_table->sensor_width == shading_table->sensor_width &&
@@ -2370,7 +2375,7 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 		old_table->height == shading_table->height &&
 		old_table->fraction_bits == shading_table->fraction_bits &&
 		old_table->enable == shading_table->enable) {
-// <ASUS-Ian20131015+> - Intel patch, improve non-ZSL shading		
+// <ASUS-Ian20131016+>, Restore
 		bool data_is_same = true;
 		
 		for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
@@ -2381,11 +2386,11 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 			}
 		}
 
-		if (0) {
+		if (data_is_same) {
 			atomisp_css_shading_table_free(shading_table);
 			return 0;
 		}
-// <ASUS-Ian20131015->
+// <ASUS-Ian20131016->
 	}
 #endif
 
@@ -2397,6 +2402,12 @@ set_lsc:
 
 	if (old_table)
 		atomisp_css_shading_table_free(old_table);
+
+// <ASUS-Ian20131016+> - Intel patch, fix lsc(lens shading correction)
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	asd->update_lsc_table = false;
+#endif
+// <ASUS-Ian20131016->
 
 	return 0;
 }

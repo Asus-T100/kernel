@@ -275,6 +275,12 @@ struct atomisp_sub_device {
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	struct atomisp_stream_env stream_env;
+// <ASUS-Ian20131016+> - Intel patch, fix lsc(lens shading correction)
+	/*
+	 * some parameters need to be reload when ISP mode get changes
+	 */
+	bool update_lsc_table;
+// <ASUS-Ian20131016->
 #endif
 	struct v4l2_pix_format dvs_envelop;
 	unsigned int s3a_bufs_in_css[CSS_PIPE_ID_NUM];

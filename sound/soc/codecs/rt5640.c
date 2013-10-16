@@ -44,7 +44,7 @@
 #define HEADSET_DET_DELAY    200 /* Delay(ms) before reading over current
 				    status for headset detection */
 /*#define USE_EQ*/
-#define USE_EQ 1 //realtek EQ control //<asus-baron20131007+> 
+#define USE_EQ 1 //realtek EQ control //<asus-baron20131016+> //just for speaker
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
 static int delay_work = 500;
@@ -83,12 +83,16 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_PRIV_DATA, 0x6115},
 	{RT5640_PRIV_INDEX, 0x0023},	/*PR23 = 0804'h */
 	{RT5640_PRIV_DATA, 0x0804},
+	{RT5640_PRIV_INDEX, 0x003f},	/*PR3f = 0c00'h */ //<asus-baron20131016+>
+	{RT5640_PRIV_DATA, 0x0c00}, //<asus-baron20131016+>
 	/*playback */
-	{RT5640_STO_DAC_MIXER, 0x0404},	/*Dig inf 1 -> Sto DAC mixer -> DACL */
+//<asus-baron20131016->	{RT5640_STO_DAC_MIXER, 0x0404},	/*Dig inf 1 -> Sto DAC mixer -> DACL */
+	{RT5640_STO_DAC_MIXER, 0x1414},	/*Dig inf 1 -> Sto DAC mixer -> DACL */ //<asus-baron20131016+>
 	{RT5640_OUT_L3_MIXER, 0x01fe},	/*DACL1 -> OUTMIXL */
 	{RT5640_OUT_R3_MIXER, 0x01fe},	/*DACR1 -> OUTMIXR */
 //	{RT5640_HP_VOL, 0x8888},	/*OUTMIX -> HPVOL */  //<asus-baron20130823-> realtek
-	{RT5640_HP_VOL, 0x8b8b},	/*OUTMIX -> HPVOL */  //<asus-baron20130823+> realtek
+//<asus-baron20131016->	{RT5640_HP_VOL, 0x8b8b},	/*OUTMIX -> HPVOL */  //<asus-baron20130823+> realtek
+	{RT5640_HP_VOL, 0x0606}, //Headphone Volume Channel 3dB  //<asus-baron20131016+>
 	{RT5640_HPO_MIXER, 0xc000},	/*HPVOL -> HPOLMIX */
 /*	{RT5640_HPO_MIXER	, 0xa000},//DAC1 -> HPOLMIX*/
 /*	{RT5640_CHARGE_PUMP	, 0x0f00},*/
@@ -107,11 +111,15 @@ static struct rt5640_init_reg init_list[] = {
 /*	{RT5640_SPO_L_MIXER	, 0xb800},//DAC -> SPOLMIX*/
 /*	{RT5640_SPO_R_MIXER	, 0x1800},//DAC -> SPORMIX*/
 /*	{RT5640_I2S1_SDP	, 0xD000},//change IIS1 and IIS2*/
+	{RT5640_I2S1_SDP	, 0xe000}, //<asus-baron20131016+>
+	{RT5640_I2S2_SDP	, 0x8040}, //<asus-baron20131016+>
 	/*record */
 //	{RT5640_IN1_IN2, 0x5080},	/*IN1 boost 40db and differential mode */ //<asus-baron20130823->
 //	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost 40db and signal ended mode */ //<asus-baron20130823->
-	{RT5640_IN1_IN2, 0x1080},	/*IN1 boost +20db and differential mode */ //<asus-baron20130823+>
-	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost +0db and signal ended mode */ //<asus-baron20130823+>
+//<asus-baron20131011->	{RT5640_IN1_IN2, 0x1080},	/*IN1 boost +20db and differential mode */ //<asus-baron20131016+>
+	{RT5640_IN1_IN2, 0x1000}, //<asus-baron20131016+>
+//<asus-baron20131016->	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost +0db and signal ended mode */ //<asus-baron20130823+>
+	{RT5640_IN3_IN4, 0x0500}, //Digital Gain +40dB (Artlink Shine) //<asus-baron20131016+>
 	
 /*	{RT5640_REC_L2_MIXER	, 0x007d},//Mic1 -> RECMIXL*/
 /*	{RT5640_REC_R2_MIXER	, 0x007d},//Mic1 -> RECMIXR*/
@@ -122,13 +130,17 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_STO_ADC_MIXER, 0x3020},  //<asus-baron20130823+>
 	{RT5640_MONO_ADC_MIXER, 0x3030},  //<asus-baron20130823+>
 //	{RT5640_ADC_DIG_VOL, 0xe2e2},  //<asus-baron20130830->
-	{RT5640_ADC_DIG_VOL, 0xcfcf}, //realtek change it to windows setting  //<asus-baron20130830+>
+//<asus-baron20131016->	{RT5640_ADC_DIG_VOL, 0xcfcf}, //realtek change it to windows setting  //<asus-baron20130830+>
+	{RT5640_ADC_DIG_VOL, 0x3535}, //analog  (Artlink Shine)  //<asus-baron20130830+>
 /*	{RT5640_MONO_MIXER, 0xcc00},*/	/*OUTMIX -> MONOMIX */
+	{RT5640_WND_3, 0x3199}, //High Pass Filter 200HZ (Artlink Shine) //<asus-baron20131016+>
+	{RT5640_DAC1_DIG_VOL, 0x9797}, //Digital volume -9dB //<asus-baron20131016+>
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
 	{RT5640_DSP_PATH2, 0x0000},
 #else
 	{RT5640_DSP_PATH2, 0x0c00},
 #endif
+	{RT5640_DSP_PATH1, 0xc000}, //<asus-baron20131016+>
 //<asus-baron20130830+>
 	/* DRC parameters */
 //<asus-baron20130906->	{RT5640_DRC_AGC_1, 0x4206},
@@ -1996,7 +2008,8 @@ static int rt5640_asrc_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		snd_soc_write(w->codec, RT5640_ASRC_1, 0x9a00);
+//<asus-baron20131016->		snd_soc_write(w->codec, RT5640_ASRC_1, 0x9a00);
+		snd_soc_write(w->codec, RT5640_ASRC_1, 0xfa00); //<asus-baron20131016+>
 		snd_soc_write(w->codec, RT5640_ASRC_2, 0xf800);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
