@@ -627,6 +627,10 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 			INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
 		sdhci_alloc_panic_host(slot->host);
 
+	slot->host->mmc->caps2 |= MMC_CAP2_FIXED_NCRC |
+		MMC_CAP2_PWOFF_DELAY;
+	slot->host->mmc->qos = kzalloc(sizeof(struct pm_qos_request),
+			GFP_KERNEL);
 
 	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 38);
 	/*
