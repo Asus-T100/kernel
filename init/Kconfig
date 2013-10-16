@@ -1403,14 +1403,14 @@ config MODVERSIONS
 	  to the modules to (hopefully) spot any changes which would
 	  make them incompatible with the kernel you are running.  If
 	  unsure, say N.
-
-config MODULE_LOAD_SKIP_VERMAGIC
+#//<asus-ych20131014+>
+config MODULE_LOAD_SKIP_VERMAGIC 
 	bool "load module without vermagic"
 	default n
 	help
 	  Allow loading of modules, even vermagic is not match. If
 	  unsure, say N.
-
+#//<asus-ych20131014->
 config MODULE_SRCVERSION_ALL
 	bool "Source checksum for all modules"
 	help

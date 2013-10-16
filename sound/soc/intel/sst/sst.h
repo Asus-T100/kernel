@@ -95,9 +95,6 @@ enum sst_states {
 #define SST_CLKCTL		0x78
 #define SST_CSR2		0x80
 
-#define SST_PRH_IPCX		0x3C
-#define SST_PRH_IPCD		0x44
-
 #define SST_SHIM_BEGIN		SST_CSR
 #define SST_SHIM_END		SST_CSR2
 #define SST_SHIM_SIZE		0x88
@@ -369,22 +366,6 @@ struct snd_sst_probe_bytes {
 #define PCI_DMAC_CLV_ID 0x08F0
 #define PCI_DMAC_MRFLD_ID 0x119B
 
-struct sst_probe_info {
-	u32 iram_start;
-	u32 iram_end;
-	bool iram_use;
-	u32 dram_start;
-	u32 dram_end;
-	bool dram_use;
-	u32 imr_start;
-	u32 imr_end;
-	bool imr_use;
-	bool use_elf;
-	unsigned int max_streams;
-	u32 dma_max_len;
-	u8 num_probes;
-};
-
 struct sst_fw_context {
 	void *iram;
 	void *dram;
@@ -508,11 +489,12 @@ struct intel_sst_drv {
 	unsigned int		dram_end;
 	unsigned int		ddr_end;
 	unsigned int		ddr_base;
+	unsigned int		mailbox_recv_offset;
 	atomic_t		pm_usage_count;
 	struct sst_shim_regs64	*shim_regs64;
 	struct list_head        block_list;
 	struct list_head	ipc_dispatch_list;
-	struct sst_pci_info     *pdata;
+	struct sst_platform_info *pdata;
 	struct work_struct	ipc_post_msg_wq;
 	struct sst_ipc_msg_wq	ipc_process_msg;
 	struct sst_ipc_msg_wq	ipc_process_reply;
@@ -547,11 +529,12 @@ struct intel_sst_drv {
 	struct intel_sst_ops	*ops;
 	struct sst_debugfs	debugfs;
 	struct pm_qos_request	*qos;
-	struct sst_probe_info	info;
+	struct sst_info	info;
 	unsigned int		use_dma;
 	unsigned int		use_lli;
 	atomic_t		fw_clear_context;
 	atomic_t		fw_clear_cache;
+	bool			lib_dwnld_reqd;
 	/* list used during FW download in memcpy mode */
 	struct list_head	memcpy_list;
 	/* list used during LIB download in memcpy mode */
@@ -568,6 +551,8 @@ struct intel_sst_drv {
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
+extern struct sst_platform_info byt_ffrd10_platform_data;
+extern struct sst_platform_info byt_ffrd8_platform_data;
 
 /* misc definitions */
 #define FW_DWNL_ID 0xFF
@@ -578,7 +563,7 @@ struct sst_fill_config {
 	struct sst_platform_config_data sst_pdata;
 	u32 shim_phy_add;
 	u32 mailbox_add;
-};
+} __packed;
 
 struct intel_sst_ops {
 	irqreturn_t (*interrupt) (int, void *);
@@ -594,6 +579,7 @@ struct intel_sst_ops {
 	int (*save_dsp_context) (struct intel_sst_drv *sst);
 	void (*restore_dsp_context) (void);
 	int (*alloc_stream) (char *params, struct sst_block *block);
+	void (*post_download)(struct intel_sst_drv *sst);
 };
 
 int sst_alloc_stream(char *params, struct sst_block *block);
@@ -645,6 +631,9 @@ int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr);
 int sst_load_fw(void);
 int sst_load_library(struct snd_sst_lib_download *lib, u8 ops);
 int sst_load_all_modules_elf(struct intel_sst_drv *ctx);
+void sst_post_download_ctp(struct intel_sst_drv *ctx);
+void sst_post_download_mrfld(struct intel_sst_drv *ctx);
+void sst_post_download_byt(struct intel_sst_drv *ctx);
 int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx);
 void sst_memcpy_free_resources(void);
 
@@ -684,7 +673,7 @@ void print_bytes(const void *data, size_t sz, unsigned char word_sz,
 		 unsigned char words_in_line);
 int sst_alloc_drv_context(struct device *dev);
 int sst_driver_ops(struct intel_sst_drv *sst);
-struct sst_probe_info *sst_get_acpi_driver_data(const char *hid);
+struct sst_platform_info *sst_get_acpi_driver_data(const char *hid);
 int __devinit sst_acpi_probe(struct platform_device *pdev);
 int sst_acpi_remove(struct platform_device *pdev);
 void sst_save_shim64(struct intel_sst_drv *ctx, void __iomem *shim,
@@ -800,7 +789,7 @@ static inline void sst_init_stream(struct stream_info *stream,
 	stream->ops = ops;
 }
 
-static inline void sst_set_gpio_conf(struct sst_gpio_config *gpio_conf)
+static inline void sst_set_gpio_conf(const struct sst_gpio_config *gpio_conf)
 {
 	lnw_gpio_set_alt(gpio_conf->i2s_rx_alt, gpio_conf->alt_function);
 	lnw_gpio_set_alt(gpio_conf->i2s_tx_alt, gpio_conf->alt_function);

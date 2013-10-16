@@ -29,10 +29,10 @@
 #include <linux/slab.h>
 #include <asm/page.h>
 
+#include "atomisp_internal.h"
 #include "mmu/isp_mmu.h"
 #include "hmm/hmm_vm.h"
 #include "hmm/hmm_common.h"
-#include "atomisp_internal.h"
 
 static unsigned int vm_node_end(unsigned int start, unsigned int pgnr)
 {
@@ -90,7 +90,7 @@ static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int pgnr,
 
 	node = kmem_cache_alloc(vm->cache, GFP_KERNEL);
 	if (!node) {
-		v4l2_err(&atomisp_dev, "out of memory.\n");
+		dev_err(atomisp_dev, "out of memory.\n");
 		return NULL;
 	}
 
@@ -122,7 +122,7 @@ struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 
 	node = alloc_hmm_vm_node(pgnr, vm);
 	if (!node) {
-		v4l2_err(&atomisp_dev, "no memory to allocate hmm vm node.\n");
+		dev_err(atomisp_dev, "no memory to allocate hmm vm node.\n");
 		return NULL;
 	}
 
@@ -139,7 +139,7 @@ struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 				/* vm area does not have space anymore */
 				spin_unlock(&vm->lock);
 				kmem_cache_free(vm->cache, node);
-				v4l2_err(&atomisp_dev,
+				dev_err(atomisp_dev,
 					  "no enough virtual address space.\n");
 				return NULL;
 			}

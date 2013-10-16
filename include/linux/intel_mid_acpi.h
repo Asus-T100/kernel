@@ -41,8 +41,8 @@ struct platform_id {
 	u8 ext_id_1[32];
 	u8 ext_id_2[32];
 	u8 uuid[16];
-	u8 iafw_major;
-	u8 iafw_minor;
+	u16 iafw_major;
+	u16 iafw_minor;
 	u8 secfw_major;
 	u8 secfw_minor;
 };
