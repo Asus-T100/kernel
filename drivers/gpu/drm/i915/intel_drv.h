@@ -167,6 +167,7 @@ struct intel_crtc {
 	bool lowfreq_avail;
 	struct intel_overlay *overlay;
 	struct intel_unpin_work *unpin_work;
+	struct intel_unpin_work *sprite_unpin_work;
 	int fdi_lanes;
 
 	/* Display surface base address adjustement for pageflips. Note that on
@@ -198,7 +199,8 @@ struct intel_plane {
 			     int crtc_x, int crtc_y,
 			     unsigned int crtc_w, unsigned int crtc_h,
 			     uint32_t x, uint32_t y,
-			     uint32_t src_w, uint32_t src_h);
+			     uint32_t src_w, uint32_t src_h,
+			     struct drm_pending_vblank_event *event);
 	void (*disable_plane)(struct drm_plane *plane);
 	int (*update_colorkey)(struct drm_plane *plane,
 			       struct drm_intel_sprite_colorkey *key);
@@ -273,47 +275,6 @@ struct cxsr_latency {
 #define DIP_SPD_PC	0x9
 #define DIP_SPD_BD	0xa
 #define DIP_SPD_SCD	0xb
-
-/* CSC correction */
-#define CSC_MAX_COEFF_COUNT		6
-#define CLR_MGR_PARSE_MAX		128
-#define PIPECONF_GAMMA			(1<<24)
-#define GAMMA_CORRECT_MAX_COUNT 256
-#define GAMMA_SP_MAX_COUNT 6
-/* Gamma correction defines */
-#define GAMMA_MAX_VAL			1024
-#define SHIFTBY6(val) (val<<6)
-#define PIPEA_GAMMA_MAX_RED		0x70010
-#define PIPEA_GAMMA_MAX_GREEN	0x70014
-#define PIPEA_GAMMA_MAX_BLUE		0x70018
-/* Sprite gamma correction regs */
-#define GAMMA_SPA_GAMC0			0x721F4
-#define GAMMA_SPA_GAMC1			0x721F0
-#define GAMMA_SPA_GAMC2			0x721EC
-#define GAMMA_SPA_GAMC3			0x721E8
-#define GAMMA_SPA_GAMC4			0x721E4
-#define GAMMA_SPA_GAMC5			0x721E0
-
-#define GAMMA_SPB_GAMC0			0x721F4
-#define GAMMA_SPB_GAMC1			0x721F0
-#define GAMMA_SPB_GAMC2			0x721EC
-#define GAMMA_SPB_GAMC3			0x721E8
-#define GAMMA_SPB_GAMC4			0x721E4
-#define GAMMA_SPB_GAMC5			0x721E0
-
-#define GAMMA_SPA_CNTRL			0x72180
-#define GAMMA_SPB_CNTRL			0x72280
-#define GAMMA_ENABLE_SPR			(1<<30)
-#define GAMMA_SP_MAX_COUNT		6
-
-
-/* Color manager features */
-enum ClrMgrFeatures {
-	ClrMgrCsc = 1,
-	ClrMgrGamma,
-	ClrMgrContrBright,
-	ClrMgrHueSat,
-};
 
 struct dip_infoframe {
 	uint8_t type;		/* HB0 */
@@ -562,6 +523,10 @@ extern void intel_fbdev_set_suspend(struct drm_device *dev, int state);
 extern void intel_prepare_page_flip(struct drm_device *dev, int plane);
 extern void intel_finish_page_flip(struct drm_device *dev, int pipe);
 extern void intel_finish_page_flip_plane(struct drm_device *dev, int plane);
+extern void intel_prepare_sprite_page_flip(struct drm_device *dev,
+						int plane);
+extern void intel_finish_sprite_page_flip(struct drm_device *dev,
+						int plane);
 
 extern void intel_setup_overlay(struct drm_device *dev);
 extern void intel_cleanup_overlay(struct drm_device *dev);
@@ -661,4 +626,5 @@ bool is_cursor_enabled(struct drm_i915_private *dev_priv,
 bool is_maxfifo_needed(struct drm_i915_private *dev_priv);
 
 extern void intel_unpin_work_fn(struct work_struct *__work);
+extern void intel_unpin_sprite_work_fn(struct work_struct *__work);
 #endif /* __INTEL_DRV_H__ */

@@ -833,6 +833,28 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 		goto handle_hung_ring_error;
 	}
 
+#if defined(CONFIG_I915_HW_SYNC)
+	/* Sample the active seqno to see if this request failed during
+	* a batch buffer */
+	ring->tdr_seqno = intel_read_status_page(ring,
+				I915_GEM_ACTIVE_SEQNO_INDEX);
+
+	if (ring->tdr_seqno) {
+		/* Clear it in the HWS to avoid seeing it more than once */
+		intel_write_status_page(ring, I915_GEM_ACTIVE_SEQNO_INDEX, 0);
+
+		/* Signal the timeline. This will cause it to query the
+		* signaled state of any waiting sync points.
+		* If any match with ring->tdr_seqno then
+		* they will be marked with an error state */
+		i915_sync_timeline_signal(ring->timeline,
+			ring->get_seqno(ring, false), 1);
+
+		/* Clear the tdr_seqno so it isn't seen twice */
+		ring->tdr_seqno = 0;
+	}
+#endif
+
 	/* Sample the current ring head position */
 	head = I915_READ(RING_HEAD(ring->mmio_base)) & HEAD_ADDR;
 	if (head == dev_priv->hangcheck[ringid].last_head) {

@@ -24,11 +24,6 @@
 #ifndef	__HMM_BO_COMMON_H__
 #define	__HMM_BO_COMMON_H__
 
-#include <linux/kernel.h>
-#include <linux/errno.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-common.h>
-
 #define	HMM_BO_NAME	"HMM"
 
 /*
@@ -37,7 +32,7 @@
 #define	var_equal_return(var1, var2, exp, fmt, arg ...)	\
 	do { \
 		if ((var1) == (var2)) { \
-			v4l2_err(&atomisp_dev, \
+			dev_err(atomisp_dev, \
 			fmt, ## arg); \
 			return exp;\
 		} \
@@ -46,7 +41,7 @@
 #define	var_equal_return_void(var1, var2, fmt, arg ...)	\
 	do { \
 		if ((var1) == (var2)) { \
-			v4l2_err(&atomisp_dev, \
+			dev_err(atomisp_dev, \
 			fmt, ## arg); \
 			return;\
 		} \
@@ -55,7 +50,7 @@
 #define	var_equal_goto(var1, var2, label, fmt, arg ...)	\
 	do { \
 		if ((var1) == (var2)) { \
-			v4l2_err(&atomisp_dev, \
+			dev_err(atomisp_dev, \
 			fmt, ## arg); \
 			goto label;\
 		} \
@@ -64,7 +59,7 @@
 #define	var_not_equal_goto(var1, var2, label, fmt, arg ...)	\
 	do { \
 		if ((var1) != (var2)) { \
-			v4l2_err(&atomisp_dev, \
+			dev_err(atomisp_dev, \
 			fmt, ## arg); \
 			goto label;\
 		} \

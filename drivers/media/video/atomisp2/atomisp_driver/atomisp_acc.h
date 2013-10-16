@@ -90,7 +90,7 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
  * Return immediately, acceleration is left running in background.
  * Specify either acceleration binary or pipeline which to start.
  */
-int atomisp_acc_start(struct atomisp_device *isp,
+int atomisp_acc_start(struct atomisp_sub_device *asd,
 		      unsigned int *handle);
 
 /*
@@ -98,7 +98,7 @@ int atomisp_acc_start(struct atomisp_device *isp,
  * This MUST be called after each acceleration has been started.
  * Specify either acceleration binary or pipeline handle.
  */
-int atomisp_acc_wait(struct atomisp_device *isp,
+int atomisp_acc_wait(struct atomisp_sub_device *asd,
 		     unsigned int *handle);
 
 /*
@@ -111,12 +111,12 @@ void atomisp_acc_done(struct atomisp_device *isp);
  * Appends the loaded acceleration binary extensions to the
  * current ISP mode. Must be called just before atomisp_css_start().
  */
-int atomisp_acc_load_extensions(struct atomisp_device *isp);
+int atomisp_acc_load_extensions(struct atomisp_sub_device *asd);
 
 /*
  * Must be called after streaming is stopped:
  * unloads any loaded acceleration extensions.
  */
-void atomisp_acc_unload_extensions(struct atomisp_device *isp);
+void atomisp_acc_unload_extensions(struct atomisp_sub_device *asd);
 
 #endif /* __ATOMISP_ACC_H__ */

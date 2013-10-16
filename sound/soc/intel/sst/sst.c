@@ -140,7 +140,7 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 		size = header.p.header_low_payload;
 	sst_drv_ctx->ipc_process_reply.mrfld_header = header;
 	memcpy_fromio(sst_drv_ctx->ipc_process_reply.mailbox,
-		      drv->mailbox + SST_MAILBOX_RCV_MRFLD, size);
+		      drv->mailbox + drv->mailbox_recv_offset, size);
 	queue_work(sst_drv_ctx->process_reply_wq,
 			&sst_drv_ctx->ipc_process_reply.wq);
 	return IRQ_HANDLED;
@@ -202,13 +202,13 @@ static irqreturn_t intel_sst_irq_thread_mfld(int irq, void *context)
 	if (header.part.msg_id & REPLY_MSG) {
 		sst_drv_ctx->ipc_process_msg.header = header;
 		memcpy_fromio(sst_drv_ctx->ipc_process_msg.mailbox,
-			drv->mailbox + SST_MAILBOX_RCV + 4, size);
+			drv->mailbox + drv->mailbox_recv_offset + 4, size);
 		queue_work(sst_drv_ctx->process_msg_wq,
 				&sst_drv_ctx->ipc_process_msg.wq);
 	} else {
 		sst_drv_ctx->ipc_process_reply.header = header;
 		memcpy_fromio(sst_drv_ctx->ipc_process_reply.mailbox,
-			drv->mailbox + SST_MAILBOX_RCV + 4, size);
+			drv->mailbox + drv->mailbox_recv_offset + 4, size);
 		queue_work(sst_drv_ctx->process_reply_wq,
 				&sst_drv_ctx->ipc_process_reply.wq);
 	}
@@ -410,6 +410,7 @@ static struct intel_sst_ops mrfld_ops = {
 	.process_reply = sst_process_reply_mrfld,
 	.save_dsp_context =  sst_save_dsp_context_v2,
 	.alloc_stream = sst_alloc_stream_mrfld,
+	.post_download = sst_post_download_mrfld,
 };
 
 static struct intel_sst_ops mrfld_32_ops = {
@@ -425,6 +426,7 @@ static struct intel_sst_ops mrfld_32_ops = {
 	.save_dsp_context =  sst_save_dsp_context,
 	.restore_dsp_context = sst_restore_fw_context,
 	.alloc_stream = sst_alloc_stream_ctp,
+	.post_download = sst_post_download_byt,
 };
 
 static struct intel_sst_ops mfld_ops = {
@@ -457,6 +459,7 @@ static struct intel_sst_ops ctp_ops = {
 	.save_dsp_context =  sst_save_dsp_context,
 	.restore_dsp_context = sst_restore_fw_context,
 	.alloc_stream = sst_alloc_stream_ctp,
+	.post_download = sst_post_download_ctp,
 };
 
 int sst_driver_ops(struct intel_sst_drv *sst)
@@ -523,7 +526,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 {
 	int i, ret = 0;
 	struct intel_sst_ops *ops;
-	struct sst_pci_info *sst_pdata = pci->dev.platform_data;
+	struct sst_platform_info *sst_pdata = pci->dev.platform_data;
 	int ddr_base;
 
 	pr_debug("Probe for DID %x\n", pci->device);
@@ -541,13 +544,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		return -EINVAL;
 	memcpy(&sst_drv_ctx->info, sst_drv_ctx->pdata->probe_data,
 					sizeof(sst_drv_ctx->info));
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
-		sst_drv_ctx->use_32bit_ops = true;
-	/* This is work around and needs to be removed once we
-		have SPID for PRh - Appplies to all occurances */
-#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
-	sst_drv_ctx->use_32bit_ops = true;
-#endif
+
+	sst_drv_ctx->use_32bit_ops = sst_drv_ctx->pdata->ipc_info->use_32bit_ops;
+	sst_drv_ctx->mailbox_recv_offset = sst_drv_ctx->pdata->ipc_info->mbox_recv_off;
 
 	if (0 != sst_driver_ops(sst_drv_ctx))
 		return -EINVAL;
@@ -593,15 +592,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	spin_lock_init(&sst_drv_ctx->block_lock);
 	spin_lock_init(&sst_drv_ctx->pvt_id_lock);
 
-#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
-	sst_drv_ctx->ipc_reg.ipcx = SST_PRH_IPCX;
-	sst_drv_ctx->ipc_reg.ipcd = SST_PRH_IPCD;
-	/* overwrite max_streams for Merr PRh */
-	sst_drv_ctx->info.max_streams = 5;
-#else
-	sst_drv_ctx->ipc_reg.ipcx = SST_IPCX;
-	sst_drv_ctx->ipc_reg.ipcd = SST_IPCD;
-#endif
+	sst_drv_ctx->ipc_reg.ipcx = SST_IPCX + sst_drv_ctx->pdata->ipc_info->ipc_offset;
+	sst_drv_ctx->ipc_reg.ipcd = SST_IPCD + sst_drv_ctx->pdata->ipc_info->ipc_offset;
 	pr_debug("ipcx 0x%x ipxd 0x%x", sst_drv_ctx->ipc_reg.ipcx,
 					sst_drv_ctx->ipc_reg.ipcd);
 
@@ -1182,14 +1174,14 @@ static const struct dev_pm_ops intel_sst_pm = {
 
 static const struct acpi_device_id sst_acpi_ids[];
 
-struct sst_probe_info *sst_get_acpi_driver_data(const char *hid)
+struct sst_platform_info *sst_get_acpi_driver_data(const char *hid)
 {
 	const struct acpi_device_id *id;
 
 	pr_debug("%s", __func__);
 	for (id = sst_acpi_ids; id->id[0]; id++)
 		if (!strncmp(id->id, hid, 16))
-			return (struct sst_probe_info *)id->driver_data;
+			return (struct sst_platform_info *)id->driver_data;
 	return NULL;
 }
 
@@ -1201,30 +1193,9 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);
 
-#define SST_BYT_IRAM_START	0xff2c0000
-#define SST_BYT_IRAM_END	0xff2d4000
-#define SST_BYT_DRAM_START	0xff300000
-#define SST_BYT_DRAM_END	0xff328000
-#define SST_BYT_IMR_START	0xc0000000
-#define SST_BYT_IMR_END		0xc01fffff
-
-const struct sst_probe_info intel_byt_info = {
-	.use_elf	= true,
-	.max_streams	= 4,
-	.dma_max_len	= SST_MAX_DMA_LEN_MRFLD,
-	.iram_start	= SST_BYT_IRAM_START,
-	.iram_end	= SST_BYT_IRAM_END,
-	.iram_use	= true,
-	.dram_start	= SST_BYT_DRAM_START,
-	.dram_end	= SST_BYT_DRAM_END,
-	.dram_use	= true,
-	.imr_start	= SST_BYT_IMR_START,
-	.imr_end	= SST_BYT_IMR_END,
-	.imr_use	= true,
-};
-
 static const struct acpi_device_id sst_acpi_ids[] = {
-	{ "LPE0F28", (kernel_ulong_t) &intel_byt_info },
+	{ "LPE0F28", (kernel_ulong_t) &byt_ffrd10_platform_data },
+	{ "LPE0F281", (kernel_ulong_t) &byt_ffrd8_platform_data },
 	{ },
 };
 MODULE_DEVICE_TABLE(acpi, sst_acpi_ids);

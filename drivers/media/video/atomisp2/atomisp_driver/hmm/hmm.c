@@ -34,15 +34,11 @@
 #include "hmm/hmm_bo.h"
 #include "hmm/hmm_bo_dev.h"
 
-#include "mmu/isp_mmu.h"
-
-#include "mmu/sh_mmu_mrfld.h"
-#include "mmu/sh_mmu_mfld.h"
-
 #include "atomisp_internal.h"
 #include "asm/cacheflush.h"
-
-#include "atomisp_common.h"
+#include "mmu/isp_mmu.h"
+#include "mmu/sh_mmu_mrfld.h"
+#include "mmu/sh_mmu_mfld.h"
 
 #ifdef USE_SSSE3
 #include <asm/ssse3.h>
@@ -66,8 +62,7 @@ int hmm_init(void)
 					 ISP_VM_START, ISP_VM_SIZE);
 
 	if (ret)
-		v4l2_err(&atomisp_dev,
-			    "hmm_bo_device_init failed.\n");
+		dev_err(atomisp_dev, "hmm_bo_device_init failed.\n");
 
 	/*
 	 * As hmm use NULL to indicate invalid ISP virtual address,
@@ -104,14 +99,14 @@ void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
 	/*Buffer object structure init*/
 	bo = hmm_bo_create(&bo_device, pgnr);
 	if (!bo) {
-		v4l2_err(&atomisp_dev, "hmm_bo_create failed.\n");
+		dev_err(atomisp_dev, "hmm_bo_create failed.\n");
 		goto create_bo_err;
 	}
 
 	/*Allocate virtual address in ISP virtual space*/
 	ret = hmm_bo_alloc_vm(bo);
 	if (ret) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "hmm_bo_alloc_vm failed.\n");
 		goto alloc_vm_err;
 	}
@@ -119,7 +114,7 @@ void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
 	/*Allocate pages for memory*/
 	ret = hmm_bo_alloc_pages(bo, type, from_highmem, userptr, cached);
 	if (ret) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "hmm_bo_alloc_pages failed.\n");
 		goto alloc_page_err;
 	}
@@ -127,7 +122,7 @@ void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
 	/*Combind the virtual address and pages togather*/
 	ret = hmm_bo_bind(bo);
 	if (ret) {
-		v4l2_err(&atomisp_dev, "hmm_bo_bind failed.\n");
+		dev_err(atomisp_dev, "hmm_bo_bind failed.\n");
 		goto bind_err;
 	}
 	return (void *)bo->vm_node->start;
@@ -149,7 +144,7 @@ void hmm_free(void *virt)
 	bo = hmm_bo_device_search_start(&bo_device, (unsigned int)virt);
 
 	if (!bo) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "can not find buffer object start with "
 			    "address 0x%x\n", (unsigned int)virt);
 		return;
@@ -167,20 +162,20 @@ void hmm_free(void *virt)
 static inline int hmm_check_bo(struct hmm_buffer_object *bo, unsigned int ptr)
 {
 	if (!bo) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "can not find buffer object contains "
 			    "address 0x%x\n", ptr);
 		return -EINVAL;
 	}
 
 	if (!hmm_bo_page_allocated(bo)) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "buffer object has no page allocated.\n");
 		return -EINVAL;
 	}
 
 	if (!hmm_bo_vm_allocated(bo)) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "buffer object has no virtual address"
 			    " space allocated.\n");
 		return -EINVAL;
@@ -212,7 +207,7 @@ static int load_and_flush(void *virt, void *data, unsigned int bytes)
 
 		src = (char *)kmap(bo->page_obj[idx].page);
 		if (!src) {
-			v4l2_err(&atomisp_dev,
+			dev_err(atomisp_dev,
 				    "kmap buffer object page failed: "
 				    "pg_idx = %d\n", idx);
 			return -EINVAL;
@@ -252,7 +247,7 @@ static int load_and_flush(void *virt, void *data, unsigned int bytes)
 int hmm_load(void *virt, void *data, unsigned int bytes)
 {
 	if (!data) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			 "hmm_load NULL argument\n");
 		return -EINVAL;
 	}
@@ -292,7 +287,7 @@ int hmm_store(void *virt, const void *data, unsigned int bytes)
 			des = (char *)kmap(bo->page_obj[idx].page);
 
 		if (!des) {
-			v4l2_err(&atomisp_dev,
+			dev_err(atomisp_dev,
 				    "kmap buffer object page failed: "
 				    "pg_idx = %d\n", idx);
 			return -EINVAL;
@@ -354,7 +349,7 @@ int hmm_set(void *virt, int c, unsigned int bytes)
 
 		des = (char *)kmap(bo->page_obj[idx].page);
 		if (!des) {
-			v4l2_err(&atomisp_dev,
+			dev_err(atomisp_dev,
 				    "kmap buffer object page failed: "
 				    "pg_idx = %d\n", idx);
 			return -EINVAL;
@@ -390,7 +385,7 @@ phys_addr_t hmm_virt_to_phys(void *virt)
 
 	bo = hmm_bo_device_search_in_range(&bo_device, ptr);
 	if (!bo) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "can not find buffer object contains "
 			    "address 0x%x\n", ptr);
 		return -1;
@@ -409,7 +404,7 @@ int hmm_mmap(struct vm_area_struct *vma, void *virt)
 
 	bo = hmm_bo_device_search_start(&bo_device, ptr);
 	if (!bo) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "can not find buffer object start with "
 			    "address 0x%x\n", (unsigned int)virt);
 		return -EINVAL;
@@ -426,7 +421,7 @@ void *hmm_vmap(void *virt)
 
 	bo = hmm_bo_device_search_start(&bo_device, ptr);
 	if (!bo) {
-		v4l2_err(&atomisp_dev,
+		dev_err(atomisp_dev,
 			    "can not find buffer object start with "
 			    "address 0x%x\n", (unsigned int)virt);
 		return NULL;
@@ -448,7 +443,7 @@ int hmm_pool_register(unsigned int pool_size,
 		return dynamic_pool.pops->pool_init(&dynamic_pool.pool_info,
 							pool_size);
 	default:
-		v4l2_err(&atomisp_dev, "invalid pool type.\n");
+		dev_err(atomisp_dev, "invalid pool type.\n");
 		return -EINVAL;
 	}
 }
@@ -465,7 +460,7 @@ void hmm_pool_unregister(enum hmm_pool_type pool_type)
 			dynamic_pool.pops->pool_exit(&dynamic_pool.pool_info);
 		break;
 	default:
-		v4l2_err(&atomisp_dev, "invalid pool type.\n");
+		dev_err(atomisp_dev, "invalid pool type.\n");
 		break;
 	}
 

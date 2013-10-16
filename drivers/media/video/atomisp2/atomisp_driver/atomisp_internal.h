@@ -48,6 +48,8 @@
 #include "gp_device.h"
 #include "irq.h"
 
+#define MAX_STREAM_NUM	2
+
 #define ATOMISP_PCI_DEVICE_SOC_MASK	0xfff8
 /* MRFLD with 0x1178: ISP freq can burst to 457MHz */
 #define ATOMISP_PCI_DEVICE_SOC_MRFLD	0x1178
@@ -126,6 +128,12 @@ struct atomisp_input_subdev {
 	struct atomisp_css_morph_table *morph_table;
 	struct atomisp_css_shading_table *shading_table;
 	struct v4l2_frmsizeenum frame_size;
+
+	/*
+	 * To show this resource is used by
+	 * which stream, in ISP multiple stream mode
+	 */
+	struct atomisp_sub_device *asd;
 };
 
 struct atomisp_freq_scaling_rule {
@@ -231,8 +239,18 @@ struct atomisp_device {
 	} acc;
 
 
-	/* ISP modules */
-	struct atomisp_sub_device asd;
+	/*
+	 * ISP modules
+	 * Multiple streams are represents by multiple
+	 * atomisp_sub_device instances
+	 */
+	struct atomisp_sub_device *asd;
+	/*
+	 * this will be assiged dyanamically.
+	 * For CTP(ISP2300), only 1 stream is supported.
+	 * For Merr/BTY(ISP2400), 2 streams are supported.
+	 */
+	unsigned int num_of_streams;
 	/*
 	 * MRFLD has 3 CSI ports, while MFLD has only 2.
 	 */
@@ -284,7 +302,7 @@ struct atomisp_device {
 #define v4l2_dev_to_atomisp_device(dev) \
 	container_of(dev, struct atomisp_device, v4l2_dev)
 
-extern struct v4l2_device atomisp_dev;
+extern struct device *atomisp_dev;
 
 extern void *atomisp_kernel_malloc(size_t bytes);
 
