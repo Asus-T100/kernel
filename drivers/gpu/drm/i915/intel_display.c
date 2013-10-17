@@ -43,6 +43,7 @@
 #include "drm_crtc_helper.h"
 #include "intel_dsi.h"
 #include "intel_dsi_pll.h"
+#include "intel_clrmgr.h"
 
 #define HAS_eDP (intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 
@@ -2571,7 +2572,7 @@ intel_finish_fb(struct intel_crtc *crtc, struct drm_framebuffer *old_fb)
 	int ret;
 
 	if (wait_event_timeout(dev_priv->pending_flip_queue,
-		   atomic_read(&obj->pending_flip), 5) == 0) {
+		   atomic_read(&obj->pending_flip) == 0, 5) == 0) {
 		DRM_DEBUG_DRIVER("flip wait timed out.\n");
 
 		/* cleanup */
@@ -7712,6 +7713,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 
 	mutex_lock(&drm_dev->mode_config.mutex);
 	dev_priv->disp_pm_in_progress = true;
+	dev_priv->late_resume = true;
 
 	/* No need of separate crct enable and encoder commit calls
 	 * Move the modeset sequence in late resume instead of resume.
@@ -7729,6 +7731,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 	 * Reset the luma back to default value */
 	i915_dpst_set_default_luma(drm_dev);
 
+	dev_priv->late_resume = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	display_save_restore_hotplug(drm_dev, RESTOREHPD);
 	drm_kms_helper_poll_enable(drm_dev);
@@ -7740,6 +7743,10 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 			i915_dpst_enable_hist_interrupt(drm_dev, true);
 	}
 	dev_priv->is_resuming = false;
+
+	  /* Restore Gamma/Csc/Hue/Saturation/Brightness/Contrast */
+	if (!intel_restore_clr_mgr_status(drm_dev))
+		DRM_ERROR("Restore Color manager status failed");
 
 	/* Simulate HPD: If there is a change in hot pluggable devices
 	scan and take action */

@@ -51,6 +51,10 @@ struct dw9714_device {
 #define VCM_PROTECTION_OFF	0xeca3
 #define VCM_PROTECTION_ON	0xdc51
 #define VCM_DEFAULT_S 0x0
+/* MCLK default */
+#define DLC_DEFAULT_MCLK	0x10
+/* T_SRC setting  7.89 msec = Tvib/2 for VCM TDK TVF657ABA */
+#define DLC_DEFAULT_TSRC	0x18
 
 #define vcm_step_s(a) (u8)(a & 0xf)
 #define vcm_step_mclk(a) (u8)((a >> 4) & 0x3)
