@@ -110,6 +110,10 @@
  * Currently only lvds needs that. */
 #define INTEL_MODE_CRTC_TIMINGS_SET (0x20)
 
+#define DDC_SHORT_READ_SIZE 12
+#define DDC_SEGMENT_OFFSET_MFGID 0
+
+
 static inline void
 intel_mode_set_pixel_multiplier(struct drm_display_mode *mode,
 				int multiplier)
@@ -190,7 +194,7 @@ struct intel_plane {
 	struct drm_plane base;
 	int plane;
 	enum pipe pipe;
-	struct drm_i915_gem_object *obj;
+	struct drm_i915_gem_object *obj, *old_obj;
 	int max_downscale;
 	u32 lut_r[1024], lut_g[1024], lut_b[1024];
 	void (*update_plane)(struct drm_plane *plane,
@@ -469,11 +473,14 @@ extern void intel_encoder_prepare(struct drm_encoder *encoder);
 extern void intel_encoder_commit(struct drm_encoder *encoder);
 extern void intel_encoder_noop(struct drm_encoder *encoder);
 extern void intel_encoder_destroy(struct drm_encoder *encoder);
+extern void intel_hdmi_simulate_hpd(struct drm_device *dev, int hpd_on);
+extern void i9xx_crtc_disable(struct drm_crtc *crtc);
 
 static inline struct intel_encoder *intel_attached_encoder(struct drm_connector *connector)
 {
 	return to_intel_connector(connector)->encoder;
 }
+
 
 extern void intel_connector_attach_encoder(struct intel_connector *connector,
 					   struct intel_encoder *encoder);

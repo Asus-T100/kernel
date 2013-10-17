@@ -105,7 +105,7 @@ void mei_host_client_init(struct work_struct *work);
 
 
 void mei_cl_all_disconnect(struct mei_device *dev);
-void mei_cl_all_read_wakeup(struct mei_device *dev);
+void mei_cl_all_wakeup(struct mei_device *dev);
 void mei_cl_all_write_clear(struct mei_device *dev);
 
 #define MEI_CL_FMT "cl:host=%02d me=%02d "

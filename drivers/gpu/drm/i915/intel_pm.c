@@ -4801,14 +4801,17 @@ int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv)
 {
 	int ret = 0;
 
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		dev_priv->gt_fifo_count =
+				I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
 	if (dev_priv->gt_fifo_count < GT_FIFO_NUM_RESERVED_ENTRIES) {
 		int loop = 500;
 		u32 fifo = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
-		while (fifo <= GT_FIFO_NUM_WRITE_THRESHOLD && loop--) {
+		while (fifo <= GT_FIFO_NUM_RESERVED_ENTRIES && loop--) {
 			udelay(10);
 			fifo = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
 		}
-		if (WARN_ON(loop < 0 && fifo <= GT_FIFO_NUM_WRITE_THRESHOLD))
+		if (WARN_ON(loop < 0 && fifo <= GT_FIFO_NUM_RESERVED_ENTRIES))
 			++ret;
 		dev_priv->gt_fifo_count = fifo;
 	}
@@ -4876,10 +4879,6 @@ static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
 		/* FIXME: confirm VLV behavior with Punit folks */
 		POSTING_READ(VLV_RENDER_FORCE_WAKE_REG);
 
-		if (wait_for_atomic_us(!(I915_READ_NOTRACE(
-			VLV_RENDER_FORCE_WAKE_STATUS_REG) & 0x1), 500))
-			DRM_ERROR("Render Force wake put wait timed out\n");
-
 	}
 
 	/* Check for Media Engine */
@@ -4890,10 +4889,6 @@ static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
 
 		/* FIXME: confirm VLV behavior with Punit folks */
 		POSTING_READ(VLV_MEDIA_FORCE_WAKE_REG);
-
-		if (wait_for_atomic_us(!(I915_READ_NOTRACE(
-			VLV_MEDIA_FORCE_WAKE_STATUS_REG) & 0x1), 500))
-			DRM_ERROR("Force wake put media  wait timed out\n");
 
 	}
 
@@ -5195,7 +5190,6 @@ void vlv_rs_setstate(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 regdata = 0;
-	unsigned long irqflags = 0;
 	regdata = I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG);
 
 	if (enable) {
@@ -5214,10 +5208,6 @@ void vlv_rs_setstate(struct drm_device *dev,
 	} else {
 		/* Forcewake all engines first */
 		vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
-
-		spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
-		dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
-		spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 
 		regdata &= ~(1 << 28);
 		regdata &= ~(1 << 24);

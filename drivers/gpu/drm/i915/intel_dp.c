@@ -2667,7 +2667,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	intel_dp->has_audio = false;
 
 	/* Fix panel, No need to detect again If force on */
-	if (force && dev_priv->is_edp)
+	if (force && (dev_priv->lfp_type == INTEL_OUTPUT_EDP))
 		return connector->status;
 
 	ironlake_edp_panel_vdd_on(intel_dp);
@@ -2683,11 +2683,14 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		      intel_dp->dpcd[6], intel_dp->dpcd[7]);
 
 	if (status != connector_status_connected) {
-		dev_priv->is_edp = false;
+		if (is_edp(intel_dp))
+			dev_priv->lfp_type = 0;
 		return status;
 	}
 
-	dev_priv->is_edp = true;
+	if (is_edp(intel_dp))
+		dev_priv->lfp_type = INTEL_OUTPUT_EDP;
+
 	intel_dp_probe_oui(intel_dp);
 
 	if (intel_dp->force_audio != HDMI_AUDIO_AUTO) {

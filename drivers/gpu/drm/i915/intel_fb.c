@@ -271,6 +271,12 @@ MODULE_LICENSE("GPL and additional rights");
 void intel_fb_output_poll_changed(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
+	struct drm_fb_helper *helper = &dev_priv->fbdev->helper;
+
+	/* WAR to avoid wrong modeset during bootup */
+	mutex_lock(&dev->mode_config.mutex);
+	helper->fb = NULL;
+	mutex_unlock(&dev->mode_config.mutex);
 	drm_fb_helper_hotplug_event(&dev_priv->fbdev->helper);
 }
 

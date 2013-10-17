@@ -168,7 +168,7 @@ u32 intel_panel_get_max_backlight(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 max;
 
-	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi)
+	if (IS_VALLEYVIEW(dev) && dev_priv->lfp_type == INTEL_OUTPUT_DSI)
 		return 0xFF;
 
 	max = i915_read_blc_pwm_ctl(dev_priv);
@@ -222,7 +222,7 @@ static u32 intel_panel_get_backlight(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 val = 0, dpst_val;
 
-	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
+	if (IS_VALLEYVIEW(dev) && dev_priv->lfp_type == INTEL_OUTPUT_DSI) {
 #ifdef CONFIG_CRYSTAL_COVE
 		val = intel_mid_pmic_readb(0x4E);
 #else
@@ -280,7 +280,7 @@ void intel_panel_actually_set_backlight(struct drm_device *dev, u32 level)
 		pci_write_config_byte(dev->pdev, PCI_LBPC, lbpc);
 	}
 
-	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
+	if (IS_VALLEYVIEW(dev) && dev_priv->lfp_type == INTEL_OUTPUT_DSI) {
 #ifdef CONFIG_CRYSTAL_COVE
 		intel_mid_pmic_writeb(0x4E, level);
 #else
@@ -311,7 +311,7 @@ void intel_panel_disable_backlight(struct drm_device *dev)
 	dev_priv->backlight_enabled = false;
 	intel_panel_actually_set_backlight(dev, 0);
 
-	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
+	if (IS_VALLEYVIEW(dev) && dev_priv->lfp_type == INTEL_OUTPUT_DSI) {
 #ifdef CONFIG_CRYSTAL_COVE
 		intel_mid_pmic_writeb(0x51, 0x00);
 		intel_mid_pmic_writeb(0x4B, 0x7F);
@@ -341,7 +341,7 @@ void intel_panel_enable_backlight(struct drm_device *dev,
 	if (dev_priv->backlight_level == 0)
 		dev_priv->backlight_level = intel_panel_get_max_backlight(dev);
 
-	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
+	if (IS_VALLEYVIEW(dev) && dev_priv->lfp_type == INTEL_OUTPUT_DSI) {
 #ifdef CONFIG_CRYSTAL_COVE
 		intel_mid_pmic_writeb(0x4B, 0xFF);
 		intel_mid_pmic_writeb(0x4E, 0xFF);

@@ -187,15 +187,17 @@ static int mei_me_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, dev);
 
-	queue_delayed_work(dev->wq, &dev->timer_work, HZ);
+	schedule_delayed_work(&dev->timer_work, HZ);
 
 	pr_debug("initialization successful.\n");
 
 	return 0;
 
 release_irq:
+
+	mei_cancel_work(dev);
+
 	mei_disable_interrupts(dev);
-	flush_workqueue(dev->wq);
 	free_irq(pdev->irq, dev);
 disable_msi:
 	pci_disable_msi(pdev);
@@ -310,7 +312,7 @@ static int mei_me_pci_resume(struct device *device)
 	mutex_unlock(&dev->device_lock);
 
 	/* Start timer if stopped in suspend */
-	queue_delayed_work(dev->wq, &dev->timer_work, HZ);
+	schedule_delayed_work(&dev->timer_work, HZ);
 
 	return err;
 }

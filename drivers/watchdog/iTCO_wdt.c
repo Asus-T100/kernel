@@ -545,21 +545,6 @@ static int iTCO_wdt_start(void)
 
 	iTCO_vendor_pre_start(iTCO_wdt_private.ACPIBASE, heartbeat);
 
-	/*
-	 * REVERT-ME: disable reboot at watchdog timeout, enable it on
-	 * command-line demand
-	 * waiting for PMC rom-patch to handle timeout interruption and dump
-	 * kernel stack to emmc_ipanic partition
-	 */
-	if (strstr(saved_command_line, "enable_tco=1")) {
-		/* disable chipset's NO_REBOOT bit */
-		if (iTCO_wdt_unset_NO_REBOOT_bit()) {
-			spin_unlock(&iTCO_wdt_private.io_lock);
-			pr_err("failed to reset NO_REBOOT flag, reboot disabled by hardware/BIOS\n");
-			return -EIO;
-		}
-	}
-
 	/* Force the timer to its reload value by writing to the TCO_RLD
 	   register */
 	if (iTCO_wdt_private.iTCO_version == 2 ||
@@ -623,6 +608,7 @@ static int iTCO_wdt_keepalive(void)
 	}
 
 	spin_unlock(&iTCO_wdt_private.io_lock);
+
 	return 0;
 }
 
@@ -965,15 +951,22 @@ static int __devinit iTCO_wdt_init(struct pci_dev *pdev,
 		pmc_base_address &= 0xFFFFFE00;
 	}
 
-	/* Check chipset's NO_REBOOT bit */
-	if (iTCO_wdt_unset_NO_REBOOT_bit() && iTCO_vendor_check_noreboot_on()) {
-		pr_info("unable to reset NO_REBOOT flag, device disabled by hardware/BIOS\n");
-		ret = -ENODEV;	/* Cannot reset NO_REBOOT bit */
-		goto out_unmap;
+	/*
+	 * Disable reboot at watchdog timeout on
+	 * command-line demand
+	 */
+	if (strstr(saved_command_line, "enable_tco=0")) {
+		/* Set the NO_REBOOT bit to prevent later reboots */
+		iTCO_wdt_set_NO_REBOOT_bit();
+	} else {
+		/* Check chipset's NO_REBOOT bit */
+		if (iTCO_wdt_unset_NO_REBOOT_bit() && \
+			iTCO_vendor_check_noreboot_on()) {
+			pr_info("unable to reset NO_REBOOT flag, device disabled by hardware/BIOS\n");
+			ret = -ENODEV;	/* Cannot reset NO_REBOOT bit */
+			goto out_unmap;
+		}
 	}
-
-	/* Set the NO_REBOOT bit to prevent later reboots, just for sure */
-	iTCO_wdt_set_NO_REBOOT_bit();
 
 	/* The TCO logic uses the TCO_EN bit in the SMI_EN register */
 	if (!request_region(SMI_EN, 4, "iTCO_wdt")) {
@@ -1026,9 +1019,6 @@ static int __devinit iTCO_wdt_init(struct pci_dev *pdev,
 		outw(0x0002, TCO2_STS);	/* Clear SECOND_TO_STS bit */
 		outw(0x0004, TCO2_STS);	/* Clear BOOT_STS bit */
 	}
-
-	/* Make sure the watchdog is not running */
-	iTCO_wdt_stop();
 
 	/* Check that the heartbeat value is within it's range;
 	   if not reset to the default */

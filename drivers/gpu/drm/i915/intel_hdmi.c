@@ -61,7 +61,7 @@ struct intel_hdmi *enc_to_intel_hdmi(struct drm_encoder *encoder)
 static struct intel_hdmi *intel_attached_hdmi(struct drm_connector *connector)
 {
 	return container_of(intel_attached_encoder(connector),
-			    struct intel_hdmi, base);
+			struct intel_hdmi, base);
 }
 
 void intel_dip_infoframe_csum(struct dip_infoframe *frame)
@@ -833,6 +833,118 @@ void intel_hdmi_reset(struct drm_connector *connector)
 	intel_cleanup_modes(connector);
 	kfree(intel_hdmi->edid);
 	intel_hdmi->edid = NULL;
+	connector->status = connector_status_disconnected;
+}
+
+void send_uevent(struct drm_device *dev, char *uevent)
+{
+	char *envp[] = {uevent, NULL};
+	/* Notify usp the change */
+	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
+}
+
+
+bool intel_hdmi_identify_monitor(struct drm_connector *connector,
+	struct drm_device *dev)
+{
+	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct i2c_adapter *adapter = NULL;
+	bool ret = false;
+	struct edid *old_edid = NULL;
+	u8  *new_edid = NULL;
+	int i;
+	/* Verify input */
+	if (!intel_hdmi || !intel_hdmi->edid) {
+		DRM_ERROR("Invalid input to identify monitor");
+		goto END;
+	}
+	/* Extract previous monitor's identifier */
+	old_edid = intel_hdmi->edid;
+	new_edid = kzalloc(DDC_SHORT_READ_SIZE, GFP_KERNEL);
+	if (!new_edid) {
+		DRM_ERROR("Identify monitor, No memory left");
+		return ret;
+	}
+
+
+	/* Prepare for a short EDID read */
+	adapter = intel_gmbus_get_adapter(dev_priv,
+				intel_hdmi->ddc_bus);
+	if (!adapter) {
+		DRM_ERROR("Invalid adapter to identify monitor");
+		goto END;
+	}
+	/* Read 12  bytes of EDID to get monitor mfg id and product id */
+	for (i = 0; i < 4; i++) {
+		if (drm_do_probe_ddc_edid(adapter, new_edid,
+			DDC_SEGMENT_OFFSET_MFGID, DDC_SHORT_READ_SIZE)) {
+			DRM_ERROR("Identify monitor, edid read failed");
+			goto END;
+		}
+	}
+
+	if (new_edid) {
+		(new_edid[8] == old_edid->mfg_id[0]
+		&& (new_edid[9]) == old_edid->mfg_id[1]
+		&& new_edid[10] == old_edid->prod_code[0]
+		&& new_edid[11] == old_edid->prod_code[1])
+		? (ret = true) : (ret = false);
+	} else {
+		return false;
+	}
+END:
+	kfree(new_edid);
+	return ret;
+}
+
+/* Simulate like a hpd event at sleep/resume */
+void intel_hdmi_simulate_hpd(struct drm_device *dev, int hpd_on)
+{
+	struct drm_connector *connector = NULL;
+	struct intel_hdmi *intel_hdmi = NULL;
+	char uevent[20] = {"\0"};
+	bool live_status = 0;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+		if (connector->polled == DRM_CONNECTOR_POLL_HPD) {
+			intel_hdmi = intel_attached_hdmi(connector);
+			live_status = g4x_hdmi_connected(intel_hdmi);
+
+			switch (connector->status) {
+			case connector_status_connected:
+			if (live_status) {
+				/* If Monitor is same, no need for an event */
+				if (intel_hdmi_identify_monitor(connector, dev))
+					return;
+				/* Resuming, detect and read modes again */
+				intel_hdmi_reset(connector);
+				connector->funcs->fill_modes(connector,
+						dev->mode_config.max_width,
+						dev->mode_config.max_height);
+				DRM_DEBUG("\nhpd uevent:\"HDMI-Changed\"");
+				snprintf(uevent, strlen("HDMI-Changed"),
+							"HDMI-Changed");
+				send_uevent(dev, uevent);
+			} else {
+				/* HDMI monitor status change detectd,
+				cleanup old edid and modes */
+				intel_hdmi_reset(connector);
+				drm_sysfs_hotplug_event(dev);
+				DRM_ERROR("vikas : unplug in sleep");
+			}
+			break;
+			case connector_status_disconnected:
+			if (live_status)
+				drm_sysfs_hotplug_event(dev);
+			break;
+
+			default:
+			DRM_ERROR("Invalid HDMI state to detect");
+			return;
+			}
+		}
+	}
 }
 
 static enum drm_connector_status
@@ -843,6 +955,7 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct edid *edid = NULL;
 	enum drm_connector_status status = connector_status_disconnected;
+
 
 	i915_rpm_get_callback(dev);
 
@@ -879,7 +992,6 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 		edid = drm_get_edid(connector,
 			intel_gmbus_get_adapter(dev_priv,
 					intel_hdmi->ddc_bus));
-
 	}
 
 	if (edid) {
@@ -1100,7 +1212,6 @@ static const struct drm_connector_funcs intel_hdmi_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.set_property = intel_hdmi_set_property,
 	.destroy = intel_hdmi_destroy,
-	.reset = intel_hdmi_reset,
 };
 
 static const struct drm_connector_helper_funcs intel_hdmi_connector_helper_funcs = {
