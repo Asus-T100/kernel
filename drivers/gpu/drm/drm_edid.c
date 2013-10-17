@@ -250,7 +250,7 @@ EXPORT_SYMBOL(drm_edid_is_valid);
  *
  * Try to fetch EDID information by calling i2c driver function.
  */
-static int
+int
 drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 		      int block, int len)
 {
@@ -304,6 +304,7 @@ drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 
 	return ret == messageCount ? 0 : -1;
 }
+EXPORT_SYMBOL(drm_do_probe_ddc_edid);
 
 static bool drm_edid_is_zero(u8 *in_edid, int length)
 {

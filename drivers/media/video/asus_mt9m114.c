@@ -546,19 +546,55 @@ static int mt9m114_s_power(struct v4l2_subdev *sd, int power)
 	}
 }
 
+// <ASUS-Ian20131016+>, check ratio
+static int mt9m114_ratio(u32 w, u32 h){
+	int wid_tmp = w*10;
+	int hei_tmp = h;
+	int ratio = wid_tmp/hei_tmp;
+
+	if(ratio == 12){
+		return 1; // CIF, QCIF (1.222...)
+	}
+	else if(ratio == 13){
+		return 2; // 4:3 (1.333..)
+	}
+	else if(ratio == 15){
+		return 3; // 3:2 (1.5)
+	}
+	else if(ratio == 16){
+		return 4; // 5:3 (1.666...)
+	}
+	else if(ratio == 17){
+		return 5; // 16:9 (1.78...)
+	}
+	else{
+		return 0;
+	}
+}
+// <ASUS-Ian20131016->
+
 static int mt9m114_try_res(u32 *w, u32 *h)
 {
 	int i;
 
+// <ASUS-Ian20131016+>, check ratio
+	int fmt_ratio;
+	int ratio = mt9m114_ratio(*w, *h);	
+	
 	/*
 	 * The mode list is in ascending order. We're done as soon as
 	 * we have found the first equal or bigger size.
 	 */
 	for (i = 0; i < N_RES; i++) {
 		if ((mt9m114_res[i].width >= *w) &&
-		    (mt9m114_res[i].height >= *h))
-			break;
+		    (mt9m114_res[i].height >= *h)){
+			fmt_ratio = mt9m114_ratio(mt9m114_res[i].width, mt9m114_res[i].height);			
+			if(ratio == fmt_ratio){
+				break;
+			}
+		}
 	}
+// <ASUS-Ian20131016->
 
 	/*
 	 * If no mode was found, it means we can provide only a smaller size.
@@ -603,34 +639,6 @@ static int mt9m114_res2size(unsigned int res, int *h_size, int *v_size)
 
 	switch (res) {
 #if 0
-	/*case MT9M114_RES_QCIF:
-		hsize = MT9M114_RES_QCIF_SIZE_H;
-		vsize = MT9M114_RES_QCIF_SIZE_V;
-		break;
-	case MT9M114_RES_QVGA:
-		hsize = MT9M114_RES_QVGA_SIZE_H;
-		vsize = MT9M114_RES_QVGA_SIZE_V;
-		break;
-	case MT9M114_RES_VGA:
-		hsize = MT9M114_RES_VGA_SIZE_H;
-		vsize = MT9M114_RES_VGA_SIZE_V;
-		break;
-	case MT9M114_RES_480P:
-		hsize = MT9M114_RES_480P_SIZE_H;
-		vsize = MT9M114_RES_480P_SIZE_V;
-		break;
-	case MT9M114_RES_576P:
-		hsize = MT9M114_RES_576P_SIZE_H;
-		vsize = MT9M114_RES_576P_SIZE_V;
-		break;
-	case MT9M114_RES_720P:
-		hsize = MT9M114_RES_720P_SIZE_H;
-		vsize = MT9M114_RES_720P_SIZE_V;
-		break;
-	case MT9M114_RES_960P:
-		hsize = MT9M114_RES_960P_SIZE_H;
-		vsize = MT9M114_RES_960P_SIZE_V;
-		break;*/
 	case MT9M114_RES_488P_384:
 		hsize = MT9M114_RES_488P_384_SIZE_H;
 		vsize = MT9M114_RES_488P_384_SIZE_V;
@@ -652,6 +660,10 @@ static int mt9m114_res2size(unsigned int res, int *h_size, int *v_size)
 		vsize = MT9M114_RES_976P_SIZE_V;
 		break;
 #else
+	case MT9M114_RES_736P:
+		hsize = MT9M114_RES_736P_SIZE_H;
+		vsize = MT9M114_RES_736P_SIZE_V;
+		break;
 	case MT9M114_RES_960P:
 		hsize = MT9M114_RES_960P_SIZE_H;
 		vsize = MT9M114_RES_960P_SIZE_V;
@@ -826,37 +838,6 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 
 	switch (res_index->res) {
 #if 0
-	/*case MT9M114_RES_QCIF:
-		ret = mt9m114_write_reg_array(c, mt9m114_qcif_init, NO_POLLING);
-		break;
-	case MT9M114_RES_QVGA:
-		ret = mt9m114_write_reg_array(c, mt9m114_qvga_init, NO_POLLING);
-		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-				MISENSOR_R_MODE_MASK, MISENSOR_SKIPPING_SET);
-		break;
-	case MT9M114_RES_VGA:
-		ret = mt9m114_write_reg_array(c, mt9m114_vga_init, NO_POLLING);
-		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-				MISENSOR_R_MODE_MASK, MISENSOR_SUMMING_SET);
-		break;
-	case MT9M114_RES_480P:
-		ret = mt9m114_write_reg_array(c, mt9m114_480p_init, NO_POLLING);
-		break;
-	case MT9M114_RES_576P:
-		ret = mt9m114_write_reg_array(c, mt9m114_576p_init, NO_POLLING);
-		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
-		break;
-	case MT9M114_RES_720P:
-		ret = mt9m114_write_reg_array(c, mt9m114_720p_init, NO_POLLING);
-		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
-		break;
-	case MT9M114_RES_960P:
-		ret = mt9m114_write_reg_array(c, mt9m114_960P_init, NO_POLLING);
-		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
-		break;*/
 	case MT9M114_RES_488P_384:
 		v4l2_err(sd, "set resolution: MT9M114_RES_488P_384\n");
 		ret = mt9m114_write_reg_array(c, mt9m114_488P_init, NO_POLLING);
@@ -888,6 +869,12 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
 		break;
 #else
+	case MT9M114_RES_736P:	
+		v4l2_err(sd, "set resolution: MT9M114_RES_736P\n");
+		ret = mt9m114_write_reg_array(c, mt9m114_736P_init, NO_POLLING);
+		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
+		break;
 	case MT9M114_RES_960P:
 		v4l2_err(sd, "set resolution: MT9M114_RES_960P\n");
 		ret = mt9m114_write_reg_array(c, mt9m114_960P_init, NO_POLLING);

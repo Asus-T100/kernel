@@ -1193,7 +1193,8 @@ static int __init acpi_parse_pidv(struct acpi_table_header *table)
 static ssize_t iafw_version_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%04X.%04X\n", pidv.iafw_major, pidv.iafw_minor);
+	return sprintf(buf, "%04X.%04X\n", pidv.iafwrevvalues[iarevmajor],
+		pidv.iafwrevvalues[iarevminor]);
 }
 pidv_attr(iafw_version);
 
@@ -1201,8 +1202,8 @@ static ssize_t secfw_version_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%02d.%02d\n",
-			(((pidv.secfw_major << 8) + pidv.secfw_minor) / 100),
-			(((pidv.secfw_major << 8) + pidv.secfw_minor) % 100));
+		(pidv.secrevvalues[secrev] / 100),
+		(pidv.secrevvalues[secrev] % 100));
 }
 pidv_attr(secfw_version);
 
@@ -1219,12 +1220,15 @@ static struct attribute_group pidv_attr_group = {
 //<ASUS-Bob20131003+>
 static ssize_t iafw_switch_name(struct switch_dev *sdev, char *buf)
 {
-	return sprintf(buf, "%02X.%02X\n", pidv.iafw_major, pidv.iafw_minor);
+	return sprintf(buf, "%04X.%04X\n", pidv.iafwrevvalues[iarevmajor],
+		pidv.iafwrevvalues[iarevminor]); //<asus-ych20131017>
 }
 
 static ssize_t secfw_switch_name(struct switch_dev *sdev, char *buf)
 {
-	return sprintf(buf, "%04d\n", (pidv.secfw_major << 8) | pidv.secfw_minor);
+	return sprintf(buf, "%02d.%02d\n",
+		(pidv.secrevvalues[secrev] / 100),
+		(pidv.secrevvalues[secrev] % 100)); //<asus-ych20131017>
 }
 //<ASUS-Bob20131003->
 

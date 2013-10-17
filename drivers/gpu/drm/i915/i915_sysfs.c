@@ -138,7 +138,7 @@ store_i915_videostatus(struct device *dev, struct device_attribute *attr,
 	return n;
 }
 
-static DEVICE_ATTR(i915_videostatus, S_IALLUGO, show_i915_videostatus,
+static DEVICE_ATTR(i915_videostatus, (S_IRUGO | S_IWUSR), show_i915_videostatus,
 					store_i915_videostatus);
 static struct attribute *i915_videostatus_attrs[] = {
 	&dev_attr_i915_videostatus.attr,
@@ -269,7 +269,7 @@ void i915_setup_sysfs(struct drm_device *dev)
 			DRM_ERROR("RC6 residency sysfs setup failed\n");
 	}
 
-	if (dev_priv->bpp18_video_dpst) {
+	if (IS_VALLEYVIEW(dev)) {
 		ret = sysfs_merge_group(&dev->primary->kdev.kobj,
 					&i915_videostatus_attr_group);
 		if (ret)

@@ -523,30 +523,6 @@ err:
 	return ret;
 }
 
-int sb_read32(struct drm_i915_private *dev_priv, u8 port_id,
-		u32 reg, u32 *val)
-{
-	u32 cmd, devfn, opcode, port, be, bar;
-
-	bar = 0;
-	be = 0xf;
-	port = 0x4;
-	opcode = 6;
-	devfn = 0x00;
-
-	cmd = (devfn << 24) | (opcode << 16) |
-		(port << 8) | (be << 4) |
-		(bar << 1);
-
-	I915_WRITE(0x2108, reg);
-	I915_WRITE(0x2100, cmd);
-
-	*val = I915_READ(0x2104);
-	I915_WRITE(0x2104, 0);
-
-	return 0;
-}
-
 void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv)
 {
 	u32 cck_fuse, cd_clk_index, cd_clk = 0;
@@ -562,7 +538,7 @@ void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv)
 				200, 0, 0, 0, 167, 0, 0, 0, 0, 0, 133, 0, 125};
 
 	/* print cdclock speed */
-	sb_read32(dev_priv, 0x12, 0x08, &cck_fuse);
+	intel_cck_read32(dev_priv, 0x08, &cck_fuse);
 	cck_fuse = cck_fuse & 0x03;
 
 	/* Get the CD Clock Index */
