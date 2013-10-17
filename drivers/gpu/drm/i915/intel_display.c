@@ -3820,10 +3820,10 @@ static void vlv_set_hdmi_level_shifter_settings(struct drm_crtc *crtc,
 	 * 4 = 600MV_0DB
 	 */
 	/* Customize the below variable as per customer requirement */
-	pre_emp_vswing_setting = 0;
-
-	if (adjusted_mode->clock < 74250)
-		pre_emp_vswing_setting = 1;
+//<asus-baron20131017->	pre_emp_vswing_setting = 0;
+	pre_emp_vswing_setting = 3; //<asus-baron20131017+>
+//<asus-baron20131017->	if (adjusted_mode->clock < 74250)
+//<asus-baron20131017->		pre_emp_vswing_setting = 1;
 
 	/*FIXME: The Application notes doesn't have pcs_ctrl_reg_val for
 	 * settings 1V_0DB, 0.8V_0DB, 0.6V_0DB. The pcs_ctrl_reg_val value
