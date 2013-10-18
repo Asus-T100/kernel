@@ -681,6 +681,11 @@ config HID_ELAN_TOUCH_PAD
 	bool "T100 elan touch pad multi-touch mode driver"
 	---help---
 	support multi-touch.
+
+config HID_T100_KB
+	bool "T100 keyboard special usage mapping"
+	---help---
+	T100 keyboard special keys
 endmenu
 
 endif # HID_SUPPORT
