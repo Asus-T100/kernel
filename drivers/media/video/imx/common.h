@@ -2,6 +2,15 @@
 #define __COMMON_H__
 
 #define MAX_FPS_OPTIONS_SUPPORTED	3
+#define I2C_MSG_LENGTH		0x2
+#define E2PROM_2ADDR 0x80000000
+#define E2PROM_ADDR_MASK 0x7fffffff
+
+/* Defines for register writes and register array processing */
+#define IMX_BYTE_MAX	32
+#define IMX_SHORT_MAX	16
+#define I2C_RETRY_COUNT		5
+#define IMX_TOK_MASK	0xfff0
 
 enum imx_tok_type {
 	IMX_8BIT  = 0x0001,
@@ -45,6 +54,9 @@ struct imx_resolution {
 	u8 bin_factor_y;
 	bool used;
 };
+
 #define GROUPED_PARAMETER_HOLD_ENABLE  {IMX_8BIT, 0x0104, 0x1}
 #define GROUPED_PARAMETER_HOLD_DISABLE  {IMX_8BIT, 0x0104, 0x0}
+
+int imx_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val);
 #endif

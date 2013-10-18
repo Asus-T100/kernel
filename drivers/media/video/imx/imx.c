@@ -99,49 +99,6 @@ error:
 	return err;
 }
 
-static int
-imx_read_otp_data(struct i2c_client *client, u16 len, u16 reg, void *val)
-{
-	struct i2c_msg msg[2];
-	u16 data[IMX_SHORT_MAX] = { 0 };
-	int err;
-
-	if (len > IMX_BYTE_MAX) {
-		dev_err(&client->dev, "%s error, invalid data length\n",
-			__func__);
-		return -EINVAL;
-	}
-
-	memset(msg, 0 , sizeof(msg));
-	memset(data, 0 , sizeof(data));
-
-	msg[0].addr = client->addr;
-	msg[0].flags = 0;
-	msg[0].len = I2C_MSG_LENGTH;
-	msg[0].buf = (u8 *)data;
-	/* high byte goes first */
-	data[0] = cpu_to_be16(reg);
-
-	msg[1].addr = client->addr;
-	msg[1].len = len;
-	msg[1].flags = I2C_M_RD;
-	msg[1].buf = (u8 *)data;
-
-	err = i2c_transfer(client->adapter, msg, 2);
-	if (err != 2) {
-		if (err >= 0)
-			err = -EIO;
-		goto error;
-	}
-
-	memcpy(val, data, len);
-	return 0;
-
-error:
-	dev_err(&client->dev, "read from offset 0x%x error %d", reg, err);
-	return err;
-}
-
 static int imx_i2c_write(struct i2c_client *client, u16 len, u8 *data)
 {
 	struct i2c_msg msg;
@@ -158,7 +115,7 @@ static int imx_i2c_write(struct i2c_client *client, u16 len, u8 *data)
 	return ret == num_msg ? 0 : -EIO;
 }
 
-static int
+int
 imx_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val)
 {
 	int ret;
@@ -308,79 +265,6 @@ static int imx_write_reg_array(struct i2c_client *client,
 	}
 
 	return __imx_flush_reg_array(client, &ctrl);
-}
-
-static int imx_read_otp_reg_array(struct i2c_client *client, u16 size, u16 addr,
-				  u8 *buf)
-{
-	u16 index;
-	int ret;
-
-	for (index = 0; index + IMX_OTP_READ_ONETIME <= size;
-					index += IMX_OTP_READ_ONETIME) {
-		ret = imx_read_otp_data(client, IMX_OTP_READ_ONETIME,
-					addr + index, &buf[index]);
-		if (ret)
-			return ret;
-	}
-	return 0;
-}
-
-static int __imx_otp_read(struct v4l2_subdev *sd, u8 *buf)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
-	int i;
-
-	for (i = 0; i < IMX_OTP_PAGE_MAX; i++) {
-
-		/*set page NO.*/
-		ret = imx_write_reg(client, IMX_8BIT,
-			       IMX_OTP_PAGE_REG, i & 0xff);
-		if (ret) {
-			dev_err(&client->dev, "failed to prepare OTP page\n");
-			return ret;
-		}
-
-		/*set read mode*/
-		ret = imx_write_reg(client, IMX_8BIT,
-			       IMX_OTP_MODE_REG, IMX_OTP_MODE_READ);
-		if (ret) {
-			dev_err(&client->dev, "failed to set OTP reading mode page");
-			return ret;
-		}
-
-		/* Reading the OTP data array */
-		ret = imx_read_otp_reg_array(client, IMX_OTP_PAGE_SIZE,
-			IMX_OTP_START_ADDR, buf + i * IMX_OTP_PAGE_SIZE);
-		if (ret) {
-			dev_err(&client->dev, "failed to read OTP data\n");
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-static void *imx_otp_read(struct v4l2_subdev *sd)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	u8 *buf;
-	int ret;
-
-	buf = devm_kzalloc(&client->dev, IMX_OTP_DATA_SIZE, GFP_KERNEL);
-	if (!buf)
-		return ERR_PTR(-ENOMEM);
-
-	ret = __imx_otp_read(sd, buf);
-
-	/* Driver has failed to find valid data */
-	if (ret) {
-		dev_err(&client->dev, "sensor found no valid OTP data\n");
-		return ERR_PTR(ret);
-	}
-
-	return buf;
 }
 
 static int __imx_get_max_fps_index(
@@ -1639,6 +1523,49 @@ static int imx_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned int index,
 	return 0;
 }
 
+static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
+{
+	switch (sensor_id) {
+	case IMX175_ID:
+		if (INTEL_MID_BOARD(1, PHONE, BYT) ||
+			INTEL_MID_BOARD(1, TABLET, BYT)) {
+			dev->mode_tables = &imx_sets[IMX175_VALLEYVIEW];
+			dev->vcm_driver = &imx_vcms[IMX175_VALLEYVIEW];
+			dev->otp_driver = &imx_otps[IMX175_VALLEYVIEW];
+		} else {
+			dev->mode_tables = &imx_sets[IMX175_MERRFLD];
+			dev->vcm_driver = &imx_vcms[IMX175_MERRFLD];
+			dev->otp_driver = &imx_otps[IMX175_MERRFLD];
+		}
+		break;
+	case IMX135_ID:
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+			dev->mode_tables = &imx_sets[IMX135_VICTORIABAY];
+			dev->vcm_driver = &imx_vcms[IMX135_VICTORIABAY];
+			dev->otp_driver = &imx_otps[IMX135_VICTORIABAY];
+		} else {
+			dev->mode_tables = &imx_sets[IMX135_SALTBAY];
+			dev->vcm_driver = &imx_vcms[IMX135_SALTBAY];
+			dev->otp_driver = &imx_otps[IMX135_SALTBAY];
+		}
+		break;
+	case IMX134_ID:
+		dev->mode_tables = &imx_sets[IMX134_VALLEYVIEW];
+		dev->vcm_driver = &imx_vcms[IMX134_VALLEYVIEW];
+		dev->otp_driver = &imx_otps[IMX134_VALLEYVIEW];
+		break;
+	case IMX132_ID:
+		dev->mode_tables = &imx_sets[IMX132_SALTBAY];
+		dev->otp_driver = &imx_otps[IMX132_SALTBAY];
+		dev->vcm_driver = NULL;
+		return 0;
+	default:
+		return -EINVAL;
+	}
+
+	return dev->vcm_driver->init(&dev->sd);
+}
+
 static int imx_s_config(struct v4l2_subdev *sd,
 			    int irq, void *pdata)
 {
@@ -1684,14 +1611,18 @@ static int imx_s_config(struct v4l2_subdev *sd,
 	dev->sensor_id = sensor_id;
 	dev->sensor_revision = sensor_revision;
 
+	/* Resolution settings depend on sensor type and platform */
+	ret = __update_imx_device_settings(dev, dev->sensor_id);
+	if (ret)
+		goto fail_detect;
 	/* Read sensor's OTP data */
-	if (dev->sensor_id == IMX132_ID)
-		dev->otp_data = devm_kzalloc(&client->dev,
-				IMX_OTP_DATA_SIZE, GFP_KERNEL);
-	else
-		dev->otp_data = imx_otp_read(sd);
+	dev->otp_data = dev->otp_driver->otp_read(sd,
+		dev->otp_driver->dev_addr, dev->otp_driver->start_addr,
+		dev->otp_driver->size);
+
 	/* power off sensor */
 	ret = __imx_s_power(sd, 0);
+
 	mutex_unlock(&dev->input_lock);
 	if (ret)
 		v4l2_err(client, "imx power-down err.\n");
@@ -1986,43 +1917,6 @@ static int imx_remove(struct i2c_client *client)
 	return 0;
 }
 
-static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
-{
-	switch (sensor_id) {
-	case IMX175_ID:
-		if (intel_mid_identify_cpu() ==
-					INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-			dev->mode_tables = &imx_sets[IMX175_VALLEYVIEW];
-			dev->vcm_driver = &imx_vcms[IMX175_VALLEYVIEW];
-		} else {
-			dev->mode_tables = &imx_sets[IMX175_MERRFLD];
-			dev->vcm_driver = &imx_vcms[IMX175_MERRFLD];
-		}
-		break;
-	case IMX135_ID:
-		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
-			dev->mode_tables = &imx_sets[IMX135_VICTORIABAY];
-			dev->vcm_driver = &imx_vcms[IMX135_VICTORIABAY];
-		} else {
-			dev->mode_tables = &imx_sets[IMX135_SALTBAY];
-			dev->vcm_driver = &imx_vcms[IMX135_SALTBAY];
-		}
-		break;
-	case IMX134_ID:
-		dev->mode_tables = &imx_sets[IMX134_VALLEYVIEW];
-		dev->vcm_driver = &imx_vcms[IMX134_VALLEYVIEW];
-		break;
-	case IMX132_ID:
-		dev->mode_tables = &imx_sets[IMX132_SALTBAY];
-		dev->vcm_driver = NULL;
-		return 0;
-	default:
-		return -EINVAL;
-	}
-
-	return dev->vcm_driver->init(&dev->sd);
-}
-
 static int imx_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -2060,11 +1954,6 @@ static int imx_probe(struct i2c_client *client,
 	snprintf(dev->sd.name, sizeof(dev->sd.name), "%s%x %d-%04x",
 		IMX_SUBDEV_PREFIX, dev->sensor_id,
 		i2c_adapter_id(client->adapter), client->addr);
-
-	/* Resolution settings depend on sensor type and platform */
-	ret = __update_imx_device_settings(dev, dev->sensor_id);
-	if (ret)
-		goto out_free;
 
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
