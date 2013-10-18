@@ -2320,11 +2320,24 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 	struct atomisp_css_shading_table *old_table;
 	struct atomisp_device *isp = asd->isp;
 
-	if (!user_st)
-		return 0;
-
 	old_table = isp->inputs[asd->input_curr].shading_table;
 
+// <ASUS-Ian20131018+> - Intel patch, LSC force apply
+	if (!user_st)  {
+		if  (!asd->update_lsc_table) {
+			return 0;
+		} else {
+			 if (old_table) {
+				shading_table = old_table;
+				goto set_lsc;
+			 }  else {
+				pr_info("%s Old Table is still NULL!!", __func__);
+				return 0;
+			 }
+		}
+	}
+// <ASUS-Ian20131018->
+	
 	/* user config is to disable the shading table. */
 	if (!user_st->enable) {
 		shading_table = NULL;
@@ -2356,6 +2369,7 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 		}
 
 	}
+
 	shading_table->sensor_width = user_st->sensor_width;
 	shading_table->sensor_height = user_st->sensor_height;
 	shading_table->fraction_bits = user_st->fraction_bits;
@@ -2400,9 +2414,13 @@ set_lsc:
 	atomisp_css_set_shading_table(asd, shading_table);
 	asd->params.sc_en = shading_table != NULL;
 
-	if (old_table)
-		atomisp_css_shading_table_free(old_table);
-
+// <ASUS-Ian20131018+> - Intel patch, LSC force apply	
+	if (old_table) {
+		if (shading_table != old_table)
+			atomisp_css_shading_table_free(old_table);
+	}
+// <ASUS-Ian20131018->	
+	
 // <ASUS-Ian20131016+> - Intel patch, fix lsc(lens shading correction)
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	asd->update_lsc_table = false;
