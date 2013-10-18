@@ -3881,6 +3881,11 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	/* Give the overlay scaler a chance to enable if it's on this pipe */
 	intel_crtc_dpms_overlay(intel_crtc, true);
 	intel_crtc_update_cursor(crtc, true);
+
+	/* if gamma enabled, apply gamma correction on PIPE */
+	if (dev_priv->gamma_enabled)
+		if (intel_crtc_enable_gamma(crtc, PIPEA))
+			DRM_ERROR("Apply gamma correction failed\n");
 }
 
 void i9xx_crtc_disable(struct drm_crtc *crtc)
