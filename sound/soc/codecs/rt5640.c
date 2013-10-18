@@ -44,7 +44,6 @@
 #define HEADSET_DET_DELAY    200 /* Delay(ms) before reading over current
 				    status for headset detection */
 /*#define USE_EQ*/
-//<asus-baron20130906-> #define USE_EQ 1 //realtek EQ control //<asus-baron20130830+> 
 #define USE_EQ 1 //realtek EQ control //<asus-baron20131016+> //just for speaker
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
@@ -132,8 +131,10 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_MONO_ADC_MIXER, 0x3030},  //<asus-baron20130823+>
 //	{RT5640_ADC_DIG_VOL, 0xe2e2},  //<asus-baron20130830->
 //<asus-baron20131016->	{RT5640_ADC_DIG_VOL, 0xcfcf}, //realtek change it to windows setting  //<asus-baron20130830+>
-	{RT5640_ADC_DIG_VOL, 0x3535}, //analog  (Artlink Shine)  //<asus-baron20130830+>
+//<asus-baron20131018->	{RT5640_ADC_DIG_VOL, 0x3535}, //analog  (Artlink Shine)  //<asus-baron20130830+>
+	{RT5640_ADC_DIG_VOL, 0xb5b5}, //analog  (Artlink Shine) mute ADC //<asus-baron20130830+>
 /*	{RT5640_MONO_MIXER, 0xcc00},*/	/*OUTMIX -> MONOMIX */
+	{RT5640_PRIV_INDEX, 0x006e},//<asus-baron20131018+>
 	{RT5640_WND_3, 0x3199}, //High Pass Filter 200HZ (Artlink Shine) //<asus-baron20131016+>
 	{RT5640_DAC1_DIG_VOL, 0x9797}, //Digital volume -9dB //<asus-baron20131016+>
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
