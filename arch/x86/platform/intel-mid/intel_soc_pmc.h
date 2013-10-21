@@ -20,9 +20,6 @@
 #ifndef __INTEL_SOC_PMC_H
 #define __INTEL_SOC_PMC_H
 
-#define		MAX_PLATFORM_STATES 5
-#define		S0I3	3
-
 #define		S0IX_REGISTERS_OFFSET	0x80
 
 #define		S0IR_TMR_OFFSET		0x80
@@ -76,13 +73,24 @@
 #define VHDMICNT			0x6d
 #define PWM1CLKDIV			0x4c
 
+enum system_state {
+	STATE_S0IR,
+	STATE_S0I1,
+	STATE_S0I2,
+	STATE_S0I3,
+	STATE_S0,
+	STATE_S3,
+	STATE_MAX
+};
+
 struct mid_pmc_dev {
 	u32 base_address;
 	u32 __iomem *pmc_registers;
 	u32 __iomem *s0ix_wake_en;
 	struct pci_dev const *pdev;
 	struct semaphore nc_ready_lock;
-	u32 s3_residency;
+	u32 state_res[STATE_MAX];
+	u32 state_res_mark[STATE_MAX];
 	u32 s3_count;
 };
 

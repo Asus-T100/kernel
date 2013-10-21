@@ -389,6 +389,14 @@ bool drm_crtc_helper_set_mode(struct drm_crtc *crtc,
 		if (encoder->crtc != crtc)
 			continue;
 		encoder_funcs = encoder->helper_private;
+
+		/* HDMI Encoder actually being used as of now for Audio */
+		if (encoder_funcs->inuse)
+			if (encoder_funcs->inuse(encoder)) {
+				ret = true;
+				goto done;
+			}
+
 		if (!(ret = encoder_funcs->mode_fixup(encoder, mode,
 						      adjusted_mode))) {
 			DRM_DEBUG_KMS("Encoder fixup failed\n");

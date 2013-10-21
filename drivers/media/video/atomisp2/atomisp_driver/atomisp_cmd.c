@@ -2193,6 +2193,13 @@ static int __atomisp_set_general_isp_parameters(
 		atomisp_css_set_ctc_config(asd, &asd->params.ctc_config);
 	}
 
+	if (arg->cnr_config) {
+		if (copy_from_user(&asd->params.cnr_config, arg->cnr_config,
+					sizeof(struct atomisp_css_cnr_config)))
+			return -EFAULT;
+		atomisp_css_set_cnr_config(asd, &asd->params.cnr_config);
+	}
+
 	if (arg->ecd_config) {
 		if (copy_from_user(&asd->params.ecd_config, arg->ecd_config,
 				   sizeof(struct atomisp_css_ecd_config)))

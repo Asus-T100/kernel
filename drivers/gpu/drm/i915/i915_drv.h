@@ -524,6 +524,7 @@ typedef struct drm_i915_private {
 	u32 hotplugstat;
 	bool disp_pm_in_progress;
 	bool audio_suspended;
+	bool late_resume;
 	bool sprtsuspendstat[2];
 	u32 gt_irq_mask;
 	u32 pch_irq_mask;

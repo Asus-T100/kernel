@@ -212,8 +212,10 @@ int dw9714_vcm_init(struct v4l2_subdev *sd)
 {
 
 	/* set VCM to home position and vcm mode to direct*/
-	dw9714_dev.vcm_mode = DW9714_DIRECT;
-	dw9714_dev.vcm_settings.update = false;
+	dw9714_dev.vcm_mode = DW9714_DLC;
+	dw9714_dev.vcm_settings.step_setting = DLC_DEFAULT_MCLK;
+	dw9714_dev.vcm_settings.t_src = DLC_DEFAULT_TSRC;
+	dw9714_dev.vcm_settings.update = true;
 	dw9714_dev.platform_data = camera_get_af_platform_data();
 	return (NULL == dw9714_dev.platform_data) ? -ENODEV : 0;
 
