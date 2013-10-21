@@ -1183,7 +1183,8 @@ static int byt_usb_status(struct byt_chip_info *chip)
 	int ret = 0;
 	u8 status;
 
-	status = (chip ->chargerReg >> 6) &0x03;
+	status = (chip->ecbat.ChargerStatusRegister>>6) &0x03;
+	//status = (chip ->chargerReg >> 6) &0x03;
 
 	if(status == 0x00 ) { //non charge source
 		ret  = 0;
@@ -1230,8 +1231,8 @@ static int byt_ac_status(struct byt_chip_info *chip)
 	int ret = 0;
 	u8 status;
 
-	//status = (chip->ecbat.ChargerStatusRegister>>6) &0x03;
-	status = (chip ->chargerReg >> 6) &0x03;
+	status = (chip->ecbat.ChargerStatusRegister>>6) &0x03;
+	//status = (chip ->chargerReg >> 6) &0x03;
 
 	if(status == 0x00 ) { //non charge source
 		ret  = 0;
@@ -1548,15 +1549,17 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 	//*/
 	else if(event_id ==0xA0){
 
-		get_charger(chip);
-		asusec_battery_polling(chip,true);
+		//get_charger(chip);
+		//asusec_battery_polling(chip,true);
 
+		byt_battery_update(chip);
+		
 		power_supply_changed(&chip->usb);
 		power_supply_changed(&chip->ac);
 
 	}
 
-	else{
+	else if(event_id == 0xA3){
 		ret = byt_battery_update(chip);
 		dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
 		  {
@@ -1572,8 +1575,41 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 			power_supply_changed(&chip->bat);
 		}
 	}
+	else{
+		//lid
+		lid_value=get_lid_status(chip);
+		input_report_switch(chip->lid_dev, SW_LID, lid_value);
+		input_sync(chip->lid_dev);
+		dev_info(&chip->client->dev,"%s handler :LID = %s \n", TAG, lid_value ? "closed" : "opened");
 
+		//dock
+		get_dock_status(chip);
+		if(chip->dock_status){
+    		switch_set_state(&chip->dock_sdev, 10);
+		}
+		else{
+			switch_set_state(&chip->dock_sdev, 0);
+		}
 
+		//charger
+		ret = byt_battery_update(chip);
+		dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
+		  {
+		  int i;
+		  u8 *p = (u8*)&chip->ecbat;
+		  for(i=0;i<sizeof(chip->ecbat);i++,p++){
+		  dev_info(&chip->client->dev,"%s %x = %x\n", TAG, i,*p);
+		  }
+
+		  }
+		if(!ret){
+			dev_err(&chip->client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
+			power_supply_changed(&chip->bat);
+		}
+
+		power_supply_changed(&chip->usb);
+		power_supply_changed(&chip->ac);
+	}
 	return IRQ_HANDLED;
 }
 
@@ -2184,8 +2220,8 @@ static int byt_battery_probe(struct i2c_client *client,
 			goto fail_unregister2;
 		}
 
-		get_charger(chip);
-		asusec_battery_polling(chip,true);
+		//get_charger(chip);
+		//asusec_battery_polling(chip,true);
 
 		//power_supply_changed(&chip->usb);
 		//power_supply_changed(&chip->ac);
