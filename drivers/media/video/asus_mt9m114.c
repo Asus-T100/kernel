@@ -660,6 +660,10 @@ static int mt9m114_res2size(unsigned int res, int *h_size, int *v_size)
 		vsize = MT9M114_RES_976P_SIZE_V;
 		break;
 #else
+	case MT9M114_RES_720_480p_768:
+		hsize = MT9M114_RES_720_480p_768_SIZE_H;
+		vsize = MT9M114_RES_720_480p_768_SIZE_V;
+		break;
 	case MT9M114_RES_736P:
 		hsize = MT9M114_RES_736P_SIZE_H;
 		vsize = MT9M114_RES_736P_SIZE_V;
@@ -869,6 +873,12 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
 		break;
 #else
+	case MT9M114_RES_720_480p_768:
+		v4l2_err(sd, "set resolution: MT9M114_RES_720_480p_768\n");
+		ret = mt9m114_write_reg_array(c, mt9m114_720_480P_init, NO_POLLING);
+		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
+		break;
 	case MT9M114_RES_736P:	
 		v4l2_err(sd, "set resolution: MT9M114_RES_736P\n");
 		ret = mt9m114_write_reg_array(c, mt9m114_736P_init, NO_POLLING);
@@ -876,8 +886,8 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
 		break;
 	case MT9M114_RES_960P:
-		v4l2_err(sd, "set resolution: MT9M114_RES_960P\n");
-		ret = mt9m114_write_reg_array(c, mt9m114_960P_init, NO_POLLING);
+		v4l2_err(sd, "set resolution: MT9M114_RES_976P\n");
+		ret = mt9m114_write_reg_array(c, mt9m114_976P_init, NO_POLLING);
 		/* set sensor read_mode to Normal */
 		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
 				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
