@@ -178,6 +178,7 @@ enum {
 */
 	MT9M114_RES_720_480p_768, // <ASUS-Ian20131016>
 	MT9M114_RES_736P, // <ASUS-Ian20131016>
+	MT9M114_RES_1200_976P, // <ASUS-Ian20131022>
 	MT9M114_RES_960P,
 };
 #define MT9M114_RES_960P_SIZE_H		1296
@@ -205,6 +206,8 @@ enum {
 #define MT9M114_RES_546P_SIZE_V 546
 #define MT9M114_RES_736P_SIZE_H 1296
 #define MT9M114_RES_736P_SIZE_V 736
+#define MT9M114_RES_1200_976P_SIZE_H 1200
+#define MT9M114_RES_1200_976P_SIZE_V 976
 #define MT9M114_RES_976P_SIZE_H 1296
 #define MT9M114_RES_976P_SIZE_V 976
 
@@ -436,6 +439,24 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.bin_mode = 0,
 	},
 // <ASUS-Ian20131016->
+// <ASUS-Ian20131022+>	
+	{
+	.desc	= "1200_976p",
+	.res	= MT9M114_RES_1200_976P,
+	.width	= 1200,
+	.height = 976,
+	.fps	= 30,
+	.used	= 0,
+	.regs	= NULL,
+	.skip_frames = 1,
+	
+	.pixels_per_line = 0x0644, 
+	.lines_per_frame = 0x03E5, 
+	.bin_factor_x = 1,
+	.bin_factor_y = 1,
+	.bin_mode = 0,
+	},
+// <ASUS-Ian20131022->
 	{
 	.desc	= "960P",
 	.res	= MT9M114_RES_960P,
@@ -556,6 +577,34 @@ static struct misensor_reg const mt9m114_976P_init[] = {
 	{MISENSOR_16BIT, 0xC85A, 0x03C8}, //cam_crop_window_height = 968
 	{MISENSOR_8BIT, 0xC85C, 0x03}, //cam_crop_cropmode = 3
 	{MISENSOR_16BIT, 0xC868, 0x0508}, //cam_output_width = 1288
+	{MISENSOR_16BIT, 0xC86A, 0x03C8}, //cam_output_height = 968
+	{MISENSOR_8BIT, 0xC878, 0x00}, //0x0E //cam_aet_aemode = 0
+	{MISENSOR_TOK_TERM, 0, 0}
+};
+
+//[1200x976_30fps_768Mbps]
+static struct misensor_reg const mt9m114_1200_976P_init[] = {
+	{MISENSOR_16BIT, 0x98E, 0x1000},
+	{MISENSOR_16BIT, 0xC800, 0x0000}, //cam_sensor_cfg_y_addr_start = 0
+	{MISENSOR_16BIT, 0xC802, 0x0030}, //cam_sensor_cfg_x_addr_start = 48
+	{MISENSOR_16BIT, 0xC804, 0x03CF}, //cam_sensor_cfg_y_addr_end = 975
+	{MISENSOR_16BIT, 0xC806, 0x04DF}, //cam_sensor_cfg_x_addr_end = 1247
+	{MISENSOR_32BIT, 0xC808, 0x2DC6C00}, //cam_sensor_cfg_pixclk = 480000
+	{MISENSOR_16BIT, 0xC80C, 0x0001}, //cam_sensor_cfg_row_speed = 1
+	{MISENSOR_16BIT, 0xC80E, 0x00DB}, //cam_sensor_cfg_fine_integ_time_min = 219
+	{MISENSOR_16BIT, 0xC810, 0x05B3}, //0x062E //cam_sensor_cfg_fine_integ_time_max = 1459
+	{MISENSOR_16BIT, 0xC812, 0x03E5}, //0x074C //cam_sensor_cfg_frame_length_lines = 1006
+	{MISENSOR_16BIT, 0xC814, 0x0644}, //0x06B1 /cam_sensor_cfg_line_length_pck = 1590
+	{MISENSOR_16BIT, 0xC816, 0x0060}, //cam_sensor_cfg_fine_correction = 96
+	{MISENSOR_16BIT, 0xC818, 0x03C3}, //cam_sensor_cfg_cpipe_last_row = 963
+	{MISENSOR_16BIT, 0xC826, 0x0020}, //cam_sensor_cfg_reg_0_data = 32
+	{MISENSOR_16BIT, 0xC834, 0x0000}, //cam_sensor_control_read_mode = 0
+	{MISENSOR_16BIT, 0xC854, 0x0000}, //cam_crop_window_xoffset = 0
+	{MISENSOR_16BIT, 0xC856, 0x0000}, //cam_crop_window_yoffset = 0
+	{MISENSOR_16BIT, 0xC858, 0x04A8}, //cam_crop_window_width = 1192
+	{MISENSOR_16BIT, 0xC85A, 0x03C8}, //cam_crop_window_height = 968
+	{MISENSOR_8BIT, 0xC85C, 0x03}, //cam_crop_cropmode = 3
+	{MISENSOR_16BIT, 0xC868, 0x04A8}, //cam_output_width = 1192
 	{MISENSOR_16BIT, 0xC86A, 0x03C8}, //cam_output_height = 968
 	{MISENSOR_8BIT, 0xC878, 0x00}, //0x0E //cam_aet_aemode = 0
 	{MISENSOR_TOK_TERM, 0, 0}
