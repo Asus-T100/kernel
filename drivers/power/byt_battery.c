@@ -1561,6 +1561,7 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 
 	else if(event_id == 0xA3){
 		ret = byt_battery_update(chip);
+		/*
 		dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
 		  {
 		  int i;
@@ -1570,12 +1571,13 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 		  }
 
 		  }
+		  */
 		if(!ret){
 			dev_err(&chip->client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
 			power_supply_changed(&chip->bat);
 		}
 	}
-	else{
+	else if(event_id == 0x00){
 		//lid
 		lid_value=get_lid_status(chip);
 		input_report_switch(chip->lid_dev, SW_LID, lid_value);
@@ -1593,6 +1595,7 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 
 		//charger
 		ret = byt_battery_update(chip);
+		/*
 		dev_info(&chip->client->dev,"%s Charger interrupt, update battery info\n", TAG);
 		  {
 		  int i;
@@ -1602,6 +1605,7 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 		  }
 
 		  }
+		  */
 		if(!ret){
 			dev_err(&chip->client->dev, "%s capacity= %d %\n", TAG, byt_get_capacity(chip));
 			power_supply_changed(&chip->bat);
