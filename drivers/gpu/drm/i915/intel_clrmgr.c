@@ -144,7 +144,11 @@ intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
 	struct CSC_Coeff *wgCSCCoeff = NULL;
 	struct drm_mode_object *obj;
 	struct drm_crtc *crtc = NULL;
-
+        //<asus-ethan20131024+>
+	int i=0;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+        dev_priv->csc_enabled = 1;
+        //<asus-ethan20131024->
 	wgCSCCoeff = (struct CSC_Coeff *)data;
 	obj = drm_mode_object_find(dev, wgCSCCoeff->crtc_id,
 			DRM_MODE_OBJECT_CRTC);
@@ -156,7 +160,11 @@ intel_enable_CSC(struct drm_device *dev, void *data, struct drm_file *priv)
 
 	crtc = obj_to_crtc(obj);
 	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
-	return do_intel_enable_CSC(dev, wgCSCCoeff->VLV_CSC_Coeff, crtc);
+	//asus-ethan20131024+
+	for(i=0;i<6;i++)
+		CSCSoftlut[i] = (u32)wgCSCCoeff->VLV_CSC_Coeff[i].Value;
+	return do_intel_enable_CSC(dev, (void *) CSCSoftlut, crtc);
+        //asus-ethan20131024-
 }
 
 
@@ -168,6 +176,7 @@ do_intel_disable_CSC(struct drm_device *dev, struct drm_crtc *crtc)
 	struct intel_crtc *intel_crtc = NULL;
 	u32 pipeconf = 0;
 	int pipe = 0;
+        dev_priv->csc_enabled = 0; //asus-etahn20131024+
 
 	intel_crtc = to_intel_crtc(crtc);
 	pipe = intel_crtc->pipe;
