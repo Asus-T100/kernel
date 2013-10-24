@@ -114,6 +114,8 @@ struct i915_sync_timeline *i915_sync_timeline_create(struct drm_device *dev,
 		sync_timeline_create(&i915_sync_timeline_ops,
 				     sizeof(struct i915_sync_timeline),
 				     name);
+	if (!obj)
+		return (NULL);
 
 	obj->pvt.dev = dev;
 	obj->pvt.ring = ring;
@@ -140,6 +142,8 @@ struct sync_pt *i915_sync_pt_create(struct i915_sync_timeline *obj, u32 value)
 
 	pt = (struct i915_sync_pt *)
 		sync_pt_create(&obj->obj, sizeof(struct i915_sync_pt));
+	if (!pt)
+		return NULL;
 
 	pt->pvt.value = value;
 
