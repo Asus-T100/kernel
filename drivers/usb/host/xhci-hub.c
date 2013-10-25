@@ -294,9 +294,11 @@ static int xhci_stop_device(struct xhci_hcd *xhci, int slot_id, int suspend)
 	spin_unlock_irqrestore(&xhci->lock, flags);
 
 	/* Wait for last stop endpoint command to finish */
+	// <ASUS-Larry 20131024+>
 	timeleft = wait_for_completion_interruptible_timeout(
 			cmd->completion,
-			USB_CTRL_SET_TIMEOUT);
+			msecs_to_jiffies(USB_CTRL_SET_TIMEOUT));
+	// <ASUS-Larry 20131024>
 	if (timeleft <= 0) {
 		xhci_warn(xhci, "%s while waiting for stop endpoint command\n",
 				timeleft == 0 ? "Timeout" : "Signal");

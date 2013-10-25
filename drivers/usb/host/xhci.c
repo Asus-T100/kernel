@@ -3493,9 +3493,11 @@ int xhci_discover_or_reset_device(struct usb_hcd *hcd, struct usb_device *udev)
 	spin_unlock_irqrestore(&xhci->lock, flags);
 
 	/* Wait for the Reset Device command to finish */
+	// <ASUS-Larry 20131024+>
 	timeleft = wait_for_completion_interruptible_timeout(
 			reset_device_cmd->completion,
-			USB_CTRL_SET_TIMEOUT);
+			msecs_to_jiffies(USB_CTRL_SET_TIMEOUT));
+	// <ASUS-Larry 20131024>
 	if (timeleft <= 0) {
 		xhci_warn(xhci, "%s while waiting for reset device command\n",
 				timeleft == 0 ? "Timeout" : "Signal");
