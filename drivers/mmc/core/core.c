@@ -1382,7 +1382,7 @@ static void mmc_power_up(struct mmc_host *host)
 	 * This delay must be at least 74 clock sizes, or 1 ms, or the
 	 * time required to reach a stable voltage.
 	 */
-	usleep_range(5000, 5000);
+	usleep_range(150000, 150000); //asus-ethan20131025+
 
 	mmc_host_clk_release(host);
 }
