@@ -92,7 +92,7 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_OUT_R3_MIXER, 0x01fe},	/*DACR1 -> OUTMIXR */
 //	{RT5640_HP_VOL, 0x8888},	/*OUTMIX -> HPVOL */  //<asus-baron20130823-> realtek
 //<asus-baron20131016->	{RT5640_HP_VOL, 0x8b8b},	/*OUTMIX -> HPVOL */  //<asus-baron20130823+> realtek
-	{RT5640_HP_VOL, 0x0606}, //Headphone Volume Channel 3dB  //<asus-baron20131016+>
+	{RT5640_HP_VOL, 0x8686}, //Headphone Volume Channel 3dB  //<asus-baron20131016+> //<asus-baron20131026+> mute
 	{RT5640_HPO_MIXER, 0xc000},	/*HPVOL -> HPOLMIX */
 /*	{RT5640_HPO_MIXER	, 0xa000},//DAC1 -> HPOLMIX*/
 /*	{RT5640_CHARGE_PUMP	, 0x0f00},*/
@@ -2214,10 +2214,18 @@ static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
 			 &rt5640_dac_l2_mux),
 	SND_SOC_DAPM_MUX("DAC R2 Mux", SND_SOC_NOPM, 0, 0,
 			 &rt5640_dac_r2_mux),
+//<asus-baron20131026+>
+/*
 	SND_SOC_DAPM_PGA("DAC L2 Volume", RT5640_PWR_DIG1,
 			 RT5640_PWR_DAC_L2_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("DAC R2 Volume", RT5640_PWR_DIG1,
 			 RT5640_PWR_DAC_R2_BIT, 0, NULL, 0),
+*/
+     SND_SOC_DAPM_PGA("DAC L2 Volume", SND_SOC_NOPM,
+                0, 0, NULL, 0), 
+     SND_SOC_DAPM_PGA("DAC R2 Volume", SND_SOC_NOPM,
+                0, 0, NULL, 0),
+//<asus-baron20131026->
 
 	/* DAC Mixer */
 	SND_SOC_DAPM_MIXER("Stereo DAC MIXL", SND_SOC_NOPM, 0, 0,
