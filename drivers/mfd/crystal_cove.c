@@ -23,6 +23,7 @@
 #include <linux/mfd/intel_mid_pmic.h>
 #include <linux/acpi.h>
 #include <asm/intel_vlv2.h>
+#include <linux/acpi_gpio.h>	//<asus-dhl20131028>
 
 #define PMIC_IRQ_NUM	7
 
@@ -398,7 +399,7 @@ static int pmic_irq_init(void)
 		irq_set_nested_thread(cur_irq, 1);
 		irq_set_noprobe(cur_irq);
 	}
-
+	pmic->irq = gpio_to_irq(acpi_get_gpio("\\_SB.GPO2", 0));	//<asus-dhl20131028> GPIO_S5[0] (PMIC_INT)
 	ret = request_threaded_irq(pmic->irq, pmic_irq_isr, pmic_irq_thread,
 			IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 			"intel_mid_pmic", pmic);
