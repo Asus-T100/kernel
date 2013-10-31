@@ -22,6 +22,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/pci_regs.h>
 #include <linux/wait.h>
+#include <linux/delay.h> //<asus-baron20131101+>
+#include <linux/acpi.h> //<asus-baron20131101+>
 #include <linux/interrupt.h>
 #include <linux/sched.h>
 #include <linux/gpio.h>
@@ -44,9 +46,15 @@
 MODULE_AUTHOR("Louis LE GALL <louis.le.gall intel.com>");
 MODULE_DESCRIPTION("Intel MID I2S/PCM SSP Driver");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0.4");
+//<asus-baron20131101-> MODULE_VERSION("1.0.4");
+//<asus-baron20131101+>
+MODULE_VERSION("1.1.0");
 
-
+#define SSPCODEC "SSPC0000" 
+#define SSPMODEM "SSPM0000"
+#define SSPBLUET "SSPB0000"
+ //<asus-baron20131101->
+ 
 #define CLOCK_19200_KHZ			19200000
 
 
@@ -101,6 +109,31 @@ static struct pci_driver intel_mid_i2s_driver = {
 	.remove = __devexit_p(intel_mid_i2s_remove),
 };
 
+////////////// ACPI ////////
+
+//<asus-baron20131101+>
+static const struct acpi_device_id i2s_acpi_ids[] = {
+//	{"XXXNAMEXXX", (kernel_ulong_t) &intel_byt_info },
+	{SSPCODEC, 0 },
+	{SSPMODEM, 0 },
+	{SSPBLUET, 0 },
+	{ },
+};
+MODULE_DEVICE_TABLE(acpi, i2s_acpi_ids);
+
+
+static struct platform_driver i2s_acpi_driver = {
+	.driver = {
+		.name			= "intel_i2s_acpi",
+		.owner			= THIS_MODULE,
+		.acpi_match_table	= ACPI_PTR(i2s_acpi_ids),
+		.pm			= &intel_mid_i2s_pm_ops,
+	},
+	.probe = i2s_acpi_probe,
+	.remove = __devexit_p(i2s_acpi_remove),
+};
+
+//<asus-baron20131101->
 /*
  * Local functions declaration
  */
@@ -128,8 +161,11 @@ static int intel_mid_i2s_suspend(struct device *dev)
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return 0;
-	dev_dbg(&drv_data->pdev->dev, "SUSPEND SSP ID %d\n",
-					drv_data->pdev->device);
+// TODO for ACPI compatibility
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "SUSPEND SSP ID %d\n",
+//<asus-baron20131101->					drv_data->pdev->device);
+// TODO ACPI
+	dev_info(drv_data->ssp_dev,"Trying to *suspend SSP device\n"); //<asus-baron20131101+>
 
 	return 0;
 }
@@ -148,10 +184,14 @@ static int intel_mid_i2s_resume(struct device *dev)
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return -EFAULT;
-	dev_dbg(&drv_data->pdev->dev, "RESUME SSP ID %d\n",
-					drv_data->pdev->device);
+// TODO for ACPI compatibility
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "RESUME SSP ID %d\n",
+//<asus-baron20131101->					drv_data->pdev->device);
+// TODO ACPI
+	dev_info(drv_data->ssp_dev,"Trying to *resume SSP device\n"); //<asus-baron20131101+>
 
-	dev_dbg(&drv_data->pdev->dev, "resumed\n");
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "resumed\n");
+	dev_dbg(drv_data->ssp_dev, "resumed\n"); //<asus-baron20131101+>
 	return 0;
 }
 
@@ -167,6 +207,9 @@ static int intel_mid_i2s_runtime_suspend(struct device *device_ptr)
 	struct pci_dev *pdev;
 	struct intel_mid_i2s_hdl *drv_data;
 	void __iomem *reg;
+// TODO ACPI
+	dev_info(device_ptr,"Trying to runtime suspend SSP device\n"); //<asus-baron20131101+>
+	return 0; //<asus-baron20131101+>
 
 	pdev = to_pci_dev(device_ptr);
 	WARN(!pdev, "Pci dev=NULL\n");
@@ -182,7 +225,8 @@ static int intel_mid_i2s_runtime_suspend(struct device *device_ptr)
 		return -ENODEV;
 	}
 	reg = drv_data->ioaddr;
-	dev_dbg(&drv_data->pdev->dev, "Suspend of SSP requested !!\n");
+//<asus-baron201311010->	dev_dbg(&drv_data->pdev->dev, "Suspend of SSP requested !!\n");
+	dev_dbg(drv_data->ssp_dev, "Suspend of SSP requested !!\n"); //<asus-baron20131101+>
 	return intel_mid_i2s_suspend(device_ptr);
 }
 
@@ -197,6 +241,9 @@ static int intel_mid_i2s_runtime_resume(struct device *device_ptr)
 {
 	struct pci_dev *pdev;
 	struct intel_mid_i2s_hdl *drv_data;
+// TODO ACPI
+	dev_info(device_ptr,"Trying to runtime resume SSP device\n"); //<asus-baron20131101+>
+	return 0; //<asus-baron20131101+>
 	pdev = to_pci_dev(device_ptr);
 	WARN(!pdev, "Pci dev=NULL\n");
 	if (!pdev)
@@ -205,7 +252,8 @@ static int intel_mid_i2s_runtime_resume(struct device *device_ptr)
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return -EFAULT;
-	dev_dbg(&drv_data->pdev->dev, "RT RESUME SSP ID\n");
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "RT RESUME SSP ID\n");
+	dev_dbg(drv_data->ssp_dev, "RT RESUME SSP ID\n"); //<asus-baron20131101+>
 	return intel_mid_i2s_resume(device_ptr);
 }
 
@@ -275,8 +323,8 @@ int intel_mid_i2s_flush(struct intel_mid_i2s_hdl *drv_data)
 		return 0;
 	reg = drv_data->ioaddr;
 	sssr = read_SSSR(reg);
-	dev_warn(&drv_data->pdev->dev, "in flush sssr=0x%08X\n", sssr);
-
+//<asus-baron20131101->	dev_warn(&drv_data->pdev->dev, "in flush sssr=0x%08X\n", sssr);
+	dev_warn(drv_data->ssp_dev, "in flush sssr=0x%08X\n", sssr); //<asus-baron20131101+>
 	rsre = read_SSCR1(reg) & (SSCR1_RSRE_MASK << SSCR1_RSRE_SHIFT);
 	if (rsre) {
 		/*
@@ -306,7 +354,8 @@ int intel_mid_i2s_flush(struct intel_mid_i2s_hdl *drv_data)
 	}
 
 	sssr = read_SSSR(reg);
-	dev_dbg(&drv_data->pdev->dev, "out flush sssr=0x%08X\n", sssr);
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "out flush sssr=0x%08X\n", sssr);
+	dev_dbg(drv_data->ssp_dev, "out flush sssr=0x%08X\n", sssr); //<asus-baron20131101+>
 	return num;
 }
 EXPORT_SYMBOL_GPL(intel_mid_i2s_flush);
@@ -380,13 +429,15 @@ int intel_mid_i2s_set_rd_cb(struct intel_mid_i2s_hdl *drv_data,
 		return -EFAULT;
 	mutex_lock(&drv_data->mutex);
 	if (!test_bit(I2S_PORT_OPENED, &drv_data->flags)) {
-		dev_WARN(&drv_data->pdev->dev, "set WR CB I2S_PORT NOT_OPENED");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "set WR CB I2S_PORT NOT_OPENED");
+		dev_WARN(drv_data->ssp_dev, "set WR CB I2S_PORT NOT_OPENED"); //<asus-baron20131101+>
 		mutex_unlock(&drv_data->mutex);
 		return -EPERM;
 	}
 	/* Do not change read parameters in the middle of a READ request */
 	if (test_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
-		dev_WARN(&drv_data->pdev->dev, "CB reject I2S_PORT_READ_BUSY");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "CB reject I2S_PORT_READ_BUSY");
+		dev_WARN(drv_data->ssp_dev, "CB reject I2S_PORT_READ_BUSY"); //<asus-baron20131101+>
 		mutex_unlock(&drv_data->mutex);
 		return -EBUSY;
 	}
@@ -414,13 +465,15 @@ int intel_mid_i2s_set_wr_cb(struct intel_mid_i2s_hdl *drv_data,
 		return -EFAULT;
 	mutex_lock(&drv_data->mutex);
 	if (!test_bit(I2S_PORT_OPENED, &drv_data->flags)) {
-		dev_warn(&drv_data->pdev->dev, "set WR CB I2S_PORT NOT_OPENED");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "set WR CB I2S_PORT NOT_OPENED");
+		dev_warn(drv_data->ssp_dev, "set WR CB I2S_PORT NOT_OPENED"); //<asus-baron20131101+>
 		mutex_unlock(&drv_data->mutex);
 		return -EPERM;
 	}
 	/* Do not change write parameters in the middle of a WRITE request */
 	if (test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
-		dev_warn(&drv_data->pdev->dev, "CB reject I2S_PORT_WRITE_BUSY");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "CB reject I2S_PORT_WRITE_BUSY");
+		dev_warn(drv_data->ssp_dev, "CB reject I2S_PORT_WRITE_BUSY"); //<asus-baron20131101+>
 		mutex_unlock(&drv_data->mutex);
 		return -EBUSY;
 	}
@@ -456,27 +509,33 @@ int intel_mid_i2s_lli_rd_req(struct intel_mid_i2s_hdl *drv_data,
 	rxchan = drv_data->rxchan;
 
 	if (!rxchan) {
-		dev_WARN(&(drv_data->pdev->dev), "rd_req FAILED no rxchan\n");
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev), "rd_req FAILED no rxchan\n");
+		dev_WARN(drv_data->ssp_dev, "rd_req FAILED no rxchan\n"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
 	if (lli_length <= 0) {
-		dev_WARN(&(drv_data->pdev->dev), "wr_req length less than 1\n");
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev), "wr_req length less than 1\n");
+		dev_WARN(drv_data->ssp_dev, "wr_req length less than 1\n"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
-	dev_dbg(&(drv_data->pdev->dev), "FCT Enter = %s\n", __func__);
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "FCT Enter = %s\n", __func__);
+	dev_dbg(drv_data->ssp_dev, "FCT Enter = %s\n", __func__); //<asus-baron20131101+>
 
 	/*
 	 * Prepare the scatterlist struct array
 	 */
-	dev_dbg(&(drv_data->pdev->dev), "kzalloc of scatterlist rd\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "kzalloc of scatterlist rd\n");
+	dev_dbg(drv_data->ssp_dev, "kzalloc of scatterlist rd\n"); //<asus-baron20131101+>
 	temp_sg = kzalloc(sizeof(struct scatterlist)*lli_length, GFP_KERNEL);
 	if (!temp_sg) {
-		dev_WARN(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev),
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 				 "temp_sg alloc of size %d bytes failed",
 				 sizeof(struct scatterlist)*lli_length);
 		return -ENOMEM;
 	}
-	dev_dbg(&(drv_data->pdev->dev), "kzalloc rd done\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "kzalloc rd done\n");
+	dev_dbg(drv_data->ssp_dev, "kzalloc rd done\n"); //<asus-baron20131101+>
 
 	/*
 	 * Fill the Link list with Destination addresses
@@ -491,8 +550,8 @@ int intel_mid_i2s_lli_rd_req(struct intel_mid_i2s_hdl *drv_data,
 	if (lli_mode == I2S_CIRCULAR_MODE)
 		flag |= DMA_PREP_CIRCULAR_LIST;
 
-	dev_dbg(&(drv_data->pdev->dev), "Calling prep_slave_sg\n");
-
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "Calling prep_slave_sg\n");
+	dev_dbg(drv_data->ssp_dev, "Calling prep_slave_sg\n"); //<asus-baron20131101+>
 	/* Enable the SSP Read Request */
 	set_SSCR1_reg((drv_data->ioaddr), RSRE);
 	change_SSCR0_reg((drv_data->ioaddr), RIM,
@@ -502,7 +561,8 @@ int intel_mid_i2s_lli_rd_req(struct intel_mid_i2s_hdl *drv_data,
 			lli_length, DMA_DEV_TO_MEM, flag, NULL);
 
 	if (!rxdesc) {
-		dev_WARN(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev),
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 			"rd_req device_prep_slave_sg FAILED\n");
 		return -EFAULT;
 	}
@@ -511,10 +571,12 @@ int intel_mid_i2s_lli_rd_req(struct intel_mid_i2s_hdl *drv_data,
 	 * Only 1 LLI READ is allowed
 	 */
 	if (test_and_set_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
-		dev_WARN(&drv_data->pdev->dev, "RD reject I2S_PORT READ_BUSY");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "RD reject I2S_PORT READ_BUSY");
+		dev_WARN(drv_data->ssp_dev, "RD reject I2S_PORT READ_BUSY"); //<asus-baron20131101+>
 		return -EBUSY;
 	}
-	dev_dbg(&(drv_data->pdev->dev), "RD dma tx submit\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "RD dma tx submit\n");
+	dev_dbg(drv_data->ssp_dev, "RD dma tx submit\n"); //<asus-baron20131101+>
 	rxdesc->callback = i2s_lli_read_done;
 	drv_data->read_param = param;
 	rxdesc->callback_param = drv_data;
@@ -549,26 +611,31 @@ int intel_mid_i2s_lli_wr_req(struct intel_mid_i2s_hdl *drv_data,
 	txchan = drv_data->txchan;
 
 	if (!txchan) {
-		dev_WARN(&(drv_data->pdev->dev), "wr_req but no txchan\n");
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev), "wr_req but no txchan\n");
+		dev_WARN(drv_data->ssp_dev, "wr_req but no txchan\n"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
 	if (lli_length <= 0) {
-		dev_WARN(&(drv_data->pdev->dev), "wr_req length less than 1\n");
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev), "wr_req length less than 1\n");
+		dev_WARN(drv_data->ssp_dev, "wr_req length less than 1\n"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
 
 	/*
 	 * Determine the list length
 	 */
-	dev_dbg(&(drv_data->pdev->dev), "kzalloc of scatterlist wr\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "kzalloc of scatterlist wr\n");
+	dev_dbg(drv_data->ssp_dev, "kzalloc of scatterlist wr\n"); //<asus-baron20131101+>
 	temp_sg = kzalloc(sizeof(struct scatterlist)*lli_length, GFP_KERNEL);
 	if (!temp_sg) {
-		dev_WARN(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev),
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 				 "temp_sg alloc of size %d bytes failed",
 				 sizeof(struct scatterlist)*lli_length);
 		return -ENOMEM;
 	}
-	dev_dbg(&(drv_data->pdev->dev), "kzalloc wr done\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "kzalloc wr done\n");
+	dev_dbg(drv_data->ssp_dev, "kzalloc wr done\n"); //<asus-baron20131101+>
 
 	/*
 	 * Fill the Link list with Source addresses
@@ -586,12 +653,15 @@ int intel_mid_i2s_lli_wr_req(struct intel_mid_i2s_hdl *drv_data,
 	change_SSCR0_reg((drv_data->ioaddr), TIM,
 			 ((drv_data->current_settings).tx_fifo_interrupt));
 
-	dev_dbg(&(drv_data->pdev->dev), "prep slave sg wr\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "prep slave sg wr\n");
+	dev_dbg(drv_data->ssp_dev, "prep slave sg wr\n"); //<asus-baron20131101+>
 	txdesc =  txchan->device->device_prep_slave_sg(txchan, drv_data->txsgl,
 				lli_length, DMA_MEM_TO_DEV, flag, NULL);
-	dev_dbg(&(drv_data->pdev->dev), "prep slave sg wr done\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "prep slave sg wr done\n");
+	dev_dbg(drv_data->ssp_dev, "prep slave sg wr done\n"); //<asus-baron20131101+>
 	if (!txdesc) {
-		dev_WARN(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev),
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 			"wr_req device_prep_slave_sg FAILED\n");
 		return -1;
 	}
@@ -600,15 +670,18 @@ int intel_mid_i2s_lli_wr_req(struct intel_mid_i2s_hdl *drv_data,
 	 * Only 1 LLI WRITE is allowed
 	 */
 	if (test_and_set_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
-		dev_WARN(&drv_data->pdev->dev, "WR reject I2S_PORT WRITE_BUSY");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "WR reject I2S_PORT WRITE_BUSY");
+		dev_WARN(drv_data->ssp_dev, "WR reject I2S_PORT WRITE_BUSY"); //<asus-baron20131101+>
 		return -EBUSY;
 	}
-	dev_dbg(&(drv_data->pdev->dev), "WR dma tx summit\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "WR dma tx summit\n");
+	dev_dbg(drv_data->ssp_dev, "WR dma tx summit\n"); //<asus-baron20131101+>
 	txdesc->callback = i2s_lli_write_done;
 	drv_data->write_param = param;
 	txdesc->callback_param = drv_data;
 	txdesc->tx_submit(txdesc);
-	dev_dbg(&(drv_data->pdev->dev), "wr dma req programmed\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "wr dma req programmed\n");
+	dev_dbg(drv_data->ssp_dev, "wr dma req programmed\n"); //<asus-baron20131101+>
 	return 0;
 }
 EXPORT_SYMBOL_GPL(intel_mid_i2s_lli_wr_req);
@@ -635,17 +708,20 @@ int intel_mid_i2s_rd_req(struct intel_mid_i2s_hdl	*drv_data,
 	if (!drv_data)
 		return -EFAULT;
 	if (!len) {
-		dev_WARN(&drv_data->pdev->dev, "rd req invalid len=0");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "rd req invalid len=0");
+		dev_WARN(drv_data->ssp_dev, "rd req invalid len=0"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
 
 	/* Allow only 1 READ at a time. */
 	if (test_and_set_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
-		dev_WARN(&drv_data->pdev->dev, "RD reject I2S_PORT READ_BUSY");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "RD reject I2S_PORT READ_BUSY");
+		dev_WARN(drv_data->ssp_dev, "RD reject I2S_PORT READ_BUSY"); //<asus-baron20131101+>
 		return -EBUSY;
 	}
 
-	dev_dbg(&drv_data->pdev->dev, "%s() dst=%p, len=%d, drv_data=%p",
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "%s() dst=%p, len=%d, drv_data=%p",
+	dev_dbg(drv_data->ssp_dev, "%s() dst=%p, len=%d, drv_data=%p", //<asus-baron20131101+>
 		__func__, destination, len, drv_data);
 
 	if (drv_data->current_settings.ssp_rx_dma == SSP_RX_DMA_ENABLE)
@@ -671,7 +747,8 @@ static int rd_req_cpu(struct intel_mid_i2s_hdl *drv_data,
 		      size_t			len,
 		      void			*param)
 {
-	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+	dev_dbg(drv_data->ssp_dev, "%s() - ENTER", __func__); //<asus-baron20131101+>
 
 	/* Initiate read */
 	drv_data->mask_sr |= ((SSSR_RFS_MASK << SSSR_RFS_SHIFT) |
@@ -703,22 +780,27 @@ static int rd_req_dma(struct intel_mid_i2s_hdl *drv_data,
 	dma_addr_t			ssdr_addr;
 	dma_addr_t			dst;
 
-	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+	dev_dbg(drv_data->ssp_dev, "%s() - ENTER", __func__); //<asus-baron20131101+>
 
 	/* Checks */
-	WARN(!drv_data->dmac1, "DMA device=NULL\n");
-	if (!drv_data->dmac1)
+//<asus-baron20131101->	WARN(!drv_data->dmac1, "DMA device=NULL\n");
+//<asus-baron20131101->	if (!drv_data->dmac1)
+	WARN(!drv_data->dmacdev, "DMA device=NULL\n"); //<asus-baron20131101+>
+	if (!drv_data->dmacdev) //<asus-baron20131101+>
 		return -EFAULT;
 
 	if (!rxchan) {
-		dev_WARN(&(drv_data->pdev->dev), "rd_req FAILED no rxchan\n");
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev), "rd_req FAILED no rxchan\n");
+		dev_WARN(drv_data->ssp_dev, "rd_req FAILED no rxchan\n"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
 
 	/* Map dma address */
 	dst = dma_map_single(NULL, destination, len, DMA_FROM_DEVICE);
 	if (!dst) {
-		dev_WARN(&drv_data->pdev->dev, "can't map DMA address %p",
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "can't map DMA address %p",
+		dev_WARN(drv_data->ssp_dev, "can't map DMA address %p", //<asus-baron20131101+>
 			 destination);
 		return -ENOMEM;
 	}
@@ -734,7 +816,8 @@ static int rd_req_dma(struct intel_mid_i2s_hdl *drv_data,
 					len,		/* Data Length */
 					flag);		/* Flag */
 	if (!rxdesc) {
-		dev_WARN(&drv_data->pdev->dev, "can not prep dma memcpy");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "can not prep dma memcpy");
+		dev_WARN(drv_data->ssp_dev, "can not prep dma memcpy"); //<asus-baron20131101+>
 		result = -EFAULT;
 		goto return_unmap;
 	}
@@ -783,17 +866,20 @@ int intel_mid_i2s_wr_req(struct intel_mid_i2s_hdl	*drv_data,
 	if (!drv_data)
 		return -EFAULT;
 	if (!len) {
-		dev_WARN(&drv_data->pdev->dev, "invalid wr len 0");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "invalid wr len 0");
+		dev_WARN(drv_data->ssp_dev, "invalid wr len 0"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
 
 	/* Allow only 1 WRITE at a time */
 	if (test_and_set_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
-		dev_WARN(&drv_data->pdev->dev, "WR reject I2S_PORT WRITE_BUSY");
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "WR reject I2S_PORT WRITE_BUSY");
+		dev_WARN(drv_data->ssp_dev, "WR reject I2S_PORT WRITE_BUSY"); //<asus-baron20131101+>
 		return -EBUSY;
 	}
 
-	dev_dbg(&drv_data->pdev->dev, "%s() src=%p, len=%d, drv_data=%p",
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "%s() src=%p, len=%d, drv_data=%p",
+	dev_dbg(drv_data->ssp_dev, "%s() src=%p, len=%d, drv_data=%p", //<asus-baron20131101+>
 		__func__, source, len, drv_data);
 
 	if (drv_data->current_settings.ssp_tx_dma == SSP_TX_DMA_ENABLE)
@@ -819,7 +905,8 @@ static int wr_req_cpu(struct intel_mid_i2s_hdl *drv_data,
 		      size_t			len,
 		      void			*param)
 {
-	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER (src=0x%08x, len=%d"
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER (src=0x%08x, len=%d"
+	dev_dbg(drv_data->ssp_dev, "%s() - ENTER (src=0x%08x, len=%d" //<asus-baron20131101+>
 		, __func__, (u32)source, len);
 
 	/* Initiate write */
@@ -852,21 +939,26 @@ static int wr_req_dma(struct intel_mid_i2s_hdl *drv_data,
 	dma_addr_t			ssdr_addr;
 	dma_addr_t			src;
 
-	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
 
-	WARN(!drv_data->dmac1, "DMA device=NULL\n");
-	if (!drv_data->dmac1)
+//<asus-baron20131101->	WARN(!drv_data->dmac1, "DMA device=NULL\n");
+//<asus-baron20131101->	if (!drv_data->dmac1)
+	dev_dbg(drv_data->ssp_dev, "%s() - ENTER", __func__); //<asus-baron20131101+>
+	WARN(!drv_data->dmacdev, "DMA device=NULL\n"); //<asus-baron20131101+>
+	if (!drv_data->dmacdev) //<asus-baron20131101+>
 		return -EFAULT;
 
 	if (!txchan) {
-		dev_WARN(&(drv_data->pdev->dev), "wr_req but no txchan\n");
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev), "wr_req but no txchan\n");
+		dev_WARN(drv_data->ssp_dev, "wr_req but no txchan\n"); //<asus-baron20131101+>
 		return -EINVAL;
 	}
 
 	/* Map DMA address */
 	src = dma_map_single(NULL, source, len, DMA_TO_DEVICE);
 	if (!src) {
-		dev_WARN(&drv_data->pdev->dev, "can't map DMA address %p",
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "can't map DMA address %p",
+		dev_WARN(drv_data->ssp_dev, "can't map DMA address %p", //<asus-baron20131101+>
 						source);
 		return -ENOMEM;
 	}
@@ -882,7 +974,8 @@ static int wr_req_dma(struct intel_mid_i2s_hdl *drv_data,
 					len,		/* Data Length */
 					flag);		/* Flag */
 	if (!txdesc) {
-		dev_WARN(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_WARN(&(drv_data->pdev->dev),
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 			"wr_req dma memcpy FAILED(src=%08x,len=%d,txchan=%p)\n",
 			(unsigned int)src, len, txchan);
 		result = -EFAULT;
@@ -921,7 +1014,77 @@ return_unmap:
  * Output parameters
  *      handle : handle of the selected SSP, or NULL if not found
  */
+ //<asus-baron20131101+>
 struct intel_mid_i2s_hdl *intel_mid_i2s_open(enum intel_mid_i2s_ssp_usage usage)
+{
+	struct intel_mid_i2s_hdl *drv_data = NULL;
+	struct device *found_device = NULL;
+
+/// runtime setting
+	acpi_handle handle;
+	struct acpi_device *acpi_dev;
+	int ret;
+
+	pr_info("%s : I2S open called,searching for device with usage=%x !\n",
+			DRIVER_NAME, usage);
+
+// ACK BEGIN TODO ACPI : Force usage to MODEM (SSPM=SSP1 currently)
+	usage = SSP_USAGE_MODEM;
+	pr_info("%s : I2S open forced to SSP1 (Modem) usage=%x !\n",
+			DRIVER_NAME, usage);
+// ACK END
+
+	found_device = driver_find_device(&(i2s_acpi_driver.driver), NULL,
+						&usage, check_device_acpi);
+	if (!found_device) {
+		pr_info("%s : i2s_open can not found with usage=0x%02X\n",
+				DRIVER_NAME, (int)usage);
+		return NULL;
+	}
+
+	drv_data = (struct intel_mid_i2s_hdl *) dev_get_drvdata(found_device);
+
+/*
+// TODO ACPI Test if drv_data!=0
+	handle = DEVICE_ACPI_HANDLE(drv_data->ssp_dev);
+	dev_info(drv_data->ssp_dev, "ACPI handle = 0x%08x \n",handle);	
+	if (!handle || acpi_bus_get_device(handle, &acpi_dev)) {
+		dev_dbg(drv_data->ssp_dev, "ACPI device not found in %s!\n", __func__);
+		return 0;
+	}
+	dev_info(drv_data->ssp_dev, "ACPI dev pointer = 0x%p \n",acpi_dev);	
+
+	dev_info(drv_data->ssp_dev, "ACPI power manageable = %d \n",acpi_dev->flags.power_manageable);
+
+
+	dev_info(drv_data->ssp_dev, "set bus power d0");
+	ret = acpi_bus_set_power(handle, ACPI_STATE_D0);
+	dev_info(drv_data->ssp_dev, "function return %d",ret);
+
+*/
+
+//	/* pm_runtime ?? */
+//	pm_runtime_get_sync(drv_data->ssp_dev);
+	pm_runtime_get_sync(drv_data->ssp_dev);
+
+	return drv_data;
+
+
+}
+EXPORT_SYMBOL_GPL(intel_mid_i2s_open);
+
+
+/**
+ * intel_mid_i2s_open - reserve and start a SSP depending of it's usage
+ * @usage : select which ssp i2s you need by giving usage (BT,MODEM...)
+ * @ps_settings : hardware settings to configure the SSP module
+ *
+ * May sleep (driver_find_device) : no lock permitted when called.
+ *
+ * Output parameters
+ *      handle : handle of the selected SSP, or NULL if not found
+ */
+struct intel_mid_i2s_hdl *intel_mid_i2s_open_pci(enum intel_mid_i2s_ssp_usage usage)
 {
 	struct pci_dev *pdev;
 	struct intel_mid_i2s_hdl *drv_data = NULL;
@@ -929,7 +1092,7 @@ struct intel_mid_i2s_hdl *intel_mid_i2s_open(enum intel_mid_i2s_ssp_usage usage)
 	pr_debug("%s : open called,searching for device with usage=%x !\n",
 			DRIVER_NAME, usage);
 	found_device = driver_find_device(&(intel_mid_i2s_driver.driver), NULL,
-						&usage, check_device);
+						&usage, check_device_pci);
 	if (!found_device) {
 		pr_debug("%s : open can not found with usage=0x%02X\n",
 				DRIVER_NAME, (int)usage);
@@ -946,10 +1109,10 @@ struct intel_mid_i2s_hdl *intel_mid_i2s_open(enum intel_mid_i2s_ssp_usage usage)
 	mutex_lock(&drv_data->mutex);
 
 	/* pm_runtime */
-	pm_runtime_get_sync(&drv_data->pdev->dev);
+	pm_runtime_get_sync(drv_data->ssp_dev);
 
 	if (test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
-		dev_err(&drv_data->pdev->dev, "Opening a closing I2S!");
+		dev_err(drv_data->ssp_dev, "Opening a closing I2S!");
 		goto open_error;
 	}
 	/* Indicate that the HW param config is not set yet */
@@ -963,11 +1126,13 @@ struct intel_mid_i2s_hdl *intel_mid_i2s_open(enum intel_mid_i2s_ssp_usage usage)
 
 open_error:
 	put_device(found_device);
-	pm_runtime_put(&drv_data->pdev->dev);
+	pm_runtime_put(drv_data->ssp_dev);
 	mutex_unlock(&drv_data->mutex);
 	return NULL;
 }
-EXPORT_SYMBOL_GPL(intel_mid_i2s_open);
+//<asus-baron20131101->
+//<asus-baron20131101-> EXPORT_SYMBOL_GPL(intel_mid_i2s_open);
+EXPORT_SYMBOL_GPL(intel_mid_i2s_open_pci); //<asus-baron20131101+>
 
 /**
  * intel_mid_i2s_close - release and stop the SSP
@@ -987,25 +1152,30 @@ void intel_mid_i2s_close(struct intel_mid_i2s_hdl *drv_data)
 		return;
 	mutex_lock(&drv_data->mutex);
 	if (!test_bit(I2S_PORT_OPENED, &drv_data->flags)) {
-		dev_err(&drv_data->pdev->dev, "not opened but closing?");
+//<asus-baron20131101->		dev_err(&drv_data->pdev->dev, "not opened but closing?");
+		dev_err(drv_data->ssp_dev, "not opened but closing?"); //<asus-baron20131101+>
 		mutex_unlock(&drv_data->mutex);
 		return;
 	}
 
 	set_bit(I2S_PORT_CLOSING, &drv_data->flags);
-	dev_dbg(&drv_data->pdev->dev, "Status bit pending write=%d read=%d\n",
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "Status bit pending write=%d read=%d\n",
+	dev_dbg(drv_data->ssp_dev, "Status bit pending write=%d read=%d\n", //<asus-baron20131101+>
 			test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags),
 			test_bit(I2S_PORT_READ_BUSY, &drv_data->flags));
 	if (test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags) ||
 	     test_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
-		dev_dbg(&drv_data->pdev->dev,
+//<asus-baron20131101->		dev_dbg(&drv_data->pdev->dev,
+		dev_dbg(drv_data->ssp_dev, //<asus-baron20131101+>
 				"Pending callback in close...\n");
 	}
 
 	reg = drv_data->ioaddr;
-	dev_dbg(&drv_data->pdev->dev, "Stopping the SSP\n");
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "Stopping the SSP\n");
+	dev_dbg(drv_data->ssp_dev, "Stopping the SSP\n"); //<asus-baron20131101+>
 	i2s_disable(drv_data);
-	put_device(&drv_data->pdev->dev);
+//<asus-baron20131101->	put_device(&drv_data->pdev->dev);
+	put_device(drv_data->ssp_dev); //<asus-baron20131101+>
 	write_SSCR0(0, reg);
 	/*
 	 * Set the SSP in SLAVE Mode and Enable TX tristate
@@ -1018,12 +1188,14 @@ void intel_mid_i2s_close(struct intel_mid_i2s_hdl *drv_data)
 			| (SSCR1_TTE_MASK << SSCR1_TTE_SHIFT),
 			reg);
 
-	dev_dbg(&(drv_data->pdev->dev), "SSP Stopped.\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "SSP Stopped.\n");
+	dev_dbg(drv_data->ssp_dev, "SSP Stopped.\n"); //<asus-baron20131101+>
 	clear_bit(I2S_PORT_CLOSING, &drv_data->flags);
 	clear_bit(I2S_PORT_OPENED, &drv_data->flags);
 
 	/* pm runtime */
-	pm_runtime_put(&drv_data->pdev->dev);
+//<asus-baron20131101->	pm_runtime_put(&drv_data->pdev->dev);
+	pm_runtime_put(drv_data->ssp_dev); //<asus-baron20131101+>
 
 	mutex_unlock(&drv_data->mutex);
 }
@@ -1056,7 +1228,41 @@ static inline void i2s_disable(struct intel_mid_i2s_hdl *drv_data)
 }
 
 /**
- * check_device -  return if the device is the usage we want (usage =*data)
+ * check_device -  return if the device is the usage we want (usage =*data) //<asus-baron20131101+>
+ * @device_ptr : pointer on device struct
+ * @data : pointer pointer on usage we are looking for
+ *
+ * this is called for each device by find_device() from intel_mid_i2s_open()
+ * Info : when found, the flag of driver is set to I2S_PORT_OPENED
+ *
+ * Output parameters
+ *      integer : return 0 means not the device or already started. go next
+ *		  return != 0 means stop the search and return this device
+ */
+//<asus-baron20131101+>
+static int
+check_device_acpi(struct device *device_ptr, void *data)
+{
+	struct intel_mid_i2s_hdl *drv_data;
+	enum intel_mid_i2s_ssp_usage usage;
+	enum intel_mid_i2s_ssp_usage usage_to_find;
+
+	drv_data = (struct intel_mid_i2s_hdl *) dev_get_drvdata(device_ptr);
+	usage = drv_data->usage;
+	usage_to_find = *((enum intel_mid_i2s_ssp_usage *) data);
+	pr_debug("i2sChecking the device device_ptr=%p drv_data=%p (used=%d) w/ usage = %d searching %d\n",
+		 device_ptr, drv_data, test_bit(I2S_PORT_OPENED, &drv_data->flags), usage, usage_to_find);
+
+	if (usage == usage_to_find) {
+		if (!test_and_set_bit(I2S_PORT_OPENED, &drv_data->flags))
+			return 1;  /* Already opened, do not use this result */
+	}
+	
+	return 0;
+}
+
+/**
+ * check_device_pci -  return if the device is the usage we want (usage =*data)
  * @device_ptr : pointer on device struct
  * @data : pointer pointer on usage we are looking for
  *
@@ -1068,7 +1274,7 @@ static inline void i2s_disable(struct intel_mid_i2s_hdl *drv_data)
  *		  return != 0 means stop the search and return this device
  */
 static int
-check_device(struct device *device_ptr, void *data)
+check_device_pci(struct device *device_ptr, void *data)
 {
 	struct pci_dev *pdev;
 	struct intel_mid_i2s_hdl *drv_data;
@@ -1096,7 +1302,7 @@ check_device(struct device *device_ptr, void *data)
 	};
 	return 0; /* not usage we look for, or already opened */
 }
-
+//<asus-baron20131101->
 /**
  * i2s_reset_command_done - reset driver state if dma callback is not excuted before stream stop
  * @cmd : command to be executed
@@ -1128,7 +1334,8 @@ static void i2s_reset_command_done(struct intel_mid_i2s_hdl *drv_data,
 		break;
 
 	default:
-		dev_warn(&drv_data->pdev->dev, "Unknown reset cmd received!");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "Unknown reset cmd received!");
+		dev_warn(drv_data->ssp_dev, "Unknown reset cmd received!"); //<asus-baron20131101+>
 		break;
 	}
 	return;
@@ -1153,8 +1360,8 @@ static void i2s_read_done(void *arg)
 	if (!drv_data)
 		return;
 	if (!test_bit(I2S_PORT_READ_BUSY, &drv_data->flags))
-		dev_WARN(&drv_data->pdev->dev, "spurious read dma complete");
-
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "spurious read dma complete");
+		dev_WARN(drv_data->ssp_dev, "spurious read dma complete"); //<asus-baron20131101+>
 	dma_unmap_single(NULL, drv_data->read_ptr.dma,
 			 drv_data->read_len, DMA_FROM_DEVICE);
 	drv_data->read_len = 0;
@@ -1172,7 +1379,8 @@ static void i2s_read_done(void *arg)
 	if (drv_data->read_callback != NULL)
 		status = drv_data->read_callback(param_complete);
 	else
-		dev_warn(&drv_data->pdev->dev, "RD done but not callback set");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "RD done but not callback set");
+		dev_warn(drv_data->ssp_dev, "RD done but not callback set"); //<asus-baron20131101+>
 
 }
 
@@ -1195,8 +1403,8 @@ static void i2s_lli_read_done(void *arg)
 	if (!drv_data)
 		return;
 	if (!test_bit(I2S_PORT_READ_BUSY, &drv_data->flags))
-		dev_WARN(&drv_data->pdev->dev, "spurious read dma complete");
-
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev, "spurious read dma complete");
+		dev_WARN(drv_data->ssp_dev, "spurious read dma complete"); //<asus-baron20131101+>
 	reg = drv_data->ioaddr;
 	/* Rx fifo overrun Interrupt */
 	change_SSCR0_reg(reg, RIM, SSP_RX_FIFO_OVER_INT_DISABLE);
@@ -1212,7 +1420,8 @@ static void i2s_lli_read_done(void *arg)
 	if (drv_data->read_callback != NULL)
 		status = drv_data->read_callback(param_complete);
 	else
-		dev_warn(&drv_data->pdev->dev, "RD done but not callback set");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "RD done but not callback set");
+		dev_warn(drv_data->ssp_dev, "RD done but not callback set"); //<asus-baron20131101+>
 }
 
 
@@ -1234,7 +1443,8 @@ static void i2s_write_done(void *arg)
 	if (!drv_data)
 		return;
 	if (!test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags))
-		dev_warn(&drv_data->pdev->dev, "spurious write dma complete");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "spurious write dma complete");
+		dev_warn(drv_data->ssp_dev, "spurious write dma complete"); //<asus-baron20131101+>
 
 	dma_unmap_single(NULL, drv_data->write_ptr.dma,
 			 drv_data->write_len, DMA_TO_DEVICE);
@@ -1243,7 +1453,8 @@ static void i2s_write_done(void *arg)
 
 	reg = drv_data->ioaddr;
 	change_SSCR0_reg(reg, TIM, SSP_TX_FIFO_UNDER_INT_DISABLE);
-	dev_dbg(&(drv_data->pdev->dev), "DMA channel disable..\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "DMA channel disable..\n");
+	dev_dbg(drv_data->ssp_dev, "DMA channel disable..\n"); //<asus-baron20131101+>
 	param_complete = drv_data->write_param;
 
 	/* Do not change order sequence:
@@ -1256,7 +1467,8 @@ static void i2s_write_done(void *arg)
 	if (drv_data->write_callback != NULL)
 		status = drv_data->write_callback(param_complete);
 	else
-		dev_warn(&drv_data->pdev->dev, "WR done but no callback set");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "WR done but no callback set");
+		dev_warn(drv_data->ssp_dev, "WR done but no callback set"); //<asus-baron20131101+>
 }
 
 /**
@@ -1277,15 +1489,16 @@ static void i2s_lli_write_done(void *arg)
 	if (!drv_data)
 		return;
 	if (!test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags))
-		dev_warn(&drv_data->pdev->dev, "spurious write dma complete");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "spurious write dma complete");
+		dev_warn(drv_data->ssp_dev, "spurious write dma complete"); //<asus-baron20131101+>
 
-
-	dev_dbg(&drv_data->pdev->dev, "lli wr Done!\n");
-
+//<asus-baron20131101->	dev_dbg(&drv_data->pdev->dev, "lli wr Done!\n");
+	dev_dbg(drv_data->ssp_dev, "lli wr Done!\n"); //<asus-baron20131101+>
 
 	reg = drv_data->ioaddr;
 	change_SSCR0_reg(reg, TIM, SSP_TX_FIFO_UNDER_INT_DISABLE);
-	dev_dbg(&(drv_data->pdev->dev), "DMA channel disable..\n");
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "DMA channel disable..\n");
+	dev_dbg(drv_data->ssp_dev, "DMA channel disable..\n"); //<asus-baron20131101+>
 	param_complete = drv_data->write_param;
 
 	/* Do not change order sequence:
@@ -1299,12 +1512,16 @@ static void i2s_lli_write_done(void *arg)
 	if (drv_data->write_callback != NULL)
 		status = drv_data->write_callback(param_complete);
 	else
-		dev_warn(&drv_data->pdev->dev, "WR done but no callback set");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "WR done but no callback set");
+		dev_warn(drv_data->ssp_dev, "WR done but no callback set"); //<asus-baron20131101+>
 }
 
 static bool chan_filter(struct dma_chan *chan, void *param)
 {
 	struct intel_mid_i2s_hdl *drv_data = (struct intel_mid_i2s_hdl *)param;
+//<asus-baron20131101+>
+	return (chan->device->dev == drv_data->dmacdev);
+/*
 	bool ret = false;
 
 	if (!drv_data->dmac1)
@@ -1313,6 +1530,8 @@ static bool chan_filter(struct dma_chan *chan, void *param)
 		ret = true;
 out:
 	return ret;
+*/
+//<asus-baron20131101->
 }
 static int i2s_compute_dma_width(u16 ssp_data_size,
 				 enum dma_slave_buswidth *dma_width)
@@ -1398,7 +1617,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 	case SSP_CMD_ABORT:
 		/* Abort write */
 		if (test_and_clear_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
-			dev_dbg(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_dbg(&(drv_data->pdev->dev),
+			dev_dbg(drv_data->ssp_dev, //<asus-baron20131101+>
 					"%s : abort write", __func__);
 
 			clear_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags);
@@ -1407,7 +1627,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 
 		/* Abort read */
 		if (test_and_clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
-			dev_dbg(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_dbg(&(drv_data->pdev->dev),
+			dev_dbg(drv_data->ssp_dev, //<asus-baron20131101+>
 					"%s: abort read", __func__);
 
 			clear_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags);
@@ -1422,6 +1643,18 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		break;
 
 	case SSP_CMD_ENABLE_SSP:
+//<asus-baron20131101+>
+		dev_dbg(drv_data->ssp_dev,
+		"%s: Set the SSP1_DIV_CTRL to 19.2Mhz lpeshim base = %p avant = %x et %x ", __func__,
+   	     lpeshim_base_address,
+		read_LPE_SSP1_DIV_CTRL_L(lpeshim_base_address),
+		read_LPE_SSP1_DIV_CTRL_H(lpeshim_base_address) );
+
+		// TODO ACPI : Set internal frequency to 19.2Mhz instead default 25Mhz
+		// SSP1
+		write_LPE_SSP1_DIV_CTRL_L(0x0000007d, lpeshim_base_address);
+		write_LPE_SSP1_DIV_CTRL_H(0x60000060, lpeshim_base_address);
+//<asus-baron20131101->
 		i2s_enable(drv_data);
 		break;
 
@@ -1436,8 +1669,10 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		if (ssp_settings->ssp_tx_dma != SSP_TX_DMA_ENABLE)
 			break;
 
-		WARN(!drv_data->dmac1, "DMA device=NULL\n");
-		if (!drv_data->dmac1)
+//<asus-baron20131101->		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+//<asus-baron20131101->		if (!drv_data->dmac1)
+		WARN(!drv_data->dmacdev, "DMA device=NULL\n"); //<asus-baron20131101+>
+		if (!drv_data->dmacdev) //<asus-baron20131101+>
 			return -EFAULT;
 
 		if (ssp_settings->mode == SSP_INVALID_MODE) {
@@ -1465,7 +1700,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		temp = i2s_compute_dma_width(ssp_settings->data_size,
 						&txs->dma_slave.dst_addr_width);
 		if (temp != 0) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"TX DMA Channel Bad data_size = %d\n",
 				ssp_settings->data_size);
 			retval = -2;
@@ -1478,7 +1714,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 			&txs->dma_slave.src_maxburst);
 
 		if (temp != 0) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"TX DMA Channel Bad TX FIFO Threshold = %d\n",
 				ssp_settings->ssp_tx_fifo_threshold);
 			retval = -3;
@@ -1491,7 +1728,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 			&txs->dma_slave.dst_maxburst);
 
 		if (temp != 0) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"TX DMA Channel Bad TX FIFO Threshold = %d\n",
 				ssp_settings->ssp_tx_fifo_threshold);
 			retval = -4;
@@ -1506,7 +1744,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		drv_data->txchan = dma_request_channel(mask, chan_filter,
 							drv_data);
 		if (!drv_data->txchan) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"Could not get Tx channel\n");
 			retval = -5;
 			goto err_exit;
@@ -1516,7 +1755,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 				drv_data->txchan, DMA_SLAVE_CONFIG,
 				(unsigned long) &txs->dma_slave);
 		if (temp) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 					"Tx slave control failed\n");
 			retval = -6;
 			goto err_exit;
@@ -1532,8 +1772,10 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 			break;
 		}
 
-		WARN(!drv_data->dmac1, "DMA device=NULL\n");
-		if (!drv_data->dmac1)
+//<asus-baron20131101->		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+//<asus-baron20131101->		if (!drv_data->dmac1)
+		WARN(!drv_data->dmacdev, "DMA device=NULL\n"); //<asus-baron20131101+>
+		if (!drv_data->dmacdev) //<asus-baron20131101+>
 			return -EFAULT;
 
 		channel = drv_data->txchan;
@@ -1563,8 +1805,10 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		if (ssp_settings->ssp_rx_dma != SSP_RX_DMA_ENABLE)
 			break;
 
-		WARN(!drv_data->dmac1, "DMA device=NULL\n");
-		if (!drv_data->dmac1)
+//<asus-baron20131101->		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+//<asus-baron20131101->		if (!drv_data->dmac1)
+		WARN(!drv_data->dmacdev, "DMA device=NULL\n"); //<asus-baron20131101+>
+		if (!drv_data->dmacdev) //<asus-baron20131101+>
 			return -EFAULT;
 
 		if (ssp_settings->mode == SSP_INVALID_MODE) {
@@ -1591,7 +1835,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 						&rxs->dma_slave.src_addr_width);
 
 		if (temp != 0) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"RX DMA Channel Bad data_size = %d\n",
 				ssp_settings->data_size);
 			retval = -8;
@@ -1605,7 +1850,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 			, &rxs->dma_slave.src_maxburst);
 
 		if (temp != 0) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"RX DMA Channel Bad RX FIFO Threshold\n");
 			retval = -9;
 			goto err_exit;
@@ -1617,7 +1863,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 			, &rxs->dma_slave.dst_maxburst);
 
 		if (temp != 0) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"RX DMA Channel Bad RX FIFO Threshold\n");
 			retval = -10;
 			goto err_exit;
@@ -1631,7 +1878,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		drv_data->rxchan = dma_request_channel(mask, chan_filter,
 							drv_data);
 		if (!drv_data->rxchan) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"Could not get Rx channel\n");
 			retval = -11;
 			goto err_exit;
@@ -1642,7 +1890,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 				(unsigned long) &rxs->dma_slave);
 
 		if (temp) {
-			dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			dev_err(&(drv_data->pdev->dev),
+			dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 				"Rx slave control failed\n");
 			retval = -12;
 			goto err_exit;
@@ -1658,8 +1907,10 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 			break;
 		}
 
-		WARN(!drv_data->dmac1, "DMA device=NULL\n");
-		if (!drv_data->dmac1)
+//<asus-baron20131101->		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+//<asus-baron20131101->		if (!drv_data->dmac1)
+		WARN(!drv_data->dmacdev, "DMA device=NULL\n"); //<asus-baron20131101+>
+		if (!drv_data->dmacdev) //<asus-baron20131101+>
 			return -EFAULT;
 
 		channel = drv_data->rxchan;
@@ -1685,7 +1936,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 
 
 	default:
-		dev_warn(&drv_data->pdev->dev, "Incorrect command received !");
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev, "Incorrect command received !");
+		dev_warn(drv_data->ssp_dev, "Incorrect command received !"); //<asus-baron20131101+>
 		return -EFAULT;
 		break;
 	}
@@ -1710,7 +1962,8 @@ static void ssp1_dump_registers(struct intel_mid_i2s_hdl *drv_data)
 	u32 status;
 
 	void __iomem *reg = drv_data->ioaddr;
-	struct device *ddbg = &(drv_data->pdev->dev);
+//<asus-baron20131101->	struct device *ddbg = &(drv_data->pdev->dev);
+	struct device *ddbg = drv_data->ssp_dev; //<asus-baron20131101+>
 	dev_dbg(ddbg, "Dump - Base Address = 0x%08X\n", (u32)reg);
 
 	irq_status = read_SSSR(reg);
@@ -1770,7 +2023,8 @@ static irqreturn_t i2s_irq(int irq, void *dev_id)
 	irqreturn_t		 irq_status	= IRQ_NONE;
 	struct intel_mid_i2s_hdl *drv_data	= dev_id;
 	void __iomem		 *reg		= drv_data->ioaddr;
-	struct device		 *ddbg		= &(drv_data->pdev->dev);
+//<asus-baron20131101->	struct device		 *ddbg		= &(drv_data->pdev->dev);
+	struct device		 *ddbg		= drv_data->ssp_dev; //<asus-baron20131101+>
 	/* SSSR register content */
 	u32			 sssr		= 0;
 	/* Monitored SSSR bit mask */
@@ -1855,8 +2109,10 @@ static irqreturn_t i2s_irq(int irq, void *dev_id)
 	 * take care to access LPE Shim registers */
 
 	/* Clear LPE sticky bits depending on SSP instance */
-	isrx = LPE_ISRX_IAPIS_SSP0_MASK << (LPE_ISRX_IAPIS_SSP0_SHIFT
-					+ drv_data->device_instance);
+//<asus-baron20131101->	isrx = LPE_ISRX_IAPIS_SSP0_MASK << (LPE_ISRX_IAPIS_SSP0_SHIFT
+//<asus-baron20131101->					+ drv_data->device_instance);
+// TODO ACPI BYT
+	isrx = LPE_ISRX_IAPIS_SSP1_MASK << LPE_ISRX_IAPIS_SSP1_SHIFT; //<asus-baron20131101+>
 	write_LPE_ISRX(isrx, lpeshim_base_address);
 #endif /* __MRFL_SPECIFIC_TMP__ */
 
@@ -1871,14 +2127,16 @@ irqreturn_t i2s_irq_handle_RFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
 	u16		data_cnt	= 0;
 
 	if (drv_data->current_settings.ssp_rx_dma == SSP_RX_DMA_ENABLE) {
-		dev_WARN(&drv_data->pdev->dev,
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev,
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 			 "%s: DMA enabled, this function shouldn't be called",
 			 __func__);
 		goto i2s_irq_handle_RFS_return;
 	}
 
 	if ((drv_data->read_ptr.cpu == NULL) || (drv_data->read_len <= 0)) {
-		dev_WARN(&drv_data->pdev->dev,
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev,
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 			 "%s: Invalid read param: addr=0x%08X, len=%i",
 			 __func__, (int)drv_data->read_ptr.cpu,
 			 drv_data->read_len);
@@ -1923,14 +2181,16 @@ irqreturn_t i2s_irq_handle_TFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
 	u16		data_cnt	= FIFO_SIZE;
 
 	if (drv_data->current_settings.ssp_tx_dma == SSP_TX_DMA_ENABLE) {
-		dev_WARN(&drv_data->pdev->dev,
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev,
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 			 "%s: DMA enabled, this function shouldn't be called",
 			 __func__);
 		goto i2s_irq_handle_TFS_return;
 	}
 
 	if ((drv_data->write_ptr.cpu == NULL) || (drv_data->write_len <= 0)) {
-		dev_WARN(&drv_data->pdev->dev,
+//<asus-baron20131101->		dev_WARN(&drv_data->pdev->dev,
+		dev_WARN(drv_data->ssp_dev, //<asus-baron20131101+>
 			 "%s: Invalid write param: addr=0x%08X, len=%i",
 			 __func__, (int)drv_data->write_ptr.cpu,
 			 drv_data->write_len);
@@ -1974,19 +2234,21 @@ static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
 	/* Locals */
 	struct intel_mid_i2s_hdl *drv_data = dev_id;
 
-	dev_dbg(&(drv_data->pdev->dev), "%s", __func__);
-
+//<asus-baron20131101->	dev_dbg(&(drv_data->pdev->dev), "%s", __func__);
+	dev_dbg(drv_data->ssp_dev, "%s", __func__); //<asus-baron20131101+>
 	/* Finalize reading without DMA */
 	if ((drv_data->current_settings.ssp_rx_dma != SSP_RX_DMA_ENABLE) &&
 	    test_and_clear_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags)) {
 
 		if (!test_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
-			dev_warn(&drv_data->pdev->dev,
+//<asus-baron20131101->			dev_warn(&drv_data->pdev->dev,
+			dev_warn(drv_data->ssp_dev, //<asus-baron20131101+>
 				 "%s: spurious read complete",
 				 __func__);
 		}
 
-		dev_dbg(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_dbg(&(drv_data->pdev->dev),
+		dev_dbg(drv_data->ssp_dev, //<asus-baron20131101+>
 			 "%s: read complete",
 			 __func__);
 
@@ -1998,12 +2260,14 @@ static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
 	      test_and_clear_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags)) {
 
 		if (!test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
-			dev_warn(&drv_data->pdev->dev,
+//<asus-baron20131101->			dev_warn(&drv_data->pdev->dev,
+			dev_warn(drv_data->ssp_dev, //<asus-baron20131101+>
 				 "%s : spurious write complete",
 				 __func__);
 		}
 
-		dev_dbg(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_dbg(&(drv_data->pdev->dev),
+		dev_dbg(drv_data->ssp_dev, //<asus-baron20131101+>
 			"%s : write complete",
 			__func__);
 
@@ -2011,7 +2275,8 @@ static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
 
 	/* Error */
 	} else {
-		dev_warn(&drv_data->pdev->dev,
+//<asus-baron20131101->		dev_warn(&drv_data->pdev->dev,
+		dev_warn(drv_data->ssp_dev, //<asus-baron20131101+>
 			 "%s: Unexpected function call"
 			 "- flags=0x%08lx, rx_dma=%d, tx_dma=%d",
 			 __func__,
@@ -2044,7 +2309,8 @@ static void i2s_finalize_read(struct intel_mid_i2s_hdl *drv_data)
 			(void)drv_data->read_callback
 					(drv_data->read_param);
 		else
-			dev_warn(&drv_data->pdev->dev,
+//<asus-baron20131101->			dev_warn(&drv_data->pdev->dev,
+			dev_warn(drv_data->ssp_dev, //<asus-baron20131101+>
 				 "%s: no callback set",
 				 __func__);
 	}
@@ -2071,7 +2337,8 @@ static void i2s_finalize_write(struct intel_mid_i2s_hdl *drv_data)
 			(void)drv_data->write_callback
 					(drv_data->write_param);
 		else
-			dev_warn(&drv_data->pdev->dev,
+//<asus-baron20131101->			dev_warn(&drv_data->pdev->dev,
+			dev_warn(drv_data->ssp_dev, //<asus-baron20131101+>
 				 "%s: no callback set",
 				 __func__);
 	}
@@ -2117,7 +2384,8 @@ static u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
 	long calculated_scr, remainder;
 	u16 l_ssp_data_size = ps_settings->data_size;
 	enum mrst_ssp_frm_freq freq = ps_settings->master_mode_standard_freq;
-	struct device *ddbg = &(drv_data->pdev->dev);
+//<asus-baron20131101->	struct device *ddbg = &(drv_data->pdev->dev);
+	struct device *ddbg = drv_data->ssp_dev; //<asus-baron20131101+>
 	u16 delay = ps_settings->ssp_psp_T2 +
 		    ps_settings->ssp_psp_T4 +
 		    ps_settings->ssp_psp_T1;
@@ -2239,7 +2507,8 @@ static u32 calculate_ssacd(struct intel_mid_i2s_hdl *drv_data,
 	enum mrst_ssp_timeslot num_timeslot;
 	enum mrst_ssp_bit_per_sample bit_per_sample;
 	enum mrst_ssp_frm_freq freq = ps_settings->master_mode_standard_freq;
-	struct device *ddbg = &(drv_data->pdev->dev);
+//<asus-baron20131101->	struct device *ddbg = &(drv_data->pdev->dev);
+	struct device *ddbg = drv_data->ssp_dev; //<asus-baron20131101+>
 	static u8 frame_rate_divider[SSP_TIMESLOT_SIZE] = {
 		[SSP_TIMESLOT_1] = 1,
 		[SSP_TIMESLOT_2] = 2,
@@ -2401,7 +2670,8 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 	/* Get the SSP Settings */
 	u16 l_ssp_clk_frm_mode = 0xFF;
 	void __iomem *reg = drv_data->ioaddr;
-	struct device *ddbg = &(drv_data->pdev->dev);
+//<asus-baron20131101->	struct device *ddbg = &(drv_data->pdev->dev);
+	struct device *ddbg = drv_data->ssp_dev; //<asus-baron20131101+>
 	dev_dbg(ddbg, "setup SSP I2S PCM1 configuration\n");
 
 	/*
@@ -2704,6 +2974,7 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	struct intel_mid_ssp_gpio ssp_fs_pin;
 	struct platform_device *asoc_pdev;
 	enum intel_mid_i2s_ssp_usage usage;
+	struct pci_dev *dmac1; //<asus-baron20131101+>
 	int status = 0;
 	int ret = 0;
 
@@ -2725,8 +2996,9 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	}
 
 	mutex_init(&drv_data->mutex);
-	drv_data->pdev = pdev;
-
+// TODO ACPI
+//<asus-baron20131101->	drv_data->pdev = pdev;
+	drv_data->ssp_dev = &(pdev->dev); //<asus-baron20131101+>
 	/*
 	 * Get basic io resource and map it for SSP1 [BAR=0]
 	 */
@@ -2777,22 +3049,31 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	switch (pdev->device) {
 	case MFLD_SSP0_DEVICE_ID:
 	case MFLD_SSP1_DEVICE_ID:
-		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+//<asus-baron20131101->		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+		dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,//<asus-baron20131101+>
 						 MFLD_LPE_DMA_DEVICE_ID,
 						 NULL);
+		WARN(!dmac1, "DMA MFLD device=NULL\n");//<asus-baron20131101+>
+		drv_data->dmacdev = &dmac1->dev;//<asus-baron20131101+>
 	break;
 
 	case CLV_SSP0_DEVICE_ID:
 	case CLV_SSP1_DEVICE_ID:
-		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+//<asus-baron20131101->		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+		dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,//<asus-baron20131101+>
 						 CLV_LPE_DMA_DEVICE_ID,
 						 NULL);
+		WARN(!dmac1, "DMA CLV device=NULL\n");//<asus-baron20131101+>
+		drv_data->dmacdev = &dmac1->dev;//<asus-baron20131101+>
 	break;
 
 	case MRFL_SSP_DEVICE_ID:
-		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+//<asus-baron20131101->		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+		dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL, //<asus-baron20131101+>
 						 MRFL_LPE_DMA_DEVICE_ID,
 						 NULL);
+		WARN(!dmac1, "DMA MRFL device=NULL\n"); //<asus-baron20131101+>
+		drv_data->dmacdev = &dmac1->dev; //<asus-baron20131101+>
 	break;
 
 	default:
@@ -2804,10 +3085,13 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 
 	/* in case the stop dma have to wait for end of callbacks   */
 	/* This will be removed when TERMINATE_ALL available in DMA */
-	if (!drv_data->dmac1) {
+//<asus-baron20131101->	if (!drv_data->dmac1) {
+	if (!drv_data->dmacdev) { //<asus-baron20131101+>
 		/* CPU data transfer allowed if no DMA available */
-		dev_err(&(drv_data->pdev->dev),
-			"DMAC1 not found, only CPU data transfer allowed\n");
+//<asus-baron20131101->		dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->			"DMAC1 not found, only CPU data transfer allowed\n");
+		dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
+			"DMACDEV not found, only CPU data transfer allowed\n"); //<asus-baron20131101+>
 	}
 
 	/* increment ref count of pci device structure already done by */
@@ -2832,7 +3116,8 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	else if (usage == SSP_USAGE_BLUETOOTH_FM)
 		gpio_request(ssp_fs_pin.ssp_fs_gpio_mapping, "ssp_bt");
 	else {
-		dev_err(&(drv_data->pdev->dev),
+//<asus-baron20131101->		dev_err(&(drv_data->pdev->dev),
+		dev_err(drv_data->ssp_dev, //<asus-baron20131101+>
 			"Bad SSP Usage\n");
 		status = -EINVAL;
 		goto err_i2s_probe3;
@@ -2863,8 +3148,10 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		goto err_i2s_probe3;
 	}
 
-	pm_runtime_put_noidle(&(drv_data->pdev->dev));
-	pm_runtime_allow(&(drv_data->pdev->dev));
+//<asus-baron20131101->	pm_runtime_put_noidle(&(drv_data->pdev->dev));
+//<asus-baron20131101->	pm_runtime_allow(&(drv_data->pdev->dev));
+	pm_runtime_allow(drv_data->ssp_dev); //<asus-baron20131101+>
+	pm_runtime_put_noidle(drv_data->ssp_dev); //<asus-baron20131101+>
 
 	if (usage == SSP_USAGE_MODEM) {
 		WARN(test_and_set_bit(MODEM_FND, &modem_found_and_i2s_setup_ok),
@@ -2936,7 +3223,8 @@ static void __devexit intel_mid_i2s_remove(struct pci_dev *pdev)
 	}
 	pci_set_drvdata(pdev, NULL);
 	/* Stop DMA is already done during close()  */
-	pci_dev_put(drv_data->dmac1);
+	//	TODO ACPI
+ //<asus-baron20131101->	pci_dev_put(drv_data->dmac1); //?????????????
 	/* Disable the SSP at the peripheral and SOC level */
 	write_SSCR0(0, drv_data->ioaddr);
 	free_irq(drv_data->irq, drv_data);
@@ -2958,13 +3246,206 @@ static void __devexit intel_mid_i2s_remove(struct pci_dev *pdev)
 leave:
 	return;
 }
+//<asus-baron20131101+>
+	/*
+	 * ACPI driver
+	 */
 
+int i2s_acpi_remove(struct platform_device *platdev)
+{
+	struct intel_mid_i2s_hdl *drv_data;
+
+	drv_data = (struct intel_mid_i2s_hdl *) dev_get_drvdata(&platdev->dev);
+	pr_info(" I2S : remove acpi device, free drv_data %p\n",drv_data);
+
+
+	if (!drv_data) {
+		dev_err(&platdev->dev, "no drv_data in pci device to remove!\n");
+		return 0;
+	}
+
+	if (test_bit(I2S_PORT_OPENED, &drv_data->flags)) {
+		dev_warn(drv_data->ssp_dev, "Not closed before removing pci_dev!\n");
+		intel_mid_i2s_close(drv_data);
+	}
+	dev_set_drvdata(&platdev->dev, NULL);
+	/* Stop DMA is already done during close()  */
+	//pci_dev_put(drv_data->dmac1);
+	write_SSCR0(0, drv_data->ioaddr);
+	free_irq(drv_data->irq, drv_data);
+	iounmap(drv_data->ioaddr);
+	//pci_release_region(pdev, MRST_SSP_BAR);
+	//pci_release_region(pdev, MRST_LPE_BAR);
+	//pci_disable_device(pdev);
+	kfree(drv_data);
+	// TODO
+	return 0;
+}
+
+int __devinit i2s_acpi_probe(struct platform_device *platdev)
+{
+//	struct device *dev = &platdev->dev;
+	const char *hid;
+	acpi_handle handle = ACPI_HANDLE(&platdev->dev);
+	struct acpi_device *device;
+	struct resource *rsrc;
+	int status = 0;
+	int ret;
+	struct intel_mid_i2s_hdl *drv_data;
+	struct platform_device *asoc_pdev;
+
+	// drv_data->pdev   == PCI dev, not physical dev
+	//   pdev is replaced by ssp_device (device struct instead of pci_dev )
+
+	// # drv_data->sspdev
+	// # drv_data->ioaddr
+	// # drv_data->paddr
+	// ##drv_data->iolen
+	// # drv_data->usage
+	// #drv_data->dmacdev
+	// #drv_data->irq
+
+    // drv_data->device_instance
+
+	drv_data = kzalloc(sizeof(struct intel_mid_i2s_hdl), GFP_KERNEL);
+	pr_info("SSP I2S ACPI driver : allocated drv_data=%p \n", drv_data);
+	if (!drv_data) {
+		pr_info("Can't alloc driver data in probe\n");
+		status = -ENOMEM;
+		goto acpi_probe_err1;
+	}
+
+	ret = acpi_bus_get_device(handle, &device);
+	if (ret) {
+		pr_err("%s: could not get acpi device - %d\n", __func__, ret);
+		status=-ENODEV;
+		goto acpi_probe_err2;
+	}
+	if (acpi_bus_get_status(device) || !device->status.present) {
+		pr_err("%s: device has invalid status", __func__);
+		status=-ENODEV;
+		goto acpi_probe_err2;
+	}
+
+	hid = acpi_device_hid(device);
+	pr_info("SSP I2S driver : ACPI probe for HID=%s , drv_data=%p \n",hid, drv_data);
+	rsrc = platform_get_resource(platdev, IORESOURCE_MEM, 0);
+	if (!rsrc) {
+		pr_err("Invalid base from IFWI");
+		return -EIO;
+	}
+	pr_info("SSP I2S driver : IFWI start IA =0x%x end=0x%x\n",
+			rsrc->start,rsrc->end);
+	pr_info("SSP I2S driver :  en fait : IFWI end=0x%x\n",
+			rsrc->end);
+
+	mutex_init(&drv_data->mutex);
+	drv_data->ssp_dev = &(platdev->dev);
+//	drv_data->paddr = rsrc->start;  // this must be from LPE view
+	drv_data->ioaddr = devm_ioremap_nocache(drv_data->ssp_dev, rsrc->start,
+						resource_size(rsrc));
+	drv_data->iolen = resource_size(rsrc);
+// TODO ACPI : HACK waiting for fix on rsrc->end
+//	drv_data->ioaddr = devm_ioremap_nocache(drv_data->ssp_dev, rsrc->start,
+//					0x1000);
+//	drv_data->iolen = 0x1000;
+
+ // TODO ACPI Hardcoded
+	drv_data->device_instance = 1;  // SSP1
+    
+	rsrc = platform_get_resource(platdev, IORESOURCE_MEM, 1);
+	if (!rsrc) {
+		pr_err("Invalid base from IFWI");
+		return -EIO;
+	}
+	pr_info("SSP I2S driver : IFWI start LPE =0x%x end=0x%x\n",
+			rsrc->start,rsrc->end);
+	drv_data->paddr = rsrc->start;  // this must be from LPE view
+
+
+	pr_info("SSP I2S driver : Probe for HID=%s=%s ou %s\n",hid,SSPMODEM,SSPBLUET); 
+	if (strcmp(hid,SSPMODEM) == 0) {
+		drv_data->usage = SSP_USAGE_MODEM;
+	} else if (strcmp(hid,SSPBLUET) == 0) {
+		drv_data->usage = SSP_USAGE_BLUETOOTH_FM;
+	} else {
+		drv_data->usage = SSP_USAGE_UNASSIGNED;
+	}
+	pr_info("SSP I2S driver : Probe for HID=%s usage is %d\n",hid,drv_data->usage); 
+	drv_data->dmacdev = intel_mid_get_acpi_dma();
+	pr_info("SSP I2S driver : dmac1 dmadev found = %p \n",drv_data->dmacdev);
+
+	drv_data->irq = platform_get_irq(platdev, 0);
+	pr_info("I2S irq from platdev is:%d\n", drv_data->irq);
+	ret = devm_request_threaded_irq(drv_data->ssp_dev, drv_data->irq,
+					i2s_irq, i2s_irq_deferred, IRQF_SHARED,
+					"i2s ssp",drv_data);
+	if (ret)
+		return ret;
+	pr_info("I2S Registered IRQ %#x\n", drv_data->irq);
+
+
+
+	/*
+	 * Create the WL1273 BT/FM ASoC platform devices
+	 */
+	pr_info("ALLOCATE FOR ASOC ACPI VERSION\n");
+
+	if (drv_data->usage == SSP_USAGE_MODEM)
+		WARN(test_and_set_bit(MODEM_USAGE_FND, &ssps_found), "SSP for modem usage already probed");
+
+	if (drv_data->usage == SSP_USAGE_BLUETOOTH_FM)
+		WARN(test_and_set_bit(BT_USAGE_FND, &ssps_found), "SSP for BT/FM usage already probed");
+
+	if (test_bit(MODEM_USAGE_FND, &ssps_found) &
+		test_bit(BT_USAGE_FND, &ssps_found)) {
+		/*
+		 * MID SSP CPU DAI
+		 */
+		asoc_pdev = platform_device_alloc("mid-ssp-dai", -1);
+		if (!asoc_pdev) {
+			dev_err(drv_data->ssp_dev,
+					"platform mid-ssp-dai allocation failed\n");
+			status = -ENODEV;
+			goto acpi_probe_err1;
+		}
+		ret = platform_device_add(asoc_pdev);
+		if (ret) {
+			dev_err(drv_data->ssp_dev,
+					"platform mid-ssp-dai add failed\n");
+			platform_device_put(asoc_pdev);
+		}
+		pr_info("I2S: platform mid-ssp-dai allocated\n");
+	}
+
+	/* runtime */
+
+
+	pm_runtime_enable(drv_data->ssp_dev);
+
+
+
+
+	dev_set_drvdata(drv_data->ssp_dev,drv_data);
+
+	return status;
+
+
+acpi_probe_err2:
+	kfree(drv_data);
+acpi_probe_err1:
+	pr_info("SSP I2S driver : ACPI probe END\n");
+	return status;
+}
+//<asus-baron20131101->
 /**
  * intel_mid_i2s_init - register pci driver
  *
  */
+ //<asus-baron20131101+>
 static int __init intel_mid_i2s_init(void)
 {
+	int ret = 0;
 	clear_bit(MODEM_FND, &modem_found_and_i2s_setup_ok);
 	clear_bit(MODEM_USAGE_FND, &ssps_found);
 	clear_bit(BT_USAGE_FND, &ssps_found);
@@ -2972,17 +3453,38 @@ static int __init intel_mid_i2s_init(void)
 	/* FIXME: use of MRFL_LPE_SHIM_REG_BASE_ADDRESS should be
 	 * avoided and replaced by a call to SST driver that will
 	 * take care to access LPE Shim registers */
+// TODO ACPI BYT
+//	lpeshim_base_address = ioremap(MRFL_LPE_SHIM_REG_BASE_ADDRESS,
+//					MRFL_LPE_SHIM_REG_SIZE);
 
-	lpeshim_base_address = ioremap(MRFL_LPE_SHIM_REG_BASE_ADDRESS,
-					MRFL_LPE_SHIM_REG_SIZE);
+	lpeshim_base_address = ioremap(VLV2_LPE_SHIM_REG_BASE_ADDRESS,
+				VLV2_LPE_SHIM_REG_SIZE);
+
+
 #endif /* __MRFL_SPECIFIC_TMP__ */
 
-	return pci_register_driver(&intel_mid_i2s_driver);
-}
+	pr_info("INFO: I2S DRIVER loading... ver: %s\n","1.1.0");
+			
 
+	ret = pci_register_driver(&intel_mid_i2s_driver);
+	if (ret)
+		pr_err("I2S driver PCI register failed\n");
+	else {
+		ret = platform_driver_register(&i2s_acpi_driver);
+		if (ret)
+			pr_err("I2S driver ACPI register failed\n");
+		else
+			pr_info("INFO: I2S DRIVER init OK\n");
+	}
+
+	return ret;
+}
+//<asus-baron20131101->
 static void __exit intel_mid_i2s_exit(void)
 {
 	pci_unregister_driver(&intel_mid_i2s_driver);
+	platform_driver_unregister(&i2s_acpi_driver);//<asus-baron20131101+>
+	pr_debug("I2S driver unloaded\n");//<asus-baron20131101+>
 }
 
 

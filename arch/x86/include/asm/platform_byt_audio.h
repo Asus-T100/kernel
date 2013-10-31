@@ -24,6 +24,8 @@ struct byt_audio_platform_data {
 enum {
 	BYT_AUD_AIF1 = 0,
 	BYT_AUD_AIF2,
+	BYT_COMMS_BT, //<asus-baron20131101+>
+	BYT_COMMS_MODEM, //<asus-baron20131101+>
 	BYT_AUD_PROBE_DEV,
 };
 

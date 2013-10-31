@@ -22,13 +22,14 @@
 #include <linux/intel_mid_i2s_common.h>
 #include <linux/intel_mid_i2s_if.h>
 
-#ifdef CONFIG_X86_MRFLD
+// TODO ACPI
+//<asus-baron20131101->#ifdef CONFIG_X86_MRFLD
 #define __MRFL_SPECIFIC__
 
 /* For temporary MRFL work-around */
 /* To Be Removed when fixed */
 #define __MRFL_SPECIFIC_TMP__
-#endif /* CONFIG_X86_MRFLD */
+//<asus-baron20131101->#endif /* CONFIG_X86_MRFLD */
 
 /*
  * Main Defines
@@ -67,6 +68,11 @@
 #define MRFL_LPE_SHIM_REG_BASE_ADDRESS	(0xff340000)
 #define MRFL_LPE_SHIM_REG_SIZE		(0xE8)
 #endif /* __MRFL_SPECIFIC_TMP__ */
+
+#define VLV2_LPE_SHIM_REG_BASE_ADDRESS	(0xdf540000) //<asus-baron20131101+>
+#define VLV2_LPE_SHIM_REG_SIZE		(0x100) //<asus-baron20131101+>
+
+
 
 /* SSP PCI device definitions */
 #define MRST_SSP_BAR	0
@@ -139,6 +145,9 @@ DEFINE_REG(LPE_IPCD, 0x40)	/* IPC SST-IA */
 DEFINE_REG(LPE_ISRD, 0x20)	/* dummy register for*/
 				/* shim workaround   */
 DEFINE_REG(LPE_CLKCTL, 0x78)
+// BAYTRAIL
+DEFINE_REG(LPE_SSP1_DIV_CTRL_H, 0xF4) //<asus-baron20131101+>
+DEFINE_REG(LPE_SSP1_DIV_CTRL_L, 0xF0) //<asus-baron20131101+>
 #ifdef __MRFL_SPECIFIC__
 DEFINE_REG(LPE_CHICKEN_BITS, 0x88)
 #endif /* __MRFL_SPECIFIC__ */
@@ -452,7 +461,10 @@ enum i2s_flags {
 
 struct intel_mid_i2s_hdl {
 	/* Driver model hookup */
-	struct pci_dev *pdev;
+//<asus-baron20131030->	struct pci_dev *pdev;
+/// TODO ACPI	struct pci_dev *pdev;
+	/* replace pci_dev by device struct for acpi */
+	struct device *ssp_dev; //<asus-baron20131101+>
 	/* register addresses */
 	dma_addr_t paddr;
 	void __iomem *ioaddr;
@@ -465,8 +477,8 @@ struct intel_mid_i2s_hdl {
 
 	/* SSP Configuration */
 	/* DMA info */
-	struct pci_dev *dmac1;
-
+//<asus-baron20131030->	struct pci_dev *dmac1;
+	struct device *dmacdev; //<asus-baron20131101+>
 	struct intel_mid_dma_slave dmas_tx;
 	struct intel_mid_dma_slave dmas_rx;
 	struct dma_chan *txchan;
@@ -539,7 +551,9 @@ irqreturn_t i2s_irq_handle_TFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr);
 static
 irqreturn_t i2s_irq_deferred(int irq, void *dev_id);
 
-static int check_device(struct device *device_ptr, void *data);
+//<asus-baron20131101->static int check_device(struct device *device_ptr, void *data);
+static int check_device_pci(struct device *device_ptr, void *data); //<asus-baron20131101+>
+static int check_device_acpi(struct device *device_ptr, void *data); //<asus-baron20131101+>
 static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 			const struct intel_mid_i2s_settings *ps_settings);
 
@@ -551,6 +565,9 @@ static int intel_mid_i2s_runtime_suspend(struct device *device_ptr);
 static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		const struct pci_device_id *ent);
 static void intel_mid_i2s_remove(struct pci_dev *pdev);
+// TODO acpi
+int __devinit i2s_acpi_probe(struct platform_device *platdev); //<asus-baron20131101+>
+int i2s_acpi_remove(struct platform_device *platdev); //<asus-baron20131101+>
 
 /*static int bt_pcm_dma_init(struct intel_mid_i2s_hdl *drv_data);*/
 
