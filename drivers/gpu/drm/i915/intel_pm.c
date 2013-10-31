@@ -1380,6 +1380,7 @@ static void valleyview_update_wm(struct drm_device *dev)
 		enabled |= 2;
 
 	plane_sr = cursor_sr = 0;
+#ifdef ENABLE_MAXFIFO
 	if (single_plane_enabled(enabled) &&
 	    g4x_compute_srwm(dev, ffs(enabled) - 1,
 			     sr_latency_ns,
@@ -1390,6 +1391,7 @@ static void valleyview_update_wm(struct drm_device *dev)
 	else
 		I915_WRITE(FW_BLC_SELF_VLV,
 			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
+#endif
 
 	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
 		      planea_wm, cursora_wm,

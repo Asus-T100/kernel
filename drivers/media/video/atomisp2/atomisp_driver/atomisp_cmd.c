@@ -2369,6 +2369,9 @@ static int __atomisp_set_lsc_table(struct atomisp_sub_device *asd,
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	shading_table->enable = user_st->enable;
 
+	if (asd->update_lsc_table)
+		goto set_lsc;
+
 	/* No need to update shading table if it is the same */
 	if (old_table != NULL &&
 		old_table->sensor_width == shading_table->sensor_width &&
@@ -2403,6 +2406,9 @@ set_lsc:
 	if (old_table)
 		atomisp_css_shading_table_free(old_table);
 
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	asd->update_lsc_table = false;
+#endif
 	return 0;
 }
 

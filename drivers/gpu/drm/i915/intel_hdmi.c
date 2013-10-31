@@ -625,10 +625,14 @@ int intel_hdmi_encoder_status(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 status = I915_READ(I915_LPE_AUDIO_HDMI_CONFIG_B);
-	if ((status & I915_LPE_AUDIO_HDMI_ENABLE) && dev_priv->late_resume)
+	u32 hdmib_control = I915_READ(SDVOB);
+
+	if ((hdmib_control & SDVO_ENABLE) &&
+		(hdmib_control & SDVO_AUDIO_ENABLE) &&
+	    dev_priv->late_resume) {
+		DRM_DEBUG_DRIVER("HDMI encoder inuse!\n");
 		return true;
-	else
+	} else
 		return false;
 }
 
@@ -1055,10 +1059,11 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 			struct drm_device *dev = crtc->dev;
 			connector->encoder = NULL;
 			drm_helper_disable_unused_functions(dev);
-
+#ifdef ENABLE_MAXFIFO
 			/* Enable Max Fifo on HDMI hot un-plg */
 			if (is_maxfifo_needed(dev_priv))
 				I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
+#endif
 		}
 	}
 
