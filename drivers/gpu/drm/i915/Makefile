@@ -44,6 +44,7 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  intel_clrmgr.o \
 	  dsi_mod_auo_b101uan01.o \
 	  dsi_mod_panasonic_vvx09f006a00.o \
+	  dsi_mod_innolux_n080ice.o\
 	  dsi_mod_auo_b080xat.o \
 	  dsi_mod_jdi_lpm070w425b.o \
 	  dsi_mod_hv101hd1-1e2.o \

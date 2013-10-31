@@ -170,6 +170,7 @@ extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
 extern struct intel_dsi_dev_ops vbt_generic_dsi_display_ops;
 extern struct intel_dsi_dev_ops hv101hd1_dsi_display_ops;  //<asus-Baron20130813+>
+extern struct intel_dsi_dev_ops innolux_n080ice_dsi_display_ops; //<ASUS-Bruce 20131031+>
 
 /* external functions */
 void intel_dsi_device_ready(struct intel_encoder *encoder);
@@ -183,5 +184,6 @@ bool intel_dsi_init(struct drm_device *dev);
 #define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
 #define	MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
 #define MIPI_DSI_HV101HD1_PANEL_ID			0x06  //<asus-Baron20130813+>
+#define	MIPI_DSI_INNOLUX_N080ICE_PANEL_ID		0x06  //<ASUS-Bruce 20131031+>
 
 #endif /* _INTEL_DSI_H */

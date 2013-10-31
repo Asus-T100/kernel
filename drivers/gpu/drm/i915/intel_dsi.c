@@ -104,6 +104,14 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	{
+		.panel_id = MIPI_DSI_INNOLUX_N080ICE_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "innolux-n080ice-dsi-vid-mode-display",
+		.dev_ops = &innolux_n080ice_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
+	//<ASUS-Bruce 20131031+>
+	{
 		.panel_id = MIPI_DSI_AUO_B101UAN01_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "auo-b101uan01-dsi-vid-mode-display",
@@ -593,10 +601,13 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	/* in terms of low power clock */
 	I915_WRITE(MIPI_INIT_COUNT(pipe), intel_dsi->dev.init_count);
 
+	/* <ASUS-Bruce 20131031 modified>
 	if (intel_dsi->dev.eotp_pkt)
 		I915_WRITE(MIPI_EOT_DISABLE(pipe), 0);
 	else
 		I915_WRITE(MIPI_EOT_DISABLE(pipe), 1);
+	*/
+	I915_WRITE(MIPI_EOT_DISABLE(pipe), intel_dsi->dev.eotp_pkt); //<ASUS-Bruce 20131031+>
 
 	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), \
 					intel_dsi->dev.hs_to_lp_count);
