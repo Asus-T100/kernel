@@ -52,6 +52,7 @@ module_param(delay_work, int, 0644);
 struct delayed_work enable_push_button_int_work;
 struct snd_soc_codec *rt5640_codec;
 struct delayed_work hp_amp_work; //<asus-baron20131014+>
+struct delayed_work spk_amp_work; //<asus-baron20131030+>
 
 struct rt5640_init_reg {
 	u8 reg;
@@ -1561,12 +1562,17 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 #ifdef USE_EQ
 		rt5640_update_eqmode(codec, SPK);
 #endif
+//<asus-baron20131030+>
+/*
 		snd_soc_update_bits(codec, RT5640_PWR_DIG1,
 				    RT5640_PWR_CLS_D, RT5640_PWR_CLS_D);
 		rt5640_index_update_bits(codec,
 					 RT5640_CLSD_INT_REG1, 0xf000, 0xf000);
 		snd_soc_update_bits(codec, RT5640_SPK_VOL,
 				    RT5640_L_MUTE | RT5640_R_MUTE, 0);
+*/
+//<asus-baron20131030->
+		schedule_delayed_work(&spk_amp_work, msecs_to_jiffies(300)); //<asus-baron20131030+>
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
@@ -1585,7 +1591,19 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 
 	return 0;
 }
+//<asus-baron20131030+>
+static void do_spk_amp(struct work_struct *work)
+{
 
+	snd_soc_update_bits(rt5640_codec, RT5640_PWR_DIG1, 
+			RT5640_PWR_CLS_D, RT5640_PWR_CLS_D);
+	rt5640_index_update_bits(rt5640_codec, 
+			RT5640_CLSD_INT_REG1, 0xf000, 0xf000);
+	snd_soc_update_bits(rt5640_codec, RT5640_SPK_VOL, 
+			RT5640_L_MUTE | RT5640_R_MUTE, 0);
+
+}
+//<asus-baron20131030->
 static int rt5640_set_dmic1_event(struct snd_soc_dapm_widget *w,
 				  struct snd_kcontrol *kcontrol, int event)
 {
@@ -3445,7 +3463,7 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 	INIT_DELAYED_WORK(&enable_push_button_int_work,
 					do_enable_push_button_int);
 	INIT_DELAYED_WORK(&hp_amp_work, do_hp_amp); //<asus-baron20131014+>
-
+	INIT_DELAYED_WORK(&spk_amp_work, do_spk_amp); //<asus-baron20131030+>
 	return 0;
 }
 
