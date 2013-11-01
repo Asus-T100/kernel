@@ -143,11 +143,35 @@ static int t100_kb_input_mapping(struct hid_device *hdev, struct hid_input *hi, 
         return 0;
 }
 
+static ssize_t fw_version_show(struct device *dev,struct device_attribute *attr,char *buf)
+{
+	struct usb_interface *intf = to_usb_interface(dev->parent);
+	struct usb_device *usbdev = interface_to_usbdev (intf);
+	u16 bcdDevice = le16_to_cpu(usbdev->descriptor.bcdDevice);
+
+	return sprintf(buf, "%2x%02x\n", bcdDevice >> 8, bcdDevice & 0xff);
+}
+
+static DEVICE_ATTR(fw_version, S_IRUGO | S_IWUSR,
+                fw_version_show, NULL);
+
+static struct attribute *t100kb_attributes[] = {
+	&dev_attr_fw_version.attr,
+	NULL
+};
+
+static const struct attribute_group t100kb_attr_group = {
+	.attrs = t100kb_attributes,
+};
+
+
 static int t100_kb_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	struct t100_kb_data *priv_data;
 	struct hid_report_enum *report_enum = hdev->report_enum + HID_INPUT_REPORT;  //match mouse interface only
 	int ret;
+	struct usb_interface *intf;
+	struct usb_device *usbdev;
 
 	priv_data = kzalloc(sizeof(struct t100_kb_data), GFP_KERNEL);
 	if (!priv_data) {
@@ -171,6 +195,12 @@ static int t100_kb_probe(struct hid_device *hdev, const struct hid_device_id *id
 	if (ret)
 		goto fail;
 
+	ret = sysfs_create_group(&hdev->dev.kobj, &t100kb_attr_group);
+	if (ret) {
+		dev_err(&hdev->dev, "%s failed to create sysfs group\n", __func__);
+		goto fail;
+	}
+
         return 0;
 fail:
         dev_err(&hdev->dev, "probe failed\n");
@@ -186,6 +216,7 @@ static void t100_kb_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 	kfree(priv_data);
 	hid_set_drvdata(hdev, NULL);
+	sysfs_remove_group(&hdev->dev.kobj, &t100kb_attr_group);
 }
 
 static const struct hid_device_id t100_kb_devices[] = {
