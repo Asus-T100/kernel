@@ -15,6 +15,8 @@ MODULE_LICENSE("GPL");
 #define T100_REPORT_ID                0x5d
 
 #define t100_map_key(c)  hid_map_usage(hi, usage, bit, max, EV_KEY, (c))
+#define t100_map_key_clear(c)	hid_map_usage_clear(hi, usage, bit, max, \
+					EV_KEY, (c))
 
 struct t100_kb_data {
 	int      winkeyoff;
@@ -104,11 +106,11 @@ static int t100_kb_input_mapping(struct hid_device *hdev, struct hid_input *hi, 
 		if ((usage->hid & HID_USAGE) < 256) {
                         if ((usage->hid & HID_USAGE) == 0x65) {
                             //menu key
-                            t100_map_key(KEY_MENU);
+                            t100_map_key_clear(KEY_MENU);
                             return 1;
                         } else if ((usage->hid & HID_USAGE) == 0xe3) {
                             //home key
-                            t100_map_key(KEY_HOMEPAGE);
+                            t100_map_key_clear(KEY_HOMEPAGE);
                             return 1;
                         }
 		}
@@ -118,23 +120,23 @@ static int t100_kb_input_mapping(struct hid_device *hdev, struct hid_input *hi, 
 		switch (usage->hid & HID_USAGE) {
 		case 0x06C:
                     //Fn+F1 (sleep)
-                    t100_map_key(KEY_SLEEP);
+                    t100_map_key_clear(KEY_SLEEP);
                     return 1;
 		case 0x088:
                     //Fn+F2 (wl and bt)
-                    t100_map_key(KEY_WLAN);
+                    t100_map_key_clear(KEY_WLAN);
                     return 1;
 		case 0x010:
                     //Fn+F5 (brightness down)
-                    t100_map_key(KEY_BRIGHTNESSDOWN);
+                    t100_map_key_clear(KEY_BRIGHTNESSDOWN);
                     return 1;
 		case 0x020:
                     //Fn+F6 (brightness up)
-                    t100_map_key(KEY_BRIGHTNESSUP);
+                    t100_map_key_clear(KEY_BRIGHTNESSUP);
                     return 1;
 		case 0x06B:
                     //Fn+F9 (touchpad)
-                    t100_map_key(KEY_F24);
+                    t100_map_key_clear(KEY_F24);
                     return 1;
 		}
 		break;
