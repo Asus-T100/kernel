@@ -595,8 +595,9 @@ static int create_extcon_class(void)
 			return PTR_ERR(extcon_class);
 		extcon_class->dev_attrs = extcon_attrs;
 
-#if defined(CONFIG_ANDROID)
-		switch_class = class_compat_register("switch_intel");
+//<asus-baron20131104->#if defined(CONFIG_ANDROID)
+#if defined(CONFIG_ANDROID) && !defined(CONFIG_SWITCH) //<asus-baron20131104+>
+		switch_class = class_compat_register("switch"); //<asus-baron20131104+>
 		if (WARN(!switch_class, "cannot allocate"))
 			return -ENOMEM;
 #endif /* CONFIG_ANDROID */
