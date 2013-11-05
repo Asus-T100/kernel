@@ -112,11 +112,11 @@ enum {
 
 static struct gpio_keys_button lesskey_button_non_repeat[] = {
 	{KEY_POWER,		-1, 1, "power_btn", EV_KEY, .acpi_idx = 0, 1},
-	{ },
+	{KEY_HOME,              -1, 1, "home_btn",      EV_KEY, .acpi_idx = 1},
 };
 
 static struct gpio_keys_button lesskey_button_auto_repeat[] = {
-	{KEY_HOME,		-1, 1, "home_btn",	EV_KEY, .acpi_idx = 1},
+//	{KEY_HOME,		-1, 1, "home_btn",	EV_KEY, .acpi_idx = 1},
 	{KEY_VOLUMEUP,		-1, 1, "volume_up",	EV_KEY, .acpi_idx = 2},
 	{KEY_VOLUMEDOWN,	-1, 1, "volume_down",	EV_KEY, .acpi_idx = 3},
 	{KEY_RO,		-1, 1, "rotationlock",	EV_KEY, .acpi_idx = 4},
@@ -130,7 +130,8 @@ struct gpio_keys_init_data {
 static struct gpio_keys_init_data lesskey_init_data[KEY_TYPE_NUMS] = {
 	{
 		.keys_button = lesskey_button_non_repeat,
-		.nkeys = 1,
+		.nkeys = sizeof(lesskey_button_non_repeat) /
+                         sizeof(struct gpio_keys_button),
 	}, {
 		.keys_button = lesskey_button_auto_repeat,
 		.nkeys = sizeof(lesskey_button_auto_repeat) /
