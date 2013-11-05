@@ -35,10 +35,8 @@
 #include <asm/setup.h>
 #include <linux/wakelock.h>
 #include <linux/jiffies.h>
-//<ASUS-Bob20130927+>
-#include <linux/acpi_gpio.h>
+#include <linux/acpi_gpio.h>	//<ASUS-Bob20130927+>
 #include <linux/math64.h>
-//<ASUS-Bob20130927->
 
 //<ASUS-Bob20130820+>
 //====== Porting from Board ====== Start
@@ -627,18 +625,13 @@ static ssize_t ls_adc_show(struct device *dev,
 	struct cm3218_info *lpi = lp_info;
 	uint16_t adc_value = 0;
 	uint32_t lux_level;
-	uint64_t temp;		//<ASUS-Bob20130927+>sync v0.4.6 - sync for windows side cal data
 	
 	if (lpi->als_enable)
 	{
 		get_ls_adc_value(&adc_value, 0);
 		lightsensor_get_cal_data(lpi);//<ASUS-Hollie 20130912+>
-//<ASUS-Bob20130927+>sync v0.4.6 - sync for windows side cal data
-//		lux_level = (uint32_t)((uint64_t)adc_value * lpi->als_resolution * lpi->cal_data / (100000 * 100000));		
-		temp = (uint64_t)adc_value * lpi->als_resolution * lpi->cal_data;
-		temp = div_u64(temp , 100000);
-		lux_level = div_u64(temp , 100000);
-
+		lux_level = (uint32_t)div64_u64((uint64_t)adc_value * lpi->als_resolution * lpi->cal_data, (uint64_t)100000 * 100000);	
+//<ASUS-Bob20130927+>
 		ALSBG("<ASUS-Bob> adc_value:%d, als_resolution:%d, cal_data:%d => lux_level:%d\n",
 			adc_value,
 			lpi->als_resolution,
@@ -1199,7 +1192,6 @@ static int control_and_report( struct cm3218_info *lpi, uint8_t mode, uint8_t cm
 	uint16_t low_thd;
 	uint32_t high_thd;
 	uint32_t lux_level;
-	uint64_t temp;	//<ASUS-Bob20130930+>sync v0.4.6 - sync for windows side cal data
 	
 	mutex_lock(&CM3218_control_mutex);
 
@@ -1274,12 +1266,7 @@ static int control_and_report( struct cm3218_info *lpi, uint8_t mode, uint8_t cm
 	{
 		get_ls_adc_value(&adc_value, 0);
 		lightsensor_get_cal_data(lpi);//<ASUS-Hollie 20130912+>
-//<ASUS-Bob20130930+>sync v0.4.6 - sync for windows side cal data
-//		lux_level = (uint32_t)((uint64_t)adc_value * lpi->als_resolution * lpi->cal_data / (100000 * 100000));		
-		temp = (uint64_t)adc_value * lpi->als_resolution * lpi->cal_data;
-		temp = div_u64(temp , 100000);
-		lux_level = div_u64(temp , 100000);
-//<ASUS-Bob20130930->
+		lux_level = (uint32_t)div64_u64((uint64_t)adc_value * lpi->als_resolution * lpi->cal_data, (uint64_t)100000 * 100000);
   
 		D("[LS][CM3218] %s: raw adc = 0x%04X\n",
 			__func__, adc_value);
@@ -1287,8 +1274,8 @@ static int control_and_report( struct cm3218_info *lpi, uint8_t mode, uint8_t cm
 		lpi->is_cmd |= CM3218_ALS_INT_EN;
 
 		// set interrupt high/low threshold
-		low_thd = adc_value - adc_value * CHANGE_SENSITIVITY / 100;
-		high_thd = adc_value + adc_value * CHANGE_SENSITIVITY / 100;
+		low_thd = (uint16_t)((uint32_t)adc_value * (100 - CHANGE_SENSITIVITY) / 100);
+		high_thd = (uint32_t)adc_value * (100 + CHANGE_SENSITIVITY) / 100;
 		if (high_thd > 65535)
 		{
 			high_thd = 65535;
