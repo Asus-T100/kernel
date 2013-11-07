@@ -1433,7 +1433,7 @@ static struct imx_reg const imx175_init_settings[] = {
 	{IMX_8BIT, 0x3368, 0x13},
 	{IMX_8BIT, 0x3369, 0x33},
 	/* znr */
-	{IMX_8BIT, 0x4100, 0x0E},
+	{IMX_8BIT, 0x4100, 0x16},
 	{IMX_8BIT, 0x4104, 0x32},
 	{IMX_8BIT, 0x4105, 0x32},
 	{IMX_8BIT, 0x4108, 0x01},

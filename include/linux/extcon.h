@@ -205,6 +205,7 @@ struct extcon_chrgr_cbl_props {
 extern int extcon_dev_register(struct extcon_dev *edev, struct device *dev);
 extern void extcon_dev_unregister(struct extcon_dev *edev);
 extern struct extcon_dev *extcon_get_extcon_dev(const char *extcon_name);
+extern int extcon_num_of_cable_devs(const char *cable);
 extern void extcon_dev_register_notify(struct notifier_block *nb);
 extern void extcon_dev_unregister_notify(struct notifier_block *nb);
 
@@ -327,6 +328,11 @@ static inline int extcon_set_cable_state(struct extcon_dev *edev,
 static inline struct extcon_dev *extcon_get_extcon_dev(const char *extcon_name)
 {
 	return NULL;
+}
+
+static inline int extcon_num_of_cable_devs(const char *cable)
+{
+	return 0;
 }
 
 static inline int extcon_register_notifier(struct extcon_dev *edev,

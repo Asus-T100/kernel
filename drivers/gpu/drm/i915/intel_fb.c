@@ -262,6 +262,8 @@ void intel_fbdev_set_suspend(struct drm_device *dev, int state)
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	if (!dev_priv->fbdev)
 		return;
+	if (!dev_priv->fbdev->helper.fbdev)
+		return;
 
 	fb_set_suspend(dev_priv->fbdev->helper.fbdev, state);
 }

@@ -270,9 +270,11 @@ int drm_fb_helper_panic(struct notifier_block *n, unsigned long ununsed,
 }
 EXPORT_SYMBOL(drm_fb_helper_panic);
 
+#if !defined(CONFIG_INTEL_NO_FB_PANIC_NOTIFY)
 static struct notifier_block paniced = {
 	.notifier_call = drm_fb_helper_panic,
 };
+#endif
 
 /**
  * drm_fb_helper_restore - restore the framebuffer console (kernel) config
@@ -288,6 +290,7 @@ void drm_fb_helper_restore(void)
 }
 EXPORT_SYMBOL(drm_fb_helper_restore);
 
+#if !defined(CONFIG_INTEL_NO_FB_PANIC_NOTIFY)
 #ifdef CONFIG_MAGIC_SYSRQ
 static void drm_fb_helper_restore_work_fn(struct work_struct *ignored)
 {
@@ -309,6 +312,7 @@ static struct sysrq_key_op sysrq_drm_fb_helper_restore_op = {
 static struct sysrq_key_op sysrq_drm_fb_helper_restore_op = { };
 #endif
 
+#endif
 static void drm_fb_helper_dpms(struct fb_info *info, int dpms_mode)
 {
 	struct drm_fb_helper *fb_helper = info->par;
@@ -432,12 +436,14 @@ void drm_fb_helper_fini(struct drm_fb_helper *fb_helper)
 {
 	if (!list_empty(&fb_helper->kernel_fb_list)) {
 		list_del(&fb_helper->kernel_fb_list);
+#if !defined(CONFIG_INTEL_NO_FB_PANIC_NOTIFY)
 		if (list_empty(&kernel_fb_helper_list)) {
 			printk(KERN_INFO "drm: unregistered panic notifier\n");
 			atomic_notifier_chain_unregister(&panic_notifier_list,
 							 &paniced);
 			unregister_sysrq_key('v', &sysrq_drm_fb_helper_restore_op);
 		}
+#endif
 	}
 
 	drm_fb_helper_crtc_free(fb_helper);
@@ -810,6 +816,7 @@ int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 	}
 	drm_fb_helper_set_par(info);
 
+#if !defined(CONFIG_INTEL_NO_FB_PANIC_NOTIFY)
 	/* Switch back to kernel console on panic */
 	/* multi card linked list maybe */
 	if (list_empty(&kernel_fb_helper_list)) {
@@ -818,6 +825,7 @@ int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 					       &paniced);
 		register_sysrq_key('v', &sysrq_drm_fb_helper_restore_op);
 	}
+#endif
 	if (new_fb)
 		list_add(&fb_helper->kernel_fb_list, &kernel_fb_helper_list);
 

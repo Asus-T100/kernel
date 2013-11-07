@@ -25,6 +25,14 @@ config DRM_USB
 	depends on USB_ARCH_HAS_HCD
 	select USB
 
+config INTEL_NO_FB_PANIC_NOTIFY
+	bool "FB PANIC NOTIFY disable"
+	depends on DRM
+	default n
+	help
+	  For embeded android system, there is no need to use FB Panic notifier function.
+	  Disable it will make system more efficient.
+
 config NO_GPU_AUTHENTICATION
 	bool "Disable GPU authentication"
 	depends on DRM

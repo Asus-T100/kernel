@@ -303,16 +303,19 @@ int intel_enable_primary_gamma(struct drm_crtc *crtc)
 	u32 count = 0;
 	u32 palreg = 0;
 	u32 status = 0;
-
-	struct drm_device *dev = crtc->dev;
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc;
+	struct drm_device *dev;
+	struct drm_i915_private *dev_priv;
 
 	/* Validate input */
-	if (!intel_crtc) {
+	if (!crtc) {
 		DRM_ERROR("Invalid CRTC object input to gamma enable\n");
 		return -EINVAL;
 	}
+
+	intel_crtc = to_intel_crtc(crtc);
+	dev = crtc->dev;
+	dev_priv = dev->dev_private;
 
 	palreg = PALETTE(intel_crtc->pipe);
 	 /* 10.6 mode Gamma Implementation */
@@ -355,16 +358,19 @@ int intel_enable_pipe_gamma(struct drm_crtc *crtc)
 	u32 count = 0;
 	u32 palreg = 0;
 	u32 status = 0;
-
-	struct drm_device *dev = crtc->dev;
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc;
+	struct drm_device *dev;
+	struct drm_i915_private *dev_priv;
 
 	/* Validate input */
-	if (!intel_crtc) {
+	if (!crtc) {
 		DRM_ERROR("Invalid CRTC object input to gamma enable\n");
 		return -EINVAL;
 	}
+
+	intel_crtc = to_intel_crtc(crtc);
+	dev = crtc->dev;
+	dev_priv = dev->dev_private;
 
 	palreg = PALETTE(intel_crtc->pipe);
 	 /* 10.6 mode Gamma Implementation */

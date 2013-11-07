@@ -309,7 +309,6 @@ static void i915_hotplug_work_func(struct work_struct *work)
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_mode_config *mode_config = &dev->mode_config;
 	struct intel_encoder *encoder;
-	char *envp[] = {"hdcp_hpd", NULL};
 
 	/* Should not be here during suspend state */
 	if (i915_is_device_suspended(dev)) {
@@ -328,9 +327,6 @@ static void i915_hotplug_work_func(struct work_struct *work)
 
 	/* Just fire off a uevent and let userspace tell us what to do */
 	drm_helper_hpd_irq_event(dev);
-
-	/* HDCPD needs a uevent, every time when there is a hotplug */
-	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
 }
 /* defined intel_pm.c */
 extern spinlock_t mchdev_lock;

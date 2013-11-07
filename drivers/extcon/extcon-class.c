@@ -448,6 +448,27 @@ out:
 }
 EXPORT_SYMBOL_GPL(extcon_get_extcon_dev);
 
+/**
+ * extcon_num_of_extcon_devs() - number of extcon devices
+ * returns the total number of extcon registered devices.
+ */
+int extcon_num_of_cable_devs(const char *cable)
+{
+	struct extcon_dev *sd = NULL;
+	int i, j = 0;
+
+	mutex_lock(&extcon_dev_list_lock);
+	list_for_each_entry(sd, &extcon_dev_list, entry) {
+		for (i = 0; sd && i < sd->max_supported; i++) {
+			if (!strcmp(sd->supported_cable[i], cable))
+				j++;
+		}
+	}
+	mutex_unlock(&extcon_dev_list_lock);
+	return j;
+}
+EXPORT_SYMBOL_GPL(extcon_num_of_cable_devs);
+
 static int _call_per_cable(struct notifier_block *nb, unsigned long val,
 			   void *ptr)
 {
@@ -595,8 +616,7 @@ static int create_extcon_class(void)
 			return PTR_ERR(extcon_class);
 		extcon_class->dev_attrs = extcon_attrs;
 
-//<asus-baron20131104->#if defined(CONFIG_ANDROID)
-#if defined(CONFIG_ANDROID) && !defined(CONFIG_SWITCH) //<asus-baron20131104+>
+#if defined(CONFIG_ANDROID) && !defined(CONFIG_SWITCH) //<asus-baron20131104+>defined(CONFIG_ANDROID)
 		switch_class = class_compat_register("switch"); //<asus-baron20131104+>
 		if (WARN(!switch_class, "cannot allocate"))
 			return -ENOMEM;

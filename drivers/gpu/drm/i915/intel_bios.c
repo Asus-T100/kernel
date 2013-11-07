@@ -643,22 +643,44 @@ parse_mipi(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 	DRM_DEBUG_DRIVER("Found MIPI Config block, panel index = %d\n",
 								panel_type);
 
-	/* found the mipi configuration block, check that we also
-	 * have the sequence block
-	 */
-	sequence = find_section(bdb, BDB_MIPI_SEQUENCE);
-	if (!sequence) {
-		DRM_DEBUG_KMS("No MIPI Sequnece BDB found");
-		return;
-	}
-
-	DRM_DEBUG_DRIVER("Found MIPI sequence block\n");
 	/*
 	 * get hold of the correct configuration block and pps data as per
 	 * the panel_type as index
 	 */
 	config = &start->config[panel_type];
 	pps = (struct _mipi_pps_data *) &start->config[MAX_MIPI_CONFIGURATIONS];
+
+	/*
+	 * store as of now full data. Trim when we realise all is not needed
+	 * also need to check if vbt memory is reclaimed or not. For now
+	 * allocate new memory and copy all data
+	 */
+	dev_priv->mipi.config =
+			kzalloc(sizeof(struct _mipi_config), GFP_KERNEL);
+	if (!dev_priv->mipi.config)
+		return;
+
+	dev_priv->mipi.pps = kzalloc(sizeof(struct _mipi_pps_data), GFP_KERNEL);
+	if (!dev_priv->mipi.pps) {
+		kfree(dev_priv->mipi.config);
+		return;
+	}
+
+	memcpy(dev_priv->mipi.config, config, sizeof(*config));
+	memcpy(dev_priv->mipi.pps, pps, sizeof(*pps));
+
+	/* We have mandatory mipi config blocks. Initialize as generic panel */
+	dev_priv->mipi.panel_id = MIPI_DSI_GENERIC_PANEL_ID;
+
+	/* Check if we have sequence block as well */
+	sequence = find_section(bdb, BDB_MIPI_SEQUENCE);
+	if (!sequence) {
+		DRM_DEBUG_KMS("No MIPI Sequnece BDB found");
+		DRM_DEBUG_DRIVER("MIPI related vbt parsing complete\n");
+		return;
+	}
+
+	DRM_DEBUG_DRIVER("Found MIPI sequence block\n");
 
 	/*
 	 * parse the sequence block for individual sequences
@@ -684,31 +706,11 @@ parse_mipi(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 	if (i == MAX_MIPI_CONFIGURATIONS)
 		return;
 
-	/*
-	 * store as of now full data. Trim when we realise all is not needed
-	 * also need to check if vbt memory is reclaimed or not. For now
-	 * allocate new memory and copy all data
-	 */
-	dev_priv->mipi.config =
-			kzalloc(sizeof(struct _mipi_config), GFP_KERNEL);
-	if (!dev_priv->mipi.config)
-		return;
-
-	dev_priv->mipi.pps = kzalloc(sizeof(struct _mipi_pps_data), GFP_KERNEL);
-	if (!dev_priv->mipi.pps) {
-		kfree(dev_priv->mipi.config);
-		return;
-	}
-
 	dev_priv->mipi.data = kzalloc(seq_size, GFP_KERNEL);
 	if (!dev_priv->mipi.data) {
-		kfree(dev_priv->mipi.config);
-		kfree(dev_priv->mipi.pps);
 		return;
 	}
 
-	memcpy(dev_priv->mipi.config, config, sizeof(*config));
-	memcpy(dev_priv->mipi.pps, pps, sizeof(*pps));
 	memcpy(dev_priv->mipi.data, seq_start, seq_size);
 
 	/*
@@ -753,9 +755,6 @@ parse_mipi(struct drm_i915_private *dev_priv, struct bdb_header *bdb)
 		if (*data == 0)
 			break; /* end of sequence reached */
 	}
-
-	/* We have all mipi related blocks. initialize as generic panel */
-	dev_priv->mipi.panel_id = MIPI_DSI_GENERIC_PANEL_ID;
 
 	DRM_DEBUG_DRIVER("MIPI related vbt parsing complete\n");
 }

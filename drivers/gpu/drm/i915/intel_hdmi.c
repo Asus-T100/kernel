@@ -625,10 +625,14 @@ int intel_hdmi_encoder_status(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 status = I915_READ(I915_LPE_AUDIO_HDMI_CONFIG_B);
-	if ((status & I915_LPE_AUDIO_HDMI_ENABLE) && dev_priv->late_resume)
+	u32 hdmib_control = I915_READ(SDVOB);
+
+	if ((hdmib_control & SDVO_ENABLE) &&
+		(hdmib_control & SDVO_AUDIO_ENABLE) &&
+	    dev_priv->late_resume) {
+		DRM_DEBUG_DRIVER("HDMI encoder inuse!\n");
 		return true;
-	else
+	} else
 		return false;
 }
 
@@ -702,6 +706,7 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
 	u32 temp;
 	u32 enable_bits = SDVO_ENABLE;
+	char *envp[2];
 
 	i915_rpm_get_callback(dev);
 	if (intel_hdmi->has_audio)
@@ -757,9 +762,12 @@ exit:
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		temp &= ~enable_bits;
+		envp[0] = "HDMI_disable";
 	} else {
 		temp |= enable_bits;
+		envp[0] = "HDMI_enable";
 	}
+	envp[1] = NULL;
 
 	I915_WRITE(intel_hdmi->sdvox_reg, temp);
 	POSTING_READ(intel_hdmi->sdvox_reg);
@@ -777,6 +785,7 @@ exit:
 		I915_WRITE(intel_hdmi->sdvox_reg, temp);
 		POSTING_READ(intel_hdmi->sdvox_reg);
 	}
+	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
 	i915_rpm_put_callback(dev);
 }
 

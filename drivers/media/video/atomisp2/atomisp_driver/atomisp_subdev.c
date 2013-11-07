@@ -405,10 +405,17 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			dvs_h = rounddown(crop[pad]->height / 5,
 					  ATOM_ISP_STEP_HEIGHT);
 		} else {
-		
+// <ASUS-Ian20131003+> #ifndef CONFIG_VIDEO_ATOMISP_CSS20
 // <ASUS-Ian20131003+> - Intel patch
 			dvs_w = dvs_h = 0;
-// <ASUS-Ian20131003->
+// <ASUS-Ian20131003->#else
+			/*
+			 * For CSS2.0, digital zoom uses dvs working flow.
+			 * So still need to set the dvs envelop
+			 */
+// <ASUS-Ian20131003->			dvs_w = ffmt[pad]->width - crop[pad]->width - 2;
+// <ASUS-Ian20131003->			dvs_h = ffmt[pad]->height - crop[pad]->height - 2;
+// <ASUS-Ian20131003->#endif
 		}
 
 		atomisp_css_video_set_dis_envelope(isp_sd, dvs_w, dvs_h);
@@ -726,12 +733,9 @@ static int __atomisp_update_run_mode(struct atomisp_sub_device *asd)
 	/* Fall back to obsolete s_parm */
 	p.parm.capture.capturemode = modes[mode];
 
-// <ASUS-Ian20131016+> - Intel patch, fix lsc(lens shading correction)
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	asd->update_lsc_table = true;
 #endif
-// <ASUS-Ian20131016->
-
 	return v4l2_subdev_call(
 		isp->inputs[asd->input_curr].camera, video, s_parm, &p);
 }

@@ -812,17 +812,19 @@ static inline void receive_chars(struct uart_hsu_port *up, int *status)
 static void transmit_chars(struct uart_hsu_port *up)
 {
 	struct circ_buf *xmit = &up->port.state->xmit;
+	unsigned long flags;
 	int count;
 
+	spin_lock_irqsave(&up->port.lock, flags);
 	if (up->port.x_char) {
 		serial_out(up, UART_TX, up->port.x_char);
 		up->port.icount.tx++;
 		up->port.x_char = 0;
-		return;
+		goto out;
 	}
 	if (uart_circ_empty(xmit) || uart_tx_stopped(&up->port)) {
 		serial_hsu_stop_tx(&up->port);
-		return;
+		goto out;
 	}
 
 	/* The IRQ is for TX FIFO half-empty */
@@ -846,6 +848,9 @@ static void transmit_chars(struct uart_hsu_port *up)
 
 	if (uart_circ_empty(xmit))
 		serial_hsu_stop_tx(&up->port);
+
+out:
+	spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 static void check_modem_status(struct uart_hsu_port *up)

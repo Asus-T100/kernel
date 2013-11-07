@@ -2297,6 +2297,11 @@ int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
 
 	crtc = obj_to_crtc(obj);
 	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
+	if (!crtc->enabled) {
+		DRM_ERROR("[CRTC:%d] not active\n", crtc->base.id);
+		return -EINVAL;
+	}
+
 	intel_crtc = to_intel_crtc(crtc);
 	pipe = intel_crtc->pipe;
 
@@ -3794,22 +3799,17 @@ static void intel_crtc_dpms_overlay(struct intel_crtc *intel_crtc, bool enable)
 	 * has to recompute where to put it anyway.
 	 */
 }
-//<asus-baron20131016+>
+
 static void vlv_set_hdmi_level_shifter_settings(struct drm_crtc *crtc,
 				struct drm_display_mode *adjusted_mode)
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 de_emp_reg_val;
-	u32 transcale_reg_val;
-	u32 pre_emp_reg_val;
-	u32 clk_de_emp_reg_val;
-	u8 pre_emp_vswing_setting;
-
-	de_emp_reg_val = 0;
-	transcale_reg_val = 0;
-	clk_de_emp_reg_val = 0;
-	pre_emp_reg_val = 0;
+	u32 de_emp_reg_val = 0;
+	u32 transcale_reg_val = 0;
+	u32 pre_emp_reg_val = 0;
+	u32 clk_de_emp_reg_val = 0;
+	u8 pre_emp_vswing_setting = 0;
 
 	/*
 	 * FIXME: Need to get HDMI pre-emp, vswing settings from VBT.
@@ -3820,11 +3820,15 @@ static void vlv_set_hdmi_level_shifter_settings(struct drm_crtc *crtc,
 	 * 3 = 600MV_2DB
 	 * 4 = 600MV_0DB
 	 */
-	/* Customize the below variable as per customer requirement */
-//<asus-baron20131017->	pre_emp_vswing_setting = 0;
-	pre_emp_vswing_setting = 3; //<asus-baron20131017+>
-//<asus-baron20131017->	if (adjusted_mode->clock < 74250)
-//<asus-baron20131017->		pre_emp_vswing_setting = 1;
+	/*
+	 * As per EV requirement need to set 1000MV_0DB for pixel clock
+	 * < 74.250 Mhz
+	 */
+	if (adjusted_mode->clock < 74250)
+		pre_emp_vswing_setting = 1;
+	else
+		/* Customize the below variable as per customer requirement */
+		pre_emp_vswing_setting = 3; //<asus-baron20131017+>pre_emp_vswing_setting = 0;
 
 	/*FIXME: The Application notes doesn't have pcs_ctrl_reg_val for
 	 * settings 1V_0DB, 0.8V_0DB, 0.6V_0DB. The pcs_ctrl_reg_val value
@@ -3871,18 +3875,20 @@ static void vlv_set_hdmi_level_shifter_settings(struct drm_crtc *crtc,
 	/* FIXME: Enable support for HDMI-C.
 	 * Need to fix this in many other places too.
 	 */
-	intel_dpio_write(dev_priv, 0x8294, 0x00000000);
-	intel_dpio_write(dev_priv, 0x8290, de_emp_reg_val);
-	intel_dpio_write(dev_priv, 0x8288, transcale_reg_val);
-	intel_dpio_write(dev_priv, 0x828c, 0x0c782040);
-	intel_dpio_write(dev_priv, 0x690, clk_de_emp_reg_val);
-	intel_dpio_write(dev_priv, 0x822c, 0x00030000);
-	intel_dpio_write(dev_priv, 0x8224, pre_emp_reg_val);
-	intel_dpio_write(dev_priv, 0x8294, 0x80000000);
+	intel_dpio_write(dev_priv, VLV_DDI0_GRP_TX + DPIO_TX_5, 0x00000000);
+	intel_dpio_write(dev_priv, VLV_DDI0_GRP_TX + DPIO_TX_4,
+							de_emp_reg_val);
+	intel_dpio_write(dev_priv, VLV_DDI0_GRP_TX + DPIO_TX_2,
+							transcale_reg_val);
+	intel_dpio_write(dev_priv, VLV_DDI0_GRP_TX + DPIO_TX_3, 0x0c782040);
+	intel_dpio_write(dev_priv, VLV_DDI0_TX_3 + DPIO_TX_4,
+							clk_de_emp_reg_val);
+	intel_dpio_write(dev_priv, VLV_DDI0_GRP_PCS + DPIO_PCS_B, 0x00030000);
+	intel_dpio_write(dev_priv, VLV_DDI0_GRP_PCS + DPIO_PCS_9,
+							pre_emp_reg_val);
+	intel_dpio_write(dev_priv, VLV_DDI0_GRP_TX + DPIO_TX_5, 0x80000000);
 }
-//<asus-baron20131016->
 
-//<asus-baron20131016->static void vlv_pll_enable_reset(struct drm_crtc *crtc)
 static void vlv_pll_enable_reset(struct drm_crtc *crtc,
 				struct drm_display_mode *adjusted_mode)
 {
@@ -3899,19 +3905,8 @@ static void vlv_pll_enable_reset(struct drm_crtc *crtc,
 		val |= (1<<20);
 		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
 
-//<asus-baron20131016+>
-/*
-		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
-		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
-		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
-		intel_dpio_write(dev_priv, 0x828c, 0x0c782040);
-		intel_dpio_write(dev_priv, 0x690, 0x2b247878);
-		intel_dpio_write(dev_priv, 0x822c, 0x00030000);
-		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
-		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
-*/
-//<asus-baron20131016->
-		vlv_set_hdmi_level_shifter_settings(crtc, adjusted_mode); //<asus-baron20131016+>
+		vlv_set_hdmi_level_shifter_settings(crtc, adjusted_mode);
+
 		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
 		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
 	}
@@ -3969,6 +3964,11 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	/* Give the overlay scaler a chance to enable if it's on this pipe */
 	intel_crtc_dpms_overlay(intel_crtc, true);
 	intel_crtc_update_cursor(crtc, true);
+
+	/* if gamma enabled, apply gamma correction on PIPE */
+	if (dev_priv->gamma_enabled)
+		if (intel_crtc_enable_gamma(crtc, PIPEA))
+			DRM_ERROR("Apply gamma correction failed\n");
 }
 
 void i9xx_crtc_disable(struct drm_crtc *crtc)
@@ -4805,9 +4805,8 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		POSTING_READ(DPLL_MD(pipe));
 	}
 
-//<asus-baron20131016->	vlv_pll_enable_reset(crtc); 
-	vlv_pll_enable_reset(crtc, adjusted_mode); //<asus-baron20131016+>
-	
+	vlv_pll_enable_reset(crtc, adjusted_mode);
+
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
 		intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 		intel_dp_set_m_n(crtc, mode, adjusted_mode);

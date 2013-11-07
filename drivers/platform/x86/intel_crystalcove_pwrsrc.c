@@ -55,6 +55,13 @@
 #define PWRSRC_EXTCON_CABLE_AC		"CHARGER_AC"
 #define PWRSRC_DRV_NAME			"crystal_cove_pwrsrc"
 
+/*
+ * Crystal Cove PMIC can not do USB type detection.
+ * So if we find extcon USB_SDP cable then unregister
+ * the pwrsrc extcon device as BYT platform is not
+ * supporting AC and USB simultaneously.
+ */
+#define EXTCON_CABLE_SDP		"CHARGER_USB_SDP"
 
 #ifndef DEBUG
 #define dev_dbg(dev, format, arg...)		\
@@ -71,6 +78,7 @@ struct pwrsrc_info {
 	int irq;
 	struct usb_phy *otg;
 	struct extcon_dev *edev;
+	struct notifier_block	nb;
 };
 
 static char *pwrsrc_resetsrc0_info[] = {
@@ -210,6 +218,86 @@ pmic_irq_fail:
 	intel_mid_pmic_writeb(CRYSTALCOVE_PWRSRCIRQ_REG, pwrsrcirq);
 	return IRQ_HANDLED;
 }
+
+static int pwrsrc_extcon_dev_reg_callback(struct notifier_block *nb,
+					unsigned long event, void *data)
+{
+	struct pwrsrc_info *info = container_of(nb, struct pwrsrc_info, nb);
+
+	/* check if there is other extcon cables */
+	if (extcon_num_of_cable_devs(EXTCON_CABLE_SDP)) {
+		dev_info(&info->pdev->dev, "unregistering extcon device\n");
+		/* Set VBUS supply mode to SW control mode */
+		intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
+		if (info->nb.notifier_call) {
+			extcon_dev_unregister_notify(&info->nb);
+			info->nb.notifier_call = NULL;
+		}
+		if (info->otg) {
+			usb_put_transceiver(info->otg);
+			info->otg = NULL;
+		}
+		/*
+		 * TODO: enable the following code
+		 * after fixing the kernel panic.
+		 */
+#if 0
+		if (info->edev) {
+			extcon_dev_unregister(info->edev);
+			kfree(info->edev);
+		}
+#endif
+	}
+
+	return NOTIFY_OK;
+}
+
+static int pwrsrc_extcon_registration(struct pwrsrc_info *info)
+{
+	int ret = 0;
+
+	if (extcon_num_of_cable_devs(EXTCON_CABLE_SDP)) {
+		dev_info(&info->pdev->dev,
+			"extcon device is already registered\n");
+		/* Set VBUS supply mode to SW control mode */
+		intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
+	} else {
+		/* Workaround: Set VBUS supply mode to HW control mode */
+		intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x00);
+
+		dev_info(&info->pdev->dev, "registering extcon device\n");
+		/* register with extcon */
+		info->edev = kzalloc(sizeof(struct extcon_dev), GFP_KERNEL);
+		if (!info->edev) {
+			dev_err(&info->pdev->dev, "mem alloc failed\n");
+			ret = -ENOMEM;
+			goto pwrsrc_extcon_fail;
+		}
+		info->edev->name = "BYT-Charger";
+		info->edev->supported_cable = byt_extcon_cable;
+		ret = extcon_dev_register(info->edev, &info->pdev->dev);
+		if (ret) {
+			dev_err(&info->pdev->dev, "extcon registration failed!!\n");
+			kfree(info->edev);
+			goto pwrsrc_extcon_fail;
+		}
+
+		/* OTG notification */
+		info->otg = usb_get_transceiver();
+		if (!info->otg) {
+			dev_warn(&info->pdev->dev, "Failed to get otg transceiver!!\n");
+			extcon_dev_unregister(info->edev);
+			kfree(info->edev);
+			ret = -ENODEV;
+			goto pwrsrc_extcon_fail;
+		}
+		info->nb.notifier_call = &pwrsrc_extcon_dev_reg_callback;
+		extcon_dev_register_notify(&info->nb);
+	}
+
+pwrsrc_extcon_fail:
+	return ret;
+}
 static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 {
 	struct pwrsrc_info *info;
@@ -233,38 +321,9 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 	crystalcove_pwrsrc_log_rsi(pdev, pwrsrc_wakesrc_info,
 				CRYSTALCOVE_WAKESRC_REG);
 
-#ifndef CONFIG_EXTCON_FSA9285
-	/* Workaround: Set VBUS supply mode to HW control mode */
-	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x00);
-
-	/* register with extcon */
-	info->edev = kzalloc(sizeof(struct extcon_dev), GFP_KERNEL);
-	if (!info->edev) {
-		dev_err(&pdev->dev, "mem alloc failed\n");
-		ret = -ENOMEM;
-		goto extcon_mem_failed;
-	}
-	info->edev->name = "BYT-Charger";
-	info->edev->supported_cable = byt_extcon_cable;
-	ret = extcon_dev_register(info->edev, &pdev->dev);
-	if (ret) {
-		dev_err(&pdev->dev, "extcon registration failed!!\n");
+	ret = pwrsrc_extcon_registration(info);
+	if (ret)
 		goto extcon_reg_failed;
-	}
-
-	/* OTG notification */
-	info->otg = usb_get_transceiver();
-	if (!info->otg) {
-		dev_warn(&pdev->dev, "Failed to get otg transceiver!!\n");
-		goto otg_reg_failed;
-	}
-#else
-	/* Set VBUS supply mode to SW control mode */
-	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
-
-	info->edev = NULL;
-	info->otg = NULL;
-#endif
 
 	/* check if device is already connected */
 	if (info->otg)
@@ -288,16 +347,13 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 	return 0;
 
 intr_teg_failed:
-#ifndef CONFIG_EXTCON_FSA9285
 	if (info->otg)
 		usb_put_transceiver(info->otg);
-otg_reg_failed:
-	if (info->edev)
+	if (info->edev) {
 		extcon_dev_unregister(info->edev);
+		kfree(info->edev);
+	}
 extcon_reg_failed:
-	kfree(info->edev);
-extcon_mem_failed:
-#endif
 	kfree(info);
 	return ret;
 }
