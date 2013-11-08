@@ -435,9 +435,11 @@ static int mt9m114_wait_state(struct i2c_client *client, int timeout)
 static int mt9m114_set_suspend(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	dev_err(&client->dev, "%s\n", __func__);
+	dev_err(&client->dev, "%s(enter standby)\n", __func__);
 
-	return mt9m114_write_reg_array(client, mt9m114_suspend, POST_POLLING);
+// <ASUS-Ian20131108+>
+	return mt9m114_write_reg_array(client, mt9m114_standby_reg, POST_POLLING);
+// <ASUS-Ian20131108->
 }
 
 static int mt9m114_set_streaming(struct v4l2_subdev *sd)
@@ -445,7 +447,10 @@ static int mt9m114_set_streaming(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	dev_err(&client->dev, "%s\n", __func__);
 
-	return mt9m114_write_reg_array(client, mt9m114_streaming, POST_POLLING);
+// <ASUS-Ian20131108+>
+	//mt9m114_write_reg_array(client, mt9m114_streaming, POST_POLLING);
+    return 0;
+// <ASUS-Ian20131108->	
 }
 
 static int mt9m114_init_common(struct v4l2_subdev *sd)
@@ -817,6 +822,8 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	int ret;
 	dev_err(&c->dev, "%s\n", __func__);
 
+// <ASUS-Ian20131108+>
+/*
 	//<Intel_patch-20130815>
 	ret = mt9m114_s_power(sd, 0);
 	if (ret) {
@@ -830,6 +837,8 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 		return ret;
 	}
 	//<Intel_patch-20130815>
+*/
+// <ASUS-Ian20131108->	
 	
 	mt9m114_info = v4l2_get_subdev_hostdata(sd);
 	if (mt9m114_info == NULL)
@@ -916,9 +925,13 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret < 0)
 		return ret;
 
-	if (mt9m114_set_suspend(sd))
-		return -EINVAL;
-
+// <ASUS-Ian20131108+>
+/*	
+         if (mt9m114_set_suspend(sd))
+            return -EINVAL;
+*/
+// <ASUS-Ian20131108->
+    
 	if (dev->res != res_index->res) {
 		int index;
 
