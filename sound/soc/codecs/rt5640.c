@@ -105,7 +105,7 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_SPK_L_MIXER, 0x0036},	/*DACL1 -> SPKMIXL */
 	{RT5640_SPK_R_MIXER, 0x0036},	/*DACR1 -> SPKMIXR */
 //	{RT5640_SPK_VOL, 0x8b8b},	/*SPKMIX -> SPKVOL */  //<asus-baron20130823-> realtek
-	{RT5640_SPK_VOL, 0x8a8a},	/*SPKMIX -> SPKVOL */  //<asus-baron20130823+> realtek
+	{RT5640_SPK_VOL, 0x8282},	/*SPKMIX -> SPKVOL */  //<asus-baron20130823+> realtek //<asus-baron20131108+>
 	{RT5640_SPO_CLSD_RATIO, 0x0001},
 	{RT5640_SPO_L_MIXER, 0xe800},	/*SPKVOLL -> SPOLMIX */
 	{RT5640_SPO_R_MIXER, 0x2800},	/*SPKVOLR -> SPORMIX */
