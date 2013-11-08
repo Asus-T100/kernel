@@ -648,6 +648,14 @@ MMC_DEV_ATTR(bkops_enable, "%d\n", card->ext_csd.bkops_en);
 MMC_DEV_ATTR(rpmb_size, "%d\n", card->ext_csd.rpmb_size);
 MMC_DEV_ATTR(rpmb_max_w_blks, "%d\n", card->rpmb_max_w_blks);
 MMC_DEV_ATTR(rpmb_max_r_blks, "%d\n", card->rpmb_max_r_blks);
+//<asus-dhl>
+MMC_DEV_ATTR(raw_card_type, "%x\n", card->ext_csd.raw_card_type);
+MMC_DEV_ATTR(hs_max_dtr, "%x\n", card->ext_csd.hs_max_dtr);
+MMC_DEV_ATTR(card_type, "%x\n", card->ext_csd.card_type);
+MMC_DEV_ATTR(state, "%x\n", card->state);
+MMC_DEV_ATTR(host_caps, "%x\n", card->host->caps);
+MMC_DEV_ATTR(host_caps2, "%x\n", card->host->caps2);
+//<asus-dhl>
 
 /* init gpp_wppart as an invalide GPP */
 static unsigned int gpp_wppart = EXT_CSD_PART_CONFIG_ACC_GP0 - 1;
@@ -808,6 +816,14 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_gpp_wppart.attr,
 	&dev_attr_gpp_wpgroup.attr,
 	&dev_attr_gpp_wp.attr,
+	//<asus-dhl>
+	&dev_attr_raw_card_type.attr,
+	&dev_attr_hs_max_dtr.attr,
+	&dev_attr_card_type.attr,
+	&dev_attr_state.attr,
+	&dev_attr_host_caps.attr,
+	&dev_attr_host_caps2.attr,
+	//<asus-dhl>
 	NULL,
 };
 
