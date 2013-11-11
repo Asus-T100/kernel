@@ -50,9 +50,9 @@ static struct cm3218_platform_data cm3218_pdata = {
 	.is_cmd = CM3218_ALS_SM_2 | CM3218_ALS_IT_250ms |CM3218_ALS_PERS_1 | CM3218_ALS_RES_1,
 };
 //====== Porting from Board ====== End
-#define ALStraceOn 0
+#define ALS_TRACE_ON 0
 
-#if ALStraceOn == 1
+#if ALS_TRACE_ON == 1
 #define D(x...) pr_info(x)
 #define ALSBG(fmt...) printk(fmt)
 #else
@@ -60,28 +60,43 @@ static struct cm3218_platform_data cm3218_pdata = {
 #define ALSBG(fmt...)
 #endif
 //<ASUS-Bob20130820->
-
+#define SYNC_CALI_DATA	1	//<asus-bob20131106+>
 #define I2C_RETRY_COUNT 10
 
 #define NEAR_DELAY_TIME ((100 * HZ) / 1000)
 
 #define CONTROL_INT_ISR_REPORT        0x00
 #define CONTROL_ALS                   0x01
-
+//<asus-bob20131106+>
+#if SYNC_CALI_DATA
+#define CALIBRATION_FILE_PATH	"/factory/calibration_data.bin"
+#else
 #define CALIBRATION_FILE_PATH	"/data/cal_data"
+#endif
+//<asus-bob20131106->
 #define CHANGE_SENSITIVITY 5 // in percent
 //<ASUS-Bob20130927+>
-#define	CM3218_Resolution	1428
-#define	bare_cal_data		3000
-#define	mask_cal_data		6000000
-#define	Default_cal_data	mask_cal_data
+#define	CM3218_RESOLUTION	1428
+#define	BARE_CAL_DATA		3000
+#define	MASK_CAL_DATA		6000000
+#define	DEFAULT_CAL_DATA	MASK_CAL_DATA
 
 //<ASUS-Bob20130927->
 
 static int record_init_fail = 0;
 static void sensor_irq_do_work(struct work_struct *work);
 static DECLARE_WORK(sensor_irq_work, sensor_irq_do_work);
+//<asus-bob20131106+>
+#if SYNC_CALI_DATA
+struct calibration_data {
+	uint64_t	resolution;
+	uint64_t	lens_factor;
+	uint64_t	view_angle;
+};
 
+static struct calibration_data cal_data;
+#endif
+//<asus-bob20131106->
 struct cm3218_info {
 	struct class *cm3218_class;
 	struct device *ls_dev;
@@ -401,20 +416,43 @@ static int lightsensor_get_cal_data(struct cm3218_info *lpi)
 	struct file *cal_filp = NULL;
 	int err = 0;
 	mm_segment_t old_fs;
+	uint32_t	index;	//<asus-bob20131106+>
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
+	pr_err("path:%s\n", CALIBRATION_FILE_PATH);
 	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0666);
 	if (IS_ERR(cal_filp))
 	{
+		pr_err("    point 1\n");
 		err = PTR_ERR(cal_filp);
+		pr_err("    point 2\n");
 		if (err != -ENOENT)
 			pr_err("%s: Can't open calibration data file\n", __func__);
 		set_fs(old_fs);
 		return err;
 	}
-
+pr_err("	point 3\n");
+//<asus-bob20131106+>
+#if SYNC_CALI_DATA
+	err = cal_filp->f_op->read(cal_filp,
+		(uint8_t *)&cal_data, sizeof(struct calibration_data), &cal_filp->f_pos);
+	if (err != sizeof(struct calibration_data))
+	{
+		pr_err("%s: Can't read the calibration data from file\n", __func__);
+		err = -EIO;
+	}
+	for(index=0;index<sizeof(struct calibration_data);index++)
+	{
+		pr_err("%d)  0x%x\n",
+			index,
+			*(uint8_t*)(&cal_data+index)
+		);
+	}
+	lpi->cal_data = (uint32_t) cal_data.lens_factor;
+	pr_err("lpi->cal_data:%d\n", lpi->cal_data);
+#else
 	err = cal_filp->f_op->read(cal_filp,
 		(char *)&lpi->cal_data, sizeof(uint32_t), &cal_filp->f_pos);
 	if (err != sizeof(uint32_t))
@@ -422,7 +460,8 @@ static int lightsensor_get_cal_data(struct cm3218_info *lpi)
 		pr_err("%s: Can't read the calibration data from file\n", __func__);
 		err = -EIO;
 	}
-
+#endif
+//<asus-bob20131106->
 	pr_info("%s: cal_data = %d\n",
 		__func__, lpi->cal_data);
 
@@ -438,6 +477,7 @@ static int lightsensor_enable(struct cm3218_info *lpi)
 	
 	mutex_lock(&als_enable_mutex);
 	D("[LS][CM3218] %s\n", __func__);
+	lightsensor_get_cal_data(lpi);	//<asus-bob20131106+>
 
 	if (lpi->als_enable)
 	{
@@ -498,6 +538,7 @@ static int lightsensor_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+#if (SYNC_CALI_DATA != 1)	//<asus-bob20131106+>
 //<ASUS-Hollie 20130912+>
 static int set_cali_to_file(uint32_t calibuf){		//<ASUS-Bob20130930+>uint16_t calibuf
 	struct cm3218_info *lpi = lp_info;	
@@ -511,7 +552,7 @@ static int set_cali_to_file(uint32_t calibuf){		//<ASUS-Bob20130930+>uint16_t ca
 	}
 	else  // reset calibration data
 	{
-		lpi->cal_data = Default_cal_data;			//<ASUS-Bob20130930+>	80
+		lpi->cal_data = DEFAULT_CAL_DATA;			//<ASUS-Bob20130930+>	80
 	}
 
 	old_fs = get_fs();
@@ -539,6 +580,7 @@ static int set_cali_to_file(uint32_t calibuf){		//<ASUS-Bob20130930+>uint16_t ca
 	return 0;
 }
 //<ASUS-Hollie 20130912->
+#endif
 
 static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 		unsigned long arg)
@@ -569,6 +611,7 @@ static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 			break;
 //<ASUS-Hollie 20130912+>
 		case ASUS_LSENSOR_SETCALI_DATA:
+#if (SYNC_CALI_DATA != 1)	//<asus-bob20131106+>
 			if (copy_from_user(&cali_buf, arg, sizeof(uint32_t)))			//<ASUS-Bob20130930+>sizeof(uint16_t)
 			{
 				rc = -EFAULT;
@@ -576,8 +619,10 @@ static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 			}	
 			//printk("[Hollie]ASUS_SETCALI_DATA :%d \n", cali_buf);
 			set_cali_to_file(cali_buf);
+#endif
 			break;
 		case ASUS_LSENSOR_GETCALI_DATA:
+#if (SYNC_CALI_DATA != 1)	//<asus-bob20131106+>
 			lightsensor_get_cal_data(lpi);
 			if (copy_to_user(arg, &lpi->cal_data, sizeof(uint32_t) ) ) {	//<ASUS-Bob20130930+>sizeof(uint16_t)
 				printk("[Hollie]LightSensor failed to copy Cali data to user space.\n");
@@ -585,6 +630,7 @@ static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 				break;
 			}
 			//printk("[Hollie]ASUS_LSENSOR_GETCALI_DATA OK\n");
+#endif
 			break;
 		case ASUS_LSENSOR_IOCTL_GETLUXDATA:
 			control_and_report(lpi, CONTROL_ALS, 1);
@@ -629,7 +675,9 @@ static ssize_t ls_adc_show(struct device *dev,
 	if (lpi->als_enable)
 	{
 		get_ls_adc_value(&adc_value, 0);
+#if (SYNC_CALI_DATA != 1)	//<asus-bob20131106+>
 		lightsensor_get_cal_data(lpi);//<ASUS-Hollie 20130912+>
+#endif
 		lux_level = (uint32_t)div64_u64((uint64_t)adc_value * lpi->als_resolution * lpi->cal_data, (uint64_t)100000 * 100000);	
 //<ASUS-Bob20130927+>
 		ALSBG("<ASUS-Bob> adc_value:%d, als_resolution:%d, cal_data:%d => lux_level:%d\n",
@@ -728,6 +776,7 @@ static ssize_t ls_cal_data_show(struct device *dev,
 	return ret;
 }
 
+#if (SYNC_CALI_DATA != 1)	//<asus-bob20131106+>
 static ssize_t ls_cal_data_store(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t count)
@@ -745,7 +794,7 @@ static ssize_t ls_cal_data_store(struct device *dev,
 	}
 	else  // reset calibration data
 	{
-		lpi->cal_data = Default_cal_data;	//<ASUS-Bob20130930+>2000000
+		lpi->cal_data = DEFAULT_CAL_DATA;	//<ASUS-Bob20130930+>2000000
 	}
 
 	old_fs = get_fs();
@@ -774,6 +823,7 @@ static ssize_t ls_cal_data_store(struct device *dev,
 
 	return count;
 }
+#endif
 
 //<ASUS-Hollie 20130911+>
 static ssize_t lightsensor_status_show(struct device *dev,
@@ -823,7 +873,13 @@ static struct device_attribute dev_attr_light_adc =
 __ATTR(adc, S_IRUGO | S_IWUSR | S_IWGRP, ls_adc_show, NULL);
 
 static struct device_attribute dev_attr_light_cal_data =
+//<asus-bob20131106+>
+#if SYNC_CALI_DATA
+__ATTR(cali, S_IRUGO | S_IWUSR | S_IWGRP, ls_cal_data_show, NULL);
+#else
 __ATTR(cali, S_IRUGO | S_IWUSR | S_IWGRP, ls_cal_data_show, ls_cal_data_store);
+#endif
+//<asus-bob20131106->
 
 //<ASUS-Hollie 20130911+>
 static struct device_attribute dev_attr_lightsensor_status =
@@ -1095,18 +1151,19 @@ static int cm3218_probe(struct i2c_client *client,
 	}
 
 //<ASUS-Bob20130930+>sync v0.4.6 - sync for windows side cal data
-	lpi->als_resolution = CM3218_Resolution;	//1428
-	lpi->cal_data = Default_cal_data;	//2000000;
+	lpi->als_resolution = CM3218_RESOLUTION;	//1428
+	lpi->cal_data = DEFAULT_CAL_DATA;	//2000000;
 //<ASUS-Bob20130930->
 
 	/* open calibration data */
+/*<asus-bob20131106->
 	ret = lightsensor_get_cal_data(lpi);
 	if (ret < 0 && ret != -ENOENT)
 	{
 		pr_err("%s: lightsensor_get_cal_data() failed\n",
 			__func__);
 	}
-
+*/
 	lpi->lp_wq = create_singlethread_workqueue("cm3218_wq");
 	if (!lpi->lp_wq)
 	{
@@ -1265,7 +1322,7 @@ static int control_and_report( struct cm3218_info *lpi, uint8_t mode, uint8_t cm
 	if (lpi->als_enable)
 	{
 		get_ls_adc_value(&adc_value, 0);
-		lightsensor_get_cal_data(lpi);//<ASUS-Hollie 20130912+>
+//<asus-bob20131106->		lightsensor_get_cal_data(lpi);//<ASUS-Hollie 20130912+>
 		lux_level = (uint32_t)div64_u64((uint64_t)adc_value * lpi->als_resolution * lpi->cal_data, (uint64_t)100000 * 100000);
   
 		D("[LS][CM3218] %s: raw adc = 0x%04X\n",
