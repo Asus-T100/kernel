@@ -349,6 +349,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
 		slot->host->quirks2 |= SDHCI_QUIRK2_CARD_CD_DELAY |
 			SDHCI_QUIRK2_WAIT_FOR_IDLE;
+#if 0 //<asus-ych20131111+>
 		if (!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP1) &&
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP2) &&
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, PRO, RVP3) &&
@@ -356,6 +357,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP2) &&
 			!INTEL_MID_BOARDV3(TABLET, BYT, BLK, ENG, RVP3))
 			slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR;
+#endif //<asus-ych10231111->
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
 		if (!INTEL_MID_BOARDV2(TABLET, BYT, BLB, PRO) &&
 				!INTEL_MID_BOARDV2(TABLET, BYT, BLB, ENG))
