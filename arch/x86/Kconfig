@@ -503,6 +503,30 @@ endchoice
 
 endif
 
+choice
+	prompt "ASUS board type"
+	---help---
+	  This option is used for selecting the board configuration of
+	  ASUS devices.
+	  You should select the board name that matches your hardware
+          configuration.
+
+config T10xTA
+	bool "T10xTA"
+	---help---
+		ASUS T10xTA
+
+config T10xTAF
+	bool "T10xTAF"
+	---help---
+		ASUS T10xTAF
+		
+config M8xTA
+	bool "M8xTA"
+	---help---
+		ASUS M8xTA
+endchoice
+
 config X86_RDC321X
 	bool "RDC R-321x SoC"
 	depends on X86_32
