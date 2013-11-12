@@ -109,6 +109,7 @@ struct cm3218_info {
 
 	int intr_pin;
 	int als_enable;
+	int als_enable_before_suspend;
 
 	int irq;
 
@@ -1065,8 +1066,13 @@ static void cm3218_early_suspend(struct early_suspend *h)
 
 	D("[LS][CM3218] %s\n", __func__);
 
-	if (lpi->als_enable)
+	if (lpi->als_enable){
+		lpi->als_enable_before_suspend = 1;
 		lightsensor_disable(lpi);
+	}
+	else{
+		lpi->als_enable_before_suspend = 0;
+	}
 }
 
 static void cm3218_late_resume(struct early_suspend *h)
@@ -1075,8 +1081,9 @@ static void cm3218_late_resume(struct early_suspend *h)
 
 	D("[LS][CM3218] %s\n", __func__);
 
-	if (!lpi->als_enable)
+	if (!lpi->als_enable && lpi->als_enable_before_suspend == 1){
 		lightsensor_enable(lpi);
+	}
 }
 
 static int cm3218_probe(struct i2c_client *client,
