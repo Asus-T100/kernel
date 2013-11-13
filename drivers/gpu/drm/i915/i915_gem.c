@@ -1406,7 +1406,9 @@ i915_gem_object_put_pages_gtt(struct drm_i915_gem_object *obj)
 		if (obj->madv == I915_MADV_WILLNEED)
 			mark_page_accessed(obj->pages[i]);
 
-		page_cache_release(obj->pages[i]);
+		if (likely(obj->pages[i])) page_cache_release(obj->pages[i]);
+		else
+			DRM_ERROR("i915_gem_object_put_pages_gtt found page was NULL(%d)!\n", i);
 	}
 	obj->dirty = 0;
 
