@@ -255,12 +255,7 @@ static int pwrsrc_extcon_dev_reg_callback(struct notifier_block *nb,
 static int pwrsrc_extcon_registration(struct pwrsrc_info *info)
 {
 	int ret = 0;
-#ifdef CONFIG_T10xTA
-	info->edev = NULL;
-	info->otg = NULL;
-	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
-	return 1;
-#else
+
 	if (extcon_num_of_cable_devs(EXTCON_CABLE_SDP)) {
 		dev_info(&info->pdev->dev,
 			"extcon device is already registered\n");
@@ -299,7 +294,6 @@ static int pwrsrc_extcon_registration(struct pwrsrc_info *info)
 		info->nb.notifier_call = &pwrsrc_extcon_dev_reg_callback;
 		extcon_dev_register_notify(&info->nb);
 	}
-#endif
 
 pwrsrc_extcon_fail:
 	return ret;
