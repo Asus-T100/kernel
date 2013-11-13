@@ -503,6 +503,31 @@ endchoice
 
 endif
 
+choice
+	prompt "ASUS board type"
+	default T101TA
+	---help---
+	  This option is used for selecting the board configuration of
+	  ASUS devices.
+	  You should select the board name that matches your hardware
+          configuration.
+
+config T101TA
+	bool "T101TA"
+	---help---
+		ASUS T101TA
+
+config T103TA
+	bool "T103TA"
+	---help---
+		ASUS T103TA
+		
+config M81TA
+	bool "M81TA"
+	---help---
+		ASUS M81TA
+endchoice
+
 config X86_RDC321X
 	bool "RDC R-321x SoC"
 	depends on X86_32
