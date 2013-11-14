@@ -686,6 +686,13 @@ config HID_T100_KB
 	bool "T100 keyboard special usage mapping"
 	---help---
 	T100 keyboard special keys
+
+#//<asus-wy20131101>
+config HID_WACOM_PEN
+    bool "Wacom pen digitizer"
+    depends on I2C && INPUT
+    ---help---
+    Wacom I2C over HID digitizer driver.
 endmenu
 
 endif # HID_SUPPORT

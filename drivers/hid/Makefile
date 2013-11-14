@@ -90,6 +90,7 @@ obj-$(CONFIG_HID_WALTOP)	+= hid-waltop.o
 obj-$(CONFIG_HID_WIIMOTE)	+= hid-wiimote.o
 obj-$(CONFIG_HID_ELAN_TOUCH_PAD)	+= hid-elan-pad.o
 obj-$(CONFIG_HID_T100_KB)	+= hid-t100-kb.o
+obj-$(CONFIG_HID_WACOM_PEN)     += hid-wacom-pen-i2c.o
 
 obj-$(CONFIG_USB_HID)		+= usbhid/
 obj-$(CONFIG_USB_MOUSE)		+= usbhid/
