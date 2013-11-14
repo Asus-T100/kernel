@@ -920,10 +920,7 @@ static irqreturn_t mxt_thread_handler(int id, void *dev)
 
 	mxt_dbg("mxt_thread_handler\n");
 
-	do
-	{
-		mxt_report_handle(data);
-	}while(gpio_get_value(data->gpio_num) == 0x00);
+	mxt_report_handle(data);
 
 	return IRQ_HANDLED;
 
@@ -1091,8 +1088,9 @@ static ssize_t touch_config_write(struct file *filp, struct kobject *kobj,
 
         ret = request_threaded_irq(data->irq, NULL,
                                    mxt_thread_handler,
-                                   IRQF_TRIGGER_LOW|IRQF_TRIGGER_FALLING,
+                                   IRQF_ONESHOT,
                                    "mxt`-touch", data);
+        irq_set_irq_type(data->irq, IRQ_TYPE_LEVEL_LOW);
         return count;
 }
 
@@ -1279,7 +1277,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
         /* register interrupt */
         ret = request_threaded_irq(data->irq, NULL,
                                         mxt_thread_handler,
-                                        IRQF_TRIGGER_LOW|IRQF_TRIGGER_FALLING,
+                                        IRQF_ONESHOT,
                                         "mxt-touch", data);
         if (ret) {
                 mxt_err("<asus-cca> cannot get IRQ:%d\n", data->irq);
@@ -1288,6 +1286,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
         } else {
                 mxt_err("<asus-cca> IRQ No:%d\n", data->irq);
         }
+    irq_set_irq_type(data->irq, IRQ_TYPE_LEVEL_LOW);
 
 	hid = hid_allocate_device();
 	if (IS_ERR(hid)) {
