@@ -544,8 +544,16 @@ static int __devinit pen_probe(struct i2c_client *client,
 	data->hid_desc_addr = 0x01;
 
         //get hid descriptor
-	pen_write_read(client, (u8 *)&data->hid_desc_addr, 2, (u8 *)&data->hid_desc, 2);
-	pen_write_read(client, (u8 *)&data->hid_desc_addr, 2, (u8 *)&data->hid_desc, data->hid_desc.hid_desc_len);
+	ret = pen_write_read(client, (u8 *)&data->hid_desc_addr, 2, (u8 *)&data->hid_desc, 2);
+        if (ret < 0) {
+                pen_err("<asus-wy> get HID descriptor failed\n");
+                return ret;
+        }
+	ret = pen_write_read(client, (u8 *)&data->hid_desc_addr, 2, (u8 *)&data->hid_desc, data->hid_desc.hid_desc_len);
+        if (ret < 0) {
+                pen_err("<asus-wy> get HID descriptor failed\n");
+                return ret;
+        }
 
 	pen_dbg("<asus-wy> HIDDescLen = %x\n", data->hid_desc.hid_desc_len);
 	pen_dbg("<asus-wy> bcdVersion = %x\n", data->hid_desc.bcd_version);
