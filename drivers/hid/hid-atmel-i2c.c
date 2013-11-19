@@ -311,6 +311,7 @@ static int mxt_hid_read_config(struct mxt_data *data,u16 addr,u8 *read_buf,u8 re
 	struct mxt_hid_input *input_buffer = data->input_buffer;
 	struct i2c_client *client = data->client;
 	int time_out = 1000;
+        int ret;
 
 	memset(output_buffer,0,data->hid_desc.output_len+2);
 	
@@ -322,16 +323,27 @@ static int mxt_hid_read_config(struct mxt_data *data,u16 addr,u8 *read_buf,u8 re
         output_buffer->num_rx    = read_len;
 	output_buffer->addr	  = addr;
 
-	mxt_write(client,(u8 *)output_buffer,data->hid_desc.output_len+2);
+	ret = mxt_write(client,(u8 *)output_buffer,data->hid_desc.output_len+2);
+        if (ret < 0) {
+		mxt_err("<asus-cca> hid read config error\n");
+		return ret;
+        }
 
 	do
 	{
-		mxt_read(client,(u8 *)input_buffer,data->hid_desc.input_len);
+		ret = mxt_read(client,(u8 *)input_buffer,data->hid_desc.input_len);
+                if (ret < 0)
+                        break;
 		if((input_buffer->report_id == output_buffer->report_id) && (input_buffer->report.mxt.status ==0x00))
 			break;
 		msleep(1);
 	}while(--time_out);
 	
+        if (ret < 0) {
+		mxt_err("<asus-cca> hid read config error\n");
+		return ret;
+        }
+
 	if(!time_out) {
 		mxt_err("<asus-cca> hid read config time out\n");
 		return -EINVAL;
@@ -406,9 +418,9 @@ static int mxt_init_object(struct mxt_data *data)
         data->input_buffer = kzalloc(data->hid_desc.input_len,GFP_KERNEL);
 
 	ret = mxt_hid_read_config(data,index,(u8 *)&data->info,sizeof(struct mxt_info));
-	if(ret != 0 ) {
-		mxt_err("<asus-cca> read ID err %x\n",ret);
-		return 0;
+	if(ret != 0) {
+		mxt_err("<asus-cca> read ID err %x\n", ret);
+		return ret;
 	}
 	mxt_err("<asus-cca> Touch Firmware Version = %x Build = %x\n",data->info.version,data->info.build);
 
@@ -424,9 +436,9 @@ static int mxt_init_object(struct mxt_data *data)
 	i=0;
 	while(object_num >0) {
 		ret = mxt_hid_read_config(data,index,(u8 *)&object_table[i],sizeof(struct mxt_object));
-	        if(ret != 0 ) {
+	        if(ret != 0) {
         	        mxt_err("<asus-cca> read Object err %x\n",ret);
-      			return 0;
+      			return ret;
 	  	}
 
 		if(object_table[i].type == 0x05) {
@@ -451,10 +463,10 @@ static int mxt_init_object(struct mxt_data *data)
 
 	mxt_dbg("T5 addr = %x T6 addr = %x T6 report ID = %x\n",object_table[data->T5_Index].start_address,object_table[data->T6_Index].start_address,data->T6_ReportID);
 
-	mxt_hid_read_config(data,object_table[data->T38_Index].start_address,(u8 *)&data->ConfigVersion,3);
-        if(ret != 0 ) {
+	ret = mxt_hid_read_config(data,object_table[data->T38_Index].start_address,(u8 *)&data->ConfigVersion,3);
+        if(ret != 0) {
                 mxt_err("<asus-cca> read config version err %x\n",ret);
-                return 0;
+                return ret;
         }
 
 	mxt_err("<asus-cca> config ver = %x\n",data->ConfigVersion);
@@ -1230,9 +1242,17 @@ static int __devinit mxt_probe(struct i2c_client *client,
 */
 	data->hid_desc_addr = 0x00;
 
-	mxt_write_read(client,(u8 *)&data->hid_desc_addr,2,(u8 *)&data->hid_desc,2);
+	ret = mxt_write_read(client,(u8 *)&data->hid_desc_addr,2,(u8 *)&data->hid_desc,2);
+        if (ret < 0) {
+                mxt_err("%s read HID descriptor error\n", __func__);
+		goto err_free_data;
+        }
 
-	mxt_write_read(client,(u8 *)&data->hid_desc_addr,2,(u8 *)&data->hid_desc,data->hid_desc.hid_desc_len);
+	ret = mxt_write_read(client,(u8 *)&data->hid_desc_addr,2,(u8 *)&data->hid_desc,data->hid_desc.hid_desc_len);
+        if (ret < 0) {
+                mxt_err("%s read HID descriptor error\n", __func__);
+		goto err_free_data;
+        }
 
 	mxt_dbg("HIDDescLen = %x\n",data->hid_desc.hid_desc_len);
 	mxt_dbg("bcdVersion = %x\n",data->hid_desc.bcd_version);
