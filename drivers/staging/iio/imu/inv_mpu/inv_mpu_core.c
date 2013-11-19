@@ -2150,7 +2150,27 @@ static int inv_create_dmp_sysfs(struct iio_dev *ind)
 /**
  *  inv_mpu_probe() - probe function.
  */
-//<asus-guc20130802+>
+//<asus-guc20131118+>
+#if CONFIG_M81TA
+static struct mpu_platform_data oem_mpu_platform_data = {        
+	.int_config  = 0x10,        
+	.level_shifter = 0,        
+	.orientation = {  
+	-1,  0,  0,                           
+	0,  1,  0,                           
+	0,  0, -1 },        
+	.sec_slave_type = SECONDARY_SLAVE_TYPE_COMPASS,       
+	.sec_slave_id   = COMPASS_ID_AK8963,        
+	.secondary_i2c_addr = 0x0D,
+	.secondary_orientation = {  
+	0,  1,  0,                           
+	1,  0,  0,                           
+	0,  0, -1 },
+    .key =  { 
+    	0xdd, 0x16, 0xcd, 0x7, 0xd9, 0xba, 0x97, 0x37,
+	0xce, 0xfe, 0x23, 0x90, 0xe1, 0x66, 0x2f, 0x32}, 
+};
+#else
 static struct mpu_platform_data oem_mpu_platform_data = {        
 	.int_config  = 0x10,        
 	.level_shifter = 0,        
@@ -2169,7 +2189,8 @@ static struct mpu_platform_data oem_mpu_platform_data = {
     	0xdd, 0x16, 0xcd, 0x7, 0xd9, 0xba, 0x97, 0x37,
 	0xce, 0xfe, 0x23, 0x90, 0xe1, 0x66, 0x2f, 0x32}, 
 };
-//<asus-guc20130802->
+#endif
+//<asus-guc20131118->
 
 static int inv_mpu_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
