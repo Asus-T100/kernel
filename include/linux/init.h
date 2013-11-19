@@ -150,6 +150,12 @@ extern int do_one_initcall(initcall_t fn);
 extern char __initdata boot_command_line[];
 extern char *saved_command_line;
 extern unsigned int reset_devices;
+//<asus-pololin20131118+>
+extern unsigned int androidboot_mode;
+
+#define	BOOTMODE_MAIN	0
+#define	BOOTMODE_FOTA	1
+//<asus-pololin20131118->
 
 /* used by init/main.c */
 void setup_arch(char **);

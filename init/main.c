@@ -206,6 +206,23 @@ static int __init quiet_kernel(char *str)
 early_param("debug", debug_kernel);
 early_param("quiet", quiet_kernel);
 
+//<asus-pololin20131118+>
+unsigned int androidboot_mode;
+static int __init boot_mode(char *str)
+{
+	if (strcmp( str, "main") == 0)
+		androidboot_mode = 0;
+	else if (strcmp( str, "fota") == 0)
+		androidboot_mode = 1;
+	else
+		androidboot_mode = 0;
+
+	return 0;
+}
+
+early_param("androidboot.mode", boot_mode);
+//<asus-pololin20131118->
+
 static int __init loglevel(char *str)
 {
 	int newlevel;

@@ -1210,7 +1210,12 @@ static void i915_pm_shutdown(struct pci_dev *pdev)
 	dev_priv = drm_dev->dev_private;
 
 	dev_priv->shut_down_state = 1;
-	i915_suspend_common(dev);
+	//<asus-pololin20131118+>
+	if (androidboot_mode != BOOTMODE_FOTA)
+		i915_suspend_common(dev);
+
+	printk("%s\n", __func__);
+	//<asus-pololin20131118->
 }
 
 static int i915_pm_resume(struct device *dev)
