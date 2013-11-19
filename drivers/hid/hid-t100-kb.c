@@ -7,6 +7,7 @@
 #include <linux/usb.h>
 #include <linux/kernel.h>
 #include <linux/hid-debug.h>
+#include <linux/switch.h>
 #include "usbhid/usbhid.h"
 
 MODULE_LICENSE("GPL");
@@ -19,8 +20,11 @@ MODULE_LICENSE("GPL");
 					EV_KEY, (c))
 
 struct t100_kb_data {
-	int      winkeyoff;
-	int      waitrel;
+	int               winkeyoff;
+	int               waitrel;
+        //for fw version showing
+        u16               bcdDevice;
+	struct switch_dev kb_sdev;
 };
 
 static int t100_kb_raw_event(struct hid_device *hdev, struct hid_report *report, u8 *data, int size)
@@ -145,39 +149,25 @@ static int t100_kb_input_mapping(struct hid_device *hdev, struct hid_input *hi, 
         return 0;
 }
 
-static ssize_t fw_version_show(struct device *dev,struct device_attribute *attr,char *buf)
+static ssize_t asuskb_switch_name(struct switch_dev *sdev, char *buf)
 {
-	struct usb_interface *intf = to_usb_interface(dev->parent);
-	struct usb_device *usbdev = interface_to_usbdev (intf);
-	u16 bcdDevice = le16_to_cpu(usbdev->descriptor.bcdDevice);
+	struct t100_kb_data *priv_data = container_of (sdev, struct t100_kb_data, kb_sdev);
 
-	return sprintf(buf, "%2x%02x\n", bcdDevice >> 8, bcdDevice & 0xff);
+	return sprintf(buf, "%2x%02x\n", (priv_data->bcdDevice >> 8), (priv_data->bcdDevice & 0xff));
 }
-
-static DEVICE_ATTR(fw_version, S_IRUGO | S_IWUSR,
-                fw_version_show, NULL);
-
-static struct attribute *t100kb_attributes[] = {
-	&dev_attr_fw_version.attr,
-	NULL
-};
-
-static const struct attribute_group t100kb_attr_group = {
-	.attrs = t100kb_attributes,
-};
-
 
 static int t100_kb_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	struct t100_kb_data *priv_data;
 	struct hid_report_enum *report_enum = hdev->report_enum + HID_INPUT_REPORT;  //match mouse interface only
 	int ret;
-	struct usb_interface *intf;
-	struct usb_device *usbdev;
+	struct usb_interface *intf = to_usb_interface(hdev->dev.parent);
+	struct usb_device *usbdev = interface_to_usbdev(intf);
+        int registered;
 
 	priv_data = kzalloc(sizeof(struct t100_kb_data), GFP_KERNEL);
 	if (!priv_data) {
-		dev_err(&hdev->dev, "cannot allocate multitouch data\n");
+		dev_err(&hdev->dev, "cannot allocate private data\n");
 		return -ENOMEM;
 	}
 
@@ -197,11 +187,18 @@ static int t100_kb_probe(struct hid_device *hdev, const struct hid_device_id *id
 	if (ret)
 		goto fail;
 
-	ret = sysfs_create_group(&hdev->dev.kobj, &t100kb_attr_group);
-	if (ret) {
-		dev_err(&hdev->dev, "%s failed to create sysfs group\n", __func__);
-		goto fail;
-	}
+        priv_data->bcdDevice =  le16_to_cpu(usbdev->descriptor.bcdDevice);
+        //switch dev to show fw version
+        registered = *((int *)id->driver_data);
+        if (!registered) {
+                dev_err(&hdev->dev, "<asus-wy> add switch dev\n");
+                priv_data->kb_sdev.name = "keyboard";
+                priv_data->kb_sdev.print_name = asuskb_switch_name;
+                if(switch_dev_register(&priv_data->kb_sdev) < 0) {
+                        dev_err(&hdev->dev, "<asus-wy> switch_dev_register for keyboard failed!\n");
+                }
+                *((int *)id->driver_data) = 1;
+        }
 
         return 0;
 fail:
@@ -215,14 +212,19 @@ static void t100_kb_remove(struct hid_device *hdev)
 {
 	struct t100_kb_data *priv_data = hid_get_drvdata(hdev);
 
+        if (priv_data->kb_sdev.dev) {
+                switch_dev_unregister(&priv_data->kb_sdev);
+                *(int *)(hdev->driver->id_table[0].driver_data) = 0;    //reset
+        }
 	hid_hw_stop(hdev);
 	kfree(priv_data);
 	hid_set_drvdata(hdev, NULL);
-	sysfs_remove_group(&hdev->dev.kobj, &t100kb_attr_group);
 }
 
+static int kb_sdev_registered = 0;
+
 static const struct hid_device_id t100_kb_devices[] = {
-        { .driver_data = 0,
+        { .driver_data = (unsigned long)&kb_sdev_registered,
 	  .bus = 0x0003,
 	  .vendor = 0x0b05,
           .product = 0x17e0,
