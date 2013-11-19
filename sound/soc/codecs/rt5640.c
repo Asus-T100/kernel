@@ -48,11 +48,15 @@
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
 static int delay_work = 500;
+
+int headsetEvent = RT5640_UN_EVENT; //<asus-baron20131119+>
+
 module_param(delay_work, int, 0644);
 struct delayed_work enable_push_button_int_work;
 struct snd_soc_codec *rt5640_codec;
 struct delayed_work hp_amp_work; //<asus-baron20131014+>
 struct delayed_work spk_amp_work; //<asus-baron20131030+>
+struct delayed_work spk_amp_recover_work; //<asus-baron20131119+>
 
 struct rt5640_init_reg {
 	u8 reg;
@@ -651,6 +655,7 @@ int rt5640_check_interrupt_event(struct snd_soc_codec *codec)
 			rt5640->jd_status = true;
 			rt5640->bp_status = false;
 			pr_debug("%s-RT5640_J_IN_EVENT\n", __func__);
+			headsetEvent = RT5640_J_IN_EVENT; //<asus-baron20131119+>
 			return RT5640_J_IN_EVENT;
 		}
 	} else { /* handle jack remove/button press events only when jack inserted */
@@ -659,6 +664,8 @@ int rt5640_check_interrupt_event(struct snd_soc_codec *codec)
 			rt5640->jd_status = false;
 			cancel_delayed_work(&enable_push_button_int_work);
 			pr_debug("%s-RT5640_J_OUT_EVENT\n", __func__);
+			headsetEvent = RT5640_J_OUT_EVENT; //<asus-baron20131119+>
+			schedule_delayed_work(&spk_amp_recover_work, msecs_to_jiffies(1000)); //<asus-baron20131119+>
 			return RT5640_J_OUT_EVENT;
 		}
 		if (rt5640->jack_type == RT5640_HEADSET_DET) {
@@ -668,12 +675,14 @@ int rt5640_check_interrupt_event(struct snd_soc_codec *codec)
 					event = RT5640_BR_EVENT;
 					rt5640->bp_status = false;
 					pr_debug("%s-RT5640_BR_EVENT\n", __func__);
+					headsetEvent = RT5640_BR_EVENT; //<asus-baron20131119+>
 				}
 			} else {
 				if (val) {
 					event = RT5640_BP_EVENT;
 					rt5640->bp_status = true;
 					pr_debug("%s-RT5640_BP_EVENT\n", __func__);
+					headsetEvent = RT5640_BP_EVENT; //<asus-baron20131119+>
 				}
 			}
 		}
@@ -1556,7 +1565,7 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 			    struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = w->codec;
-
+	printk("<asus-baron> rt5640_spk_event - headsetEvent : %i\n", headsetEvent); //<asus-baron20131119+>
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 #ifdef USE_EQ
@@ -1572,7 +1581,23 @@ static int rt5640_spk_event(struct snd_soc_dapm_widget *w,
 				    RT5640_L_MUTE | RT5640_R_MUTE, 0);
 */
 //<asus-baron20131030->
-		schedule_delayed_work(&spk_amp_work, msecs_to_jiffies(300)); //<asus-baron20131030+>
+//<asus-baron20131119->		schedule_delayed_work(&spk_amp_work, msecs_to_jiffies(300)); //<asus-baron20131030+>
+//<asus-baron20131119+>
+		switch (headsetEvent) {
+			case RT5640_J_OUT_EVENT:
+				schedule_delayed_work(&spk_amp_work, msecs_to_jiffies(300)); //<asus-baron20131030+>
+				headsetEvent = RT5640_UN_EVENT;
+				break;
+			default:
+				snd_soc_update_bits(codec, RT5640_PWR_DIG1,
+							RT5640_PWR_CLS_D, RT5640_PWR_CLS_D);
+				rt5640_index_update_bits(codec,
+							 RT5640_CLSD_INT_REG1, 0xf000, 0xf000);
+				snd_soc_update_bits(codec, RT5640_SPK_VOL,
+							RT5640_L_MUTE | RT5640_R_MUTE, 0);
+				break;
+		}
+//<asus-baron20131119->
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
@@ -1604,6 +1629,13 @@ static void do_spk_amp(struct work_struct *work)
 
 }
 //<asus-baron20131030->
+//<asus-baron20131119+>
+static void do_recover_amp(struct work_struct *work)
+{
+	printk("<asus-baron> do_recover_amp \n");
+	headsetEvent = RT5640_UN_EVENT;
+}
+//<asus-baron20131119->
 static int rt5640_set_dmic1_event(struct snd_soc_dapm_widget *w,
 				  struct snd_kcontrol *kcontrol, int event)
 {
@@ -3464,6 +3496,7 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 					do_enable_push_button_int);
 	INIT_DELAYED_WORK(&hp_amp_work, do_hp_amp); //<asus-baron20131014+>
 	INIT_DELAYED_WORK(&spk_amp_work, do_spk_amp); //<asus-baron20131030+>
+	INIT_DELAYED_WORK(&spk_amp_recover_work, do_recover_amp); //<asus-baron20131119+>
 	return 0;
 }
 
