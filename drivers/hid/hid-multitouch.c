@@ -806,6 +806,7 @@ static const struct hid_device_id mt_devices[] = {
 	  .vendor = USB_VENDOR_ID_ATMEL,
           .product = I2CHID_DEVICE_ID_ATMEL_1664T,	
 	},
+/*
         { .driver_data = MT_CLS_SERIAL,
           .bus = BUS_I2C,
           .vendor = USB_VENDOR_ID_ATMEL,
@@ -815,6 +816,12 @@ static const struct hid_device_id mt_devices[] = {
           .bus = BUS_I2C,
           .vendor = USB_VENDOR_ID_ATMEL,
           .product = I2CHID_DEVICE_ID_ATMEL_1664T_LAIBAO,
+        },
+*/
+        { .driver_data = MT_CLS_SERIAL,
+          .bus = BUS_I2C,
+          .vendor = USB_VENDOR_ID_ATMEL,
+          .product = HID_ANY_ID,
         },
 //ASUS-CCA20130820-
 
