@@ -27,6 +27,7 @@ struct elan_pad_data {
 	struct input_dev  *input;
 	unsigned int      max_x;
 	unsigned int      max_y;
+	unsigned int      mid_x;
 	unsigned int      width_x;
 	unsigned int      width_y;
 };
@@ -49,6 +50,8 @@ static int elan_pad_raw_event(struct hid_device *hdev, struct hid_report *report
                         return 0;
 	}
 
+        pos_x = -1;
+        pos_y = -1;
 	for (i = 0 ; i < ETP_MAX_FINGERS ; i++) {
 		finger_on = (data[1] >> (3 + i)) & 0x01;                                                  //byte2: f5|f4|f3|f2|f1|mb|rb|lb
 
@@ -82,7 +85,25 @@ static int elan_pad_raw_event(struct hid_device *hdev, struct hid_report *report
 	}
 
 	input_mt_report_pointer_emulation(input, true);
-	input_report_key(input, BTN_LEFT, ((data[1] & 0x01) == 1));
+
+        //judge left btn or right btn
+        if (pos_x >= 0 && pos_y >= 0) {
+                if ((data[1] & 0x01) == 1) {
+                        //button pressed
+                        if (pos_x < priv_data->mid_x) {
+	                        input_report_key(input, BTN_LEFT, 1);
+                        } else {
+	                        input_report_key(input, BTN_RIGHT, 1);
+                        }
+                } else {
+                        //button released
+                        if (pos_x < priv_data->mid_x) {
+	                        input_report_key(input, BTN_LEFT, 0);
+                        } else {
+	                        input_report_key(input, BTN_RIGHT, 0);
+                        }
+                }
+        }
 	input_sync(input);
 
         return 1;
@@ -113,6 +134,7 @@ static int elan_pad_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	__set_bit(EV_ABS, input->evbit);
 
 	__set_bit(BTN_LEFT, input->keybit);
+	__set_bit(BTN_RIGHT, input->keybit);
 	__set_bit(BTN_TOUCH, input->keybit);
 	__set_bit(BTN_TOOL_FINGER, input->keybit);
 	__set_bit(BTN_TOOL_DOUBLETAP, input->keybit);
@@ -128,6 +150,7 @@ static int elan_pad_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 
         priv_data->max_x = ETP_DEF_MAX_X;
         priv_data->max_y = ETP_DEF_MAX_Y;
+        priv_data->mid_x = (priv_data->max_x >> 1);
         priv_data->width_x = priv_data->max_x / (ETP_DEF_TRACENUM_X - 1);
         priv_data->width_y = priv_data->max_y / (ETP_DEF_TRACENUM_Y - 1);
         x_res = elan_i2c_convert_res(ETP_DEF_RES_X);
