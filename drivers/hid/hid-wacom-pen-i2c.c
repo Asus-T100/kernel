@@ -10,6 +10,9 @@
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/acpi.h>
+#ifdef CONFIG_HAS_EARLYSUSPEND
+#include <linux/earlysuspend.h>
+#endif
 
 #include <linux/hid.h>
 #include <linux/hiddev.h>
@@ -97,6 +100,9 @@ struct i2c_pen_data {
 	u16		        hid_desc_addr;
 
 	struct 	pen_hid_input	*input_buffer;
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	struct early_suspend    early_suspend;
+#endif
 };
 
 //private data of HID Device driver
@@ -520,6 +526,25 @@ static irqreturn_t pen_thread_handler(int id, void *dev)
 	return IRQ_HANDLED;
 
 }
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void pen_early_suspend(struct early_suspend *es)
+{
+	struct i2c_pen_data *data;
+	data = container_of(es, struct i2c_pen_data, early_suspend);
+
+	disable_irq(data->irq);
+	hid_set_power(data->hid, 1);
+}
+
+static void pen_late_resume(struct early_suspend *es)
+{
+	struct i2c_pen_data *data;
+	data = container_of(es, struct i2c_pen_data, early_suspend);
+
+	hid_set_power(data->hid, 0);
+	enable_irq(data->irq);
+}
+#endif
 
 static int __devinit pen_probe(struct i2c_client *client,
                                const struct i2c_device_id *id)
@@ -617,6 +642,12 @@ static int __devinit pen_probe(struct i2c_client *client,
 
 	pen_dbg("<asus-wy> add HID %s\n", hid->name);
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	data->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	data->early_suspend.suspend = pen_early_suspend;
+	data->early_suspend.resume = pen_late_resume;
+	register_early_suspend(&data->early_suspend);
+#endif
 	return 0;
 
 err_free_hid:
