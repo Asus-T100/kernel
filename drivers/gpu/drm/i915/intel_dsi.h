@@ -87,6 +87,7 @@ struct intel_dsi_device {
 	u32 dphy_reg;
 
 	u8 backlight_off_delay; /*in ms*/
+	u16 backlight_on_delay; /*in ms*/ //asus-ethan20131119+
 	bool send_shutdown;
 	u8 shutdown_pkt_delay; /*in ms*/
 
