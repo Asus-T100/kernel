@@ -1226,7 +1226,11 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	init_waitqueue_head(&data->wait);
 	data->client = client;
-	data->gpio_num = 142;//acpi_get_gpio("\\_SB.GPO2", 12);
+#ifdef CONFIG_M81TA
+	data->gpio_num = 158;//GPIO_S5[28]
+#else
+	data->gpio_num = 142;//acpi_get_gpio("\\_SB.GPO2", 12);//GPIO_S5[12]
+#endif
 	i2c_set_clientdata(client, data);
 
 	data->irq = gpio_to_irq(data->gpio_num);
