@@ -13,6 +13,7 @@
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
+#include <linux/switch.h>
 
 #include <linux/hid.h>
 #include <linux/hiddev.h>
@@ -107,6 +108,7 @@ struct i2c_pen_data {
 
 //private data of HID Device driver
 struct hid_pen_data {
+	struct switch_dev       pen_sdev;
         //feature report
         u16               logical_x_max;
         u16               logical_y_max;
@@ -117,6 +119,12 @@ struct hid_pen_data {
 };
 
 //HID Device driver implementation
+static ssize_t asuspen_switch_name(struct switch_dev *sdev, char *buf)
+{
+	struct hid_pen_data *data = container_of (sdev, struct hid_pen_data, pen_sdev);
+
+	return sprintf(buf, "%x\n", data->fw_version);
+}
 static int wacom_pen_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	struct hid_pen_data *data;
@@ -171,6 +179,13 @@ static int wacom_pen_probe(struct hid_device *hdev, const struct hid_device_id *
 	if (ret) {
 	        pen_err("<asus-wy> hid_hw_start error(%d)\n", ret);
                 goto fail;
+        }
+
+        //switch dev to show fw version
+        data->pen_sdev.name = "digitizer";
+        data->pen_sdev.print_name = asuspen_switch_name;
+        if(switch_dev_register(&data->pen_sdev) < 0) {
+	        pen_err("<asus-wy> switch_dev_register for digitizer failed\n");
         }
 
         return 0;
