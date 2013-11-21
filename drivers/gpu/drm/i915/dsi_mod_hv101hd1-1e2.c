@@ -236,7 +236,10 @@ bool hv101hd1_init(struct intel_dsi_device *dsi)
 	dsi->clk_hs_to_lp_count = 0x0D;
 	dsi->video_frmt_cfg_bits = 0;
 	dsi->dphy_reg = 0x360D360B;
-
+    //asus-ethan20131119+
+    dsi->backlight_off_delay = 200;
+	dsi->backlight_on_delay = 200;
+    //asus-ethan20131119-
 	/* Program MIPI reset */
 	//hv101hd1_msgbus_reset(); //<asus-ych20130905>
 
@@ -251,14 +254,14 @@ bool hv101hd1_init(struct intel_dsi_device *dsi)
 void hv101hd1_panel_reset(struct intel_dsi_device *dsi)
 {
      intel_mid_pmic_writeb(0x52,1);//PANEL_EN
-     msleep(300);
+     msleep(100); //asus-ethan20131119+
 
 }
 
 void  hv101hd1_disable_panel_power(struct intel_dsi_device *dsi)
 {
-
-     msleep(200);
+     printk("###ethan hv101hd1_disable_panel_power\n");
+     //msleep(200);//<asus-ethan20131119+>
      intel_mid_pmic_writeb(0x52,0);//PANEL_EN
      msleep(500);
 
