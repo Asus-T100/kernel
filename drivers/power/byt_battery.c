@@ -51,7 +51,7 @@
 #include <linux/input.h>
 #include <linux/firmware.h>
 #include <linux/switch.h>
-
+#include <linux/usb/otg.h>
 
 #define TAG "<asus-hollie>"
 #define ASUS_EC_FIRMWARE "asusec/t2bt0036.EC"
@@ -109,6 +109,12 @@ static struct linux_logo* g_asuslogo[3]= {
 	&logo_asus01_clut224,&logo_asus02_clut224,&logo_asus03_clut224
 };
 
+//<ASUS-Larry 20131121>+
+static const char *bc_extcon_cable[] = {
+	"CHARGER_USB_SDP",
+	NULL,
+};
+//<ASUS-Larry 20131121>-
 
 static int charger_logo_display(struct linux_logo *logo)
 {
@@ -147,7 +153,7 @@ struct byt_chip_info {
 	struct switch_dev dock_sdev;
 	int	dock_status;
 	struct switch_dev pad_sdev;
-
+	struct extcon_dev *bc_edev;	//<ASUS-Larry 20131121>+
 	struct mutex lock;
 
 	u16	ec_fw_addr;
@@ -1199,6 +1205,25 @@ static int byt_usb_status(struct byt_chip_info *chip)
 	return ret;
 }
 
+//<ASUS-Larry 20131120>+
+#ifndef CONFIG_T101TA
+static void otg_state_change(struct byt_chip_info *chip)
+{
+	struct usb_phy	*usb_phy;
+	int mask = 0;
+	usb_phy = usb_get_transceiver();
+
+	if (usb_phy) {
+		mask = byt_usb_status(chip);
+		atomic_notifier_call_chain(&usb_phy->notifier,USB_EVENT_VBUS, &mask);
+	}
+	usb_put_transceiver(usb_phy);
+	if (chip->bc_edev)
+		extcon_set_cable_state(chip->bc_edev,"CHARGER_USB_SDP", mask);
+}
+#endif 
+//<ASUS-Larry 20131120>-
+
 
 static int byt_get_usb_property(struct power_supply *psy,
 		enum power_supply_property psp,
@@ -1553,7 +1578,11 @@ static irqreturn_t byt_thread_handler(int id, void *dev)
 		//asusec_battery_polling(chip,true);
 
 		byt_battery_update(chip);
-		
+//<ASUS-Larry 20131121>+
+#ifndef CONFIG_T101TA
+		otg_state_change(chip);
+#endif
+//<ASUS-Larry 20131121>-
 		power_supply_changed(&chip->usb);
 		power_supply_changed(&chip->ac);
 
@@ -2108,6 +2137,26 @@ static int byt_battery_probe(struct i2c_client *client,
 	if (input_register_device(chip->lid_dev)) {
 		dev_err(&client->dev, "%s input_allocate_device fail\n", TAG);
 	}
+	
+	//<ASUS-Larry 20131121>+
+#ifndef CONFIG_T101TA
+	/* USB switch extcon device initial*/
+	chip->bc_edev = kzalloc(sizeof(struct extcon_dev), GFP_KERNEL);
+	if (!chip->bc_edev) {
+		dev_err(&client->dev, "mem alloc failed\n");
+		ret = -ENOMEM;
+		goto bc_extcon_fail;
+	}
+	chip->bc_edev->name = "EC-Charger";
+	chip->bc_edev->supported_cable = bc_extcon_cable;
+	ret = extcon_dev_register(chip->bc_edev, &chip->client->dev);
+	if (ret) {
+		dev_err(&client->dev, "extcon registration failed!!\n");
+		kfree(chip->bc_edev);
+	}
+bc_extcon_fail:
+#endif
+	//<ASUS-Larry 20131121>-
 
 	//dock
 	chip->dock_sdev.name = "dock";
@@ -2300,6 +2349,17 @@ static int byt_battery_remove(struct i2c_client *client)
 
 	mutex_destroy(&chip->lock);
 	input_unregister_device(chip->lid_dev);
+
+	//<ASUS-Larry 20131121>+
+#ifndef CONFIG_T101TA
+	if (chip->bc_edev) 
+	{
+		extcon_dev_unregister(chip->bc_edev);
+		kfree(chip->bc_edev);
+	}
+#endif
+	//<ASUS-Larry 20131121>-
+	
 	kfree(chip);
 
 	return 0;
