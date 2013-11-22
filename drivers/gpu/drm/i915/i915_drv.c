@@ -40,6 +40,7 @@
 #include "drm_crtc_helper.h"
 /*Added for HDMI Audio */
 #include "hdmi_audio_if.h"
+#include <linux/mfd/intel_mid_pmic.h> //asus-ethan20131122+
 
 int i915_rotation __read_mostly;
 module_param_named(i915_rotation, i915_rotation, int, 0600);
@@ -1210,6 +1211,8 @@ static void i915_pm_shutdown(struct pci_dev *pdev)
 	dev_priv = drm_dev->dev_private;
 
 	dev_priv->shut_down_state = 1;
+	intel_mid_pmic_writeb(0x51, 0x00); //asus-ethan20131122+
+    msleep(200); //asus-ethan20131122+
 	//<asus-pololin20131118+>
 	if (androidboot_mode != BOOTMODE_FOTA)
 		i915_suspend_common(dev);
