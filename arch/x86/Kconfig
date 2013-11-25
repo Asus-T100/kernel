@@ -517,10 +517,10 @@ config T101TA
 	---help---
 		ASUS T101TA
 
-config T103TA
-	bool "T103TA"
+config TD100TA
+	bool "TD100TA"
 	---help---
-		ASUS T103TA
+		ASUS TD100TA
 		
 config M81TA
 	bool "M81TA"
