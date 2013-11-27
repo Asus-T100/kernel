@@ -2199,6 +2199,12 @@ bc_extcon_fail:
 	ret = byt_battery_update(chip);
 	mutex_unlock(&chip->lock);
 
+//<ASUS-Larry 20131121>+
+#ifndef CONFIG_T101TA
+	otg_state_change(chip);
+#endif
+//<ASUS-Larry 20131121>-
+
 	if(!ret){
 		dev_info(&client->dev,"%s byt_battery_probe : get battery info\n", TAG);
 		{
