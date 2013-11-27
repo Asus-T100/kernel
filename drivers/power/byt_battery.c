@@ -787,20 +787,30 @@ static int asusec_get_battery_id(struct byt_chip_info *chip,u8 *battery_id)
 	voltage |= cell_voltage[1];
 	pr_err("%s voltage = %x\n", TAG, voltage);
 
-
-	if((voltage>1000) && (voltage<1050))	//Typical 0x03FB
+// 0~1800mv  map to 0~3FF
+#ifdef CONFIG_M81TA
+	if((voltage>568) && (voltage<1095))	//1000~1927
 	{
 		*battery_id = BATTERY_ID_SANYO;
 		return 0;
 	}
+	return -EIO;
 
-	if((voltage>200) && (voltage<300))	//Typical 0x00F0
-	{
+#else
+	if((voltage>929) && (voltage<1095))	//Typical 0x03FB
+	{//1636~1927
+		*battery_id = BATTERY_ID_SANYO;
+		return 0;
+	}
+
+	if((voltage>209) && (voltage<307))	//Typical 0x00F0
+	{//368~541
 		*battery_id = BATTERY_ID_ATLI;
 		return 0;
 	}
 
 	return -EIO;
+#endif
 
 
 }
