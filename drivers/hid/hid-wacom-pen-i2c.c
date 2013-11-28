@@ -713,8 +713,6 @@ static int __init pen_init(void)
         int ret = 0;
 
 	pen_dbg("<asus-wy> add wacom-pen driver\n");
-        gpio_set_value(101, 1);   //RESET pin: set to high(SOC pulls to low, low active)
-        msleep (200);   //200ms to be operable
 
 	ret = hid_register_driver(&wacom_pen_driver);
 	if (ret) {
