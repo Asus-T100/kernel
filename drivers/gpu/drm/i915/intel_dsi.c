@@ -104,14 +104,6 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	{
-		.panel_id = MIPI_DSI_INNOLUX_N080ICE_PANEL_ID,
-		.type = INTEL_DSI_VIDEO_MODE,
-		.name = "innolux-n080ice-dsi-vid-mode-display",
-		.dev_ops = &innolux_n080ice_dsi_display_ops,
-		.lane_count = 4, /* XXX: this really doesn't belong here */
-	},
-	//<ASUS-Bruce 20131031+>
-	{
 		.panel_id = MIPI_DSI_AUO_B101UAN01_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "auo-b101uan01-dsi-vid-mode-display",
@@ -614,7 +606,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 //<asus-Bruce 20131129+>
 // M81TA need to set CLOCKSTOP bit
 // T100TA, TD100TA dont
-#ifndef M81TA
+#ifndef CONFIG_M81TA
 	if (intel_dsi->dev.eotp_pkt)
 		I915_WRITE(MIPI_EOT_DISABLE(pipe), 0);
 	else
@@ -932,7 +924,8 @@ bool intel_dsi_init(struct drm_device *dev)
 	 * default ASUS panel ID for now */
 	if (i915_mipi_panel_id <= 0) {
 		/* check if panel id available from VBT */
-		if (!dev_priv->mipi.panel_id) {
+//<asus-ych20131129>if (!dev_priv->mipi.panel_id) 
+		{
 			/* default ASUS panel */
 			//dev_priv->mipi.panel_id = MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID; //<asus-Baron20130813->
 #ifdef CONFIG_T101TA			

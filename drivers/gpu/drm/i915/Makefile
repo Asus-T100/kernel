@@ -49,7 +49,6 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  dsi_mod_jdi_lpm070w425b.o \
 	  dsi_mod_hv101hd1-1e2.o \
 	  dsi_mod_vbt_generic.o	\
-	  dsi_mod_innolux_n080ice.o\
 	  dvo_ch7xxx.o \
 	  dvo_ch7017.o \
 	  dvo_ivch.o \
