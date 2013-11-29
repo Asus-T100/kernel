@@ -202,15 +202,11 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 
 	DRM_DEBUG_KMS("\n");
 
-	//<asus-Bruce 20131126+>
-	#ifdef CONFIG_T101TA
     //asus-ethan20131119+
 	if (intel_dsi->dev.dev_ops->enable)
 		intel_dsi->dev.dev_ops->enable(&intel_dsi->dev);
 	//asus-ethan20131119-
-	#endif
-	//<asus-Bruce 20131126->
-	
+
 	if (intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) {
 		intr_stat = I915_READ(MIPI_INTR_STAT(pipe));
 		if (intr_stat & SPL_PKT_SENT_INTERRUPT)
@@ -241,9 +237,7 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 	} else {
 	}
 
-	//<asus-Bruce 20131126+>
-	#ifdef CONFIG_T101TA
-	//asus-ethan20131119+
+    //asus-ethan20131119+
 	/* Adjust backlight timing for specific panel */
 	if (intel_dsi->dev.backlight_on_delay >= 20)
 		msleep(intel_dsi->dev.backlight_on_delay);
@@ -251,12 +245,6 @@ void intel_dsi_enable(struct intel_encoder *encoder)
 		usleep_range(intel_dsi->dev.backlight_on_delay * 1000,
 			(intel_dsi->dev.backlight_on_delay * 1000) + 500);
     //asus-ethan20131119-
-    #else
-	if (intel_dsi->dev.dev_ops->enable)
-		intel_dsi->dev.dev_ops->enable(&intel_dsi->dev);
-	#endif
-    //<asus-Bruce 20131126->
-    
 	intel_panel_enable_backlight(dev, pipe);
 }
 
@@ -292,17 +280,9 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 			return;
 		}
 
-		//<asus-Bruce 20131126+>
-		#ifdef CONFIG_T101TA
 		if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & DPI_FIFO_EMPTY), 100)) {//asus-ethan20131119+
 				DRM_DEBUG_KMS("DPI FIFO not empty\n");
 		}
-		#else
-		if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)), DPI_FIFO_EMPTY) == 0, 100)) {
-				DRM_DEBUG_KMS("DPI FIFO not empty\n");
-		}
-		#endif
-		//<asus-Bruce 20131126->
 
 		if (intel_dsi->dev.send_shutdown == true) {
 			I915_WRITE(MIPI_DPI_CONTROL(pipe), SHUTDOWN);
@@ -327,15 +307,6 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 					intel_dsi->dev.shutdown_pkt_delay *
 					1000 + 500);
 		}
-		/* If DPI is disabled before sending shutdown command then
-                * sending shutdown special packet fails */
-               //<asus-Bruce 20131126+>
-               #ifdef CONFIG_T101TA
-			   #else
-               I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), 0, DPI_ENABLE);
-               usleep_range(1000, 1500);
-			   #endif
-			   //<asus-Bruce 20131126->
 	} else {
 		/* TBD: Command mode handling */
 	}
@@ -344,16 +315,12 @@ void intel_dsi_disable(struct intel_encoder *encoder)
 	 * some next enable sequence send turn on packet error is observed */
 	if (intel_dsi->dev.dev_ops->disable)
 		intel_dsi->dev.dev_ops->disable(&intel_dsi->dev);
-	//<asus-Bruce 20131126+>
-	#ifdef CONFIG_T101TA
     //asus-ethan20131119+
 	/* If DPI is disabled before sending shutdown command then
 		 * sending shutdown special packet fails */
 		I915_WRITE_BITS(MIPI_PORT_CTRL(pipe), 0, DPI_ENABLE);
 		usleep_range(1000, 1500);
 	//asus-ethan20131119-
-	#endif
-	//<asus-Bruce 20131126->
 }
 
 void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
@@ -365,11 +332,7 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 
 	DRM_DEBUG_KMS("\n");
 
-	//<asus-Bruce 20131126+>
-	#ifdef CONFIG_T101TA
     intel_dsi_disable(encoder);//asus-ethan20131119+
-    #endif
-	//<asus-Bruce 20131126->
 
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
 							ULPS_STATE_MASK);
@@ -500,14 +463,7 @@ static void intel_dsi_mode_prepare(struct drm_encoder *encoder)
 		return;
 	}
 
-	//<asus-Bruce 20131126+>
-	#ifdef CONFIG_T101TA
-	#else
-	intel_dsi_disable(intel_encoder);
-	#endif	
 	//intel_dsi_disable(intel_encoder); asus-ethan20131119+
-	//<asus-Bruce 20131126->
-
 }
 
 static void intel_dsi_commit(struct drm_encoder *encoder)

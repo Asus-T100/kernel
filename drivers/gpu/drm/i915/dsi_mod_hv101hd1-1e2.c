@@ -236,14 +236,10 @@ bool hv101hd1_init(struct intel_dsi_device *dsi)
 	dsi->clk_hs_to_lp_count = 0x0D;
 	dsi->video_frmt_cfg_bits = 0;
 	dsi->dphy_reg = 0x360D360B;
-	//<asus-Bruce 20131126+>
-    #ifdef CONFIG_T101TA
     //asus-ethan20131119+
     dsi->backlight_off_delay = 200;
-    dsi->backlight_on_delay = 200;
+	dsi->backlight_on_delay = 200;
     //asus-ethan20131119-
-    #endif
-	//<asus-Bruce 20131126->
 	/* Program MIPI reset */
 	//hv101hd1_msgbus_reset(); //<asus-ych20130905>
 
@@ -258,24 +254,14 @@ bool hv101hd1_init(struct intel_dsi_device *dsi)
 void hv101hd1_panel_reset(struct intel_dsi_device *dsi)
 {
      intel_mid_pmic_writeb(0x52,1);//PANEL_EN
-     //<asus-Bruce 20131126+>
-     #ifdef CONFIG_T101TA
      msleep(100); //asus-ethan20131119+
-     #else
-	 msleep(300);
-	 #endif
-	 //<asus-Bruce 20131126->
+
 }
 
 void  hv101hd1_disable_panel_power(struct intel_dsi_device *dsi)
-{    
+{
      printk("###ethan hv101hd1_disable_panel_power\n");
-	 //<asus-Bruce 20131126+>
-	 #ifdef CONFIG_T101TA
-	 #else
-     msleep(200);//<asus-ethan20131119+>
-     #endif
-	 //<asus-Bruce 20131126->
+     //msleep(200);//<asus-ethan20131119+>
      intel_mid_pmic_writeb(0x52,0);//PANEL_EN
      msleep(500);
 
