@@ -122,6 +122,7 @@ static void n080ice_dpms(struct intel_dsi_device *dsi, bool enable)
 void n080ice_panel_reset(struct intel_dsi_device *dsi)
 {
 	intel_mid_pmic_writeb(0x52, 1);
+	msleep(20);	//<asus-Bruce 20131129+>
 }
 
 void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
@@ -628,6 +629,7 @@ bool n080ice_init(struct intel_dsi_device *dsi)
 	dsi->video_frmt_cfg_bits = DISABLE_VIDEO_BTA;
 	dsi->dphy_reg = 0x340F370B;
 
+	dsi->backlight_on_delay = 100;	//<asus-Bruce 20131129+>
 	dsi->backlight_off_delay = 134;
 	dev_priv->mipi.panel_bpp = 24;
 

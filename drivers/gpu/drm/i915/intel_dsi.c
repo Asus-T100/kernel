@@ -148,6 +148,15 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	//<asus-Baron20130813-
+	//<asus-Bruce 20131129+>
+	{
+		.panel_id = MIPI_DSI_INNOLUX_N080ICE_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "innolux-n080ice-dsi-vid-mode-display",
+		.dev_ops = &innolux_n080ice_dsi_display_ops,
+		.lane_count = 4, /* XXX: this really doesn't belong here */
+	},
+	//<asus-Bruce 20131129->
 };
 
 /* Prototype for internal functions */
@@ -340,7 +349,8 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 
 	DRM_DEBUG_KMS("\n");
 
-    intel_dsi_disable(encoder);//asus-ethan20131119+
+	
+//<asus-Bruce 20131129>    intel_dsi_disable(encoder);  
 
 	I915_WRITE_BITS(MIPI_DEVICE_READY(pipe), ULPS_STATE_ENTER,
 							ULPS_STATE_MASK);
@@ -471,7 +481,7 @@ static void intel_dsi_mode_prepare(struct drm_encoder *encoder)
 		return;
 	}
 
-	//intel_dsi_disable(intel_encoder); asus-ethan20131119+
+	intel_dsi_disable(intel_encoder); //<asus-Bruce 20131129+> reopen
 }
 
 static void intel_dsi_commit(struct drm_encoder *encoder)
@@ -601,13 +611,19 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	/* in terms of low power clock */
 	I915_WRITE(MIPI_INIT_COUNT(pipe), intel_dsi->dev.init_count);
 
-	/* <ASUS-Bruce 20131031 modified>
+//<asus-Bruce 20131129+>
+// M81TA need to set CLOCKSTOP bit
+// T100TA, TD100TA dont
+#ifndef M81TA
 	if (intel_dsi->dev.eotp_pkt)
 		I915_WRITE(MIPI_EOT_DISABLE(pipe), 0);
 	else
 		I915_WRITE(MIPI_EOT_DISABLE(pipe), 1);
-	*/
-	I915_WRITE(MIPI_EOT_DISABLE(pipe), intel_dsi->dev.eotp_pkt); //<ASUS-Bruce 20131031+>
+#else
+	I915_WRITE(MIPI_EOT_DISABLE(pipe), intel_dsi->dev.eotp_pkt);
+#endif
+//<asus-Bruce 20131129+>
+
 
 	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), \
 					intel_dsi->dev.hs_to_lp_count);
@@ -919,7 +935,13 @@ bool intel_dsi_init(struct drm_device *dev)
 		if (!dev_priv->mipi.panel_id) {
 			/* default ASUS panel */
 			//dev_priv->mipi.panel_id = MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID; //<asus-Baron20130813->
+#ifdef CONFIG_T101TA			
 			dev_priv->mipi.panel_id = MIPI_DSI_HV101HD1_PANEL_ID; //<asus-Baron20130813+>
+#elif CONFIG_M81TA
+			dev_priv->mipi.panel_id = MIPI_DSI_INNOLUX_N080ICE_PANEL_ID; //<asus-Bruce 20131129+>
+#elif CONFIG_TD100TA
+			dev_priv->mipi.panel_id = MIPI_DSI_AUO_B101UAN01_PANEL_ID;	//<asus-Bruce 20131129+>
+#endif
 		}
 	} else
 		dev_priv->mipi.panel_id = i915_mipi_panel_id;
