@@ -389,8 +389,9 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	}
 	/* mask all SSP and DMA interrupts to IA - enable when needed */
 //<asus-baron20131101->	sst_shim_write64(ctx->shim, SST_IMRX, 0xFFFF0038);
-	sst_shim_write64(ctx->shim, SST_IMRX, 0xFFFF0000);//<asus-baron20131101+>
-
+//<asus-baron20131127->	sst_shim_write64(ctx->shim, SST_IMRX, 0xFFFF0000);//<asus-baron20131101+>
+	/* mask all SSP and DMA interrupts to IA - enable only SSP1 for IA */
+	sst_shim_write64(ctx->shim, SST_IMRX, 0xFFFF0028); //<asus-baron20131127+>
 	if (ctx->use_32bit_ops) {
 		pr_debug("allocate mem for context save/restore\n ");
 		/*allocate mem for fw context save during suspend*/
