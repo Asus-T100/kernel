@@ -21,7 +21,8 @@
 #include <asm/intel-mid.h>
 #include <asm/processor.h>
 #include <asm/pci_x86.h>
-
+//<asus-baron20131130+>
+/*
 #define ILB_BASE	0xfed08000
 #define ILB_SIZE	0xa0
 #define ILB_IR		0x20
@@ -29,17 +30,20 @@
 #define IR_INTA(ir)	(ir & 0xf)
 
 #define PIRQ2IRQ(x)	(x + 16)
-
+*/
+//<asus-baron20131130->
 extern struct legacy_pic default_legacy_pic;
 
 /* Propagate PCI IRQ# */
 static int vlv2_pci_enable_irq(struct pci_dev *pdev)
 {
 
-	u8 ir_val, dev;
-	void __iomem *ilb_mem;
+//<asus-baron20131130->	u8 ir_val, dev;
+//<asus-baron20131130->	void __iomem *ilb_mem;
 	struct io_apic_irq_attr irq_attr;
 
+//<asus-baron20131130+>
+/*
 	ilb_mem = ioremap_nocache(ILB_BASE, ILB_SIZE);
 	if (ilb_mem == NULL) {
 		pr_err("%s(): can't map ILB_BASE(0x%x)\n",
@@ -51,11 +55,13 @@ static int vlv2_pci_enable_irq(struct pci_dev *pdev)
 	ir_val = ioread8(ilb_mem + ILB_IR + PCI_DEV_NUM(pdev->devfn) * 2);
 
 	iounmap(ilb_mem);
-
+*/
 	/* map INTA# only */
+/*
 	pdev->irq = PIRQ2IRQ(IR_INTA(ir_val));
 	pci_write_config_byte(pdev, PCI_INTERRUPT_LINE, pdev->irq);
-
+*/
+//<asus-baron20131130->
 	irq_attr.ioapic = mp_find_ioapic(pdev->irq);
 	irq_attr.ioapic_pin = pdev->irq;
 	irq_attr.trigger = 1; /* level */
