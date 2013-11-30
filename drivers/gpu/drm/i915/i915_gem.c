@@ -1389,10 +1389,21 @@ static int
 i915_gem_object_put_pages_gtt(struct drm_i915_gem_object *obj)
 {
 	int page_count = obj->base.size / PAGE_SIZE;
-	int i;
+//<asus-baron20131130->	int i;
+	int ret, i; //<asus-baron20131130+>
 
 	BUG_ON(obj->madv == __I915_MADV_PURGED);
-
+//<asus-baron20131130+>
+	ret = i915_gem_object_set_to_cpu_domain(obj, true);
+	if (ret) {
+		/* In the event of a disaster, abandon all caches and
+		 * hope for the best.
+		 */
+		WARN_ON(ret != -EIO);
+		i915_gem_clflush_object(obj);
+		obj->base.read_domains = obj->base.write_domain = I915_GEM_DOMAIN_CPU;
+	}
+//<asus-baron20131130->
 	if (i915_gem_object_needs_bit17_swizzle(obj))
 		i915_gem_object_save_bit_17_swizzle(obj);
 
@@ -1406,9 +1417,11 @@ i915_gem_object_put_pages_gtt(struct drm_i915_gem_object *obj)
 		if (obj->madv == I915_MADV_WILLNEED)
 			mark_page_accessed(obj->pages[i]);
 
-		if (likely(obj->pages[i])) page_cache_release(obj->pages[i]);
+//<asus-baron20131130->		if (likely(obj->pages[i])) page_cache_release(obj->pages[i]);
+		if (likely(PAGE_MASK&(unsigned long)obj->pages[i])) page_cache_release(obj->pages[i]); //<asus-baron20131130+>
 		else
-			DRM_ERROR("i915_gem_object_put_pages_gtt found page was NULL(%d)!\n", i);
+			DRM_ERROR("i915_gem_object_put_pages_gtt found abnormal page[%d]=0x%p!\n", i, obj->pages[i]);//<asus-baron20131130+>
+//<asus-baron20131130->			DRM_ERROR("i915_gem_object_put_pages_gtt found page was NULL(%d)!\n", i);
 	}
 	obj->dirty = 0;
 
