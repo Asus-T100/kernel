@@ -534,6 +534,9 @@ typedef struct drm_i915_private {
 	u32 hotplug_supported_mask;
 	struct work_struct hotplug_work;
 
+	#define I915_PAGEFLIP_CHECK_DELAY (250) /* in ms */ //<asus-baron20131130+>
+	struct timer_list pageflip_stall_check_timer; //<asus-baron20131130+>
+
 	unsigned int sr01, adpa, ppcr, dvob, dvoc, lvds;
 	int num_pipe;
 	int num_plane; /* number of sprite planes per pipe */
@@ -1071,6 +1074,14 @@ typedef struct drm_i915_private {
 	int shut_down_state;
 	bool is_resuming;
 	bool is_turbo_enabled;
+//<asus-baron20131130+>
+	u32 i915_reg70008;
+	u32 i915_reg70024;
+	u32 i915_reg70180;
+	u32 i915_curAddr;
+	u32 i915_intel_pin_and_fence_fb_obj;
+	u32 i915_flipcnt;
+//<asus-baron20131130->
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */

@@ -1,0 +1,257 @@
+diff --git a/drivers/gpu/drm/i915/i915_drv.h b/drivers/gpu/drm/i915/i915_drv.h
+index 0de580c..b058bc9 100644
+--- a/drivers/gpu/drm/i915/i915_drv.h
++++ b/drivers/gpu/drm/i915/i915_drv.h
+@@ -534,6 +534,9 @@ typedef struct drm_i915_private {
+ 	u32 hotplug_supported_mask;
+ 	struct work_struct hotplug_work;
+ 
++	#define I915_PAGEFLIP_CHECK_DELAY (250) /* in ms */
++	struct timer_list pageflip_stall_check_timer;
++
+ 	unsigned int sr01, adpa, ppcr, dvob, dvoc, lvds;
+ 	int num_pipe;
+ 	int num_plane; /* number of sprite planes per pipe */
+@@ -1071,6 +1074,13 @@ typedef struct drm_i915_private {
+ 	int shut_down_state;
+ 	bool is_resuming;
+ 	bool is_turbo_enabled;
++
++	u32 i915_reg70008;
++	u32 i915_reg70024;
++	u32 i915_reg70180;
++	u32 i915_curAddr;
++	u32 i915_intel_pin_and_fence_fb_obj;
++	u32 i915_flipcnt;
+ } drm_i915_private_t;
+ 
+ /* Iterate over initialised rings */
+diff --git a/drivers/gpu/drm/i915/i915_irq.c b/drivers/gpu/drm/i915/i915_irq.c
+index 00741d3..6cc269a 100644
+--- a/drivers/gpu/drm/i915/i915_irq.c
++++ b/drivers/gpu/drm/i915/i915_irq.c
+@@ -41,6 +41,15 @@
+ /* Added for HDMI Audio */
+ #include "hdmi_audio_if.h"
+ 
++extern void intel_enable_plane(struct drm_i915_private *dev_priv,
++			       enum plane plane, enum pipe pipe);
++extern void intel_disable_plane(struct drm_i915_private *dev_priv,
++				enum plane plane, enum pipe pipe);
++extern void intel_disable_pipe(struct drm_i915_private *dev_priv,
++			       enum pipe pipe);
++extern void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
++			      bool pch_port);
++
+ /* For display hotplug interrupt */
+ static void
+ ironlake_enable_display_irq(drm_i915_private_t *dev_priv, u32 mask)
+@@ -3209,6 +3218,80 @@ static void i965_irq_uninstall(struct drm_device * dev)
+ 	I915_WRITE(IIR, I915_READ(IIR));
+ }
+ 
++static void i915_pageflip_stall_check_timer_func(unsigned long data)
++{
++	int pipe = PIPE_A;
++	struct drm_device *dev = (struct drm_device *)data;
++	drm_i915_private_t *dev_priv = dev->dev_private;
++	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
++	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
++	struct drm_i915_gem_object *obj;
++	struct intel_unpin_work *work;
++	unsigned long flags;
++	bool stall_detected;
++
++	printk("%s\n", __func__);
++	/* Ignore early vblank irqs */
++	if (intel_crtc == NULL)
++		return;
++
++	spin_lock_irqsave(&dev->event_lock, flags);
++	work = intel_crtc->unpin_work;
++
++	if (work == NULL) {
++		spin_unlock_irqrestore(&dev->event_lock, flags);
++		printk("%s, work is null\n", __func__);
++		return;
++	} else if (work->pending || !work->enable_stall_check) {
++		/* Either the pending flip IRQ arrived, or we're too early. Don't check */
++		spin_unlock_irqrestore(&dev->event_lock, flags);
++		printk("%s, pending %d, stall check %d\n", __func__, work->pending, work->enable_stall_check);
++		return;
++	}
++
++	/* Potential stall - if we see that the flip has happened, assume a missed interrupt */
++	obj = work->pending_flip_obj;
++	stall_detected = work->pending;
++
++	spin_unlock_irqrestore(&dev->event_lock, flags);
++
++	if (stall_detected == 0) {
++		unsigned long reg70008=0;
++		unsigned long reg70024=0;
++		unsigned long reg70180=0;
++		reg70008 = I915_READ(0x70008+0x180000);
++		reg70024 = I915_READ(0x70024+0x180000);
++		reg70180 = I915_READ(0x70180+0x180000);
++
++		printk("Page_flipStall_Detected_1 [work->pending=%x][reg70008=%x][reg70024=%x][ reg70180=%x]\n",
++					work->pending,reg70008, reg70024, reg70180);
++
++		printk("Page_flipStall_Detected_2 [i915reg70008=%x][i915reg70024=%x][i915reg70180=%x][curAddr=%x][flipcnt=%x]\n",
++					dev_priv->i915_reg70008, dev_priv->i915_reg70024, dev_priv->i915_reg70180, dev_priv->i915_curAddr, dev_priv->i915_flipcnt);
++
++		intel_prepare_page_flip(dev, intel_crtc->plane);
++		intel_finish_page_flip(dev, pipe);
++
++		{
++			int _pipe = intel_crtc->pipe;
++			int _plane = intel_crtc->plane;
++			intel_disable_plane(dev_priv, _plane, _pipe);
++			mdelay(1);
++			intel_disable_pipe(dev_priv, _pipe);
++
++			intel_enable_pipe(dev_priv, _pipe, false);
++			intel_enable_plane(dev_priv, _plane, _pipe);
++
++			DRM_ERROR("i915 dis/en pipe to recover \n");
++		}
++
++	}
++	else
++	{
++		printk("Pageflip is not stall");
++	}
++}
++
+ void intel_irq_init(struct drm_device *dev)
+ {
+ 	struct drm_i915_private *dev_priv = dev->dev_private;
+@@ -3219,6 +3302,10 @@ void intel_irq_init(struct drm_device *dev)
+ 	INIT_WORK(&dev_priv->rps.work, gen6_pm_rps_work);
+ 	INIT_WORK(&dev_priv->parity_error_work, ivybridge_parity_work);
+ 
++	setup_timer(&dev_priv->pageflip_stall_check_timer,
++		    i915_pageflip_stall_check_timer_func,
++		    (unsigned long) dev);
++
+ 	dev->driver->get_vblank_counter = i915_get_vblank_counter;
+ 	dev->max_vblank_count = 0xffffff; /* only 24 bits of frame count */
+ 	if (IS_G4X(dev) || INTEL_INFO(dev)->gen >= 5) {
+diff --git a/drivers/gpu/drm/i915/intel_display.c b/drivers/gpu/drm/i915/intel_display.c
+index 163302b..a5874f4 100755
+--- a/drivers/gpu/drm/i915/intel_display.c
++++ b/drivers/gpu/drm/i915/intel_display.c
+@@ -1862,7 +1862,7 @@ static void intel_disable_transcoder(struct drm_i915_private *dev_priv,
+  * Will wait until the pipe is actually running (i.e. first vblank) before
+  * returning.
+  */
+-static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
++void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
+ 			      bool pch_port)
+ {
+ 	int reg;
+@@ -1924,7 +1924,7 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
+  *
+  * Will wait until the pipe has shut down before returning.
+  */
+-static void intel_disable_pipe(struct drm_i915_private *dev_priv,
++void intel_disable_pipe(struct drm_i915_private *dev_priv,
+ 			       enum pipe pipe)
+ {
+ 	int reg;
+@@ -1975,7 +1975,7 @@ void intel_flush_display_plane(struct drm_i915_private *dev_priv,
+  *
+  * Enable @plane on @pipe, making sure that @pipe is running first.
+  */
+-static void intel_enable_plane(struct drm_i915_private *dev_priv,
++void intel_enable_plane(struct drm_i915_private *dev_priv,
+ 			       enum plane plane, enum pipe pipe)
+ {
+ 	int reg;
+@@ -2010,7 +2010,7 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
+  *
+  * Disable @plane; should be an independent operation.
+  */
+-static void intel_disable_plane(struct drm_i915_private *dev_priv,
++void intel_disable_plane(struct drm_i915_private *dev_priv,
+ 				enum plane plane, enum pipe pipe)
+ {
+ 	int reg;
+@@ -2447,6 +2447,12 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
+ 
+ 	I915_WRITE(DSPSTRIDE(plane), fb->pitches[0]);
+ 	if (INTEL_INFO(dev)->gen >= 4) {
++		dev_priv->i915_reg70008 = I915_READ(0x70008+0x180000);
++		dev_priv->i915_reg70024 = I915_READ(0x70024+0x180000);
++		dev_priv->i915_reg70180 = I915_READ(0x70180+0x180000);
++		dev_priv->i915_curAddr  = obj->gtt_offset + intel_crtc->dspaddr_offset;
++		dev_priv->i915_flipcnt++;
++
+ 		I915_MODIFY_DISPBASE(DSPSURF(plane),
+ 				     obj->gtt_offset + intel_crtc->dspaddr_offset);
+ 		if (rotate) {
+@@ -7096,6 +7102,9 @@ static void do_intel_finish_page_flip(struct drm_device *dev,
+ 
+ 	drm_vblank_put(dev, intel_crtc->pipe);
+ 
++	if (intel_crtc->pipe == PIPE_A)
++		del_timer(&dev_priv->pageflip_stall_check_timer);
++
+ 	spin_unlock_irqrestore(&dev->event_lock, flags);
+ 
+ 	obj = work->old_fb_obj;
+@@ -7319,6 +7328,7 @@ static void intel_vlv_queue_flip_work(struct work_struct *__work)
+ 		container_of(__work, struct i915_flip_work, work);
+ 	int ret = 0;
+ 	struct drm_crtc *crtc = flipwork->flipdata.crtc;
++	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+ 	struct drm_device *dev = crtc->dev;
+ 	struct drm_i915_private *dev_priv = dev->dev_private;
+ 	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
+@@ -7335,6 +7345,11 @@ static void intel_vlv_queue_flip_work(struct work_struct *__work)
+ 		DRM_ERROR("wait_seqno failed\n");
+ 
+ 	i9xx_update_plane(crtc, crtc->fb, 0, 0);
++
++	/* stall check timer mainly for pipe A */
++	if (intel_crtc->pipe == PIPE_A)
++		mod_timer(&dev_priv->pageflip_stall_check_timer,
++			 jiffies + msecs_to_jiffies(I915_PAGEFLIP_CHECK_DELAY));
+ }
+ 
+ /*
+@@ -7364,8 +7379,10 @@ static int intel_vlv_queue_flip(struct drm_device *dev,
+ 	}
+ 
+ 	ret = intel_pin_and_fence_fb_obj(dev, obj, ring);
+-	if (ret)
++	if (ret) {
++		dev_priv->i915_intel_pin_and_fence_fb_obj = 1;
+ 		goto err;
++	}
+ 
+ 	switch (intel_crtc->plane) {
+ 	case PLANE_A:
+@@ -7550,7 +7567,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
+ 		kfree(work);
+ 		drm_vblank_put(dev, intel_crtc->pipe);
+ 		intel_crtc->unpin_work = NULL;
+-		DRM_DEBUG_DRIVER("flip queue: crtc already busy\n");
++		DRM_ERROR("flip queue: crtc already busy\n");
+ 		return -EBUSY;
+ 	}
+ 	intel_crtc->unpin_work = work;
+@@ -7579,6 +7596,12 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
+ 	 */
+ 	atomic_add(1 << intel_crtc->plane, &work->old_fb_obj->pending_flip);
+ 
++	dev_priv->i915_curAddr =0xdeadbeef;
++	dev_priv->i915_intel_pin_and_fence_fb_obj = 0x0;
++	dev_priv->i915_reg70008 = 0xdeadbeef;
++	dev_priv->i915_reg70024 = 0xdeadbeef;
++	dev_priv->i915_reg70180 = 0xdeadbeef;
++
+ 	ret = dev_priv->display.queue_flip(dev, crtc, fb, obj);
+ 	if (ret)
+ 		goto cleanup_pending;

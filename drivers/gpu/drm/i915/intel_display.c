@@ -1862,7 +1862,8 @@ static void intel_disable_transcoder(struct drm_i915_private *dev_priv,
  * Will wait until the pipe is actually running (i.e. first vblank) before
  * returning.
  */
-static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
+//<asus-baron20131130->static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
+void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe, //<asus-baron20131130+>
 			      bool pch_port)
 {
 	int reg;
@@ -1924,7 +1925,8 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
  *
  * Will wait until the pipe has shut down before returning.
  */
-static void intel_disable_pipe(struct drm_i915_private *dev_priv,
+//<asus-baron20131130->static void intel_disable_pipe(struct drm_i915_private *dev_priv,
+void intel_disable_pipe(struct drm_i915_private *dev_priv, //<asus-baron20131130+>
 			       enum pipe pipe)
 {
 	int reg;
@@ -1975,7 +1977,8 @@ void intel_flush_display_plane(struct drm_i915_private *dev_priv,
  *
  * Enable @plane on @pipe, making sure that @pipe is running first.
  */
-static void intel_enable_plane(struct drm_i915_private *dev_priv,
+//<asus-baron20131130->static void intel_enable_plane(struct drm_i915_private *dev_priv,
+void intel_enable_plane(struct drm_i915_private *dev_priv, //<asus-baron20131130+>
 			       enum plane plane, enum pipe pipe)
 {
 	int reg;
@@ -2010,7 +2013,8 @@ static void intel_enable_plane(struct drm_i915_private *dev_priv,
  *
  * Disable @plane; should be an independent operation.
  */
-static void intel_disable_plane(struct drm_i915_private *dev_priv,
+//<asus-baron20131130->static void intel_disable_plane(struct drm_i915_private *dev_priv,
+void intel_disable_plane(struct drm_i915_private *dev_priv, //<asus-baron20131130+>
 				enum plane plane, enum pipe pipe)
 {
 	int reg;
@@ -2447,6 +2451,13 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 
 	I915_WRITE(DSPSTRIDE(plane), fb->pitches[0]);
 	if (INTEL_INFO(dev)->gen >= 4) {
+//<asus-baron20131130+>
+		dev_priv->i915_reg70008 = I915_READ(0x70008+0x180000);
+		dev_priv->i915_reg70024 = I915_READ(0x70024+0x180000);
+		dev_priv->i915_reg70180 = I915_READ(0x70180+0x180000);
+		dev_priv->i915_curAddr  = obj->gtt_offset + intel_crtc->dspaddr_offset;
+		dev_priv->i915_flipcnt++;
+//<asus-baron20131130->
 		I915_MODIFY_DISPBASE(DSPSURF(plane),
 				     obj->gtt_offset + intel_crtc->dspaddr_offset);
 		if (rotate) {
@@ -7096,6 +7107,9 @@ static void do_intel_finish_page_flip(struct drm_device *dev,
 
 	drm_vblank_put(dev, intel_crtc->pipe);
 
+	if (intel_crtc->pipe == PIPE_A) //<asus-baron20131130+>
+		del_timer(&dev_priv->pageflip_stall_check_timer); //<asus-baron20131130+>
+
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 	obj = work->old_fb_obj;
@@ -7149,7 +7163,7 @@ static int intel_gen2_queue_flip(struct drm_device *dev,
 				 struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc); //<asus-baron20131130+>
 	u32 flip_mask;
 	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
 	int ret;
@@ -7319,6 +7333,7 @@ static void intel_vlv_queue_flip_work(struct work_struct *__work)
 		container_of(__work, struct i915_flip_work, work);
 	int ret = 0;
 	struct drm_crtc *crtc = flipwork->flipdata.crtc;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_ring_buffer *ring = &dev_priv->ring[RCS];
@@ -7335,6 +7350,13 @@ static void intel_vlv_queue_flip_work(struct work_struct *__work)
 		DRM_ERROR("wait_seqno failed\n");
 
 	i9xx_update_plane(crtc, crtc->fb, 0, 0);
+
+	/* stall check timer mainly for pipe A */
+//<asus-baron20131130+>
+	if (intel_crtc->pipe == PIPE_A)
+		mod_timer(&dev_priv->pageflip_stall_check_timer,
+			 jiffies + msecs_to_jiffies(I915_PAGEFLIP_CHECK_DELAY));
+//<asus-baron20131130->
 }
 
 /*
@@ -7364,8 +7386,10 @@ static int intel_vlv_queue_flip(struct drm_device *dev,
 	}
 
 	ret = intel_pin_and_fence_fb_obj(dev, obj, ring);
-	if (ret)
+	if (ret) {
+		dev_priv->i915_intel_pin_and_fence_fb_obj = 1; //<asus-baron20131130+>
 		goto err;
+	}
 
 	switch (intel_crtc->plane) {
 	case PLANE_A:
@@ -7578,7 +7602,13 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	 * the flip occurs and the object is no longer visible.
 	 */
 	atomic_add(1 << intel_crtc->plane, &work->old_fb_obj->pending_flip);
-
+//<asus-baron20131130+>
+	dev_priv->i915_curAddr =0xdeadbeef;
+	dev_priv->i915_intel_pin_and_fence_fb_obj = 0x0;
+	dev_priv->i915_reg70008 = 0xdeadbeef;
+	dev_priv->i915_reg70024 = 0xdeadbeef;
+	dev_priv->i915_reg70180 = 0xdeadbeef;
+//<asus-baron20131130->
 	ret = dev_priv->display.queue_flip(dev, crtc, fb, obj);
 	if (ret)
 		goto cleanup_pending;

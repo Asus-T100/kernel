@@ -40,7 +40,16 @@
 
 /* Added for HDMI Audio */
 #include "hdmi_audio_if.h"
-
+//<asus-baron20131130+>
+extern void intel_enable_plane(struct drm_i915_private *dev_priv,
+			       enum plane plane, enum pipe pipe);
+extern void intel_disable_plane(struct drm_i915_private *dev_priv,
+				enum plane plane, enum pipe pipe);
+extern void intel_disable_pipe(struct drm_i915_private *dev_priv,
+			       enum pipe pipe);
+extern void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
+			      bool pch_port);
+//<asus-baron20131130->
 /* For display hotplug interrupt */
 static void
 ironlake_enable_display_irq(drm_i915_private_t *dev_priv, u32 mask)
@@ -3208,7 +3217,81 @@ static void i965_irq_uninstall(struct drm_device * dev)
 			   I915_READ(PIPESTAT(pipe)) & 0x8000ffff);
 	I915_WRITE(IIR, I915_READ(IIR));
 }
+//<asus-baron20131130+>
+static void i915_pageflip_stall_check_timer_func(unsigned long data)
+{
+	int pipe = PIPE_A;
+	struct drm_device *dev = (struct drm_device *)data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct drm_i915_gem_object *obj;
+	struct intel_unpin_work *work;
+	unsigned long flags;
+	bool stall_detected;
 
+	printk("%s\n", __func__);
+	/* Ignore early vblank irqs */
+	if (intel_crtc == NULL)
+		return;
+
+	spin_lock_irqsave(&dev->event_lock, flags);
+	work = intel_crtc->unpin_work;
+
+	if (work == NULL) {
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+		printk("%s, work is null\n", __func__);
+		return;
+	} else if (work->pending || !work->enable_stall_check) {
+		/* Either the pending flip IRQ arrived, or we're too early. Don't check */
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+		printk("%s, pending %d, stall check %d\n", __func__, work->pending, work->enable_stall_check);
+		return;
+	}
+
+	/* Potential stall - if we see that the flip has happened, assume a missed interrupt */
+	obj = work->pending_flip_obj;
+	stall_detected = work->pending;
+
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+
+	if (stall_detected == 0) {
+		unsigned long reg70008=0;
+		unsigned long reg70024=0;
+		unsigned long reg70180=0;
+		reg70008 = I915_READ(0x70008+0x180000);
+		reg70024 = I915_READ(0x70024+0x180000);
+		reg70180 = I915_READ(0x70180+0x180000);
+
+		printk("Page_flipStall_Detected_1 [work->pending=%x][reg70008=%x][reg70024=%x][ reg70180=%x]\n",
+					work->pending,reg70008, reg70024, reg70180);
+
+		printk("Page_flipStall_Detected_2 [i915reg70008=%x][i915reg70024=%x][i915reg70180=%x][curAddr=%x][flipcnt=%x]\n",
+					dev_priv->i915_reg70008, dev_priv->i915_reg70024, dev_priv->i915_reg70180, dev_priv->i915_curAddr, dev_priv->i915_flipcnt);
+
+		intel_prepare_page_flip(dev, intel_crtc->plane);
+		intel_finish_page_flip(dev, pipe);
+
+		{
+			int _pipe = intel_crtc->pipe;
+			int _plane = intel_crtc->plane;
+			intel_disable_plane(dev_priv, _plane, _pipe);
+			mdelay(1);
+			intel_disable_pipe(dev_priv, _pipe);
+
+			intel_enable_pipe(dev_priv, _pipe, false);
+			intel_enable_plane(dev_priv, _plane, _pipe);
+
+			DRM_ERROR("i915 dis/en pipe to recover \n");
+		}
+
+	}
+	else
+	{
+		printk("Pageflip is not stall");
+	}
+}
+//<asus-baron20131130->
 void intel_irq_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -3218,7 +3301,11 @@ void intel_irq_init(struct drm_device *dev)
 	init_waitqueue_head(&dev_priv->error_queue);
 	INIT_WORK(&dev_priv->rps.work, gen6_pm_rps_work);
 	INIT_WORK(&dev_priv->parity_error_work, ivybridge_parity_work);
-
+//<asus-baron20131130+>
+	setup_timer(&dev_priv->pageflip_stall_check_timer,
+		    i915_pageflip_stall_check_timer_func,
+		    (unsigned long) dev);
+//<asus-baron20131130->
 	dev->driver->get_vblank_counter = i915_get_vblank_counter;
 	dev->max_vblank_count = 0xffffff; /* only 24 bits of frame count */
 	if (IS_G4X(dev) || INTEL_INFO(dev)->gen >= 5) {
