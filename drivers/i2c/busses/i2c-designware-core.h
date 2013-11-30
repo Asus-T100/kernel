@@ -36,6 +36,8 @@
 #define DW_IC_SS_SCL_LCNT	0x18
 #define DW_IC_FS_SCL_HCNT	0x1c
 #define DW_IC_FS_SCL_LCNT	0x20
+#define DW_IC_FS_SDA_HOLD 0x7C // <ASUS-Ian20131127>
+#define DW_IC_FS_SDA_SETUP 0x94 // <ASUS-Ian20131127>
 #define DW_IC_HS_SCL_HCNT	0x24
 #define DW_IC_HS_SCL_LCNT	0x28
 #define DW_IC_INTR_STAT		0x2c
@@ -181,8 +183,10 @@
 
 #define VLV2_SS_SCLK_HCNT 0x214
 #define VLV2_SS_SCLK_LCNT 0x272
-#define VLV2_FS_SCLK_HCNT 0x50
-#define VLV2_FS_SCLK_LCNT 0xad
+#define VLV2_FS_SCLK_HCNT 0x55 // <ASUS-Ian20131127> fix camera i2c error
+#define VLV2_FS_SCLK_LCNT 0x96 // <ASUS-Ian20131127> fix camera i2c error
+#define VLV2_FS_SDA_SETUP 0x06 // <ASUS-Ian20131127> fix camera i2c error
+#define VLV2_FS_SDA_HOLD 0x32 // <ASUS-Ian20131127> fix camera i2c error
 #define VLV2_HS_SCLK_HCNT 0x6
 #define VLV2_HS_SCLK_LCNT 0x16
 

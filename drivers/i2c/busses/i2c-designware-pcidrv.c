@@ -173,6 +173,11 @@ static int vlv2_i2c_scl_cfg(struct dw_i2c_dev *dev)
 	dw_writel(dev, VLV2_HS_SCLK_HCNT, DW_IC_HS_SCL_HCNT);
 	dw_writel(dev, VLV2_HS_SCLK_LCNT, DW_IC_HS_SCL_LCNT);
 
+// <ASUS-Ian20131127+> fix camera i2c error
+	dw_writel(dev, VLV2_FS_SDA_HOLD, DW_IC_FS_SDA_HOLD);
+	dw_writel(dev, VLV2_FS_SDA_SETUP, DW_IC_FS_SDA_SETUP);
+// <ASUS-Ian20131127->
+	
 	return 0;
 }
 static struct  dw_pci_controller  dw_pci_controllers[] = {
