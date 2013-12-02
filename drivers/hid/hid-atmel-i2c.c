@@ -1132,12 +1132,22 @@ static ssize_t config_checksum_show(struct device *dev,struct device_attribute *
 static ssize_t touch_sel_show(struct device *dev,struct device_attribute *attr,char *buf)
 {
         struct mxt_data *data = dev_get_drvdata(dev);
+#ifdef CONFIG_M81TA
+	char tp[4][64] = {			
+		"Laibao",
+		"J-Touch",
+		"NA",
+		"NA"
+	};
+#else
 	char tp[4][64] = {			
 		"WTK VK",
 		"WTK",
 		"Cando",
-		"Laibao" 	
-	};
+		"Laibao"	
+			};
+#endif
+
 	int     time_out = 1000;
 	struct  mxt_object      *object_table;
 	u8 	cmd;
