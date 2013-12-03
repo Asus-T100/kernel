@@ -578,7 +578,7 @@ static inline int gadget_is_dualspeed(struct usb_gadget *g)
  */
 static inline int gadget_is_superspeed(struct usb_gadget *g)
 {
-#ifdef CONFIG_USB_GADGET_SUPERSPEED
+#if defined(CONFIG_USB_GADGET_SUPERSPEED) && !defined(CONFIG_USB_EXTPHY_HIGHSPEED)
 	/*
 	 * runtime test would check "g->max_speed" ... that might be
 	 * useful to work around hardware bugs, but is mostly pointless

@@ -561,6 +561,23 @@ config USB_GADGET_SUPERSPEED
 	bool
 	depends on USB_GADGET_DUALSPEED
 
+# External USB Transceiver
+if USB_GADGET_SUPERSPEED
+choice
+	boolean "External USB Transceiver"
+	default USB_EXTPHY_NONE
+
+config USB_EXTPHY_NONE
+	boolean "None"
+	
+config USB_EXTPHY_SUPERSPEED
+	boolean "Super-speed"
+
+config USB_EXTPHY_HIGHSPEED
+	boolean "High-speed"	
+	
+endchoice
+endif
 #
 # USB Gadget Drivers
 #

@@ -1690,9 +1690,9 @@ composite_resume(struct usb_gadget *gadget)
 /*-------------------------------------------------------------------------*/
 
 static struct usb_gadget_driver composite_driver = {
-#ifdef CONFIG_USB_GADGET_SUPERSPEED
+#if defined(CONFIG_USB_GADGET_SUPERSPEED) && !defined(CONFIG_USB_EXTPHY_HIGHSPEED)
 	.max_speed	= USB_SPEED_SUPER,
-#else
+#else 
 	.max_speed	= USB_SPEED_HIGH,
 #endif
 
