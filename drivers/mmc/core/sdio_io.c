@@ -65,7 +65,7 @@ int sdio_enable_func(struct sdio_func *func)
 	BUG_ON(!func);
 	BUG_ON(!func->card);
 
-	pr_debug("SDIO: Enabling device %s...\n", sdio_func_id(func));
+	pr_err("SDIO: Enabling device %s...\n", sdio_func_id(func));
 
 	ret = mmc_io_rw_direct(func->card, 0, 0, SDIO_CCCR_IOEx, 0, &reg);
 	if (ret)
@@ -90,12 +90,12 @@ int sdio_enable_func(struct sdio_func *func)
 			goto err;
 	}
 
-	pr_debug("SDIO: Enabled device %s\n", sdio_func_id(func));
+	pr_err("SDIO: Enabled device %s\n", sdio_func_id(func));
 
 	return 0;
 
 err:
-	pr_debug("SDIO: Failed to enable device %s\n", sdio_func_id(func));
+	pr_err("SDIO: Failed to enable device %s\n", sdio_func_id(func));
 	return ret;
 }
 EXPORT_SYMBOL_GPL(sdio_enable_func);
