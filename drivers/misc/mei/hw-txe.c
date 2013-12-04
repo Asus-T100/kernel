@@ -503,8 +503,15 @@ static int mei_txe_readiness_wait(struct mei_device *dev)
 	if (mei_txe_hw_is_ready(dev))
 		return 0;
 	mutex_unlock(&dev->device_lock);
+//<asus-baron20131204+>
+/*
 	err = wait_event_interruptible_timeout(dev->wait_hw_ready,
 			dev->recvd_hw_ready, SEC_READY_WAIT_TIMEOUT);
+*/
+	err = wait_event_interruptible_timeout(dev->wait_hw_ready,
+			dev->recvd_hw_ready,
+			msecs_to_jiffies(SEC_READY_WAIT_TIMEOUT));
+//<asus-baron20131204->
 	mutex_lock(&dev->device_lock);
 	if (!err && !dev->recvd_hw_ready) {
 		dev_dbg(&dev->pdev->dev,
