@@ -1202,23 +1202,7 @@ static int i915_rpm_suspend(struct device *dev)
 	return ret;
 
 }
-//<asus-pololin20131130+>
-static void display_disable(struct drm_device *drm_dev)
-{
-	struct drm_i915_private *dev_priv = drm_dev->dev_private;
-	struct drm_crtc *crtc;
-	struct intel_encoder *intel_encoder;
 
-	mutex_lock(&drm_dev->mode_config.mutex);
-	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
-		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder)
-			intel_encoder_prepare(&intel_encoder->base);
-		i9xx_crtc_disable(crtc);
-	}
-	mutex_unlock(&drm_dev->mode_config.mutex);
-}
-//<asus-pololin20131130->
 static void i915_pm_shutdown(struct pci_dev *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1230,8 +1214,7 @@ static void i915_pm_shutdown(struct pci_dev *pdev)
 	intel_mid_pmic_writeb(0x51, 0x00); //asus-ethan20131122+
     msleep(200); //asus-ethan20131122+
 	//<asus-pololin20131118+>
-//<asus-pololin20131130->	if (androidboot_mode != BOOTMODE_FOTA)
-		display_disable(drm_dev); //<asus-pololin20131130+>
+	if (androidboot_mode != BOOTMODE_FOTA)
 		i915_suspend_common(dev);
 
 	printk("%s\n", __func__);
