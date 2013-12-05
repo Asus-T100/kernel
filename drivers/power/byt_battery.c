@@ -1851,10 +1851,12 @@ static ssize_t byt_ec_set_wakeup_timer(struct device *dev, struct device_attribu
 	struct byt_chip_info *chip = to_byt_chip_info(psy);
 	int ret;
 	u8 write_buf[3];	
+        int time = 0;
 
 	write_buf[0] = EC_SET_AUTO_WAKEUP_REG;
 	write_buf[1] = EC_SET_AUTO_WAKEUP_CMD_TIMER;
-	write_buf[2] = buf[0];    //wake up time
+        sscanf(buf, "%d", &time);
+        write_buf[2] = (char)time;    //wakeup time: 0~0xff
 
 	ret = asusec_write(chip,write_buf,3);
 
