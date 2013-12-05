@@ -63,9 +63,15 @@ static struct sfi_table_oemb byt_oemb_table_blb = {
 static struct sfi_device_table_entry byt_ffrd10_devs_table[] = {
 	/*{bus_type, host_num, addr, irq, max_freq, name}*/
 	{SFI_DEV_TYPE_IPC, 0, 0, 0, 0, "vlv2_plat_clk"},
-	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
+// <ASUS-Ian20131205+>	
+#if defined(CONFIG_M81TA)
+	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "ov5693"},
+#endif
+#if defined(CONFIG_TD100TA)
+	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ar0543"},
+#endif
+// <ASUS-Ian20131205->
 	{SFI_DEV_TYPE_I2C, 4, 0x48, 0x0, 0x0, "mt9m114"},	//<asus-ych20130904>
-	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
 	/* SD devices */
 	{SFI_DEV_TYPE_SD, 0, 0, 0, 0, "bcm43xx_vmmc"},
@@ -74,7 +80,14 @@ static struct sfi_device_table_entry byt_ffrd10_devs_table[] = {
 static struct sfi_device_table_entry byt_ffrd8_devs_table[] = {
 	/*{bus_type, host_num, addr, irq, max_freq, name}*/
 	{SFI_DEV_TYPE_IPC, 0, 0, 0, 0, "vlv2_plat_clk"},
-	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx134"},
+// <ASUS-Ian20131205+>	
+#if defined(CONFIG_M81TA)
+	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "ov5693"},
+#endif
+#if defined(CONFIG_TD100TA)
+	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ar0543"},
+#endif
+// <ASUS-Ian20131205->
 	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 3, 0x53, 0x0, 0x0, "lm3554"},
 	/* SD devices */

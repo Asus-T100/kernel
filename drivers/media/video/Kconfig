@@ -389,6 +389,24 @@ config VIDEO_OV8830
 
 	  It currently only works with the atomisp driver.
 
+config VIDEO_OV5693
+	tristate "Omnivision ov5693 sensor support"
+	depends on I2C && VIDEO_V4L2
+	---help---
+	  This is a Video4Linux2 sensor-level driver for the Omnivision
+	  ov5693 5MP RAW sensor.
+
+	  It currently only works with the atomisp driver.	  
+	 
+config VIDEO_AR0543
+	tristate "Aptina ar0543 sensor support"
+	depends on I2C && VIDEO_V4L2
+	---help---
+	  This is a Video4Linux2 sensor-level driver for the Aptina
+	  ar0543 5MP RAW sensor.
+
+	  It currently only works with the atomisp driver.
+	  
 config VIDEO_MSRLIST_HELPER
 	tristate "Helper library to load, parse and apply large register lists."
 	depends on I2C
