@@ -14,6 +14,8 @@
 #include <linux/earlysuspend.h>
 #endif
 #include <linux/switch.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 
 #include <linux/hid.h>
 #include <linux/hiddev.h>
@@ -34,6 +36,8 @@ do {									  \
 
 #define WACOM_INPUT_REPORT_ID    0x02
 #define WACOM_FEATURE_REPORT_ID  0x03
+
+#define SECOND_PEN_FILE_PATH	"/sys/android_digitizer/second_pen"
 
 #pragma pack(1)
 struct i2c_hid_desc {
@@ -104,6 +108,18 @@ struct i2c_pen_data {
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend    early_suspend;
 #endif
+        int                     insert_gpio_num;
+        int                     insert_irq;
+        int                     pen_insert;
+        int                     digitizer_disabled;   //1: in sleep state
+        int                     second_pen_state;     //default: 0 - disabled
+	struct work_struct      insert_work;
+	struct switch_dev       insert_sdev;
+        //kobject of /sys/android_digitizer/second_pen
+        struct kobj_attribute   second_pen_attr;
+        struct attribute        *attrs[3];
+        struct attribute_group  attr_group;
+        struct kobject          *android_digitizer_kobj;
 };
 
 //private data of HID Device driver
@@ -541,6 +557,60 @@ static irqreturn_t pen_thread_handler(int id, void *dev)
 	return IRQ_HANDLED;
 
 }
+
+static ssize_t pen_insert_state(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%d\n", sdev->state);
+}
+
+static void gpio_insert_work(struct work_struct *work)
+{
+	int state;
+	struct i2c_pen_data *data = container_of(work, struct i2c_pen_data, insert_work);
+
+	state = gpio_get_value(data->insert_gpio_num);
+	switch_set_state(&data->insert_sdev, state);
+
+        data->pen_insert = state;     //for second_pen_store to check
+
+        //restore the digitizer state assigned by second_pen
+        if ((!state) && (data->digitizer_disabled)) {
+                //pen is unplugged now
+                //wake up   
+	        hid_set_power(data->hid, 0);
+	        enable_irq(data->irq);
+                data->digitizer_disabled = 0;
+        }
+
+        if (state) {
+                //inserted, restore the second_pen_state
+                if ((data->second_pen_state) && (data->digitizer_disabled)) {
+                        //wake up   
+	                hid_set_power(data->hid, 0);
+	                enable_irq(data->irq);
+                        data->digitizer_disabled = 0;
+                }
+
+                if ((!data->second_pen_state) && (!data->digitizer_disabled)) {
+                        //sleep    
+	                disable_irq(data->irq);
+	                hid_set_power(data->hid, 1);
+                        data->digitizer_disabled = 1;
+                }
+        }
+}
+
+static irqreturn_t gpio_insert_irq_handler(int irq, void *dev_id)
+{
+	struct i2c_pen_data *data = (struct i2c_pen_data *)dev_id;
+
+	pen_dbg("<asus-wy> gpio_insert_irq_handler\n");
+
+	schedule_work(&data->insert_work);
+
+	return IRQ_HANDLED;
+}
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void pen_early_suspend(struct early_suspend *es)
 {
@@ -561,6 +631,46 @@ static void pen_late_resume(struct early_suspend *es)
 }
 #endif
 
+static ssize_t second_pen_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	struct i2c_pen_data *data = container_of (attr, struct i2c_pen_data, second_pen_attr);
+
+	return sprintf(buf, "%d\n", data->second_pen_state);
+}
+
+static ssize_t second_pen_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	struct i2c_pen_data *data = container_of (attr, struct i2c_pen_data, second_pen_attr);
+	int var;
+
+	sscanf(buf, "%d", &var);
+
+	pen_dbg("<asus-wy> check - irq = %d, insert_irq = %d\n", data->irq, data->insert_irq);
+	pen_dbg("<asus-wy> %s: write %d\n", __func__, var);
+        data->second_pen_state = var;     //1 - enabled, 0 - disabled
+
+        //don't actually sleep or wakeup
+        if (!data->pen_insert)
+                return count;
+
+        //disable digitizer when write "0" && insert is true
+        if ((!var) && (!data->digitizer_disabled)) {
+                //sleep    
+	        disable_irq(data->irq);
+	        hid_set_power(data->hid, 1);
+                data->digitizer_disabled = 1;
+        }
+
+        if ((var) && (data->digitizer_disabled)) {
+                //wake up   
+	        hid_set_power(data->hid, 0);
+	        enable_irq(data->irq);
+                data->digitizer_disabled = 0;
+        }
+
+	return count;
+}
+
 static int __devinit pen_probe(struct i2c_client *client,
                                const struct i2c_device_id *id)
 {
@@ -580,6 +690,8 @@ static int __devinit pen_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, data);
 	data->irq = gpio_to_irq(data->gpio_num);
 
+	data->insert_gpio_num = 68;
+	data->insert_irq = gpio_to_irq(data->insert_gpio_num);
         memset (&data->hid_desc, 0, sizeof (struct i2c_hid_desc));
 	data->hid_desc_addr = 0x01;
 
@@ -663,11 +775,54 @@ static int __devinit pen_probe(struct i2c_client *client,
 	data->early_suspend.resume = pen_late_resume;
 	register_early_suspend(&data->early_suspend);
 #endif
+        //create /sys/android_digitizer kobject and attrs
+        data->second_pen_attr.attr.name = "second_pen";
+        data->second_pen_attr.attr.mode = 0660;
+        data->second_pen_attr.show = second_pen_show;
+        data->second_pen_attr.store = second_pen_store;
+        data->attrs[0] = &(data->second_pen_attr.attr);
+        data->attrs[1] = NULL;
+        data->attr_group.attrs = data->attrs;
+
+	data->android_digitizer_kobj = kobject_create_and_add("android_digitizer", NULL);   //at root
+	if (!data->android_digitizer_kobj)
+                pen_err("<asus-wy> cannot create android_digitizer kobject\n");
+
+	ret = sysfs_create_group(data->android_digitizer_kobj, &data->attr_group);
+	if (ret) {
+                pen_err("<asus-wy> cannot create attr group under android_digitizer(%d)\n", ret);
+		kobject_put(data->android_digitizer_kobj);
+        }
+
+	data->insert_sdev.name = "pen_insert";
+    	data->insert_sdev.print_state = pen_insert_state;
+    	if(switch_dev_register(&data->insert_sdev) < 0){
+	        pen_err("<asus-wy> switch_dev_register for pen insert failed\n");
+    	}
+
+        /* register interrupt */
+	INIT_WORK(&data->insert_work, gpio_insert_work);
+	ret = request_irq(data->insert_irq,
+                          gpio_insert_irq_handler,
+                          IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+                          client->name,
+                          data
+                          );
+	if (ret < 0)
+                pen_err("<asus-wy> cannot get insert IRQ:%d\n", data->insert_irq);
+        else
+                pen_dbg("<asus-wy> insert IRQ No:%d\n", data->insert_irq);
+
+
+	/* Perform initial detection */
+	gpio_insert_work(&data->insert_work);
+
 	return 0;
 
 err_free_hid:
 	hid_destroy_device(data->hid);
 err_free_data:
+	kfree(data->input_buffer);
 	kfree(data);
 
 	return ret;
@@ -675,8 +830,22 @@ err_free_data:
 
 static int __devexit pen_remove(struct i2c_client *client)
 {
+	struct i2c_pen_data *data = i2c_get_clientdata(client);
 
 	pen_dbg("<asus-wy> pen_remove\n");
+	cancel_work_sync(&data->insert_work);
+	switch_dev_unregister(&data->insert_sdev);
+        kobject_put(data->android_digitizer_kobj);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	unregister_early_suspend(&data->early_suspend);
+#endif
+	hid_destroy_device(data->hid);
+	free_irq(data->irq, data);
+	free_irq(data->insert_irq, data);
+
+	kfree(data->input_buffer);
+	kfree(data);	
 
         return 0;
 }
@@ -732,6 +901,7 @@ static int __init pen_init(void)
 static void __exit pen_exit(void)
 {
         i2c_del_driver(&pen_driver);
+        hid_unregister_driver(&wacom_pen_driver);
 }
 
 late_initcall(pen_init);
