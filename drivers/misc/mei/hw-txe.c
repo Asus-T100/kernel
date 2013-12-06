@@ -894,9 +894,12 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 			dev->recvd_hw_ready = true;
 		} else {
 			dev->recvd_hw_ready = false;
+                        //asus-ethan20131206+
 			if (dev->dev_state != MEI_DEV_RESETTING &&
-			    dev->dev_state != MEI_DEV_POWER_DOWN &&
-			    dev->dev_state != MEI_DEV_INITIALIZING) {
+			    dev->dev_state != MEI_DEV_INITIALIZING &&
+			    dev->dev_state != MEI_DEV_POWER_UP &&
+			    dev->dev_state != MEI_DEV_POWER_DOWN) {
+                        //asus-ethan20131206-
 				dev_dbg(&dev->pdev->dev, "FW not ready.\n");
 
 				schedule_work(&dev->reset_work);
