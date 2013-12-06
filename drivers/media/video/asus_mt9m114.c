@@ -472,6 +472,8 @@ static int power_up(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
+	printk("%s\n", __func__);
+	
 	if (NULL == dev->platform_data) {
 		dev_err(&client->dev, "no camera_sensor_platform_data");
 		return -ENODEV;
@@ -514,6 +516,8 @@ static int power_down(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
+	printk("%s\n", __func__);
+	
 	if (NULL == dev->platform_data) {
 		dev_err(&client->dev, "no camera_sensor_platform_data");
 		return -ENODEV;

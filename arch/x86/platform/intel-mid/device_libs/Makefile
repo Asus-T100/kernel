@@ -86,6 +86,14 @@ obj-$(subst m,y,$(CONFIG_VIDEO_MT9D113))				+= platform_mt9d113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9M114))				+= platform_mt9m114.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9V113))				+= platform_mt9v113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV8830))					+= platform_ov8830.o
+#// <ASUS-Ian20131205+>
+ifdef CONFIG_M81TA
+obj-$(subst m,y,$(CONFIG_VIDEO_OV5693))					+= platform_ov5693.o
+endif 
+ifdef CONFIG_TD100TA
+obj-$(subst m,y,$(CONFIG_VIDEO_AR0543))					+= platform_ar0543.o
+endif
+#// <ASUS-Ian20131205->
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx175.o
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx135.o
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx132.o

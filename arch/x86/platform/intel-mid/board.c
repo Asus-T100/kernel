@@ -70,6 +70,14 @@
 #include "device_libs/platform_lm3554.h"
 #include "device_libs/platform_mt9v113.h"
 #include "device_libs/platform_ov5640.h"
+// <ASUS-Ian20131205+>
+#if defined(CONFIG_M81TA)
+#include "device_libs/platform_ov5693.h"
+#endif
+#if defined(CONFIG_TD100TA)
+#include "device_libs/platform_ar0543.h"
+#endif
+// <ASUS-Ian20131205->
 #include "device_libs/platform_imx175.h"
 #include "device_libs/platform_imx135.h"
 #include "device_libs/platform_imx134.h"
@@ -204,7 +212,18 @@ struct devs_id __initconst device_ids[] = {
 					&intel_register_i2c_camera_device},
 	{"ov5640", SFI_DEV_TYPE_I2C, 0, &ov5640_platform_data,
 					&intel_register_i2c_camera_device},
-	{"imx175", SFI_DEV_TYPE_I2C, 0, &imx175_platform_data,
+*/
+// <ASUS-Ian20131205+>
+#if defined(CONFIG_M81TA)
+	{"ov5693", SFI_DEV_TYPE_I2C, 0, &ov5693_platform_data,
+					&intel_register_i2c_camera_device},
+#endif
+#if defined(CONFIG_TD100TA)
+	{"ar0543", SFI_DEV_TYPE_I2C, 0, &ar0543_platform_data,
+					&intel_register_i2c_camera_device},
+#endif
+// <ASUS-Ian20131205->	
+/*	{"imx175", SFI_DEV_TYPE_I2C, 0, &imx175_platform_data,
 					&intel_register_i2c_camera_device},
 	{"imx135", SFI_DEV_TYPE_I2C, 0, &imx135_platform_data,
 					&intel_register_i2c_camera_device},

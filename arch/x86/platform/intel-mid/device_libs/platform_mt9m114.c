@@ -45,14 +45,17 @@
 static int camera_reset;
 static int camera_power_down;
 static int camera_vprog1_on;
+static int camera_led_mask; // <ASUS-Ian20131120>
 
 
 static struct regulator *vprog1_reg;
+int mt9m114_gpio_request(int pin, int* gpio, const char *label);	// <ASUS-Ian20131120>
 
 
 /*
  * MFLD PR2 secondary camera sensor - MT9M114 platform data
  */
+ // <ASUS-Ian20131120+>
 static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret;
@@ -73,7 +76,14 @@ static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		 * not implemented currently.
 		 */
 
-                  pin = CAMERA_1_RESET;
+		// Front camera reset pin
+		pin = CAMERA_1_RESET;
+		ret = mt9m114_gpio_request(pin, &camera_reset, "camera_1_reset");
+		if (ret) {
+			return ret;
+		}
+/*		 
+		pin = CAMERA_1_RESET;
 		if (camera_reset < 0) {
 			ret = gpio_request(pin, "camera_1_reset");
 			if (ret) {
@@ -90,6 +100,14 @@ static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			gpio_free(pin);
 			return ret;
 		}
+*/		
+		// LED indicator
+		pin = acpi_get_gpio("\\_SB.GPO2", 8);
+		ret = mt9m114_gpio_request(pin, &camera_led_mask, "cam_led_mask");
+		if (ret) {
+			return ret;
+		}
+
 	}
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
@@ -97,11 +115,46 @@ static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		msleep(60);
 #endif
 		gpio_set_value(camera_reset, 1);
-	} else
+		gpio_set_value(camera_led_mask, 1);
+	} else{
 		gpio_set_value(camera_reset, 0);
+		gpio_set_value(camera_led_mask, 0);
+	}
 
-	return 0;
+        return 0;
 }
+// <ASUS-Ian20131120->
+
+// <ASUS-Ian20131120+>
+int mt9m114_gpio_request(int pin, int* gpio, const char *label){ 
+        int ret = 0;
+    printk("<ASUS-Ian> pin = %d, gpio = %d\n", pin, *gpio);        
+            if (*gpio < 0) {            
+                ret = gpio_request(pin, label);        
+    printk("<ASUS-Ian> gpio_request = %d\n", ret);             
+                if (ret) {
+                    pr_err("%s: failed to request gpio(pin %d)\n",
+                        __func__, pin);
+                    return ret;
+                }
+                *gpio = pin;
+    printk("<ASUS-Ian> gpio = %d\n", *gpio);             
+                ret = gpio_direction_output(*gpio, 0);
+    printk("<ASUS-Ian> gpio_direction_output = %d\n", ret);              
+                if (ret) {
+                    pr_err("%s: failed to set gpio(pin %d) direction\n",
+                    __func__, *gpio);
+                    gpio_free(*gpio);
+                    return ret;
+                }
+#ifndef CONFIG_T101TA 				
+printk("<ASUS-Ian> gpio_free\n");
+                gpio_free(*gpio);
+#endif
+            }
+            return 0;
+}
+// <ASUS-Ian20131120->
 
 static int mt9m114_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
@@ -128,7 +181,7 @@ static int mt9e013_reset_value;
 static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret = 0;
-    int CamInd;
+    //int CamInd; // <ASUS-Ian20131120>
 
 	if (flag) {
 		if (!camera_vprog1_on) {
@@ -150,11 +203,15 @@ static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 			if (!ret)
 				camera_vprog1_on = 1;
 
+// <ASUS-Ian20131120+>
+/*				
 			// Enable LED indicator
             CamInd = acpi_get_gpio("\\_SB.GPO2", 8);
             ret = gpio_request(CamInd, "CAM LED MASK");
             ret = gpio_direction_output(CamInd, 1);
-            
+*/			
+// <ASUS-Ian20131120->            
+			
 			return ret;
 		}
 	} else {
@@ -171,10 +228,14 @@ static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 			if (!ret)
 				camera_vprog1_on = 0;
 
+// <ASUS-Ian20131120+>
+/*
             // Disable LED indicator
 			CamInd = acpi_get_gpio("\\_SB.GPO2", 8);
 			ret = gpio_request(CamInd, "CAM LED MASK");
 			ret = gpio_direction_output(CamInd, 0);
+*/			
+// <ASUS-Ian20131120->			
             
 			return ret;
 		}
@@ -228,6 +289,9 @@ void *mt9m114_platform_data(void *info)
 {
 	camera_reset = -1;
 	camera_power_down = -1;
+// <ASUS-Ian20131120+>	
+	camera_led_mask = -1;
+// <ASUS-Ian20131120->
 
 	return &mt9m114_sensor_platform_data;
 }

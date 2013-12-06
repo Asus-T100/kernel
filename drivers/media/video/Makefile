@@ -92,6 +92,14 @@ obj-$(CONFIG_VIDEO_AS3645A)	+= as3645a.o
 #//<asus-ych20130916>
 obj-$(CONFIG_VIDEO_MT9M114)	+= asus_mt9m114.o
 obj-$(CONFIG_VIDEO_OV8830)	+= ov8830.o
+#// <ASUS-Ian20131205+>
+ifdef CONFIG_M81TA
+obj-$(CONFIG_VIDEO_OV5693)	+= asus_ov5693.o
+endif
+ifdef CONFIG_TD100TA
+obj-$(CONFIG_VIDEO_AR0543)	+= asus_ar0543.o
+endif
+#// <ASUS-Ian20131205->
 obj-$(CONFIG_VIDEO_IMX)		+= imx/
 obj-$(CONFIG_VIDEO_IMXVB)	+= imx135VB/
 obj-$(CONFIG_VIDEO_MT9D113)  += mt9d113.o

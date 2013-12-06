@@ -28,6 +28,19 @@
 const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+// <ASUS-Ian20131205+>	
+#if defined(CONFIG_T101TA)
+	{"mt9m114", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+#endif
+#if defined(CONFIG_M81TA)
+	{"ov5693", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+#endif
+#if defined(CONFIG_TD100TA)
+	{"ar0543", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+#endif	
+// <ASUS-Ian20131205->	
 	{"imx175", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"imx135", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"imx134", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
@@ -35,7 +48,6 @@ const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"ov9724", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"ov2722", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"mt9d113", SOC_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"mt9m114", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},	//<asus-ych20130916>
 	{"mt9v113", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"s5k8aay", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"lm3554", LED_FLASH, -1},
@@ -259,8 +271,14 @@ static void atomisp_unregister_acpi_devices(struct atomisp_platform_data *pdata)
 {
 	const char *subdev_name[] = {
 		"3-0053",	/* FFRD8 lm3554 */
-		"4-0036",	/* ov2722 */
-		"4-0010",	/* imx1xx Sensor*/
+// <ASUS-Ian20131205+>			
+#if defined(CONFIG_M81TA)
+		"4-0010",	/* ov5693 */
+#endif
+#if defined(CONFIG_TD100TA)
+		"4-0036",	/* ar0543 */
+#endif			
+// <ASUS-Ian20131205->	
 		"4-0048",	/* mt9m114 Sensor*/
 		"4-0053",	/* FFRD10 lm3554 */
 		"4-0054",	/* imx1xx EEPROM*/
