@@ -222,6 +222,7 @@ struct sdhci_host {
 	unsigned int		gpio_pwr_en;
 	unsigned int		gpio_1p8_en;
 	unsigned long		*stack; //<asus-Ian20131130+>
+	bool inuse;
 
 	unsigned long private[0] ____cacheline_aligned;
 };

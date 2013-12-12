@@ -1592,7 +1592,10 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	sdhci_acquire_ownership(host->mmc);
 
 	spin_lock_irqsave(&host->lock, flags);
-
+	
+	WARN_ON(host->inuse);
+	host->inuse = true;
+	
 	if (host->suspended) {
 		pr_err("%s: %s: host is in suspend state\n",
 				__func__, mmc_hostname(mmc));
@@ -2483,6 +2486,12 @@ static void sdhci_tasklet_finish(unsigned long param)
 		spin_unlock_irqrestore(&host->lock, flags);
 		return;
 	}
+	
+	WARN_ON(!host->inuse);
+	if (!host->inuse) {
+		spin_unlock_irqrestore(&host->lock, flags);
+		return;
+	}
 
 	del_timer(&host->timer);
 
@@ -2519,6 +2528,7 @@ static void sdhci_tasklet_finish(unsigned long param)
 	host->mrq = NULL;
 	host->cmd = NULL;
 	host->data = NULL;
+	host->inuse = false;
 
 #ifndef SDHCI_USE_LEDS_CLASS
 	sdhci_deactivate_led(host);
@@ -3826,6 +3836,13 @@ int sdhci_runtime_suspend_host(struct sdhci_host *host)
 
 	spin_lock_irqsave(&host->lock, flags);
 	host->runtime_suspended = true;
+	
+	WARN_ON(host->inuse);
+	if (host->inuse){
+		atomic_inc(&host->mmc->parent->power.usage_count);
+		ret = -EBUSY;
+	}
+
 	spin_unlock_irqrestore(&host->lock, flags);
 
 	sdhci_release_ownership(host->mmc);
