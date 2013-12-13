@@ -992,7 +992,7 @@ static int distance(struct ov5693_resolution *res, u32 w, u32 h)
 	h_ratio = ((res->height << 13) / h);
 	if (h_ratio == 0)
 		return -1;
-	match   = abs(((w_ratio << 13) / h_ratio) - ((int)8192));
+	match = abs(((w_ratio << 13) / h_ratio) - ((int)8192));
 
 	if ((w_ratio < (int)8192) || (h_ratio < (int)8192)  ||
 		(match > LARGEST_ALLOWED_RATIO_MISMATCH))
@@ -1010,17 +1010,23 @@ static int nearest_resolution_index(int w, int h)
 	int min_dist = INT_MAX;
 	struct ov5693_resolution *tmp_res = NULL;
 
+// <ASUS-Ian20131212+>	
 	for (i = 0; i < N_RES; i++) {
 		tmp_res = &ov5693_res[i];
-		dist = distance(tmp_res, w, h);
-		if (dist == -1)
-			continue;
-		if (dist < min_dist) {
-			min_dist = dist;
+		if((tmp_res->width == w)&&(tmp_res->height == h)){				
 			idx = i;
+			break;
+		}else{	
+			dist = distance(tmp_res, w, h);
+			if (dist == -1)
+				continue;
+			if (dist < min_dist) {
+				min_dist = dist;
+				idx = i;
+			}
 		}
 	}
-
+// <ASUS-Ian20131212->	
 	return idx;
 }
 
@@ -1103,7 +1109,7 @@ static int ov5693_s_mbus_fmt(struct v4l2_subdev *sd,
 	struct camera_mipi_info *ov5693_info = NULL;
 	int ret = 0;
 
-         printk("%s\n", __func__);
+    printk("%s\n", __func__);
 
 	ov5693_info = v4l2_get_subdev_hostdata(sd);
 	if (ov5693_info == NULL)
@@ -1350,7 +1356,8 @@ static int ov5693_s_parm(struct v4l2_subdev *sd,
 	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
-		ov5693_res = ov5693_res_preview;
+// <ASIS-Ian20131212>	
+		ov5693_res = ov5693_res_video;
 		N_RES = N_RES_VIDEO;
 		break;
 	case CI_MODE_STILL_CAPTURE:
