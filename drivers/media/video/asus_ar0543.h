@@ -124,7 +124,7 @@
 #define AR0543_AGC_ADJ_H			0x3508
 #define AR0543_AGC_ADJ_L			0x3509
 
-#define AR0543_FOCAL_LENGTH_NUM	439	/*4.39mm*/
+#define AR0543_FOCAL_LENGTH_NUM	297	/*2.97mm*/
 #define AR0543_FOCAL_LENGTH_DEM	100
 #define AR0543_F_NUMBER_DEFAULT_NUM	24
 #define AR0543_F_NUMBER_DEM	10
@@ -570,8 +570,8 @@ static const struct ar0543_reg ar0543_reset_register[] = {
 	{AR0543_16BIT,{0x3010}, 0x00A0},	//Fine Correction
 	{AR0543_16BIT,{0x3012}, 0x07E4},	//Coarse Integration Time
 	{AR0543_16BIT,{0x3014}, 0x02CE},	//Fine Integration Time
-	{AR0543_16BIT,{0x0340}, 0x07E5},	//Frame Lines
-	{AR0543_16BIT,{0x0342}, 0x0E6E},	//Line Length
+	{AR0543_16BIT,{0x0340}, 0x07F5},	//Frame Lines
+	{AR0543_16BIT,{0x0342}, 0x0F57},	//Line Length
 
 	{AR0543_8BIT,{0x0104}, 0x00 },	// GROUPED_PARAMETER_HOLD
 
@@ -617,8 +617,58 @@ static struct ar0543_reg const ar0543_2592x1944_15fps[] = {
 	{AR0543_16BIT,{0x3010}, 0x00A0},   // Fine Correction
 	{AR0543_16BIT,{0x3012}, 0x07E4},   // Coarse Integration Time
 	{AR0543_16BIT,{0x3014}, 0x02CE},   // Fine Integration Time
-	{AR0543_16BIT,{0x0340}, 0x07E5},   // Frame Lines
-	{AR0543_16BIT,{0x0342}, 0x0E6E},   // Line Length
+	{AR0543_16BIT,{0x0340}, 0x07F5},   // Frame Lines
+	{AR0543_16BIT,{0x0342}, 0x0F57},   // Line Length
+
+	{AR0543_8BIT,{0x0104}, 0x00},   // GROUPED_PARAMETER_HOLD
+	{AR0543_TOK_DELAY, {0}, 5},//DELAY=5
+	{AR0543_TOK_TERM, {0}, 0}
+};
+
+static struct ar0543_reg const ar0543_2592x1474_15fps[] = {
+	//[2592*1474 @15FPS]
+	{AR0543_8BIT,{0x0104}, 0x01},   // GROUPED_PARAMETER_HOLD = 0x1
+
+	// Timing Settings
+	{AR0543_16BIT,{0x0400}, 0x0000},   // scaling_mode
+	{AR0543_16BIT,{0x0404}, 0x0010},   // scale_m
+	{AR0543_16BIT,{0x034C}, 0x0A20},   // Output Width
+	{AR0543_16BIT,{0x034E}, 0x05C2},   // Output Height
+	{AR0543_16BIT,{0x0344}, 0x0008},   // Column Start
+	{AR0543_16BIT,{0x0346}, 0x0008},   // Row Start
+	{AR0543_16BIT,{0x0348}, 0x0A27},   // Column End
+	{AR0543_16BIT,{0x034A}, 0x05C9},   // Row End
+	{AR0543_16BIT,{0x3040}, 0x0041},   // Read Mode
+	{AR0543_16BIT,{0x3010}, 0x00A0},   // Fine Correction
+	{AR0543_16BIT,{0x3012}, 0x060E},   // Coarse Integration Time
+	{AR0543_16BIT,{0x3014}, 0x02CE},   // Fine Integration Time
+	{AR0543_16BIT,{0x0340}, 0x060F},   // Frame Lines
+	{AR0543_16BIT,{0x0342}, 0x12CE},   // Line Length
+
+	{AR0543_8BIT,{0x0104}, 0x00},   // GROUPED_PARAMETER_HOLD
+	{AR0543_TOK_DELAY, {0}, 5},//DELAY=5
+	{AR0543_TOK_TERM, {0}, 0}
+};
+
+static struct ar0543_reg const ar0543_2064x1552_15fps[] = {
+	//[2064*1552 @15FPS]
+	{AR0543_8BIT,{0x0104}, 0x01},   // GROUPED_PARAMETER_HOLD = 0x1
+
+	// Timing Settings
+	{AR0543_16BIT,{0x0400}, 0x0000},   // scaling_mode
+	{AR0543_16BIT,{0x0404}, 0x0010},   // scale_m
+	{AR0543_16BIT,{0x034C}, 0x0810},   // Output Width
+	{AR0543_16BIT,{0x034E}, 0x0610},   // Output Height
+	{AR0543_16BIT,{0x0344}, 0x0008},   // Column Start
+	{AR0543_16BIT,{0x0346}, 0x0008},   // Row Start
+	{AR0543_16BIT,{0x0348}, 0x0817},   // Column End
+	{AR0543_16BIT,{0x034A}, 0x0617},   // Row End
+	{AR0543_16BIT,{0x3040}, 0x0041},   // Read Mode
+	{AR0543_16BIT,{0x3010}, 0x00A0},   // Fine Correction
+	{AR0543_16BIT,{0x3012}, 0x065E},   // Coarse Integration Time
+	{AR0543_16BIT,{0x3014}, 0x02CE},   // Fine Integration Time
+	{AR0543_16BIT,{0x0340}, 0x065D},   // Frame Lines
+	{AR0543_16BIT,{0x0342}, 0x11E7},   // Line Length
 
 	{AR0543_8BIT,{0x0104}, 0x00},   // GROUPED_PARAMETER_HOLD
 	{AR0543_TOK_DELAY, {0}, 5},//DELAY=5
@@ -701,6 +751,30 @@ static struct ar0543_reg const ar0543_720p_30fps[] = {
 	{AR0543_TOK_TERM, {0}, 0}
 };
 
+static struct ar0543_reg const ar0543_480p_30fps[] = {
+	//[656*496 @30FPS] },   // 668*500 that bining from 2592*1944 and scale from 1296*972
+	{AR0543_8BIT,{0x0104}, 0x01},   // GROUPED_PARAMETER_HOLD = 0x1
+
+	// Timing Settings
+	{AR0543_16BIT,{0x0400}, 0x0002},   // scaling_mode
+	{AR0543_16BIT,{0x0404}, 0x0011},   // scale_m
+	{AR0543_16BIT,{0x034C}, 0x02FC},   // Output Width
+	{AR0543_16BIT,{0x034E}, 0x01FC},   // Output Height
+	{AR0543_16BIT,{0x0344}, 0x0008},   // Column Start
+	{AR0543_16BIT,{0x0346}, 0x0008},   // Row Start
+	{AR0543_16BIT,{0x0348}, 0x065D},   // Column End
+	{AR0543_16BIT,{0x034A}, 0x043D},   // Row End
+	{AR0543_16BIT,{0x3040}, 0x04C3},   // Read Mode
+	{AR0543_16BIT,{0x3010}, 0x0184},   // Fine Correction
+	{AR0543_16BIT,{0x3012}, 0x0264},   // Coarse Integration Time
+	{AR0543_16BIT,{0x3014}, 0x05F8},   // Fine Integration Time
+	{AR0543_16BIT,{0x0340}, 0x0265},   // Frame Lines
+	{AR0543_16BIT,{0x0342}, 0x17CA},   // Line Length
+
+	{AR0543_8BIT,{0x0104}, 0x00},   // GROUPED_PARAMETER_HOLD
+	{AR0543_TOK_DELAY, {0}, 5},//DELAY=5
+	{AR0543_TOK_TERM, {0}, 0}
+};
 
 static struct ar0543_reg const ar0543_VGA_30fps[] = {
 	//[656*496 @30FPS] },   // 668*500 that bining from 2592*1944 and scale from 1296*972
@@ -754,32 +828,98 @@ static struct ar0543_reg const ar0543_CIF_30fps[] = {
 
 static struct ar0543_resolution ar0543_res_preview[] = {
 	{
-		 .desc =	"PREVIEW_960p_30fps"	,
-		 .width =	1296	,
-		 .height =	976	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0DE6, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0419, /* consistent with regs arrays */
-		 .regs =	ar0543_960p_30fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
+		 .desc = "PREVIEW_2592x1944_15fps",
+		 .width = 2592,
+		 .height = 1944,
+		 .fps =	15,
+		 .used = 0,
+		 .pixels_per_line = 0x0F57, /* consistent with regs arrays */
+		 .lines_per_frame = 0x07F5, /* consistent with regs arrays */
+		 .regs = ar0543_2592x1944_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc = "PREVIEW_2592x1474_15fps",
+		 .width = 2592,
+		 .height = 1474,
+		 .fps =	15,
+		 .used = 0,
+		 .pixels_per_line = 0x12CE, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060F, /* consistent with regs arrays */
+		 .regs = ar0543_2592x1474_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc = "PREVIEW_2064x1552_15fps",
+		 .width = 2064,
+		 .height = 1552,
+		 .fps =	15,
+		 .used = 0,
+		 .pixels_per_line = 0x11E7, /* consistent with regs arrays */
+		 .lines_per_frame = 0x065D, /* consistent with regs arrays */
+		 .regs = ar0543_2064x1552_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc = "PREVIEW_1080p_30fps",
+		 .width = 1936 ,
+		 .height = 1096 ,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x0C6E, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0495, /* consistent with regs arrays */
+		 .regs = ar0543_1080p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc = "PREVIEW_960p_30fps",
+		 .width = 1296,
+		 .height = 976,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x0C6E, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0495, /* consistent with regs arrays */
+		 .regs = ar0543_960p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
 		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
 				    param invalid issue fixed*/
 	},
 	{
-		 // For 2560x1920 output
-		 .desc =	"PREVIEW_2592x1944_15fps"	,
-		 .width =	2592	,
-		 .height =	1944	,
-		 .fps =		15	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E6E, /* consistent with regs arrays */
-		 .lines_per_frame = 0x07E5, /* consistent with regs arrays */
-		 .regs =	ar0543_2592x1944_15fps,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
-		 .skip_frames = 1,
+		 .desc = "PREVIEW_720p_30fps",
+		 .width = 1296,
+		 .height = 736,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x1206, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0329, /* consistent with regs arrays */
+		 .regs = ar0543_960p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
+				    param invalid issue fixed*/
+	},
+	{
+		 .desc = "PREVIEW_480p_30fps",
+		 .width = 736,
+		 .height = 496,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x17CA, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0265, /* consistent with regs arrays */
+		 .regs = ar0543_480p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
+				    param invalid issue fixed*/
 	},
 };
 
@@ -787,18 +927,98 @@ static struct ar0543_resolution ar0543_res_preview[] = {
 
 static struct ar0543_resolution ar0543_res_still[] = {
 	{
-		 // For 2560x1920 output
-		 .desc =	"STILL_2592x1944_15fps"	,
-		 .width =	2592	,
-		 .height =	1944	,
-		 .fps =		15	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E6E, /* consistent with regs arrays */
-		 .lines_per_frame = 0x07E5, /* consistent with regs arrays */
-		 .regs =	ar0543_2592x1944_15fps,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
+		 .desc = "STILL_2592x1944_15fps",
+		 .width = 2592,
+		 .height = 1944,
+		 .fps =	15,
+		 .used = 0,
+		 .pixels_per_line = 0x0F57, /* consistent with regs arrays */
+		 .lines_per_frame = 0x07F5, /* consistent with regs arrays */
+		 .regs = ar0543_2592x1944_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
 		 .skip_frames = 1,
+	},
+	{
+		 .desc = "STILL_2592x1474_15fps",
+		 .width = 2592,
+		 .height = 1474,
+		 .fps =	15,
+		 .used = 0,
+		 .pixels_per_line = 0x12CE, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060F, /* consistent with regs arrays */
+		 .regs = ar0543_2592x1474_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc = "STILL_2064x1552_15fps",
+		 .width = 2064,
+		 .height = 1552,
+		 .fps =	15,
+		 .used = 0,
+		 .pixels_per_line = 0x11E7, /* consistent with regs arrays */
+		 .lines_per_frame = 0x065D, /* consistent with regs arrays */
+		 .regs = ar0543_2064x1552_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc = "STILL_1080p_30fps",
+		 .width = 1936,
+		 .height = 1096,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x0C6E, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0495, /* consistent with regs arrays */
+		 .regs = ar0543_1080p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc = "STILL_960p_30fps",
+		 .width = 1296,
+		 .height = 976,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x0C6E, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0495, /* consistent with regs arrays */
+		 .regs = ar0543_960p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
+				    param invalid issue fixed*/
+	},
+	{
+		 .desc = "STILL_720p_30fps",
+		 .width = 1296,
+		 .height = 736,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x1206, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0329, /* consistent with regs arrays */
+		 .regs = ar0543_960p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
+				    param invalid issue fixed*/
+	},
+	{
+		 .desc = "STILL_480p_30fps",
+		 .width = 736,
+		 .height = 496,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x17CA, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0265, /* consistent with regs arrays */
+		 .regs = ar0543_480p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
+				    param invalid issue fixed*/
 	},
 };
 
@@ -806,69 +1026,45 @@ static struct ar0543_resolution ar0543_res_still[] = {
 
 static struct ar0543_resolution ar0543_res_video[] = {
 	{
-		 .desc =	 "VIDEO_CIF_30fps"  ,
-		 .width =	 368 ,
-		 .height =  304 ,
-		 .fps =	 30  ,
-		 .used =	 0	 ,
-		 .pixels_per_line = 0x0DF4, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0415, /* consistent with regs arrays */
-		 .regs =	 ar0543_CIF_30fps	 ,
-		 .bin_factor_x =	 2,
-		 .bin_factor_y =	 2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	 "VIDEO_VGA_30fps"	 ,
-		 .width =	 656 ,
-		 .height =  496 ,
-		 .fps =	 30  ,
-		 .used =	 0	 ,
-		 .pixels_per_line = 0x0DF4, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0415, /* consistent with regs arrays */
-		 .regs =	 ar0543_VGA_30fps	 ,
-		 .bin_factor_x =	 2,
-		 .bin_factor_y =	 2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	 "VIDEO_720p_30fps"  ,
-		 .width =	 1296	 ,
-		 .height =  736 ,
-		 .fps =	 30  ,
-		 .used =	 0	 ,
-		 .pixels_per_line = 0x1206, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0329, /* consistent with regs arrays */
-		 .regs =	 ar0543_720p_30fps	 ,
-		 .bin_factor_x =	 1,
-		 .bin_factor_y =	 1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	  "VIDEO_960p_30fps"  ,
-		 .width =   1296	  ,
-		 .height =  976 ,
-		 .fps =	  30  ,
-		 .used =	  0   ,
-		 .pixels_per_line = 0x0DE6, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0419, /* consistent with regs arrays */
-		 .regs =	  ar0543_960p_30fps   ,
-		 .bin_factor_x =	  1,
-		 .bin_factor_y =	  1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	  "VIDEO_1080p_30fps" ,
-		 .width =   1936	  ,
-		 .height =  1096	  ,
-		 .fps =	  30  ,
-		 .used =	  0   ,
+		 .desc = "VIDEO_1080p_30fps",
+		 .width = 1936,
+		 .height = 1096,
+		 .fps = 30,
+		 .used = 0,
 		 .pixels_per_line = 0x0C6E, /* consistent with regs arrays */
 		 .lines_per_frame = 0x0495, /* consistent with regs arrays */
-		 .regs =	  ar0543_1080p_30fps  ,
-		 .bin_factor_x =	  1,
-		 .bin_factor_y =	  1,
+		 .regs = ar0543_1080p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
 		 .skip_frames = 1,
+	},
+	{
+		 .desc = "VIDEO_720p_30fps",
+		 .width = 1296,
+		 .height = 736,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x1206, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0329, /* consistent with regs arrays */
+		 .regs = ar0543_960p_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
+				    param invalid issue fixed*/
+	},
+	{
+		 .desc = "VIDEO_480p_30fps",
+		 .width = 736,
+		 .height = 496,
+		 .fps =	30,
+		 .used = 0,
+		 .pixels_per_line = 0x17CA, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0265, /* consistent with regs arrays */
+		 .regs =	ar0543_480p_30fps	,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 1, /*change skip num from 1 to 0 after 3A init
+				    param invalid issue fixed*/
 	},
 };
 

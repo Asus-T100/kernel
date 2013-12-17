@@ -59,7 +59,7 @@
 int ATD_ar0543_status = 0;  //Add for ATD read camera status
 static ssize_t ar0543_show_status(struct device *dev,struct device_attribute *attr,char *buf)
 {
-	printk("%s: get ar0543 status (%d) !!\n", __func__, ATD_ar0543_status);
+	//printk("%s: get ar0543 status (%d) !!\n", __func__, ATD_ar0543_status);
    	//Check sensor connect status, just do it  in begining for ATD camera status
 
 	return sprintf(buf,"%d\n", ATD_ar0543_status);
@@ -574,7 +574,7 @@ static int ar0543_real_to_register_gain(u16 gain, u16 *real_gain)
                                 asc1 = 0x200;
                 }
 		reg_gain = calculated_gain;
-		printk("%s gain %d calculated_gain %x\n", __func__, gain, reg_gain);
+		//printk("%s gain %d calculated_gain %x\n", __func__, gain, reg_gain);
                 reg_gain |= cg;
                 reg_gain |= asc1;
 		*real_gain = reg_gain;
@@ -628,8 +628,8 @@ static long ar0543_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 	ret = ar0543_real_to_register_gain(a_gain, &real_gain);
 	real_gain |= 0x1000;
 
-	printk("%s1 write gain %x fine %x coarse %x frame_length %x\n", __func__,
-		real_gain, fine_itg, coarse_itg, frame_length);
+	//printk("%s1 write gain %x fine %x coarse %x frame_length %x\n", __func__,
+	//	real_gain, fine_itg, coarse_itg, frame_length);
 
 	/* set global gain */
 	ret = ar0543_write_reg(client, AR0543_16BIT,
@@ -669,7 +669,7 @@ static long ar0543_s_exposure(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	printk("%s analog %x digital %x\n", __func__, analog_gain, digital_gain);
+	//printk("%s analog %x digital %x\n", __func__, analog_gain, digital_gain);
 	return ar0543_set_exposure(sd, coarse_itg, fine_itg, analog_gain, digital_gain);
 }
 
@@ -781,8 +781,8 @@ __ar0543_otp_read(struct v4l2_subdev *sd, struct ar0543_af_data *buf)
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s Inf AF position %x : %x\n", __func__,
-			AR0543_OTP_AF_INF_POS, ready);
+		//printk(KERN_DEBUG "%s Inf AF position %x : %x\n", __func__,
+		//	AR0543_OTP_AF_INF_POS, ready);
 		buf->af_inf_pos = ready;
 	}
 
@@ -792,8 +792,8 @@ __ar0543_otp_read(struct v4l2_subdev *sd, struct ar0543_af_data *buf)
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s 1M AF position %x : %x\n", __func__,
-			AR0543_OTP_AF_1M_POS, ready);
+		//printk(KERN_DEBUG "%s 1M AF position %x : %x\n", __func__,
+		//	AR0543_OTP_AF_1M_POS, ready);
 		buf->af_1m_pos = ready;
 	}
 
@@ -803,8 +803,8 @@ __ar0543_otp_read(struct v4l2_subdev *sd, struct ar0543_af_data *buf)
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s 10cm AF position %x : %x\n", __func__,
-			AR0543_OTP_AF_10CM_POS, ready);
+		//printk(KERN_DEBUG "%s 10cm AF position %x : %x\n", __func__,
+		//	AR0543_OTP_AF_10CM_POS, ready);
 		buf->af_10cm_pos = ready;
 	}
 
@@ -814,8 +814,8 @@ __ar0543_otp_read(struct v4l2_subdev *sd, struct ar0543_af_data *buf)
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s start current %x : %x\n", __func__,
-			AR0543_OTP_AF_START_CURR, ready);
+		//printk(KERN_DEBUG "%s start current %x : %x\n", __func__,
+		//	AR0543_OTP_AF_START_CURR, ready);
 		buf->af_start_curr = ready;
 	}
 
@@ -825,8 +825,8 @@ __ar0543_otp_read(struct v4l2_subdev *sd, struct ar0543_af_data *buf)
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s module ID %x : %x\n", __func__,
-			AR0543_OTP_AF_MODULE_ID, ready);
+		//printk(KERN_DEBUG "%s module ID %x : %x\n", __func__,
+		//	AR0543_OTP_AF_MODULE_ID, ready);
 		buf->module_id = ready;
 	}
 
@@ -836,8 +836,8 @@ __ar0543_otp_read(struct v4l2_subdev *sd, struct ar0543_af_data *buf)
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s vendor ID %x : %x\n", __func__,
-			AR0543_OTP_AF_VENDOR_ID, ready);
+		//printk(KERN_DEBUG "%s vendor ID %x : %x\n", __func__,
+		//	AR0543_OTP_AF_VENDOR_ID, ready);
 		buf->vendor_id = ready;
 	}
 	return 0;
@@ -889,8 +889,8 @@ static u8 *ar0543_fuseid_read(struct v4l2_subdev *sd)
 		v4l2_err(client, "%s: failed to read AR0543_FUSEID_1\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
-			AR0543_FUSEID_1, data[0]);
+		//printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
+		//	AR0543_FUSEID_1, data[0]);
 	}
 
 	ret = ar0543_read_reg(client, AR0543_16BIT, AR0543_FUSEID_2, &data[1]);
@@ -898,24 +898,24 @@ static u8 *ar0543_fuseid_read(struct v4l2_subdev *sd)
 		v4l2_err(client, "%s: failed to read AR0543_FUSEID_2\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
-			AR0543_FUSEID_2, data[1]);
+		//printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
+		//	AR0543_FUSEID_2, data[1]);
 	}
 	ret = ar0543_read_reg(client, AR0543_16BIT, AR0543_FUSEID_3, &data[2]);
 	if (ret) {
 		v4l2_err(client, "%s: failed to read AR0543_FUSEID_3\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
-			AR0543_FUSEID_3, data[2]);
+		//printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
+		//	AR0543_FUSEID_3, data[2]);
 	}
 	ret = ar0543_read_reg(client, AR0543_16BIT, AR0543_FUSEID_4, &data[3]);
 	if (ret) {
 		v4l2_err(client, "%s: failed to read AR0543_FUSEID_4\n", __func__);
 		return ret;
 	} else {
-		printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
-			AR0543_FUSEID_4, data[3]);
+		//printk(KERN_DEBUG "%s fuse ID %x : %x\n", __func__,
+		//	AR0543_FUSEID_4, data[3]);
 	}
 
 	fuseid = kmalloc(AR0543_FUSEID_SIZE, GFP_KERNEL);
@@ -1146,14 +1146,14 @@ static int __ar0543_s_power(struct v4l2_subdev *sd, int on)
 
 static int ar0543_s_power(struct v4l2_subdev *sd, int on)
 {
-        printk("%s: s\n",__FUNCTION__);
+    printk("%s: s\n",__FUNCTION__);
 	struct ar0543_device *dev = to_ar0543_sensor(sd);
 	int ret;
 
 	mutex_lock(&dev->input_lock);
 	ret = __ar0543_s_power(sd, on);
 	mutex_unlock(&dev->input_lock);
-        printk("%s: e\n",__FUNCTION__);
+    printk("%s: e\n",__FUNCTION__);
 	return ret;
 }
 
@@ -1201,7 +1201,7 @@ ar0543_get_intg_factor(struct i2c_client *client,
 	u16 value;
 	int ret;
 
-	printk("%s\n",__FUNCTION__);
+	//printk("%s\n",__FUNCTION__);
 
 	if (info == NULL)
 		return -EINVAL;
@@ -1833,7 +1833,7 @@ static int ar0543_s_mbus_fmt(struct v4l2_subdev *sd,
 		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
 	}
-        printk("%s: before ar0543_get_mbus_format_code\n",__FUNCTION__);
+    printk("%s: before ar0543_get_mbus_format_code\n",__FUNCTION__);
 	fmt->code = ar0543_get_mbus_format_code(sd);
 	if (fmt->code < 0) {
 		mutex_unlock(&dev->input_lock);
