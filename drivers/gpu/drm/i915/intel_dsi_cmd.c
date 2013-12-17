@@ -87,14 +87,16 @@ static int dsi_vc_send_short(struct intel_dsi *intel_dsi, int channel,
 	/* XXX: short write, do we need to wait for data FIFO? */
 	if (intel_dsi->hs) {
 		ctrl_reg = MIPI_HS_GEN_CTRL(pipe);
-		mask |= HS_CTRL_FIFO_EMPTY | HS_DATA_FIFO_EMPTY;
+		//mask |= HS_CTRL_FIFO_EMPTY | HS_DATA_FIFO_EMPTY;
+		mask |= HS_CTRL_FIFO_FULL | HS_DATA_FIFO_FULL;	//<asus-Bruce 20131217+>
 	} else {
 		ctrl_reg = MIPI_LP_GEN_CTRL(pipe);
-		mask |= LP_CTRL_FIFO_EMPTY | LP_DATA_FIFO_EMPTY;
+		//mask |= LP_CTRL_FIFO_EMPTY | LP_DATA_FIFO_EMPTY;
+		mask |= LP_CTRL_FIFO_FULL| LP_DATA_FIFO_FULL;	//<asus-Bruce 20131217+>
 	}
 
 	/* Note: Could also wait for !full instead of empty. */
-	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == mask, 50))
+	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == DBI_FIFO_EMPTY, 50))	//<asus-Bruce 20131217+>
 		DRM_ERROR("Timeout waiting for FIFO empty\n");
 
 	ctrl = data << SHORT_PACKET_PARAM_SHIFT |
@@ -123,15 +125,17 @@ static int dsi_vc_send_long(struct intel_dsi *intel_dsi, int channel,
 	if (intel_dsi->hs) {
 		data_reg = MIPI_HS_GEN_DATA(pipe);
 		ctrl_reg = MIPI_HS_GEN_CTRL(pipe);
-		mask |= HS_CTRL_FIFO_EMPTY | HS_DATA_FIFO_EMPTY;
+		//mask |= HS_CTRL_FIFO_EMPTY | HS_DATA_FIFO_EMPTY;
+		mask |= HS_CTRL_FIFO_FULL | HS_DATA_FIFO_FULL;	//<asus-Bruce 20131217+>
 	} else {
 		data_reg = MIPI_LP_GEN_DATA(pipe);
 		ctrl_reg = MIPI_LP_GEN_CTRL(pipe);
-		mask |= LP_CTRL_FIFO_EMPTY | LP_DATA_FIFO_EMPTY;
+		//mask |= LP_CTRL_FIFO_EMPTY | LP_DATA_FIFO_EMPTY;
+		mask |= LP_CTRL_FIFO_FULL | LP_DATA_FIFO_FULL;	//<asus-Bruce 20131217+>
 	}
 
 	/* Note: Could also wait for !full instead of empty. */
-	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == mask, 50))
+	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == DBI_FIFO_EMPTY, 50))	//<asus-Bruce 20131217+>
 		DRM_ERROR("Timeout waiting for FIFO empty\n");
 
 	for (i = 0; i < len; i += n) {
