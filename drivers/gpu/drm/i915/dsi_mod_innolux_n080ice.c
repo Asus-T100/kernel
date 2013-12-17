@@ -138,7 +138,7 @@ void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
 	usleep_range(3500, 4500);
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
-	msleep(21);
+	msleep(120);	//<asus-Bruce 20131217+>
 
 	intel_dsi->hs = 0;
 	{
@@ -615,13 +615,13 @@ bool n080ice_init(struct intel_dsi_device *dsi)
 
 	dsi->eotp_pkt = CLOCKSTOP | EOT_DISABLE;
 	dsi->operation_mode = DSI_VIDEO_MODE;
-	dsi->video_mode_type = DSI_VIDEO_NBURST_SEVENT;
+	dsi->video_mode_type = DSI_VIDEO_BURST;		//<asus-Bruce 20131217+>
 	dsi->pixel_format = VID_MODE_FORMAT_RGB888;
 	dsi->port_bits = 0;
 	dsi->turn_arnd_val = 0x3F;
 	dsi->rst_timer_val = 0xFFFF;
 	dsi->init_count = 0x7D0;
-	dsi->hs_to_lp_count = 0x46;
+	dsi->hs_to_lp_count = 0x1F;		//<asus-Bruce 20131217+>
 	dsi->lp_byte_clk = 0x03;
 	dsi->bw_timer = 0;
 	dsi->clk_lp_to_hs_count = 0x1E;
