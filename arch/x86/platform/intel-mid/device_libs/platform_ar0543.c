@@ -28,7 +28,7 @@
 
 /* workround - pin defined for byt */
 #define CAMERA_1_RESET 127
-#define CAMERA_0_PWDN 128		// <ASUS-Ian20131204>
+#define CAMERA_0_PWDN 126		// <ASUS-Ian20131218>
 #define CAMERA_0_VCM_PD 123		// <ASUS-Ian20131204>
 #ifdef CONFIG_VLV2_PLAT_CLK
 #define OSC_CAM0_CLK 0x0
