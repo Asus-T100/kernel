@@ -3392,14 +3392,18 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 
 	return 0;
 }
-
+//<ASUS-ycl 20131218 +>
+#ifndef CONFIG_M81TA
 static void do_enable_push_button_int(struct work_struct *work)
 {
 	pr_debug("enabling push button intr");
 	snd_soc_update_bits(rt5640_codec, RT5640_IRQ_CTRL2,
 			RT5640_IRQ_MB1_OC_MASK, RT5640_IRQ_MB1_OC_NOR);
 }
-
+#else
+static void do_enable_push_button_int(struct work_struct *work){}
+#endif
+//<ASUS-ycl 20131218 ->
 static int rt5640_probe(struct snd_soc_codec *codec)
 {
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
