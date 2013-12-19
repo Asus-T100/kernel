@@ -227,7 +227,7 @@ static const struct hid_device_id t100_kb_devices[] = {
         { .driver_data = (unsigned long)&kb_sdev_registered,
 	  .bus = 0x0003,
 	  .vendor = 0x0b05,
-          .product = 0x17e0,
+          .product = HID_ANY_ID,
 	},
 
 	{ }
