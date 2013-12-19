@@ -242,7 +242,7 @@ static const struct hid_device_id elan_pad_devices[] = {
         { .driver_data = 0,
 	  .bus = 0x0003,
 	  .vendor = 0x0b05,
-          .product = 0x17e0,
+          .product = HID_ANY_ID,
 	},
 
 	{ }
