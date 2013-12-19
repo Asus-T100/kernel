@@ -142,6 +142,12 @@ static int t100_kb_input_mapping(struct hid_device *hdev, struct hid_input *hi, 
                     //Fn+F9 (touchpad)
                     t100_map_key_clear(KEY_F24);
                     return 1;
+#ifdef CONFIG_TD100TA                    
+		case 0x03B:
+                    //OS switch
+                    t100_map_key_clear(KEY_F16);
+                    return 1;
+#endif
 		}
 		break;
         }
