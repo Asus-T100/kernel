@@ -59,6 +59,21 @@
 	ret__;								\
 })
 
+//<asus-Bruce 20131223+>
+#define wait_for_restrict(COND, MS) ({ \
+	unsigned long timeout__ = jiffies + msecs_to_jiffies(MS);	\
+	int ret__ = 0;							\
+	while (!(COND)) {						\
+		if (time_after(jiffies, timeout__)) {			\
+			ret__ = -ETIMEDOUT;				\
+			break;						\
+		}							\
+		if (drm_can_sleep()) usleep_range(1000,1200);	\
+	}								\
+	ret__;								\
+})
+//<asus-Bruce 20131223->
+
 #define wait_for(COND, MS) _wait_for(COND, MS, 1)
 #define wait_for_atomic(COND, MS) _wait_for(COND, MS, 0)
 

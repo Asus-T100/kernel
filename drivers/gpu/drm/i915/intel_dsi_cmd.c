@@ -94,7 +94,7 @@ static int dsi_vc_send_short(struct intel_dsi *intel_dsi, int channel,
 	}
 
 	/* Note: Could also wait for !full instead of empty. */
-	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == mask, 50))
+	if (wait_for_restrict((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == mask, 50))	//<asus-Bruce 20131223+>
 		DRM_ERROR("Timeout waiting for FIFO empty\n");
 
 	ctrl = data << SHORT_PACKET_PARAM_SHIFT |
@@ -131,7 +131,7 @@ static int dsi_vc_send_long(struct intel_dsi *intel_dsi, int channel,
 	}
 
 	/* Note: Could also wait for !full instead of empty. */
-	if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == mask, 50))
+	if (wait_for_restrict((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask) == mask, 50))	//<asus-Bruce 20131223+>
 		DRM_ERROR("Timeout waiting for FIFO empty\n");
 
 	for (i = 0; i < len; i += n) {
