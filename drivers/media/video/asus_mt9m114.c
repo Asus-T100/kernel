@@ -49,6 +49,8 @@ static int debug;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Debug level (0-1)");
 
+static int isProbe = 0; // <ASUS-Ian20131223>
+
 static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value);
 static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value);
 static int mt9m114_wait_state(struct i2c_client *client, int timeout);
@@ -489,10 +491,18 @@ static int power_up(struct v4l2_subdev *sd)
 	if (ret)
 		goto fail_clk;
 
-	/* gpio ctrl */
-	ret = dev->platform_data->gpio_ctrl(sd, 1);
+// <ASUS-Ian20131223+>
+	if(isProbe){
+		/* probe gpio ctrl */
+		ret = dev->platform_data->probe_gpio_ctrl(sd, 1);
+	}else{
+		/* gpio ctrl */
+		ret = dev->platform_data->gpio_ctrl(sd, 1);
+	}
 	if (ret)
-		dev_err(&client->dev, "gpio failed 1\n");
+		dev_err(&client->dev, "gpio failed\n");
+// <ASUS-Ian20131223->
+		
 	/*
 	 * according to DS, 44ms is needed between power up and first i2c
 	 * commend
@@ -527,10 +537,17 @@ static int power_down(struct v4l2_subdev *sd)
 	if (ret)
 		dev_err(&client->dev, "flisclk failed\n");
 
-	/* gpio ctrl */
-	ret = dev->platform_data->gpio_ctrl(sd, 0);
+// <ASUS-Ian20131223+>
+	if(isProbe){
+		/* probe gpio ctrl */
+		ret = dev->platform_data->probe_gpio_ctrl(sd, 0);
+	}else{
+		/* gpio ctrl */
+		ret = dev->platform_data->gpio_ctrl(sd, 0);
+	}
 	if (ret)
-		dev_err(&client->dev, "gpio failed 1\n");
+		dev_err(&client->dev, "gpio failed\n");
+// <ASUS-Ian20131223->
 
 	/* power control */
 	ret = dev->platform_data->power_ctrl(sd, 0);
@@ -1824,10 +1841,13 @@ static int mt9m114_probe(struct i2c_client *client,
 	struct mt9m114_device *dev;
 	int ret;
 
+	isProbe = 1; // <ASUS-Ian20131223>	
+	
 	/* Setup sensor configuration structure */
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
 		dev_err(&client->dev, "out of memory\n");
+		isProbe = 0; // <ASUS-Ian20131223>
 		return -ENOMEM;
 	}
 
@@ -1839,6 +1859,7 @@ static int mt9m114_probe(struct i2c_client *client,
 		if (ret) {
 			v4l2_device_unregister_subdev(&dev->sd);
 			kfree(dev);
+			isProbe = 0; // <ASUS-Ian20131223>
 			return ret;
 		}
 	}
@@ -1853,12 +1874,15 @@ static int mt9m114_probe(struct i2c_client *client,
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
 	if (ret) {
 		mt9m114_remove(client);
+		isProbe = 0; // <ASUS-Ian20131223>
 		return ret;
 	}
 
 	/* set res index to be invalid */
 	dev->res = -1;
 
+	isProbe = 0; // <ASUS-Ian20131223>	
+	
 	return 0;
 }
 

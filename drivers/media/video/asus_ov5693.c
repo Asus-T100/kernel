@@ -39,6 +39,8 @@
 
 #include "asus_ov5693.h"
 
+static int isProbe = 0; // <ASUS-Ian20131223>
+
 static int vcm_i2c_wr8(struct i2c_client *client, u8 reg, u8 val)
 {
     int err;
@@ -891,13 +893,18 @@ static int power_up(struct v4l2_subdev *sd)
 	/* according to DS, at least 5ms is needed between DOVDD and PWDN */
 	usleep_range(5000, 6000);
 
-	/* gpio ctrl */
-	ret = dev->platform_data->gpio_ctrl(sd, 1);
-	if (ret) {
+// <ASUS-Ian20131129+>
+	if(isProbe){
+		/* probe gpio ctrl */
+		ret = dev->platform_data->probe_gpio_ctrl(sd, 1);
+	}else{	
+		/* gpio ctrl */
 		ret = dev->platform_data->gpio_ctrl(sd, 1);
-		if (ret)
-			goto fail_power;
+ 	}
+	if (ret){
+		goto fail_power;
 	}
+// <ASUS-Ian20131129->
 	
 	/* flis clock control */
 	ret = dev->platform_data->flisclk_ctrl(sd, 1);
@@ -937,13 +944,17 @@ static int power_down(struct v4l2_subdev *sd)
 	if (ret)
 		dev_err(&client->dev, "flisclk failed\n");
 
-	/* gpio ctrl */
-	ret = dev->platform_data->gpio_ctrl(sd, 0);
-	if (ret) {
+// <ASUS-Ian20131129+>
+	if(isProbe){        	
+		/* probe gpio ctrl */
+		ret = dev->platform_data->probe_gpio_ctrl(sd, 0);
+	}else{         	
+		/* gpio ctrl */
 		ret = dev->platform_data->gpio_ctrl(sd, 0);
-		if (ret)
-			dev_err(&client->dev, "gpio failed 2\n");
-	}
+ 	}
+	if (ret)
+		dev_err(&client->dev, "gpio failed 2\n");
+// <ASUS-Ian20131129->
 
 	/* power control */
 	ret = dev->platform_data->power_ctrl(sd, 0);
@@ -1514,9 +1525,12 @@ static int ov5693_probe(struct i2c_client *client,
 	struct ov5693_device *dev;
 	int ret;
 
+	isProbe = 1; // <ASUS-Ian20131223>
+	
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
 		dev_err(&client->dev, "out of memory\n");
+		isProbe = 0; // <ASUS-Ian20131223>	
 		return -ENOMEM;
 	}
 
@@ -1541,10 +1555,13 @@ static int ov5693_probe(struct i2c_client *client,
 	if (ret)
 		ov5693_remove(client);
 
+	isProbe = 0; // <ASUS-Ian20131223>	
+		
 	return ret;
 out_free:
 	v4l2_device_unregister_subdev(&dev->sd);
 	kfree(dev);
+	isProbe = 0; // <ASUS-Ian20131223>	
 	return ret;
 }
 

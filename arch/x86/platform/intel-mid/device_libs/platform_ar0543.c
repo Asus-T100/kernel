@@ -25,6 +25,7 @@
 #include <linux/vlv2_plat_clock.h>
 #include "platform_camera.h"
 #include "platform_ar0543.h"
+#include <linux/acpi_gpio.h>
 
 /* workround - pin defined for byt */
 #define CAMERA_1_RESET 127
@@ -45,17 +46,16 @@
 static int camera_reset;
 static int camera_power_down;
 static int camera_vcm_power_down;
-static int camera_led_mask;			// <ASUS-Ian20131204>
+static int camera_led_mask;			// <ASUS-Ian20131223>
 static int camera_vprog1_on;
-
 
 static struct regulator *vprog1_reg;
 
+// <ASUS-Ian20131223+>
 /*
- * CLV PR0 primary camera sensor - AR0543 platform data
+ * For AR0543 probe
  */
-
-static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+static int ar0543_probe_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret;
 	int pin;
@@ -74,26 +74,14 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		 * not implemented currently.
 		 */
 		pin = CAMERA_0_PWDN;
-		if (camera_reset < 0) {
-			ret = gpio_request(pin, "camera_0_powerdown");
-			if (ret) {
-				pr_err("%s: failed to request gpio(pin %d)\n",
-					__func__, pin);
-				return ret;
-			}
-		}
-		camera_reset = pin;
-		ret = gpio_direction_output(pin, 1);
+		ret = ar0543_gpio_request(pin, &camera_reset, "camera_0_powerdown");
 		if (ret) {
-			pr_err("%s: failed to set gpio(pin %d) direction\n",
-				__func__, pin);
-			gpio_free(pin);
 			return ret;
 		}
 
 /*		
-        //for vcm
-        pin = CAMERA_0_VCM_PD;
+		//for vcm
+		pin = CAMERA_0_VCM_PD;
 		if (camera_vcm_power_down < 0) {
 			ret = gpio_request(pin, "camera_vcm_pd to non-acive");
 			if (ret) {
@@ -118,13 +106,110 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		msleep(60);
 #endif
 		gpio_set_value(camera_reset, 1);
-        //gpio_set_value(camera_vcm_power_down, 1);
+		//gpio_set_value(camera_vcm_power_down, 1);
 	} else {
 		gpio_set_value(camera_reset, 0);
-        //gpio_set_value(camera_vcm_power_down, 0);
-    }
+		//gpio_set_value(camera_vcm_power_down, 0);
+	}
 	return 0;
 }
+
+/*
+ * CLV PR0 primary camera sensor - AR0543 platform data
+ */
+static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+	int pin;
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		if (camera_reset < 0) {
+			ret = camera_sensor_gpio(-1, GP_CAMERA_1_RESET,
+					GPIOF_DIR_OUT, 1);
+			if (ret < 0)
+				return ret;
+			camera_reset = ret;
+		}
+	} else {
+		/*
+		 * FIXME: WA using hardcoded GPIO value here.
+		 * The GPIO value would be provided by ACPI table, which is
+		 * not implemented currently.
+		 */
+		pin = CAMERA_0_PWDN;
+		ret = ar0543_gpio_request(pin, &camera_reset, "camera_0_powerdown");
+		if (ret) {
+			return ret;
+		}
+
+/*		
+		//for vcm
+		pin = CAMERA_0_VCM_PD;
+		if (camera_vcm_power_down < 0) {
+			ret = gpio_request(pin, "camera_vcm_pd to non-acive");
+			if (ret) {
+				pr_err("%s: failed to request gpio(pin %d)\n",
+					__func__, pin);
+				return ret;
+			}
+		}
+		camera_vcm_power_down = pin;
+		ret = gpio_direction_output(pin, 1);
+		if (ret) {
+			pr_err("%s: failed to set gpio(pin %d) direction\n",
+				__func__, pin);
+			gpio_free(pin);
+			return ret;
+		}
+*/
+		// LED indicator
+		pin = acpi_get_gpio("\\_SB.GPO2", 8);
+		ret = ar0543_gpio_request(pin, &camera_led_mask, "cam_led_mask");
+		if (ret) {
+			return ret;
+		}
+	}
+	if (flag) {
+#ifdef CONFIG_BOARD_CTP
+		gpio_set_value(camera_reset, 0);
+		gpio_set_value(camera_led_mask, 0);
+		msleep(60);
+#endif
+		gpio_set_value(camera_reset, 1);
+		//gpio_set_value(camera_vcm_power_down, 1);
+		gpio_set_value(camera_led_mask, 1);
+	} else {
+		gpio_set_value(camera_reset, 0);
+		//gpio_set_value(camera_vcm_power_down, 0);
+		gpio_set_value(camera_led_mask, 0);
+	}
+	return 0;
+}
+
+int ar0543_gpio_request(int pin, int* gpio, const char *label){ 
+    int ret = 0;      
+    if (*gpio < 0) {            
+		ret = gpio_request(pin, label);                    
+        if (ret) {
+            pr_err("%s: failed to request gpio(pin %d)\n",
+                    __func__, pin);
+            return ret;
+        }
+		*gpio = pin;           
+        ret = gpio_direction_output(*gpio, 0);             
+        if (ret) {
+            pr_err("%s: failed to set gpio(pin %d) direction\n",
+                    __func__, *gpio);
+            gpio_free(*gpio);
+            return ret;
+        }
+#ifndef CONFIG_T101TA 				
+printk("<ASUS-Ian> gpio_free\n");
+        gpio_free(*gpio);
+#endif
+    }
+    return 0;
+}
+// <ASUS-Ian20131223->
 
 static int ar0543_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
@@ -226,6 +311,7 @@ static int ar0543_platform_deinit(void)
 	return 0;
 }
 static struct camera_sensor_platform_data ar0543_sensor_platform_data = {
+	.probe_gpio_ctrl      = ar0543_probe_gpio_ctrl, // <ASUS-Ian20131223>
 	.gpio_ctrl      = ar0543_gpio_ctrl,
 	.flisclk_ctrl   = ar0543_flisclk_ctrl,
 	.power_ctrl     = ar0543_power_ctrl,
@@ -239,6 +325,7 @@ void *ar0543_platform_data(void *info)
 	camera_reset = -1;
 	camera_power_down = -1;
     camera_vcm_power_down = -1;
-
+	camera_led_mask = -1; // <ASUS-Ian20131223>
+	
 	return &ar0543_sensor_platform_data;
 }
