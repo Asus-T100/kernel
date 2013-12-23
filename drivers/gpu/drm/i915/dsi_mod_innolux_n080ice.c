@@ -125,6 +125,19 @@ void n080ice_panel_reset(struct intel_dsi_device *dsi)
 	msleep(20);	//<asus-Bruce 20131129+>
 }
 
+//<asus-Bruce 20131223+>
+void n080ice_dcs_write_long_to_short(struct intel_dsi *intel_dsi, int channel,
+				    u8 *data, int len)
+{
+	int i;
+
+	for (i = 0; i < len - 1; i++) {
+		dsi_vc_dcs_write_1(intel_dsi, channel, 0x6F, i);
+		dsi_vc_dcs_write_1(intel_dsi, channel, data[0], data[i + 1]);
+	}
+}
+//<asus-Bruce 20131223->
+
 void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
@@ -138,7 +151,7 @@ void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000004);
 	usleep_range(3500, 4500);
 	intel_gpio_nc_write32(dev_priv, 0x4168, 0x00000005);
-	msleep(120);	//<asus-Bruce 20131217+>
+	msleep(120);
 
 	intel_dsi->hs = 0;
 	{
@@ -163,70 +176,70 @@ void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF3, 0x01);
 	{
 		u8 buf[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC8, 0x80);
 	{
 		u8 buf[] = {0xB1, 0x6C, 0x01};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB6, 0x08);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x02);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB8, 0x08);
 	{
 		u8 buf[] = {0xBB, 0x74, 0x44};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBC, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBD, 0x02, 0xB0, 0x0C, 0x0A, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x01};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xB0, 0x05, 0x05};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB1, 0x05, 0x05};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBC, 0x90, 0x01};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBD, 0x90, 0x01};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xCA, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC0, 0x04);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xBE, 0x29);
 	{
 		u8 buf[] = {0xB3, 0x37, 0x37};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB4, 0x19, 0x19};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB9, 0x44, 0x44};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBA, 0x24, 0x24};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x02};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xEE, 0x01);
 	{
@@ -281,258 +294,258 @@ void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
 	}
 	{
 		u8 buf[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x06};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xB0, 0x00, 0x10};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB1, 0x12, 0x14};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB2, 0x16, 0x18};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB3, 0x1A, 0x29};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB4, 0x2A, 0x08};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB5, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB6, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB7, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB8, 0x31, 0x0A};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB9, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBA, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBB, 0x0B, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBC, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBD, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBE, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xBF, 0x09, 0x2A};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC0, 0x29, 0x1B};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC1, 0x19, 0x17};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC2, 0x15, 0x13};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC3, 0x11, 0x01};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xE5, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC4, 0x09, 0x1B};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC5, 0x19, 0x17};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC6, 0x15, 0x13};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC7, 0x11, 0x29};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC8, 0x2A, 0x01};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC9, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xCA, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xCB, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xCC, 0x31, 0x0B};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xCD, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xCE, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xCF, 0x0A, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD0, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD1, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD2, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD3, 0x00, 0x2A};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD4, 0x29, 0x10};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD5, 0x12, 0x14};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD6, 0x16, 0x18};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD7, 0x1A, 0x08};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xE6, 0x31, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xD8, 0x00, 0x00, 0x00, 0x54, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xD9, 0x00, 0x15, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE7, 0x00);
 	{
 		u8 buf[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x03};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xB0, 0x20, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB1, 0x20, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB2, 0x05, 0x00, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xB6, 0x05, 0x00, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xB7, 0x05, 0x00, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xBA, 0x57, 0x00, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xBB, 0x57, 0x00, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xC0, 0x00, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 5);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 5);
 	}
 	{
 		u8 buf[] = {0xC1, 0x00, 0x00, 0x00, 0x00};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 5);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 5);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC4, 0x60);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC5, 0x40);
 	{
 		u8 buf[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x05};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xBD, 0x03, 0x01, 0x03, 0x03, 0x03};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xB0, 0x17, 0x06};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB1, 0x17, 0x06};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB2, 0x17, 0x06};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB3, 0x17, 0x06};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB4, 0x17, 0x06};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xB5, 0x17, 0x06};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB8, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB9, 0x00);
@@ -543,27 +556,27 @@ void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC5, 0xA4);
 	{
 		u8 buf[] = {0xC8, 0x05, 0x30};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xC9, 0x01, 0x31};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 3);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 3);
 	}
 	{
 		u8 buf[] = {0xCC, 0x00, 0x00, 0x3C};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 4);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 4);
 	}
 	{
 		u8 buf[] = {0xCD, 0x00, 0x00, 0x3C};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 4);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 4);
 	}
 	{
 		u8 buf[] = {0xD1, 0x00, 0x04, 0xFD, 0x07, 0x10};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	{
 		u8 buf[] = {0xD2, 0x00, 0x05, 0x02, 0x07, 0x10};
-		dsi_vc_dcs_write(intel_dsi, 0, buf, 6);
+		n080ice_dcs_write_long_to_short(intel_dsi, 0, buf, 6);
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE5, 0x06);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE6, 0x06);
@@ -578,6 +591,7 @@ void n080ice_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
 	dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
 }
+
 
 void n080ice_enable(struct intel_dsi_device *dsi)
 {
