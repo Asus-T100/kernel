@@ -55,6 +55,8 @@
  * (result is 0 if b == 0) */
 #define divsave_rounded(a, b)	(((b) != 0) ? (((a)+((b)>>1))/(b)) : (-1))
 
+static int isProbe = 0; // <ASUS-Ian20131223>
+
 //Add for ATD read camera status+++
 int ATD_ar0543_status = 0;  //Add for ATD read camera status
 static ssize_t ar0543_show_status(struct device *dev,struct device_attribute *attr,char *buf)
@@ -1082,10 +1084,18 @@ static int power_up(struct v4l2_subdev *sd)
 	if (ret)
 		goto fail_clk;
 
-	/* gpio ctrl */
-	ret = dev->platform_data->gpio_ctrl(sd, 1);
+// <ASUS-Ian20131223+>
+	if(isProbe){
+		/* probe gpio ctrl */
+		ret = dev->platform_data->probe_gpio_ctrl(sd, 1);
+	}else{
+		/* gpio ctrl */
+		ret = dev->platform_data->gpio_ctrl(sd, 1);
+	}
 	if (ret)
-		dev_err(&client->dev, "gpio failed 1\n");
+		dev_err(&client->dev, "gpio failed\n");
+// <ASUS-Ian20131223->	
+	
 	msleep(20);
 
 	return 0;
@@ -1114,10 +1124,17 @@ static int power_down(struct v4l2_subdev *sd)
 	if (ret)
 		dev_err(&client->dev, "gpio failed 1\n");
 
-	/* power control */
-	ret = dev->platform_data->power_ctrl(sd, 0);
+// <ASUS-Ian20131223+>
+	if(isProbe){
+		/* probe gpio ctrl */
+		ret = dev->platform_data->probe_gpio_ctrl(sd, 0);
+	}else{
+		/* gpio ctrl */
+		ret = dev->platform_data->gpio_ctrl(sd, 0);
+	}
 	if (ret)
-		dev_err(&client->dev, "vprog failed.\n");
+		dev_err(&client->dev, "gpio failed\n");
+// <ASUS-Ian20131223->	
 
 	return ret;
 }
@@ -2375,24 +2392,15 @@ static int ar0543_probe(struct i2c_client *client,
 	struct ar0543_device *dev;
 	int ret;
 
+	isProbe = 1; // <ASUS-Ian20131223>
+	
 	/* allocate sensor device & init sub device */
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
 		v4l2_err(client, "%s: out of memory\n", __func__);
+		isProbe = 0; // <ASUS-Ian20131223>
 		return -ENOMEM;
 	}
-        
-
-        //Add for ATD read camera status+++
-	dev->sensor_i2c_attribute.attrs = ar0543_attributes;
-
-	// Register sysfs hooks
-	ret = sysfs_create_group(&client->dev.kobj, &dev->sensor_i2c_attribute);
-	if (ret) {
-		dev_err(&client->dev, "Not able to create the sysfs\n");
-		return ret;
-	}
-	//Add for ATD read camera status---
 
 	mutex_init(&dev->input_lock);
 
@@ -2405,6 +2413,7 @@ static int ar0543_probe(struct i2c_client *client,
 		if (ret) {
 			v4l2_device_unregister_subdev(&dev->sd);
 			kfree(dev);
+			isProbe = 0; // <ASUS-Ian20131223>
 			return ret;
 		}
 	}
@@ -2418,9 +2427,12 @@ static int ar0543_probe(struct i2c_client *client,
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
 	if (ret) {
 		ar0543_remove(client);
+		isProbe = 0; // <ASUS-Ian20131223>
 		return ret;
 	}
 
+	isProbe = 0; // <ASUS-Ian20131223>
+	
 	return 0;
 }
 

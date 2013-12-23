@@ -87,6 +87,7 @@ struct atomisp_platform_data {
 };
 
 struct camera_sensor_platform_data {
+	int (*probe_gpio_ctrl)(struct v4l2_subdev *subdev, int flag); // <ASUS-Ian20131223>
 	int (*gpio_ctrl)(struct v4l2_subdev *subdev, int flag);
 	int (*flisclk_ctrl)(struct v4l2_subdev *subdev, int flag);
 	int (*power_ctrl)(struct v4l2_subdev *subdev, int flag);

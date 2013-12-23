@@ -53,6 +53,61 @@ static int camera_vprog1_on;
 static struct regulator *vprog1_reg;
 int ov5693_gpio_request(int pin, int* gpio, const char *label);	// <ASUS-Ian20131120>
 
+// <ASUS-Ian20131223+>
+/*
+ * For ov5693 probe
+ */
+static int ov5693_probe_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+    int pin;
+          
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		if (camera_reset < 0) {
+			ret = camera_sensor_gpio(-1, GP_CAMERA_1_RESET,
+					GPIOF_DIR_OUT, 1);
+			if (ret < 0)
+				return ret;
+			camera_reset = ret;
+		}
+	} else {
+		/*
+		 * FIXME: WA using hardcoded GPIO value here.
+		 * The GPIO value would be provided by ACPI table, which is
+		 * not implemented currently.
+		 */
+		 	
+		// Back camera reset pin
+		pin = CAMERA_0_PWDN;
+		ret = ov5693_gpio_request(pin, &camera_reset, "camera_0_powerdown");
+		if (ret) {
+			return ret;
+		}
+		
+		//for vcm
+		pin = CAMERA_0_VCM_PD;
+ 		ret = ov5693_gpio_request(pin, &camera_vcm_power_down, "camera_vcm_pd");
+		if (ret) {
+			return ret;
+		}
+	}
+	if (flag) {
+#ifdef CONFIG_BOARD_CTP
+	    gpio_set_value(camera_reset, 0);
+		gpio_set_value(camera_vcm_power_down, 0);
+	    msleep(60);
+#endif
+	    gpio_set_value(camera_reset, 1);
+		gpio_set_value(camera_vcm_power_down, 1);
+	} else {
+	    gpio_set_value(camera_reset, 0);
+		gpio_set_value(camera_vcm_power_down, 0);
+    }
+	
+	return 0;
+}
+// <ASUS-Ian20131223->
+
 /*
  * camera sensor - ov5693 platform data
  */
@@ -146,6 +201,7 @@ static int ov5693_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
 	    gpio_set_value(camera_reset, 0);
+		gpio_set_value(camera_vcm_power_down, 0);
 	    msleep(60);
 #endif
 	    gpio_set_value(camera_reset, 1);
@@ -269,7 +325,8 @@ static int ov5693_csi_configure(struct v4l2_subdev *sd, int flag)
 }
 
 static struct camera_sensor_platform_data ov5693_sensor_platform_data = {
-	.gpio_ctrl	= ov5693_gpio_ctrl,
+	.probe_gpio_ctrl = ov5693_probe_gpio_ctrl, // <ASUS-Ian20131223>
+	.gpio_ctrl = ov5693_gpio_ctrl,
 	.flisclk_ctrl	= ov5693_flisclk_ctrl,
 	.power_ctrl	= ov5693_power_ctrl,
 	.csi_cfg	= ov5693_csi_configure,
