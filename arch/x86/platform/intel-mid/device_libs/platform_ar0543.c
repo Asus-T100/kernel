@@ -50,6 +50,7 @@ static int camera_led_mask;			// <ASUS-Ian20131223>
 static int camera_vprog1_on;
 
 static struct regulator *vprog1_reg;
+int ar0543_gpio_request(int pin, int* gpio, const char *label);	// <ASUS-Ian20131123> 
 
 // <ASUS-Ian20131223+>
 /*
