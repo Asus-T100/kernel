@@ -1394,8 +1394,10 @@ struct task_struct {
 #if defined(CONFIG_SMP) || defined(CONFIG_SCHED_BFS)
 	int on_cpu;
 #endif
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) && !defined(CONFIG_SCHED_BFS)
 	struct llist_node wake_entry;
+#endif
+#ifdef CONFIG_SMP
 	unsigned int wakee_flips;
 	unsigned long wakee_flip_decay_ts;
 	struct task_struct *last_wakee;
