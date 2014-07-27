@@ -2624,7 +2624,7 @@ ts_account:
  * Bank in p->sched_time the ns elapsed since the last tick or switch.
  * CPU scheduler quota accounting is also performed here in microseconds.
  */
-static void
+static inline void
 update_cpu_clock_switch(struct rq *rq, struct task_struct *p)
 {
 	long account_ns = rq->clock_task - rq->rq_last_ran;
@@ -3509,10 +3509,7 @@ static void __sched notrace __schedule(bool preempt)
 
 	update_clocks(rq);
 	update_cpu_clock_switch(rq, prev);
-	if (rq->clock - rq->last_tick > HALF_JIFFY_NS)
-		rq->dither = false;
-	else
-		rq->dither = true;
+	rq->dither = (rq->clock - rq->last_tick < HALF_JIFFY_NS);
 
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
