@@ -10,11 +10,12 @@
  * This data should only be modified by the local cpu.
  */
 struct rq {
-	struct task_struct *curr, *idle, *stop;
-	struct mm_struct *prev_mm;
+	/* runqueue lock: */
+	raw_spinlock_t lock;
 
-	/* Pointer to grq spinlock */
-	raw_spinlock_t *grq_lock;
+	struct task_struct *curr, *idle, *stop;
+	struct task_struct *try_preempt_tsk;
+	struct mm_struct *prev_mm;
 
 	/* switch count */
 	u64 nr_switches;
@@ -112,13 +113,13 @@ static inline u64 __rq_clock_broken(struct rq *rq)
 
 static inline u64 rq_clock(struct rq *rq)
 {
-	lockdep_assert_held(rq->grq_lock);
+	lockdep_assert_held(&rq->lock);
 	return rq->clock;
 }
 
 static inline u64 rq_clock_task(struct rq *rq)
 {
-	lockdep_assert_held(rq->grq_lock);
+	lockdep_assert_held(&rq->lock);
 	return rq->clock_task;
 }
 
