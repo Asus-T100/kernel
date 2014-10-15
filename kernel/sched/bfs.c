@@ -1392,25 +1392,6 @@ can_preempt(struct task_struct *p, int prio, u64 deadline)
 }
 
 #ifdef CONFIG_SMP
-#define cpu_online_map		(*(cpumask_t *)cpu_online_mask)
-#ifdef CONFIG_HOTPLUG_CPU
-/*
- * Check to see if there is a task that is affined only to offline CPUs but
- * still wants runtime. This happens to kernel threads during suspend/halt and
- * disabling of CPUs.
- */
-static inline bool online_cpus(struct task_struct *p)
-{
-	return (likely(cpumask_intersects(&cpu_online_map, &p->cpus_allowed)));
-}
-#else /* CONFIG_HOTPLUG_CPU */
-/* All available CPUs are always online without hotplug. */
-static inline bool online_cpus(struct task_struct *p)
-{
-	return true;
-}
-#endif
-
 /*
  * Check to see if p can run on cpu, and if not, whether there are any online
  * CPUs it can run on instead.
@@ -1446,9 +1427,7 @@ static void try_preempt(struct task_struct *p, struct rq *this_rq)
 	if (p->policy == SCHED_IDLEPRIO)
 		return;
 
-	if (likely(online_cpus(p)))
-		cpumask_and(&tmp, &cpu_online_map, &p->cpus_allowed);
-	else
+	if (unlikely(!cpumask_and(&tmp, cpu_online_mask, &p->cpus_allowed)))
 		return;
 
 	highest_prio = latest_deadline = 0;
