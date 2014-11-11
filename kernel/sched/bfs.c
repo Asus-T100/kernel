@@ -543,12 +543,17 @@ static inline bool task_queued(struct task_struct *p)
 /*
  * Removing from the global runqueue. Enter with grq locked.
  */
-static void dequeue_task(struct task_struct *p)
+static inline void __dequeue_task(struct task_struct *p, int prio)
 {
 	list_del_init(&p->run_list);
-	if (list_empty(grq.queue + p->prio))
-		__clear_bit(p->prio, grq.prio_bitmap);
+	if (list_empty(grq.queue + prio))
+		__clear_bit(prio, grq.prio_bitmap);
 	sched_info_dequeued(task_rq(p), p);
+}
+
+static void dequeue_task(struct task_struct *p)
+{
+	__dequeue_task(p, p->prio);
 }
 
 /*
@@ -3742,6 +3747,26 @@ int default_wake_function(wait_queue_t *curr, unsigned mode, int wake_flags,
 }
 EXPORT_SYMBOL(default_wake_function);
 
+static inline void check_task_changed(struct rq *rq, struct task_struct *p,
+				      int oldprio)
+{
+	/*
+	 * Reschedule if we are currently running on this runqueue and
+	 * our priority decreased, or if we are not currently running on
+	 * this runqueue and our priority is higher than the current's
+	 */
+	if (task_running(p)) {
+		reset_rq_task(rq, p);
+		/* Resched only if we might now be preempted */
+		if (p->prio > oldprio)
+			resched_curr(rq);
+	} else if (task_queued(p)) {
+		__dequeue_task(p, oldprio);
+		enqueue_task(p, rq);
+		try_preempt(p, rq);
+	}
+}
+
 #ifdef CONFIG_RT_MUTEXES
 
 /*
@@ -3758,7 +3783,7 @@ EXPORT_SYMBOL(default_wake_function);
 void rt_mutex_setprio(struct task_struct *p, int prio)
 {
 	unsigned long flags;
-	int queued, oldprio;
+	int oldprio;
 	struct rq *rq;
 
 	BUG_ON(prio < 0 || prio > MAX_PRIO);
@@ -3785,16 +3810,9 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 
 	trace_sched_pi_setprio(p, prio);
 	oldprio = p->prio;
-	queued = task_queued(p);
-	if (queued)
-		dequeue_task(p);
 	p->prio = prio;
-	if (task_running(p) && prio > oldprio)
-		resched_curr(rq);
-	if (queued) {
-		enqueue_task(p, rq);
-		try_preempt(p, rq);
-	}
+
+	check_task_changed(rq, p, oldprio);
 
 out_unlock:
 	task_grq_unlock(&flags);
@@ -4050,32 +4068,56 @@ __set_cpus_allowed_ptr(struct task_struct *p,
 }
 #endif
 
-/* Actually do priority change: must hold grq lock. */
-static void __setscheduler(struct task_struct *p, struct rq *rq, int policy,
-			   int prio, bool keep_boost)
+/*
+ * sched_setparam() passes in -1 for its policy, to let the functions
+ * it calls know not to change it.
+ */
+#define SETPARAM_POLICY -1
+
+static void __setscheduler_params(struct task_struct *p,
+		const struct sched_attr *attr)
 {
-	int oldrtprio, oldprio;
+	int policy = attr->sched_policy;
+
+	if (policy == SETPARAM_POLICY)
+		policy = p->policy;
 
 	p->policy = policy;
-	oldrtprio = p->rt_priority;
-	p->rt_priority = prio;
+
+	/*
+	 * allow normal nice value to be set, but will not have any
+	 * effect on scheduling until the task not SCHED_NORMAL/
+	 * SCHED_BATCH
+	 */
+	p->static_prio = NICE_TO_PRIO(attr->sched_nice);
+
+	/*
+	 * __sched_setscheduler() ensures attr->sched_priority == 0 when
+	 * !rt_policy. Always setting this ensures that things like
+	 * getparam()/getattr() don't report silly values for !rt tasks.
+	 */
+	p->rt_priority = attr->sched_priority;
 	p->normal_prio = normal_prio(p);
-	oldprio = p->prio;
+}
+
+/* Actually do priority change: must hold grq lock. */
+static void __setscheduler(struct rq *rq, struct task_struct *p,
+			   const struct sched_attr *attr, bool keep_boost)
+{
+	int oldrtprio = p->rt_priority;
+	int oldprio = p->prio;
+
+	__setscheduler_params(p, attr);
+
 	/*
 	 * Keep a potential priority boosting if called from
 	 * sched_setscheduler().
 	 */
-	if (keep_boost) {
-		/*
-		 * Take priority boosted tasks into account. If the new
-		 * effective priority is unchanged, we just store the new
-		 * normal parameters and do not touch the scheduler class and
-		 * the runqueue. This will be done when the task deboost
-		 * itself.
-		 */
+	if (keep_boost)
 		p->prio = rt_mutex_get_effective_prio(p, p->normal_prio);
-	} else
+	else
 		p->prio = p->normal_prio;
+
 	if (task_running(p)) {
 		reset_rq_task(rq, p);
 		/* Resched only if we might now be preempted */
@@ -4101,58 +4143,43 @@ static bool check_same_owner(struct task_struct *p)
 }
 
 static int
-__sched_setscheduler(struct task_struct *p, int policy,
-		     const struct sched_param *param, bool user, bool pi)
+__sched_setscheduler(struct task_struct *p,
+		     const struct sched_attr *attr, bool user, bool pi)
 {
-	struct sched_param zero_param = { .sched_priority = 0 };
-	int queued, retval, oldpolicy = -1;
-	unsigned long flags, rlim_rtprio = 0;
-	int reset_on_fork;
+	int newprio = MAX_RT_PRIO - 1 - attr->sched_priority;
+	int retval, oldprio, oldpolicy = -1;
+	int policy = attr->sched_policy;
+	unsigned long flags;
 	struct rq *rq;
+	int reset_on_fork;
 
 	/* may grab non-irq protected spin_locks */
 	BUG_ON(in_interrupt());
-
-	if (is_rt_policy(policy) && !capable(CAP_SYS_NICE)) {
-		unsigned long lflags;
-
-		if (!lock_task_sighand(p, &lflags))
-			return -ESRCH;
-		rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
-		unlock_task_sighand(p, &lflags);
-		if (rlim_rtprio)
-			goto recheck;
-		/*
-		 * If the caller requested an RT policy without having the
-		 * necessary rights, we downgrade the policy to SCHED_ISO.
-		 * We also set the parameter to zero to pass the checks.
-		 */
-		policy = SCHED_ISO;
-		param = &zero_param;
-	}
 recheck:
 	/* double check policy once rq lock held */
 	if (policy < 0) {
 		reset_on_fork = p->sched_reset_on_fork;
 		policy = oldpolicy = p->policy;
 	} else {
-		reset_on_fork = !!(policy & SCHED_RESET_ON_FORK);
-		policy &= ~SCHED_RESET_ON_FORK;
+		reset_on_fork = !!(attr->sched_flags & SCHED_RESET_ON_FORK);
 
 		if (!SCHED_RANGE(policy))
 			return -EINVAL;
 	}
 
+	if (attr->sched_flags & ~(SCHED_FLAG_RESET_ON_FORK))
+		return -EINVAL;
+
 	/*
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
 	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL and
-	 * SCHED_BATCH is 0.
+	 * SCHED_BATCH and SCHED_IDLE is 0.
 	 */
-	if (param->sched_priority < 0 ||
-	    (p->mm && param->sched_priority > MAX_USER_RT_PRIO - 1) ||
-	    (!p->mm && param->sched_priority > MAX_RT_PRIO - 1))
+	if (attr->sched_priority < 0 ||
+	    (p->mm && attr->sched_priority > MAX_USER_RT_PRIO - 1) ||
+	    (!p->mm && attr->sched_priority > MAX_RT_PRIO - 1))
 		return -EINVAL;
-	if (is_rt_policy(policy) != (param->sched_priority != 0))
+	if (is_rt_policy(policy) != (attr->sched_priority != 0))
 		return -EINVAL;
 
 	/*
@@ -4168,8 +4195,8 @@ recheck:
 				return -EPERM;
 
 			/* can't increase priority */
-			if (param->sched_priority > p->rt_priority &&
-			    param->sched_priority > rlim_rtprio)
+			if (attr->sched_priority > p->rt_priority &&
+			    attr->sched_priority > rlim_rtprio)
 				return -EPERM;
 		} else {
 			switch (p->policy) {
@@ -4218,6 +4245,7 @@ recheck:
 	 * changing the priority of the task:
 	 */
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
+
 	/*
 	 * To be able to change p->policy safely, the grunqueue lock must be
 	 * held.
@@ -4237,8 +4265,8 @@ recheck:
 	 * If not changing anything there's no need to proceed further:
 	 */
 	if (unlikely(policy == p->policy && (!is_rt_policy(policy) ||
-			param->sched_priority == p->rt_priority))) {
-
+		attr->sched_priority == p->rt_priority))) {
+		p->sched_reset_on_fork = reset_on_fork;
 		__task_grq_unlock();
 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 		return 0;
@@ -4251,17 +4279,30 @@ recheck:
 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 		goto recheck;
 	}
-	update_clocks(rq);
-	p->sched_reset_on_fork = reset_on_fork;
 
-	queued = task_queued(p);
-	if (queued)
-		dequeue_task(p);
-	__setscheduler(p, rq, policy, param->sched_priority, pi);
-	if (queued) {
-		enqueue_task(p, rq);
-		try_preempt(p, rq);
+	p->sched_reset_on_fork = reset_on_fork;
+	oldprio = p->prio;
+
+	if (pi) {
+		/*
+		 * Take priority boosted tasks into account. If the new
+		 * effective priority is unchanged, we just store the new
+		 * normal parameters and do not touch the scheduler class and
+		 * the runqueue. This will be done when the task deboost
+		 * itself.
+		 */
+		if (rt_mutex_get_effective_prio(p, newprio) == oldprio) {
+			__setscheduler_params(p, attr);
+			__task_grq_unlock();
+			raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+			return 0;
+		}
 	}
+
+	__setscheduler(rq, p, attr, pi);
+
+	check_task_changed(rq, p, oldprio);
+
 	__task_grq_unlock();
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 
@@ -4269,6 +4310,45 @@ recheck:
 		rt_mutex_adjust_pi(p);
 out:
 	return 0;
+}
+
+static int _sched_setscheduler(struct task_struct *p, int policy,
+			       const struct sched_param *param, bool check)
+{
+	struct sched_attr attr = {
+		.sched_policy   = policy,
+		.sched_priority = param->sched_priority,
+		.sched_nice     = PRIO_TO_NICE(p->static_prio),
+	};
+	unsigned long rlim_rtprio = 0;
+
+	/* Fixup the legacy SCHED_RESET_ON_FORK hack. */
+	if ((policy != SETPARAM_POLICY) && (policy & SCHED_RESET_ON_FORK)) {
+		attr.sched_flags |= SCHED_FLAG_RESET_ON_FORK;
+		policy &= ~SCHED_RESET_ON_FORK;
+		attr.sched_policy = policy;
+	}
+
+	if (is_rt_policy(policy) && !capable(CAP_SYS_NICE)) {
+		unsigned long lflags;
+
+		if (!lock_task_sighand(p, &lflags))
+			return -ESRCH;
+		rlim_rtprio = task_rlimit(p, RLIMIT_RTPRIO);
+		unlock_task_sighand(p, &lflags);
+		if (!rlim_rtprio) {
+			/*
+			 * If the caller requested an RT policy without having the
+			 * necessary rights, we downgrade the policy to SCHED_ISO.
+			 * We also set the attr to zero to pass the checks.
+			 */
+			attr.sched_policy = SCHED_ISO;
+			attr.sched_priority = 0;
+			attr.sched_nice = 0;
+		}
+	}
+
+	return __sched_setscheduler(p, &attr, check, true);
 }
 
 /**
@@ -4284,17 +4364,14 @@ out:
 int sched_setscheduler(struct task_struct *p, int policy,
 		       const struct sched_param *param)
 {
-	return __sched_setscheduler(p, policy, param, true, true);
+	return _sched_setscheduler(p, policy, param, true);
 }
 
 EXPORT_SYMBOL_GPL(sched_setscheduler);
 
 int sched_setattr(struct task_struct *p, const struct sched_attr *attr)
 {
-	const struct sched_param param = { .sched_priority = attr->sched_priority };
-	int policy = attr->sched_policy;
-
-	return __sched_setscheduler(p, policy, &param, true, true);
+	return __sched_setscheduler(p, attr, true, true);
 }
 EXPORT_SYMBOL_GPL(sched_setattr);
 
@@ -4314,7 +4391,7 @@ EXPORT_SYMBOL_GPL(sched_setattr);
 int sched_setscheduler_nocheck(struct task_struct *p, int policy,
 			       const struct sched_param *param)
 {
-	return __sched_setscheduler(p, policy, param, false, true);
+	return _sched_setscheduler(p, policy, param, false);
 }
 EXPORT_SYMBOL_GPL(sched_setscheduler_nocheck);
 
@@ -4429,12 +4506,6 @@ asmlinkage long sys_sched_setscheduler(pid_t pid, int policy,
 
 	return do_sched_setscheduler(pid, policy, param);
 }
-
-/*
- * sched_setparam() passes in -1 for its policy, to let the functions
- * it calls know not to change it.
- */
-#define SETPARAM_POLICY	-1
 
 /**
  * sys_sched_setparam - set/change the RT priority of a thread
@@ -7309,9 +7380,9 @@ EXPORT_SYMBOL(___might_sleep);
 void normalize_rt_tasks(void)
 {
 	struct task_struct *g, *p;
-	unsigned long flags;
-	struct rq *rq;
-	int queued;
+	struct sched_attr attr = {
+		.sched_policy = SCHED_NORMAL,
+	};
 
 	read_lock(&tasklist_lock);
 	for_each_process_thread(g, p) {
@@ -7324,17 +7395,13 @@ void normalize_rt_tasks(void)
 		if (!rt_task(p) && !iso_task(p))
 			continue;
 
-		rq = task_grq_lock(p, &flags);
-		queued = task_queued(p);
-		if (queued)
-			dequeue_task(p);
-		__setscheduler(p, rq, SCHED_NORMAL, 0, false);
-		if (queued) {
-			enqueue_task(p, rq);
-			try_preempt(p, rq);
-		}
+		/*
+		 * Only normalize user tasks:
+		 */
+		if (p->flags & PF_KTHREAD)
+			continue;
 
-		task_grq_unlock(&flags);
+		__sched_setscheduler(p, &attr, false, false);
 	}
 	read_unlock(&tasklist_lock);
 }
