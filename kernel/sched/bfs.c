@@ -612,12 +612,7 @@ static inline int task_timeslice(struct task_struct *p)
 	return (rr_interval * task_prio_ratio(p) / 128);
 }
 
-static void resched_task(struct task_struct *p);
-
-static inline void resched_curr(struct rq *rq)
-{
-	resched_task(rq->curr);
-}
+static void resched_curr(struct rq *rq);
 
 /*
  * qnr is the "queued but not running" count which is the total number of
@@ -1138,24 +1133,25 @@ static inline void __set_tsk_resched(struct task_struct *p)
 }
 
 /*
- * resched_task - mark a task 'to be rescheduled now'.
+ * resched_curr - mark rq's current task 'to be rescheduled now'.
  *
  * On UP this means the setting of the need_resched flag, on SMP it
  * might also involve a cross-CPU call to trigger the scheduler on
  * the target CPU.
  */
-void resched_task(struct task_struct *p)
+void resched_curr(struct rq *rq)
 {
+	struct task_struct *curr = rq->curr;
 	int cpu;
 
 	lockdep_assert_held(&grq.lock);
 
-	if (test_tsk_need_resched(p))
+	if (test_tsk_need_resched(curr))
 		return;
 
-	set_tsk_need_resched(p);
+	set_tsk_need_resched(curr);
 
-	cpu = task_cpu(p);
+	cpu = cpu_of(rq);
 	if (cpu == smp_processor_id()) {
 		set_preempt_need_resched();
 		return;
@@ -3794,7 +3790,7 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 		dequeue_task(p);
 	p->prio = prio;
 	if (task_running(p) && prio > oldprio)
-		resched_task(p);
+		resched_curr(rq);
 	if (queued) {
 		enqueue_task(p, rq);
 		try_preempt(p, rq);
@@ -3855,7 +3851,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	} else if (task_running(p)) {
 		reset_rq_task(rq, p);
 		if (old_static < new_static)
-			resched_task(p);
+			resched_curr(rq);
 	}
 out_unlock:
 	task_grq_unlock(&flags);
@@ -4024,7 +4020,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 			set_tsk_need_resched(p);
 			running_wrong = true;
 		} else
-			resched_task(p);
+			resched_curr(rq);
 	} else
 		set_task_cpu(p, cpumask_any_and(cpu_active_mask, new_mask));
 
@@ -4084,7 +4080,7 @@ static void __setscheduler(struct task_struct *p, struct rq *rq, int policy,
 		reset_rq_task(rq, p);
 		/* Resched only if we might now be preempted */
 		if (p->prio > oldprio || p->rt_priority > oldrtprio)
-			resched_task(p);
+			resched_curr(rq);
 	}
 }
 
@@ -5313,7 +5309,7 @@ void resched_cpu(int cpu)
 	unsigned long flags;
 
 	grq_lock_irqsave(&flags);
-	resched_task(cpu_curr(cpu));
+	resched_curr(cpu_rq(cpu));
 	grq_unlock_irqrestore(&flags);
 }
 
