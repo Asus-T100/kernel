@@ -23,7 +23,6 @@ struct rq {
 	u64 rq_last_ran;
 	int rq_prio;
 	bool rq_running; /* There is a task running */
-	int soft_affined; /* Running or queued tasks with this set as their rq */
 #ifdef CONFIG_SMT_NICE
 	struct mm_struct *rq_mm;
 	int rq_smt_bias; /* Policy/nice level bias across smt siblings */
