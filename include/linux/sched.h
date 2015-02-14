@@ -1410,6 +1410,7 @@ struct task_struct {
 #ifdef CONFIG_SCHED_BFS
 	int time_slice;
 	u64 deadline;
+	u64 priodl; /* 8bits prio and 56bits deadline for quick processing */
 	struct list_head run_list;
 	u64 last_ran;
 	u64 sched_time; /* sched_clock time spent running */
