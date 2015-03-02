@@ -1904,7 +1904,7 @@ out:
 	if (likely(retval != -EINVAL)) {
 		if (target_freq == policy->max)
 			cpu_nonscaling(policy->cpu);
-		else
+		else if (policy->restore_freq == policy->max)
 			cpu_scaling(policy->cpu);
 	}
 	return retval;
