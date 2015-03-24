@@ -19,6 +19,7 @@
 #include <linux/io.h>
 
 #include <linux/mmc/host.h>
+#include <linux/pm_qos.h>
 
 /*
  * Controller registers
@@ -432,6 +433,12 @@ struct sdhci_host {
 	struct mmc_host *mmc;	/* MMC structure */
 	struct mmc_host_ops mmc_host_ops;	/* MMC host ops */
 	u64 dma_mask;		/* custom DMA mask */
+
+	struct pm_qos_request pm_qos_req;
+	int dma_latency;
+	int lat_cancel_delay;
+	int consecutive_req;
+	bool pm_qos_set;
 
 #if defined(CONFIG_LEDS_CLASS) || defined(CONFIG_LEDS_CLASS_MODULE)
 	struct led_classdev led;	/* LED control */
