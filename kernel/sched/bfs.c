@@ -728,7 +728,7 @@ static inline void clear_cpuidle_map(int cpu)
 
 static inline bool suitable_idle_cpus(struct task_struct *p)
 {
-	return (cpumask_intersects(&p->cpus_allowed, &grq.cpu_idle_map));
+	return (cpumask_intersects(tsk_cpus_allowed(p), &grq.cpu_idle_map));
 }
 
 static inline bool scaling_rq(struct rq *rq);
@@ -1133,8 +1133,15 @@ void set_task_cpu(struct task_struct *p, unsigned int cpu)
 static inline void
 set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask)
 {
-	cpumask_copy(tsk_cpus_allowed(p), new_mask);
-	p->nr_cpus_allowed = cpumask_weight(new_mask);
+	cpumask_copy(&p->cpus_allowed_master, new_mask);
+	if (likely(cpumask_and(&p->cpus_allowed,
+			       &p->cpus_allowed_master, cpu_active_mask))) {
+		p->nr_cpus_allowed = cpumask_weight(new_mask);
+		return;
+	}
+
+	cpumask_set_cpu(0, &p->cpus_allowed);
+	p->nr_cpus_allowed = 1;
 }
 
 void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
@@ -5510,67 +5517,6 @@ void wake_up_nohz_cpu(int cpu)
 #endif /* CONFIG_NO_HZ_COMMON */
 
 #ifdef CONFIG_HOTPLUG_CPU
-/* Run through task list and find tasks affined to the dead cpu, then remove
- * that cpu from the list, enable cpu0 and set the zerobound flag. */
-static void bind_zero(int src_cpu)
-{
-	struct task_struct *p, *t;
-	int bound = 0;
-
-	if (src_cpu == 0)
-		return;
-
-	do_each_thread(t, p) {
-		if (cpumask_test_cpu(src_cpu, tsk_cpus_allowed(p))) {
-			cpumask_clear_cpu(src_cpu, tsk_cpus_allowed(p));
-			cpumask_set_cpu(0, tsk_cpus_allowed(p));
-			p->zerobound = true;
-			bound++;
-		}
-		clear_sticky(p);
-	} while_each_thread(t, p);
-
-	if (bound) {
-		printk(KERN_INFO "Removed affinity for %d processes to cpu %d\n",
-		       bound, src_cpu);
-	}
-}
-
-/* Find processes with the zerobound flag and reenable their affinity for the
- * CPU coming alive. */
-static void unbind_zero(int src_cpu)
-{
-	int unbound = 0, zerobound = 0;
-	struct task_struct *p, *t;
-
-	if (src_cpu == 0)
-		return;
-
-	do_each_thread(t, p) {
-		if (!p->mm)
-			p->zerobound = false;
-		if (p->zerobound) {
-			unbound++;
-			cpumask_set_cpu(src_cpu, tsk_cpus_allowed(p));
-			/* Once every CPU affinity has been re-enabled, remove
-			 * the zerobound flag */
-			if (cpumask_subset(cpu_possible_mask, tsk_cpus_allowed(p))) {
-				p->zerobound = false;
-				zerobound++;
-			}
-		}
-	} while_each_thread(t, p);
-
-	if (unbound) {
-		printk(KERN_INFO "Added affinity for %d processes to cpu %d\n",
-		       unbound, src_cpu);
-	}
-	if (zerobound) {
-		printk(KERN_INFO "Released forced binding to cpu0 for %d processes\n",
-		       zerobound);
-	}
-}
-
 /*
  * Ensures that the idle task is using init_mm right before its cpu goes
  * offline.
@@ -5587,8 +5533,6 @@ void idle_task_exit(void)
 	}
 	mmdrop(mm);
 }
-#else /* CONFIG_HOTPLUG_CPU */
-static void unbind_zero(int src_cpu) {}
 #endif /* CONFIG_HOTPLUG_CPU */
 
 void sched_set_stop_task(int cpu, struct task_struct *stop)
@@ -5805,6 +5749,35 @@ static void set_rq_offline(struct rq *rq)
 	}
 }
 
+/* Run through task list and find tasks affined to the dead cpu, then remove
+ * that cpu from the list, enable cpu0 and set the zerobound flag. */
+static void tasks_cpu_hotplug(int cpu)
+{
+	struct task_struct *p, *t;
+	int count = 0;
+
+	if (cpu == 0)
+		return;
+
+	read_lock(&tasklist_lock);
+	do_each_thread(t, p) {
+		clear_sticky(p);
+		if (cpumask_test_cpu(cpu, &p->cpus_allowed_master)) {
+			count++;
+			if (likely(cpumask_and(tsk_cpus_allowed(p),
+					   &p->cpus_allowed_master,
+					   cpu_active_mask)))
+				continue;
+			cpumask_set_cpu(0, tsk_cpus_allowed(p));
+		}
+	} while_each_thread(t, p);
+	read_unlock(&tasklist_lock);
+
+	if (count) {
+		printk(KERN_INFO "Renew affinity for %d processes to cpu %d\n",
+		       count, cpu);
+	}
+}
 /*
  * migration_call - callback that gets triggered when a CPU is added.
  */
@@ -5832,7 +5805,7 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 
 			set_rq_online(rq);
 		}
-		unbind_zero(cpu);
+		tasks_cpu_hotplug(cpu);
 		grq.noc = num_online_cpus();
 		cpumask_set_cpu(cpu, &grq.cpu_idle_map);
 		grq_unlock_irqrestore(&flags);
@@ -5853,7 +5826,7 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 			BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
 			set_rq_offline(rq);
 		}
-		bind_zero(cpu);
+		tasks_cpu_hotplug(cpu);
 		grq.noc = num_online_cpus();
 		cpumask_clear_cpu(cpu, &grq.cpu_idle_map);
 		grq_unlock_irqrestore(&flags);
