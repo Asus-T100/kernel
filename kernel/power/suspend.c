@@ -32,7 +32,7 @@
 
 #include "power.h"
 
-const char *pm_labels[] = { "mem", "standby", "freeze", NULL };
+const char *pm_labels[] = { "some", "standby", "mem", NULL };
 const char *pm_states[PM_SUSPEND_MAX];
 
 unsigned int pm_suspend_global_flags;
