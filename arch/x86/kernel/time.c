@@ -14,6 +14,7 @@
 #include <linux/i8253.h>
 #include <linux/time.h>
 #include <linux/export.h>
+#include <linux/acpi.h>
 
 #include <asm/vsyscall.h>
 #include <asm/x86_init.h>
@@ -76,7 +77,7 @@ void __init setup_default_timer_irq(void)
 /* Default timer init function */
 void __init hpet_time_init(void)
 {
-	if (!hpet_enable())
+	if (!hpet_enable() && !acpi_gbl_reduced_hardware)
 		setup_pit_timer();
 	setup_default_timer_irq();
 }

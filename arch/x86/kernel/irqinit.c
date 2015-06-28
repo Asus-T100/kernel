@@ -75,7 +75,11 @@ void __init init_ISA_irqs(void)
 #if defined(CONFIG_X86_64) || defined(CONFIG_X86_LOCAL_APIC)
 	init_bsp_APIC();
 #endif
-	legacy_pic->init(0);
+ 	if (acpi_gbl_reduced_hardware) {
+ 		pr_info("Using NULL legacy PIC\n");
+ 		legacy_pic = &null_legacy_pic;
+ 	} else
+ 	legacy_pic->init(0);
 
 	for (i = 0; i < nr_legacy_irqs(); i++)
 		irq_set_chip_and_handler(i, chip, handle_level_irq);
