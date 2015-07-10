@@ -16,6 +16,9 @@ struct rq {
 	/* Pointer to grq spinlock */
 	raw_spinlock_t *grq_lock;
 
+	/* switch count */
+	u64 nr_switches;
+
 	/* Stored data about rq->curr to work outside grq lock */
 	u64 rq_deadline;
 	unsigned int rq_policy;
