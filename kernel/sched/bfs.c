@@ -135,12 +135,39 @@ void print_scheduler_version(void)
 	printk(KERN_INFO "BFS enhancement patchset v4.5_0469_1 by Alfred Chen.\n");
 }
 
+/* BFS default rr interval in ms */
+#define DEFAULT_RR_INTERVAL (6)
+
 /*
  * This is the time all tasks within the same priority round robin.
  * Value is in ms and set to a minimum of 6ms. Scales with number of cpus.
  * Tunable via /proc interface.
  */
-int rr_interval __read_mostly = 6;
+int rr_interval __read_mostly = DEFAULT_RR_INTERVAL;
+
+/* Unlimited cached task wait time in ms */
+#define UNLIMITED_CACHED_WAITTIME (1000)
+
+/*
+ * Normal policy task cached wait time, based on Preemption Model Kernel config
+ */
+#ifdef CONFIG_PREEMPT_NONE
+#define NORMAL_POLICY_CACHED_WAITTIME UNLIMITED_CACHED_WAITTIME
+#else
+#define NORMAL_POLICY_CACHED_WAITTIME DEFAULT_RR_INTERVAL
+#endif
+
+/*
+ * task policy cached timeout (in ns)
+ */
+static unsigned long policy_cached_timeout[] = {
+	MS_TO_NS(NORMAL_POLICY_CACHED_WAITTIME),	/* NORMAL */
+	MS_TO_NS(DEFAULT_RR_INTERVAL),			/* FIFO */
+	MS_TO_NS(DEFAULT_RR_INTERVAL),			/* RR */
+	MS_TO_NS(UNLIMITED_CACHED_WAITTIME),		/* BATCH */
+	MS_TO_NS(DEFAULT_RR_INTERVAL),			/* ISO */
+	MS_TO_NS(UNLIMITED_CACHED_WAITTIME)		/* IDLE */
+};
 
 /* Tunable to choose whether to prioritise latency or throughput, simple
  * binary yes or no */
@@ -993,8 +1020,6 @@ static void activate_task(struct task_struct *p, struct rq *rq)
 	inc_qnr();
 }
 
-static inline void clear_sticky(struct task_struct *p);
-
 /*
  * deactivate_task - If it's running, it's not on the grq and we can just
  * decrement the nr_running. Enter with grq locked.
@@ -1005,7 +1030,6 @@ static inline void deactivate_task(struct task_struct *p, struct rq *rq)
 		grq.nr_uninterruptible++;
 	p->on_rq = 0;
 	grq.nr_running--;
-	clear_sticky(p);
 }
 
 #ifdef CONFIG_SMP
@@ -1031,6 +1055,7 @@ void set_task_cpu(struct task_struct *p, unsigned int cpu)
 
 	task_thread_info(p)->cpu = cpu;
 }
+#endif
 
 static inline void
 set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask)
@@ -1051,65 +1076,32 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 	set_cpus_allowed_common(p, new_mask);
 }
 
-static inline void clear_sticky(struct task_struct *p)
-{
-	p->sticky = false;
-}
-
-static inline bool task_sticky(struct task_struct *p)
-{
-	return p->sticky;
-}
-
 /*
- * We set the sticky flag on a task that is descheduled involuntarily meaning
- * it is awaiting further CPU time. If the last sticky task is still sticky
- * but unlucky enough to not be the next task scheduled, we unstick it and try
- * to find it an idle CPU. Realtime tasks do not stick to minimise their
- * latency at all times.
+ * We set the cache count on a task that is descheduled involuntarily meaning
+ * it is awaiting further CPU time. Before cache count running out, task will
+ * stick to non_scaling cpu or its original cpu.
+ * Realtime tasks don't use cache count to minimise their latency at all times.
  */
-static inline void
-swap_sticky(struct rq *rq, int cpu, struct task_struct *p)
+static inline void cache_task(struct task_struct *p)
 {
-	if (rq->sticky_task) {
-		if (rq->sticky_task == p) {
-			p->sticky = true;
-			return;
-		}
-		if (task_sticky(rq->sticky_task))
-			clear_sticky(rq->sticky_task);
+	if(!rt_task(p)) {
+		p->cached = 1ULL;
+		p->policy_cached_timeout = p->last_ran +
+			policy_cached_timeout[p->policy];
 	}
-	if (!rt_task(p)) {
-		p->sticky = true;
-		rq->sticky_task = p;
-	} else
-		rq->sticky_task = NULL;
 }
 
-static inline void unstick_task(struct rq *rq, struct task_struct *p)
+static inline bool
+is_task_policy_cached_timeout(struct task_struct *p, struct rq *rq)
 {
-	rq->sticky_task = NULL;
-	clear_sticky(p);
-}
-#else
-static inline void clear_sticky(struct task_struct *p)
-{
+	return (rq->clock_task > p->policy_cached_timeout);
 }
 
-static inline bool task_sticky(struct task_struct *p)
+static inline bool
+is_task_should_cached_off(struct task_struct *p, struct rq *rq)
 {
-	return false;
+	return is_task_policy_cached_timeout(p, rq);
 }
-
-static inline void
-swap_sticky(struct rq *rq, int cpu, struct task_struct *p)
-{
-}
-
-static inline void unstick_task(struct rq *rq, struct task_struct *p)
-{
-}
-#endif
 
 /*
  * Move a task off the global queue and take it to a cpu for it will
@@ -1119,7 +1111,6 @@ static inline void take_task(int cpu, struct task_struct *p)
 {
 	set_task_cpu(p, cpu);
 	dequeue_task(p);
-	clear_sticky(p);
 	dec_qnr();
 }
 
@@ -1335,13 +1326,6 @@ static void try_preempt(struct task_struct *p, struct rq *this_rq)
 	int cpu, target_cpu;
 	u64 highest_priodl;
 	cpumask_t tmp;
-
-	/*
-	 * We clear the sticky flag here because for a task to have called
-	 * try_preempt with the sticky flag enabled means some complicated
-	 * re-scheduling has occurred and we should ignore the sticky flag.
-	 */
-	clear_sticky(p);
 
 	if (resched_best_idle(p))
 		return;
@@ -1607,6 +1591,8 @@ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 	p->stime_pc =
 	p->utime_pc = 0;
 
+	p->cached = 0ULL;
+
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
@@ -1634,7 +1620,6 @@ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 		memset(&p->sched_info, 0, sizeof(p->sched_info));
 #endif
 	p->on_cpu = false;
-	clear_sticky(p);
 	init_task_preempt_count(p);
 	return 0;
 }
@@ -3136,6 +3121,7 @@ task_struct *earliest_deadline_task(struct rq *rq, int cpu, struct task_struct *
 		earliest_deadline = ~0ULL;
 		list_for_each_entry(p, queue, run_list) {
 			u64 dl;
+			int tcpu;
 
 			/* Make sure cpu affinity is ok */
 			if (needs_other_cpu(p, cpu))
@@ -3147,20 +3133,20 @@ task_struct *earliest_deadline_task(struct rq *rq, int cpu, struct task_struct *
 #endif
 			/*
 			 * Soft affinity happens here by not scheduling a task
-			 * with its sticky flag set that ran on a different CPU
+			 * with its cache count is set that ran on a different CPU
 			 * last when the CPU is scaling, or by greatly biasing
 			 * against its deadline when not, based on cpu cache
 			 * locality.
 			 */
-			if (sched_interactive)
-				dl = p->deadline;
-			else {
-				int tcpu = task_cpu(p);
+			tcpu = task_cpu(p);
 
-				if (tcpu != cpu && task_sticky(p) && scaling_rq(rq))
+			if (p->cached) {
+				if (is_task_should_cached_off(p, task_rq(p)))
+					p->cached = 0ULL;
+				else if (tcpu != cpu && scaling_rq(rq))
 					continue;
-				dl = p->deadline << locality_diff(tcpu, rq);
 			}
+			dl = p->deadline << locality_diff(tcpu, rq);
 
 			if (deadline_before(dl, earliest_deadline)) {
 				earliest_deadline = dl;
@@ -3438,7 +3424,7 @@ static void __sched notrace __schedule(bool preempt)
 			/* Task changed affinity off this CPU */
 			if (likely(!needs_other_cpu(prev, cpu))) {
 				if (queued_notrunning())
-					swap_sticky(rq, cpu, prev);
+					cache_task(prev);
 				else {
 					/*
 					* We now know prev is the only thing that is
@@ -3477,18 +3463,12 @@ static void __sched notrace __schedule(bool preempt)
 		 */
 		if (prev != idle && !deactivate)
 			resched_best_idle(prev);
-		/*
-		 * Don't stick tasks when a real time task is going to run as
-		 * they may literally get stuck.
-		 */
-		if (rt_task(next))
-			unstick_task(rq, prev);
+
 		set_rq_task(rq, next);
 		if (next != idle)
 			check_smt_siblings(cpu);
 		else
 			wake_smt_siblings(cpu);
-		rq->nr_switches++;
 		prev->on_cpu = false;
 		next->on_cpu = true;
 		rq->curr = next;
@@ -5197,6 +5177,7 @@ void init_idle(struct task_struct *idle, int cpu)
 	idle->prio = PRIO_LIMIT;
 	idle->deadline = 0ULL;
 	update_task_priodl(idle);
+	idle->cached = 0ULL;
 
 	kasan_unpoison_task_stack(idle);
 
@@ -5665,7 +5646,6 @@ static void tasks_cpu_hotplug(int cpu)
 
 	read_lock(&tasklist_lock);
 	do_each_thread(t, p) {
-		clear_sticky(p);
 		if (cpumask_test_cpu(cpu, &p->cpus_allowed_master)) {
 			count++;
 			if (likely(cpumask_and(tsk_cpus_allowed(p),
@@ -7113,14 +7093,13 @@ void __init sched_init(void)
 			      rq->iowait_pc = rq->idle_pc = 0;
 		rq->dither = false;
 #ifdef CONFIG_SMP
-		rq->sticky_task = NULL;
 		rq->sd = NULL;
 		rq->rd = NULL;
 		rq->online = false;
 		rq->cpu = i;
 		rq_attach_root(rq, &def_root_domain);
 #endif
-		rq->nr_switches = 0;
+		rq->nr_switches = 0ULL;
 		atomic_set(&rq->nr_iowait, 0);
 	}
 
