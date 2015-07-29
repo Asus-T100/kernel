@@ -2625,35 +2625,9 @@ ts_account:
 }
 
 /*
- * Return any ns on the sched_clock that have not yet been accounted in
- * @p in case that task is currently running.
- *
- * Called with task_grq_lock() held.
- */
-static inline u64 do_task_delta_exec(struct task_struct *p, struct rq *rq)
-{
-	u64 ns = 0;
-
-	/*
-	 * Must be ->curr _and_ ->on_rq.  If dequeued, we would
-	 * project cycles that may never be accounted to this
-	 * thread, breaking clock_gettime().
-	 */
-	if (p == rq->curr && p->on_rq) {
-		update_clocks(rq);
-		ns = rq->clock_task - rq->rq_last_ran;
-		if (unlikely((s64)ns < 0))
-			ns = 0;
-	}
-
-	return ns;
-}
-
-/*
  * Return accounted runtime for the task.
  * Return separately the current's pending runtime that have not been
  * accounted yet.
- *
  */
 unsigned long long task_sched_runtime(struct task_struct *p)
 {
@@ -2678,7 +2652,19 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 #endif
 
 	rq = task_grq_lock(p, &flags);
-	ns = p->sched_time + do_task_delta_exec(p, rq);
+	/*
+	 * Must be ->curr _and_ ->on_rq.  If dequeued, we would
+	 * project cycles that may never be accounted to this
+	 * thread, breaking clock_gettime().
+	 */
+	if (p == rq->curr && p->on_rq) {
+		update_clocks(rq);
+		ns = rq->clock_task - rq->rq_last_ran;
+		if (unlikely((s64)ns < 0))
+			ns = 0;
+		p->sched_time += ns;
+	}
+	ns = tsk_seruntime(p);
 	task_grq_unlock(&flags);
 
 	return ns;
