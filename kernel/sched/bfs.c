@@ -2714,6 +2714,7 @@ ts_account:
 
 	rq->rq_last_ran = rq->clock_task;
 	rq->timekeep_clock = rq->clock;
+	rq->dither = (rq->clock - rq->last_tick < HALF_JIFFY_NS);
 }
 
 static inline void
@@ -2731,6 +2732,7 @@ update_cpu_clock_switch_idle(struct rq *rq, struct task_struct *idle)
 ts_account:
 	rq->rq_last_ran = rq->clock_task;
 	rq->timekeep_clock = rq->clock;
+	rq->dither = (rq->clock - rq->last_tick < HALF_JIFFY_NS);
 }
 
 /*
@@ -3519,6 +3521,105 @@ static void wake_smt_siblings(int __maybe_unused cpu) {}
  *
  * WARNING: must be called with preemption disabled!
  */
+
+static inline struct task_struct *pick_next_task(struct rq *rq, int cpu)
+{
+	struct task_struct *next;
+/*
+	struct task_struct *next = rq->preempt_task;
+
+	if (next) {
+		take_preempt_task(rq, next);
+
+		return next;
+	}
+*/
+	if (likely(queued_notrunning()))
+		next = earliest_deadline_task(rq, cpu, rq->idle);
+	else {
+		/*
+		 * This CPU is now truly idle as opposed to when idle is
+		 * scheduled as a high priority task in its own right.
+		 */
+		next = rq->idle;
+		schedstat_inc(rq, sched_goidle);
+	}
+
+	return next;
+}
+
+static struct task_struct *
+idle_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
+{
+	update_cpu_clock_switch_idle(rq, prev);
+	_grq_lock();
+
+	return pick_next_task(rq, cpu);
+}
+
+static struct task_struct *
+deactivate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
+{
+	update_cpu_clock_switch_nonidle(rq, prev);
+	/* Update all the information stored on struct rq */
+	prev->time_slice = rq->rq_time_slice;
+	check_deadline(prev, rq);
+	prev->last_ran = rq->clock_task;
+
+	_grq_lock();
+	deactivate_task(prev, rq);
+
+	return pick_next_task(rq, cpu);
+}
+
+static struct task_struct *
+activate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
+{
+	struct task_struct *next;
+
+	update_cpu_clock_switch_nonidle(rq, prev);
+	/* Update all the information stored on struct rq */
+	prev->time_slice = rq->rq_time_slice;
+	check_deadline(prev, rq);
+	prev->last_ran = rq->clock_task;
+
+	_grq_lock();
+
+	/* Task changed affinity off this CPU */
+	if (unlikely(needs_other_cpu(prev, cpu))) {
+		enqueue_task(prev, rq);
+		inc_qnr();
+		rq->try_preempt_tsk = prev;
+		next = pick_next_task(rq, cpu);
+	} else {
+		if (queued_notrunning()) {
+			enqueue_task(prev, rq);
+			inc_qnr();
+			next = earliest_deadline_task(rq, cpu, rq->idle);
+			if (likely(prev != next)) {
+				/*
+				 * Don't stick tasks when a real time task is going
+				 * to run as they may literally get stuck.
+				 */
+				if (!rt_task(next))
+					cache_task(prev, rq);
+				else
+					rq->try_preempt_tsk = prev;
+			}
+		} else {
+			/*
+			 * We now know prev is the only thing that is
+			 * awaiting CPU so we can bypass rechecking for
+			 * the earliest deadline task and just run it
+			 * again.
+			 */
+			next = prev;
+			set_rq_task(rq, prev);
+		}
+	}
+	return next;
+}
+
 static void __sched notrace __schedule(bool preempt)
 {
 	struct task_struct *prev, *next, *idle;
@@ -3592,80 +3693,18 @@ static void __sched notrace __schedule(bool preempt)
 
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
+	update_rq_clock(rq);
 
 	idle = rq->idle;
-
 	if (idle != prev) {
-		update_rq_clock(rq);
-
-		update_cpu_clock_switch_nonidle(rq, prev);
-		rq->dither = (rq->clock - rq->last_tick < HALF_JIFFY_NS);
-		/* Update all the information stored on struct rq */
-		prev->time_slice = rq->rq_time_slice;
-		check_deadline(prev, rq);
-		prev->last_ran = rq->clock_task;
-
-		_grq_lock();
-
 		if (deactivate)
-			deactivate_task(prev, rq);
-		else {
-			/* Task changed affinity off this CPU */
-			if (unlikely(needs_other_cpu(prev, cpu))) {
-				enqueue_task(prev, rq);
-				inc_qnr();
-				rq->try_preempt_tsk = prev;
-				goto earliest_deadline_next;
-			} else {
-				if (queued_notrunning()) {
-					enqueue_task(prev, rq);
-					inc_qnr();
-					next = earliest_deadline_task(rq, cpu, idle);
-					if (likely(prev != next)) {
-						/*
-						 * Don't stick tasks when a real time task is going
-						 * to run as they may literally get stuck.
-						 */
-						if (!rt_task(next))
-							cache_task(prev, rq);
-						else
-							rq->try_preempt_tsk = prev;
-						goto do_switch;
-					}
-					goto unlock_out;
-				} else {
-					/*
-					* We now know prev is the only thing that is
-					* awaiting CPU so we can bypass rechecking for
-					* the earliest deadline task and just run it
-					* again.
-					*/
-					set_rq_task(rq, prev);
-					goto unlock_out;
-				}
-			}
-		}
-	} else {
-		update_rq_clock(rq);
-		update_cpu_clock_switch_idle(rq, prev);
-		rq->dither = (rq->clock - rq->last_tick < HALF_JIFFY_NS);
-		_grq_lock();
-	}
-
-	if (likely(queued_notrunning())) {
-earliest_deadline_next:
-		next = earliest_deadline_task(rq, cpu, idle);
-	} else {
-		/*
-		 * This CPU is now truly idle as opposed to when idle is
-		 * scheduled as a high priority task in its own right.
-		 */
-		next = idle;
-		schedstat_inc(rq, sched_goidle);
-	}
+			next = deactivate_choose_task(rq, cpu, prev);
+		else
+			next = activate_choose_task(rq, cpu, prev);
+	} else
+		next = idle_choose_task(rq, cpu, prev);
 
 	if (likely(prev != next)) {
-do_switch:
 		if (likely(next->prio != PRIO_LIMIT))
 			clear_cpuidle_map(cpu);
 		else
@@ -3691,7 +3730,6 @@ do_switch:
 		cpu = cpu_of(rq);
 		idle = rq->idle;
 	} else {
-unlock_out:
 		check_smt_siblings(cpu);
 		_grq_unlock();
 		lockdep_unpin_lock(&rq->lock);
