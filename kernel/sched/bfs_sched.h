@@ -15,6 +15,7 @@ struct rq {
 
 	struct task_struct *curr, *idle, *stop;
 	struct task_struct *try_preempt_tsk;
+	struct task_struct *preempt_task;
 	struct mm_struct *prev_mm;
 
 	/* switch count */
@@ -36,6 +37,10 @@ struct rq {
 	unsigned long user_pc, nice_pc, irq_pc, softirq_pc, system_pc,
 		iowait_pc, idle_pc;
 	atomic_t nr_iowait;
+
+	/* rq cached counters */
+	unsigned long nr_running;
+	long nr_uninterruptible;
 
 #ifdef CONFIG_SMP
 	int cpu;		/* cpu of this runqueue */
