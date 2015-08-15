@@ -18,6 +18,9 @@ struct rq {
 	struct task_struct *preempt_task;
 	struct mm_struct *prev_mm;
 
+	/* whether hold grq.lock in schedule() */
+	bool grq_locked;
+
 	/* switch count */
 	u64 nr_switches;
 

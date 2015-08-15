@@ -517,6 +517,29 @@ static inline void prepare_lock_switch(struct rq *rq, struct task_struct *next)
 {
 }
 
+static inline void __finish_lock_switch(struct rq *rq, struct task_struct *prev)
+{
+	/*
+	 * After ->on_cpu is cleared, the task would be locked on grq
+	 * lock or pi_lock, We must ensure this doesn't happen until the
+	 * switch is completely finished.
+	 */
+	smp_wmb();
+	prev->on_cpu = NOT_ON_CPU;
+#ifdef CONFIG_DEBUG_SPINLOCK
+	/* this is a valid case when another task releases the spinlock */
+	rq->lock.owner = current;
+#endif
+	/*
+	 * If we are tracking spinlock dependencies then we have to
+	 * fix up the runqueue lock - which gets 'carried over' from
+	 * prev into current:
+	 */
+	spin_acquire(&rq->lock.dep_map, 0, 0, _THIS_IP_);
+
+	raw_spin_unlock_irq(&rq->lock);
+}
+
 static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 {
 	/*
@@ -2136,7 +2159,11 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	vtime_task_switch(prev);
 	perf_event_task_sched_in(prev, current);
 
-	finish_lock_switch(rq, prev);
+	if (likely(rq->grq_locked))
+		finish_lock_switch(rq, prev);
+	else
+		__finish_lock_switch(rq, prev);
+
 	finish_arch_post_lock_switch();
 
 	fire_sched_in_preempt_notifiers(current);
@@ -2217,7 +2244,8 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 * of the scheduler it's an obvious special-case), so we
 	 * do an early lockdep release here:
 	 */
-	spin_release(&grq.lock.dep_map, 1, _THIS_IP_);
+	if (likely(rq->grq_locked))
+		spin_release(&grq.lock.dep_map, 1, _THIS_IP_);
 	lockdep_unpin_lock(&rq->lock);
 	spin_release(&rq->lock.dep_map, 1, _THIS_IP_);
 
@@ -3665,10 +3693,31 @@ static inline struct task_struct *pick_next_task(struct rq *rq, int cpu)
 static struct task_struct *
 idle_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
 {
-	update_cpu_clock_switch_idle(rq, prev);
-	_grq_lock();
+	struct task_struct *next = rq->preempt_task;
 
-	return pick_next_task(rq, cpu);
+	update_cpu_clock_switch_idle(rq, prev);
+	rq->grq_locked = false;
+
+	if (next) {
+		take_preempt_task(rq, next);
+
+		return next;
+	}
+
+	if (likely(queued_notrunning())) {
+		_grq_lock();
+		next = earliest_deadline_task(rq, cpu, rq->idle);
+		_grq_unlock();
+	} else {
+		/*
+		 * This CPU is now truly idle as opposed to when idle is
+		 * scheduled as a high priority task in its own right.
+		 */
+		next = rq->idle;
+		schedstat_inc(rq, sched_goidle);
+	}
+
+	return next;
 }
 
 static struct task_struct *
@@ -3681,6 +3730,7 @@ deactivate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
 	prev->last_ran = rq->clock_task;
 
 	_grq_lock();
+	rq->grq_locked = true;
 	deactivate_task(prev, rq);
 
 	return pick_next_task(rq, cpu);
@@ -3698,6 +3748,7 @@ activate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
 	prev->last_ran = rq->clock_task;
 
 	_grq_lock();
+	rq->grq_locked = true;
 
 	/* Task changed affinity off this CPU */
 	if (unlikely(needs_other_cpu(prev, cpu))) {
@@ -3859,7 +3910,8 @@ static void __sched notrace __schedule(bool preempt)
 		idle = rq->idle;
 	} else {
 		check_smt_siblings(cpu);
-		_grq_unlock();
+		if (likely(rq->grq_locked))
+			_grq_unlock();
 		lockdep_unpin_lock(&rq->lock);
 		raw_spin_unlock_irq(&rq->lock);
 	}
