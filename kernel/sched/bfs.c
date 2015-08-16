@@ -3723,6 +3723,8 @@ idle_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
 static struct task_struct *
 deactivate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
 {
+	struct task_struct *next;
+
 	update_cpu_clock_switch_nonidle(rq, prev);
 	/* Update all the information stored on struct rq */
 	prev->time_slice = rq->rq_time_slice;
@@ -3730,10 +3732,12 @@ deactivate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
 	prev->last_ran = rq->clock_task;
 
 	_grq_lock();
-	rq->grq_locked = true;
 	deactivate_task(prev, rq);
+	next = pick_next_task(rq, cpu);
+	_grq_unlock();
+	rq->grq_locked = false;
 
-	return pick_next_task(rq, cpu);
+	return next;
 }
 
 static struct task_struct *
