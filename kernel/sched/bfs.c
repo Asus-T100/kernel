@@ -106,8 +106,7 @@
 #define task_running_idle(p)	unlikely((p)->prio == IDLE_PRIO)
 #define idle_queue(rq)		(unlikely(is_idle_policy((rq)->rq_policy)))
 
-#define is_iso_policy(policy)	((policy) == SCHED_ISO)
-#define iso_task(p)		unlikely(is_iso_policy((p)->policy))
+/* is_iso_policy() and iso_task() are moved to include/linux/sched.h */
 #define iso_queue(rq)		unlikely(is_iso_policy((rq)->rq_policy))
 #define task_running_iso(p)	unlikely((p)->prio == ISO_PRIO)
 #define rq_running_iso(rq)	((rq)->rq_prio == ISO_PRIO)
@@ -452,25 +451,6 @@ static inline void task_grq_unlock(unsigned long *flags)
 	__releases(grq.lock)
 {
 	grq_unlock_irqrestore(flags);
-}
-
-/**
- * grunqueue_is_locked
- *
- * Returns true if the global runqueue is locked.
- * This interface allows printk to be called with the runqueue lock
- * held and know whether or not it is OK to wake up the klogd.
- */
-bool grunqueue_is_locked(void)
-{
-	return raw_spin_is_locked(&grq.lock);
-}
-
-void grq_unlock_wait(void)
-	__releases(grq.lock)
-{
-	smp_mb(); /* spin-unlock-wait is not a full memory barrier */
-	raw_spin_unlock_wait(&grq.lock);
 }
 
 static inline void time_grq_lock(struct rq *rq, unsigned long *flags)
