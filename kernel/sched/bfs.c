@@ -139,7 +139,7 @@
 void print_scheduler_version(void)
 {
 	printk(KERN_INFO "BFS CPU scheduler v0.469 by Con Kolivas.\n");
-	printk(KERN_INFO "BFS enhancement patchset v4.5_0469_1 by Alfred Chen.\n");
+	printk(KERN_INFO "BFS enhancement patchset v4.5_0469_vrq0 by Alfred Chen.\n");
 }
 
 /* BFS default rr interval in ms */
