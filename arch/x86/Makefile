@@ -48,6 +48,9 @@ endif
 #
 KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow
 KBUILD_CFLAGS += $(call cc-option,-mno-avx,)
+# Never want PIC in x86 kernel, prevent breakage with GCC built
+# with nonstandard options
+KBUILD_CFLAGS += -fno-pic
 
 ifeq ($(CONFIG_X86_32),y)
         BITS := 32
