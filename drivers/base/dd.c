@@ -95,16 +95,6 @@ static void deferred_probe_work_func(struct work_struct *work)
 		 */
 		mutex_unlock(&deferred_probe_mutex);
 
-		/*
-		 * Force the device to the end of the dpm_list since
-		 * the PM code assumes that the order we add things to
-		 * the list is a good order for suspend but deferred
-		 * probe makes that very unsafe.
-		 */
-		device_pm_lock();
-		device_pm_move_last(dev);
-		device_pm_unlock();
-
 		dev_dbg(dev, "Retrying from deferred list\n");
 		bus_probe_device(dev);
 
@@ -372,6 +362,29 @@ static int really_probe(struct device *dev, struct device_driver *drv)
 	 * should always go first
 	 */
 	devices_kset_move_last(dev);
+
+	/*
+	 * Force the device to the end of the dpm_list since the PM code
+	 * assumes that the order we add things to the list is a good order
+	 * for suspend but deferred probe makes that very unsafe.
+	 *
+	 * Deferred probe can also cause situations in which a device that is
+	 * a dependency for others gets moved further down the dpm_list as a
+	 * result of probe deferral. In that case the dependee will end up
+	 * getting suspended before any of its dependers.
+	 *
+	 * To ensure proper ordering of suspend/resume, move every device that
+	 * is being probed to the end of the dpm_list. Note that technically
+	 * only successfully probed devices need to be moved, but that breaks
+	 * for recursively added devices because they would end up in the list
+	 * in reverse of the desired order, so we simply do it unconditionally
+	 * for all devices before they are being probed. In the worst case the
+	 * list will be reordered a couple more times than necessary, which
+	 * should be an insignificant amount of work.
+	 */
+	device_pm_lock();
+	device_pm_move_last(dev);
+	device_pm_unlock();
 
 	if (dev->bus->probe) {
 		ret = dev->bus->probe(dev);
