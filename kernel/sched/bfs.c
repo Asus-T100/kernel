@@ -210,6 +210,7 @@ struct global_rq {
 	DECLARE_BITMAP(prio_bitmap, PRIO_LIMIT + 1);
 	unsigned long qnr; /* queued not running */
 #ifdef CONFIG_SMP
+	int nr_cpu_dedicated_task[NR_CPUS];
 	cpumask_t cpu_idle_map;
 	cpumask_t non_scaled_cpumask;
 	cpumask_t cpu_preemptable_mask;
@@ -315,6 +316,9 @@ static inline int cpu_of(struct rq *rq)
 #ifndef finish_arch_post_lock_switch
 # define finish_arch_post_lock_switch()	do { } while (0)
 #endif
+
+#define NR_CPU_DEDICATED_TASK(p) \
+	(grq.nr_cpu_dedicated_task[cpumask_first(tsk_cpus_allowed((p)))])
 
 /*
  * All common locking functions performed on grq.lock. rq->clock is local to
@@ -609,6 +613,8 @@ static inline void __dequeue_task(struct task_struct *p, int prio)
 	list_del_init(&p->run_list);
 	if (list_empty(grq.queue + prio))
 		__clear_bit(prio, grq.prio_bitmap);
+	if (1 == p->nr_cpus_allowed)
+		NR_CPU_DEDICATED_TASK(p)--;
 }
 
 static void dequeue_task(struct task_struct *p)
@@ -649,6 +655,8 @@ static void enqueue_task(struct task_struct *p, struct rq *rq)
 			p->prio = NORMAL_PRIO;
 		update_task_priodl(p);
 	}
+	if (1 == p->nr_cpus_allowed)
+		NR_CPU_DEDICATED_TASK(p)++;
 	__set_bit(p->prio, grq.prio_bitmap);
 	list_add_tail(&p->run_list, grq.queue + p->prio);
 }
@@ -4382,6 +4390,9 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 
 	queued = task_queued(p);
 
+	if (unlikely(queued && 1 == p->nr_cpus_allowed))
+		NR_CPU_DEDICATED_TASK(p)--;
+
 	do_set_cpus_allowed(p, new_mask);
 
 	/* Can the task run on the task's current CPU? If so, we're done */
@@ -4399,8 +4410,11 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 		set_task_cpu(p, cpumask_any_and(cpu_active_mask, new_mask));
 
 out:
-	if (queued)
+	if (queued) {
+		if (unlikely(1 == p->nr_cpus_allowed))
+			NR_CPU_DEDICATED_TASK(p)++;
 		prq = task_preemptable_rq(p, 0);
+	}
 	task_access_unlock_irqrestore(lock, &flags);
 
 	preempt_rq(prq);
