@@ -2852,7 +2852,7 @@ static void serial8250_console_restore(struct uart_8250_port *up)
  *	The console_lock must be held when we get here.
  */
 void serial8250_console_write(struct uart_8250_port *up, const char *s,
-			      unsigned int count)
+			      unsigned int count, unsigned int loglevel)
 {
 	struct uart_port *port = &up->port;
 	unsigned long flags;

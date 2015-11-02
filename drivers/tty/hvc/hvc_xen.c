@@ -599,7 +599,7 @@ console_initcall(xen_cons_init);
 
 #ifdef CONFIG_EARLY_PRINTK
 static void xenboot_write_console(struct console *console, const char *string,
-				  unsigned len)
+				  unsigned len, unsigned loglevel)
 {
 	unsigned int linelen, off = 0;
 	const char *pos;

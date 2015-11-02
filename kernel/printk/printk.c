@@ -1455,9 +1455,9 @@ static void call_console_drivers(int level,
 		    !(con->flags & CON_ANYTIME))
 			continue;
 		if (con->flags & CON_EXTENDED)
-			con->write(con, ext_text, ext_len);
+			con->write(con, ext_text, ext_len, level);
 		else
-			con->write(con, text, len);
+			con->write(con, text, len, level);
 	}
 }
 
@@ -1978,7 +1978,7 @@ asmlinkage __visible void early_printk(const char *fmt, ...)
 	n = vscnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	early_console->write(early_console, buf, n);
+	early_console->write(early_console, buf, n, 0);
 }
 #endif
 

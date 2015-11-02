@@ -141,7 +141,7 @@ static uint32_t vtermnos[MAX_NR_HVC_CONSOLES] =
  */
 
 static void hvc_console_print(struct console *co, const char *b,
-			      unsigned count)
+			      unsigned count, unsigned loglevel)
 {
 	char c[N_OUTBUF] __ALIGNED__;
 	unsigned i = 0, n = 0;
