@@ -149,12 +149,6 @@ static inline int task_on_rq_queued(struct task_struct *p)
 	return p->on_rq;
 }
 
-#ifdef CONFIG_SMP
-
-extern void set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask);
-
-#endif
-
 #ifdef CONFIG_CPU_IDLE
 static inline void idle_set_state(struct rq *rq,
 				  struct cpuidle_state *idle_state)
