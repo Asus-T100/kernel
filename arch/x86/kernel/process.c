@@ -60,7 +60,6 @@ __visible DEFINE_PER_CPU_SHARED_ALIGNED(struct tss_struct, cpu_tss) = {
 };
 EXPORT_PER_CPU_SYMBOL(cpu_tss);
 
-#ifdef CONFIG_X86_64
 static DEFINE_PER_CPU(unsigned char, is_idle);
 static ATOMIC_NOTIFIER_HEAD(idle_notifier);
 
@@ -75,7 +74,6 @@ void idle_notifier_unregister(struct notifier_block *n)
 	atomic_notifier_chain_unregister(&idle_notifier, n);
 }
 EXPORT_SYMBOL_GPL(idle_notifier_unregister);
-#endif
 
 /*
  * this gets called so that we can store lazy state into memory and copy the
@@ -247,7 +245,6 @@ static inline void play_dead(void)
 }
 #endif
 
-#ifdef CONFIG_X86_64
 void enter_idle(void)
 {
 	this_cpu_write(is_idle, 1);
@@ -269,7 +266,6 @@ void exit_idle(void)
 		return;
 	__exit_idle();
 }
-#endif
 
 void arch_cpu_idle_enter(void)
 {
