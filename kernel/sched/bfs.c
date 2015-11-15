@@ -7313,7 +7313,7 @@ EXPORT_SYMBOL(___might_sleep);
 #endif
 
 #ifdef CONFIG_MAGIC_SYSRQ
-static inline void normalise_rt_tasks(void)
+void normalize_rt_tasks(void)
 {
 	struct task_struct *g, *p;
 	unsigned long flags;
@@ -7344,11 +7344,6 @@ static inline void normalise_rt_tasks(void)
 		task_grq_unlock(&flags);
 	}
 	read_unlock(&tasklist_lock);
-}
-
-void normalize_rt_tasks(void)
-{
-	normalise_rt_tasks();
 }
 #endif /* CONFIG_MAGIC_SYSRQ */
 
