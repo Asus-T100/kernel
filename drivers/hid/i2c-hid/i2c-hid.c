@@ -60,6 +60,13 @@ do {									  \
 		dev_printk(KERN_DEBUG, &(ihid)->client->dev, fmt, ##arg); \
 } while (0)
 
+#define i2c_dbg(fmt, arg...)                 \
+do {									  \
+	if (debug)							  \
+		printk(KERN_DEBUG fmt, ##arg); \
+} while (0)
+
+
 struct i2c_hid_desc {
 	__le16 wHIDDescLength;
 	__le16 bcdVersion;
@@ -83,6 +90,10 @@ struct i2c_hid_cmd {
 	unsigned int length;
 	bool wait;
 };
+
+// Timer to issue last report (finger-up) of SIS panel
+struct timer_list fingerup_timer;
+
 
 union command {
 	u8 data[0];
@@ -229,6 +240,7 @@ static int i2c_hid_command(struct i2c_client *client,
 		const struct i2c_hid_cmd *command,
 		unsigned char *buf_recv, int data_len)
 {
+
 	return __i2c_hid_command(client, command, 0, 0, NULL, 0,
 				buf_recv, data_len);
 }
@@ -374,13 +386,20 @@ static int i2c_hid_hwreset(struct i2c_client *client)
 
 static void i2c_hid_get_input(struct i2c_hid *ihid)
 {
-	int ret, ret_size;
+	int ret, ret_size, finger_count, buf_idx, i;
+	bool id_used[5] = {0, 0, 0, 0, 0};
 	int size = le16_to_cpu(ihid->hdesc.wMaxInputLength);
+
+	// Remove potentially parallel running fingerup timer
+	del_timer(&fingerup_timer);
 
 	if (size > ihid->bufsize)
 		size = ihid->bufsize;
 
 	ret = i2c_master_recv(ihid->client, ihid->inbuf, size);
+
+	i2c_hid_dbg(ihid, "input before checks: %*ph\n", size, ihid->inbuf);
+
 	if (ret != size) {
 		if (ret < 0)
 			return;
@@ -396,7 +415,16 @@ static void i2c_hid_get_input(struct i2c_hid *ihid)
 		/* host or device initiated RESET completed */
 		if (test_and_clear_bit(I2C_HID_RESET_PENDING, &ihid->flags))
 			wake_up(&ihid->wait);
-		return;
+
+		// Replace empty reports by synthetic touch up reports for four fingers
+		ret_size = 0x24;
+		ihid->inbuf[0]  = 0x24;
+		ihid->inbuf[2]  = 0x46;
+		ihid->inbuf[4]  = 0x04;
+		ihid->inbuf[10] = 0x03;
+		ihid->inbuf[16] = 0x02;
+		ihid->inbuf[22] = 0x01;
+		ihid->inbuf[28] = 0x00;
 	}
 
 	if (ret_size > size) {
@@ -405,13 +433,76 @@ static void i2c_hid_get_input(struct i2c_hid *ihid)
 		return;
 	}
 
+	// Add missing finger ids
+	buf_idx = 0;
+	finger_count = 0;
+	// Assume that all active touch ids are collected at the beginning
+	// of the SIS i2c buffer.
+	while(buf_idx<5 && ihid->inbuf[3+buf_idx*6] == 0x03) {
+		// active touch id found
+		int touch_id = ihid->inbuf[4+buf_idx*6];
+		id_used[touch_id] = 1;
+		buf_idx++;
+	}
+	for(i = buf_idx; i < 5; i++) {
+		int touch_id = 0;
+		while(id_used[touch_id] && touch_id < 5) {
+			touch_id++;
+		}
+		if(touch_id < 5) {
+			ihid->inbuf[4+i*6] = touch_id;
+			id_used[touch_id] = 1;
+			i2c_hid_dbg(ihid, "Manually finalize touch event %d in buf_idx %d\n", touch_id, i);
+		}
+	}
+	// And as we have 5 contacts now, update contact count field
+	ihid->inbuf[33] = 5;
+
 	i2c_hid_dbg(ihid, "input: %*ph\n", ret_size, ihid->inbuf);
 
-	if (test_bit(I2C_HID_STARTED, &ihid->flags))
+	if (test_bit(I2C_HID_STARTED, &ihid->flags)) {
 		hid_input_report(ihid->hid, HID_INPUT_REPORT, ihid->inbuf + 2,
 				ret_size - 2, 1);
 
+		// SIS815-i2c-panel sometimes does not issue the last interrupt. Enable timer to
+		// issue a last report if the current report is no fingerup
+		if(ihid->inbuf[3] != 0x00 || ihid->inbuf[9] != 0x00 || ihid->inbuf[15] != 0x00 ||
+				ihid->inbuf[21] != 0x00  || ihid->inbuf[27] != 0x00) {
+			fingerup_timer.data = (unsigned long)ihid;
+			fingerup_timer.expires = jiffies + (unsigned long) (0.25*HZ); // look for interrupt in 0.25sec
+			add_timer(&fingerup_timer);
+		}
+	}
+
 	return;
+}
+
+static void fingerup_synth(unsigned long data)
+{
+	int ret_size;
+	struct i2c_hid *ihid;
+
+	ihid = (struct i2c_hid *)data;
+
+	// Clear touches for five fingers from last report
+	ihid->inbuf[3]  = 0x00;
+	ihid->inbuf[4]  = 0x00;
+	ihid->inbuf[9]  = 0x00;
+	ihid->inbuf[10] = 0x01;
+	ihid->inbuf[15] = 0x00;
+	ihid->inbuf[16] = 0x02;
+	ihid->inbuf[21] = 0x00;
+	ihid->inbuf[22] = 0x03;
+	ihid->inbuf[27] = 0x00;
+	ihid->inbuf[28] = 0x04;
+	ihid->inbuf[33] = 5;
+
+	// ... and issue again
+	ret_size = ihid->inbuf[0] | ihid->inbuf[1] << 8;
+
+	i2c_hid_dbg(ihid, "remove touch event by timer: %*ph\n", ret_size, ihid->inbuf);
+	
+	hid_input_report(ihid->hid, HID_INPUT_REPORT, ihid->inbuf + 2, ret_size - 2, 1);
 }
 
 static irqreturn_t i2c_hid_irq(int irq, void *dev_id)
@@ -645,7 +736,7 @@ static int i2c_hid_parse(struct hid_device *hid)
 
 	rsize = le16_to_cpu(hdesc->wReportDescLength);
 	if (!rsize || rsize > HID_MAX_DESCRIPTOR_SIZE) {
-		dbg_hid("weird size of report descriptor (%u)\n", rsize);
+		i2c_dbg("weird size of report descriptor (%u)\n", rsize);
 		return -EINVAL;
 	}
 
@@ -661,7 +752,7 @@ static int i2c_hid_parse(struct hid_device *hid)
 	rdesc = kzalloc(rsize, GFP_KERNEL);
 
 	if (!rdesc) {
-		dbg_hid("couldn't allocate rdesc memory\n");
+		i2c_dbg("couldn't allocate rdesc memory\n");
 		return -ENOMEM;
 	}
 
@@ -679,7 +770,7 @@ static int i2c_hid_parse(struct hid_device *hid)
 	ret = hid_parse_report(hid, rdesc, rsize);
 	kfree(rdesc);
 	if (ret) {
-		dbg_hid("parsing report descriptor failed\n");
+		i2c_dbg("parsing report descriptor failed\n");
 		return ret;
 	}
 
@@ -944,7 +1035,7 @@ static int i2c_hid_probe(struct i2c_client *client,
 	__u16 hidRegister;
 	struct i2c_hid_platform_data *platform_data = client->dev.platform_data;
 
-	dbg_hid("HID probe called for i2c 0x%02x\n", client->addr);
+	i2c_dbg("HID probe called for i2c 0x%02x\n", client->addr);
 
 	ihid = kzalloc(sizeof(struct i2c_hid), GFP_KERNEL);
 	if (!ihid)
@@ -1016,6 +1107,11 @@ static int i2c_hid_probe(struct i2c_client *client,
 		goto err_irq;
 	}
 
+	// Init timer for finger up
+	init_timer(&fingerup_timer);
+	fingerup_timer.data = 0;
+	fingerup_timer.function = fingerup_synth;
+
 	ihid->hid = hid;
 
 	hid->driver_data = client;
@@ -1068,6 +1164,9 @@ static int i2c_hid_remove(struct i2c_client *client)
 	pm_runtime_disable(&client->dev);
 	pm_runtime_set_suspended(&client->dev);
 	pm_runtime_put_noidle(&client->dev);
+
+	// Remove finger-up timer
+	del_timer(&fingerup_timer);
 
 	hid = ihid->hid;
 	hid_destroy_device(hid);
