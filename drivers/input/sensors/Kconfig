@@ -1,0 +1,39 @@
+#
+# Sensor driver configuration
+#
+
+config SENSORS_KXTJ2
+	tristate "KIONIX_ACCEL KXTJ2-1009 g-sensor"
+	default n
+	depends on I2C
+	help
+	  If you say yes here you get support for Kionix's
+	  digital 3-axis accelerometer KXTJ2-1009.
+
+config SENSORS_AK09911
+	tristate "AK09911 compass support"
+	default n
+	depends on I2C
+	help
+	  If you say yes here you get support for Asahi Kasei's
+	  orientation sensor AK09911.
+
+config SENSORS_CAP1106
+	tristate "SMSC CAP1106"
+	default n
+	depends on I2C
+	help
+	  Say yes if you want SMSC 1106 cap sensor driver.
+	  This is for i2c connected version. If unsure, say N here.
+	  To compile this driver as a module, choose m here. The module will
+	  be called cap1106.
+
+config INPUT_LID
+	tristate "Hall Sensor"
+	default n
+	depends on INPUT
+	help
+	  Say Y here if you want to enable the driver of hall sensor.
+	  Either a north or south pole of sufficient flux will turn on
+	  the output of hall sensor; in the absence of magnetic field,
+	  the output is off. You can use this device as a lid switch.

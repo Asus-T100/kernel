@@ -1,0 +1,7 @@
+menu "CPU_Daemon"
+
+config ASUS_CPUD
+	tristate "CPUD"
+	default n
+
+endmenu

@@ -1,0 +1,18 @@
+#
+#  Copyright (c) 2013, ASUSTek, Inc. All Rights Reserved.
+#
+
+ifeq ($(TARGET_BUILD_VARIANT),eng)
+    KBUILD_CFLAGS += -DASUS_ENG_BUILD
+else ifeq ($(TARGET_BUILD_VARIANT),user)
+    KBUILD_CFLAGS += -DASUS_USER_BUILD
+else ifeq ($(TARGET_BUILD_VARIANT),userdebug)
+    KBUILD_CFLAGS += -DASUS_USERDEBUG_BUILD
+else
+    KBUILD_CFLAGS += -DASUS_OTHER_BUILD
+endif
+
+obj-$(CONFIG_ASUS_BATTERY_TF103C_CHARGER_BQ24192)	+= bq24192_charger.o
+obj-$(CONFIG_ASUS_BATTERY_TF103C_BQ24261_CHARGER)	+= bq24261_charger.o
+obj-$(CONFIG_PMIC_CCSM) += pmic_ccsm.o
+obj-$(CONFIG_ASUS_BATTERY_TF103C_UPI_BATTERY)	+= ug31xx/

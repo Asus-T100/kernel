@@ -1,0 +1,44 @@
+#
+#  Copyright (c) 2013, ASUSTek, Inc. All Rights Reserved.
+#  Written by tom shen tom_shen@asus.com
+#
+#  Battery driver configuration
+#
+#menuconfig ASUS_ENGINEER_MODE
+#	bool "ME570KL Battery Engineer Mode"
+#	default n
+#	help
+#	  Say Y here. This option doesn't affect the kernel.
+#	  If unsure, say Y.
+
+menuconfig ASUS_TF303CL_BATTERY
+	bool "ASUS TF303CL Battery support"
+	help
+	  Say Y here. This option doesn't affect the kernel.
+	  If unsure, say Y.
+
+if ASUS_TF303CL_BATTERY
+
+config ASUS_TF303CL_BATTERY_SMB347
+	tristate "SMB347 battery charger driver"
+	depends on I2C
+	help
+	  Say Y to enable support for the SMB347 switching mode based charger
+	  and sysfs. The driver supports controlling charger-enable and
+	  current limiting capabilities. The driver also lets the
+	  SMB347 be operated as a slave device via the power supply
+	  framework.
+
+config ASUS_TF303CL_BATTERY_BQ27520
+	tristate "ASUS BQ27520 battery driver"
+	depends on I2C
+	help
+	  Say Y here to enable support for batteries with BQ27520(I2C) chips.
+
+config ASUS_TF303CL_BATTERY_BQ27541
+	tristate "ASUS BQ27520 battery driver"
+	depends on I2C
+	help
+	  Say Y here to enable support for batteries with BQ27520(I2C) chips.
+
+endif # ASUS_BATTERY

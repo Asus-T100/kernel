@@ -1,0 +1,68 @@
+#
+#  Battery driver configuration
+#
+
+menuconfig ASUS_TF103CE_BATTERY
+	bool "ASUS TF103C Battery support"
+	help
+	  Say Y here. This option doesn't affect the kernel.
+	  If unsure, say Y.
+
+if ASUS_TF103CE_BATTERY
+
+
+config ASUS_BATTERY_TF103C_CHARGER_BQ24192
+	tristate "TI BQ24192/BQ24191/BQ24190 Charger"
+        default y
+	select POWER_SUPPLY_CHARGER
+	depends on I2C
+	help
+	  BQ24192 is the charger chip for lithium-ion (Li+) batteries
+	  in handheld and portable equipment.
+
+	  Say Y here if you know your platform has this chip for charging
+	  support.
+
+config ASUS_BATTERY_TF103CE_CHARGER
+	tristate "SMB345 battery charger driver"
+   default y
+   select POWER_SUPPLY_CHARGER
+   depends on I2C
+	help
+	  Say Y to enable support for the SMB345 switching mode based charger
+	  and sysfs. The driver supports controlling charger-enable and
+	  current limiting capabilities.
+
+config TF103CE_PMIC_SNB5072C1
+	bool "PMIC SNB5072C1"
+	depends on TF103CE_BATTERY_SMB345
+	help
+	  Say Y to enable PMIC SNB5072C1 function
+
+config ASUS_BATTERY_TF103C_UPI_BATTERY
+	tristate "UPI ug31xx"
+        default y
+        depends on I2C
+        help
+          say Y to enable suspport for the ug31
+
+config SN280X_CHARGER
+	bool "charger driver"
+	depends on I2C
+	help
+	  Say Y to enable it
+
+config EC_POWER
+	bool "asus ec power information driver"
+	depends on EEPROM_PADSTATION
+	help
+	  Say Y to enable it
+
+config TF103CE_BATTERY_BQ27520
+	tristate "BQ27520 battery driver"
+	depends on I2C
+	help
+	  Say Y here to enable support for batteries with BQ27520(I2C) chips.
+
+endif
+

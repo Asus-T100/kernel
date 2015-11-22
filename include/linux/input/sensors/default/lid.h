@@ -1,0 +1,2 @@
+#define LID_UEFI_GPIO_NAME "\\_SB.I2C7.PMIC"
+#define LID_UEFI_GPIO_OFFSET 8

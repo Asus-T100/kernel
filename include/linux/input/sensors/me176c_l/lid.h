@@ -1,0 +1,2 @@
+#define LID_UEFI_GPIO_NAME "\\_SB.GPO2"
+#define LID_UEFI_GPIO_OFFSET 12

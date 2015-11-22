@@ -1,0 +1,52 @@
+#
+#  Battery driver configuration
+#
+
+menuconfig ASUS_ME176C_BATTERY
+	bool "ASUS ME176C Battery support"
+	help
+	  Say Y here. This option doesn't affect the kernel.
+	  If unsure, say Y.
+
+if ASUS_ME176C_BATTERY
+
+config ASUS_BATTERY_ME176C_CHARGER_BQ24192
+	tristate "TI BQ24192/BQ24191/BQ24190 Charger"
+        default y
+	select POWER_SUPPLY_CHARGER
+	depends on I2C
+	help
+	  BQ24192 is the charger chip for lithium-ion (Li+) batteries
+	  in handheld and portable equipment.
+
+	  Say Y here if you know your platform has this chip for charging
+	  support.
+
+config PMIC_CCSM
+	tristate "PMIC CCSM driver"
+	select POWER_SUPPLY_BATTID
+	depends on INTEL_SCU_IPC && IIO
+	help
+	  Say Y to include support for PMIC Charger Control State Machine driver
+	  Driver for initializing and monitoring the CCSM in PMIC
+	  This driver sets the CCSM registers and handles the PMIC
+	  charger interrupts.
+
+config ASUS_BATTERY_ME176C_BQ24261_CHARGER
+	tristate "BQ24261 charger driver"
+	select POWER_SUPPLY_CHARGER
+	depends on I2C
+	help
+	  Say Y to include support for BQ24261 Charger driver. This driver
+	  makes use of power supply charging framework. So the driver gives
+	  the charger hardware abstraction only. Charging logic is abstracted
+	  in the charging framework.
+
+config ASUS_BATTERY_ME176C_UPI_BATTERY
+	tristate "UPI ug31xx"
+        default y
+        depends on I2C
+        help
+          say Y to enable suspport for the ug31
+
+endif
