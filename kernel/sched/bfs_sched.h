@@ -5,6 +5,15 @@
 #ifndef BFS_SCHED_H
 #define BFS_SCHED_H
 
+struct rq;
+/*
+ * choose task function type definination
+ */
+typedef
+struct task_struct *
+(*SCHED_CHOOSE_TASK_FUNC)(struct rq *rq, struct task_struct *prev,
+			  bool preempt, unsigned long **pswitch_count);
+
 /*
  * This is the main, per-CPU runqueue data structure.
  * This data should only be modified by the local cpu.
@@ -17,6 +26,9 @@ struct rq {
 	struct task_struct *try_preempt_tsk;
 	struct task_struct *preempt_task;
 	struct mm_struct *prev_mm;
+
+	/* choose task func */
+	SCHED_CHOOSE_TASK_FUNC choose_task_func;
 
 	/* whether hold grq.lock in schedule() */
 	bool grq_locked;
