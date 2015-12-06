@@ -1021,7 +1021,7 @@ static inline struct rq *task_best_idle_rq(struct task_struct *p)
 	cpumask_t check;
 
 	if (cpumask_and(&check, tsk_cpus_allowed(p), &grq.cpu_idle_map) &&
-		cpumask_and(&check, &check, &grq.cpu_preemptable_mask)) {
+	    cpumask_and(&check, &check, &grq.cpu_preemptable_mask)) {
 		int best_cpu;
 
 		best_cpu = best_mask_cpu(task_cpu(p), &check);
@@ -1271,7 +1271,8 @@ static inline void take_preempt_task(struct rq *rq, struct task_struct *p)
 {
 	rq->preempt_task = NULL;
 #ifdef CONFIG_SMP
-	cpumask_set_cpu(cpu_of(rq), &grq.cpu_preemptable_mask);
+	if (rq->schedulable)
+		cpumask_set_cpu(cpu_of(rq), &grq.cpu_preemptable_mask);
 	p->on_cpu = ON_CPU;
 #endif
 }
@@ -1498,9 +1499,13 @@ task_preemptable_rq(struct task_struct *p, int only_preempt_idle)
 
 	/* check whether any preemptable rq */
 	if (unlikely(!cpumask_and(&check,
-				 &grq.cpu_preemptable_mask,
-				 tsk_cpus_allowed(p))))
-		return NULL;
+				  &grq.cpu_preemptable_mask,
+				  tsk_cpus_allowed(p)))) {
+		if (unlikely(p->nr_cpus_allowed == 1))
+			cpumask_copy(&check, tsk_cpus_allowed(p));
+		else
+			return NULL;
+	}
 
 	/* check idle rq */
 	if(likely(cpumask_and(&tmp, &check, &grq.cpu_idle_map))) {
@@ -3674,140 +3679,190 @@ static void wake_smt_siblings(int __maybe_unused cpu) {}
  * WARNING: must be called with preemption disabled!
  */
 
-static inline struct task_struct *pick_next_task(struct rq *rq, int cpu)
+static inline bool is_no_dedicated_task(int cpu)
 {
-	struct task_struct *next = rq->preempt_task;
-
-	if (next) {
-		take_preempt_task(rq, next);
-
-		return next;
-	}
-
-	if (likely(queued_notrunning()))
-		next = earliest_deadline_task(rq, cpu, rq->idle);
-	else {
-		/*
-		 * This CPU is now truly idle as opposed to when idle is
-		 * scheduled as a high priority task in its own right.
-		 */
-		next = rq->idle;
-		schedstat_inc(rq, sched_goidle);
-	}
-
-	return next;
+	return (grq.nr_cpu_dedicated_task[cpu] == 0);
 }
 
-static struct task_struct *
-idle_choose_task(struct rq *rq, struct task_struct *prev,
-		 bool preempt, unsigned long **pswitch_count)
-{
-	int cpu = cpu_of(rq);
-	struct task_struct *next = rq->preempt_task;
-
-	*pswitch_count = &prev->nivcsw;
-
-	update_cpu_clock_switch_idle(rq, prev);
-	rq->grq_locked = false;
-
-	if (next) {
-		take_preempt_task(rq, next);
-
-		return next;
+#define PICK_NEXT_TASKK_NO_DEDICATED_TASK_HANDLE
+#define PICK_NEXT_TASKK_NO_DEDICATED_TASK_HANDLE_ns \
+	if (likely(rq->schedulable == 0 && is_no_dedicated_task(cpu))) {\
+		schedstat_inc(rq, sched_goidle);\
+\
+		return rq->idle;\
 	}
 
-	if (likely(queued_notrunning())) {
-		_grq_lock();
-		next = earliest_deadline_task(rq, cpu, rq->idle);
-		_grq_unlock();
-	} else {
-		/*
-		 * This CPU is now truly idle as opposed to when idle is
-		 * scheduled as a high priority task in its own right.
-		 */
-		next = rq->idle;
-		schedstat_inc(rq, sched_goidle);
+#define PICK_NEXT_TASK_FUNC_DEFINE(subfix) \
+static inline struct task_struct *\
+pick_next_task##subfix(struct rq *rq, int cpu)\
+{\
+	struct task_struct *next = rq->preempt_task;\
+\
+	if (next) {\
+		take_preempt_task((rq), next);\
+		return next;\
+	}\
+	PICK_NEXT_TASKK_NO_DEDICATED_TASK_HANDLE##subfix;\
+\
+	if (likely(queued_notrunning()))\
+		return earliest_deadline_task(rq, cpu, rq->idle);\
+	else {\
+		/*\
+		 * This CPU is now truly idle as opposed to when idle is\
+		 * scheduled as a high priority task in its own right.\
+		 */\
+		schedstat_inc(rq, sched_goidle);\
+		return rq->idle;\
+	}\
+}
+PICK_NEXT_TASK_FUNC_DEFINE();
+PICK_NEXT_TASK_FUNC_DEFINE(_ns);
+
+#define IDLE_NO_DEDICATED_TASK_HANDLE
+#define IDLE_NO_DEDICATED_TASK_HANDLE_ns \
+	if (likely(rq->schedulable == 0 && is_no_dedicated_task(cpu))) {\
+		schedstat_inc(rq, sched_goidle);\
+\
+		return prev;\
 	}
 
-	return next;
+#define IDLE_CHOOSE_TASK_FUNC_DEFINE(subfix) \
+static struct task_struct *\
+idle_choose_task##subfix(struct rq *rq, struct task_struct *prev,\
+			 bool preempt, unsigned long **pswitch_count)\
+{\
+	int cpu = cpu_of(rq);\
+	struct task_struct *next;\
+\
+	*pswitch_count = &prev->nivcsw;\
+\
+	update_cpu_clock_switch_idle(rq, prev);\
+	rq->grq_locked = false;\
+\
+	next = rq->preempt_task;\
+	if (next) {\
+		take_preempt_task((rq), next);\
+		return next;\
+	}\
+\
+	IDLE_NO_DEDICATED_TASK_HANDLE##subfix;\
+\
+	if (likely(queued_notrunning())) {\
+		_grq_lock();\
+		next = earliest_deadline_task(rq, cpu, rq->idle);\
+		_grq_unlock();\
+	} else {\
+		next = prev;\
+		schedstat_inc(rq, sched_goidle);\
+	}\
+\
+	return next;\
 }
+IDLE_CHOOSE_TASK_FUNC_DEFINE();
+IDLE_CHOOSE_TASK_FUNC_DEFINE(_ns);
 
-static inline struct task_struct *
-deactivate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
-{
-	struct task_struct *next;
-
-	_grq_lock();
-	deactivate_task(prev, rq);
-	next = pick_next_task(rq, cpu);
-	_grq_unlock();
-	rq->grq_locked = false;
-
-	return next;
+#define DEACTIVATE_CHOOSE_TASK_FUNC_DEFINE(subfix) \
+static inline struct task_struct *\
+deactivate_choose_task##subfix(struct rq *rq,\
+			       int cpu, struct task_struct *prev)\
+{\
+	struct task_struct *next;\
+\
+	_grq_lock();\
+	deactivate_task(prev, rq);\
+	next = pick_next_task##subfix(rq, cpu);\
+	_grq_unlock();\
+	rq->grq_locked = false;\
+\
+	return next;\
 }
+DEACTIVATE_CHOOSE_TASK_FUNC_DEFINE();
+DEACTIVATE_CHOOSE_TASK_FUNC_DEFINE(_ns);
 
 /* Task changed affinity off this CPU */
-static struct task_struct *
-__need_other_cpu_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
-{
-	_grq_lock();
-	rq->grq_locked = true;
-
-	enqueue_task(prev, rq);
-	inc_qnr();
-	rq->try_preempt_tsk = prev;
-
-	return pick_next_task(rq, cpu);
+#define __NEED_OTHER_CPU_CHOOSE_TASK_FUNC_DEFINE(subfix) \
+static struct task_struct *\
+__need_other_cpu_choose_task##subfix(struct rq *rq,\
+				     int cpu,\
+				     struct task_struct *prev)\
+{\
+	_grq_lock();\
+	rq->grq_locked = true;\
+\
+	enqueue_task(prev, rq);\
+	inc_qnr();\
+	rq->try_preempt_tsk = prev;\
+\
+	return pick_next_task##subfix(rq, cpu);\
 }
+__NEED_OTHER_CPU_CHOOSE_TASK_FUNC_DEFINE();
+__NEED_OTHER_CPU_CHOOSE_TASK_FUNC_DEFINE(_ns);
 
-static inline struct task_struct *
-activate_choose_task(struct rq *rq, int cpu, struct task_struct *prev)
-{
-	struct task_struct *next;
-
-	_grq_lock();
-	rq->grq_locked = true;
-
-	next = rq->preempt_task;
-	if (next) {
-		take_preempt_task(rq, next);
-		/* put prev back to grq */
-		enqueue_task(prev, rq);
-		inc_qnr();
-		if (!rt_task(next))
-			cache_task(prev, rq);
-		else
-			rq->try_preempt_tsk = prev;
-
-		return next;
-	}
-	if (queued_notrunning()) {
-		enqueue_task(prev, rq);
-		inc_qnr();
-		next = earliest_deadline_task(rq, cpu, rq->idle);
-		if (likely(prev != next)) {
-			/*
-			 * Don't stick tasks when a real time task is going
-			 * to run as they may literally get stuck.
-			 */
-			if (!rt_task(next))
-				cache_task(prev, rq);
-			else
-				rq->try_preempt_tsk = prev;
-		}
-	} else {
-		/*
-		 * We now know prev is the only thing that is
-		 * awaiting CPU so we can bypass rechecking for
-		 * the earliest deadline task and just run it
-		 * again.
-		 */
-		next = prev;
-		set_rq_task(rq, prev);
+#define ACTIVATE_NO_DEDICATED_TASK_HANDLE
+#define ACTIVATE_NO_DEDICATED_TASK_HANDLE_ns \
+	/* continue run on prev if rq is schedulable off */\
+	if (likely(rq->schedulable == 0 && is_no_dedicated_task(cpu))) {\
+		next = prev;\
+		set_rq_task(rq, prev);\
+\
+		return next;\
 	}
 
-	return next;
+#define ACTIVATE_CHOOSE_TASK_FUNC_DEFINE(subfix) \
+static inline struct task_struct *\
+activate_choose_task##subfix(struct rq *rq, int cpu,\
+			     struct task_struct *prev)\
+{\
+	struct task_struct *next;\
+\
+	_grq_lock();\
+	rq->grq_locked = true;\
+\
+	next = rq->preempt_task;\
+	if (next) {\
+		take_preempt_task(rq, next);\
+		/* put prev back to grq */\
+		enqueue_task(prev, rq);\
+		inc_qnr();\
+		if (!rt_task(next))\
+			cache_task(prev, rq);\
+		else\
+			rq->try_preempt_tsk = prev;\
+\
+		return next;\
+	}\
+\
+	ACTIVATE_NO_DEDICATED_TASK_HANDLE##subfix;\
+\
+	if (queued_notrunning()) {\
+		enqueue_task(prev, rq);\
+		inc_qnr();\
+		next = earliest_deadline_task(rq, cpu, rq->idle);\
+		if (likely(prev != next)) {\
+			/*\
+			 * Don't stick tasks when a real time task is going\
+			 * to run as they may literally get stuck.\
+			 */\
+			if (!rt_task(next))\
+				cache_task(prev, rq);\
+			else\
+				rq->try_preempt_tsk = prev;\
+		}\
+	} else {\
+		/*\
+		 * We now know prev is the only thing that is\
+		 * awaiting CPU so we can bypass rechecking for\
+		 * the earliest deadline task and just run it\
+		 * again.\
+		 */\
+		next = prev;\
+		set_rq_task(rq, prev);\
+	}\
+\
+	return next;\
 }
+ACTIVATE_CHOOSE_TASK_FUNC_DEFINE();
+ACTIVATE_CHOOSE_TASK_FUNC_DEFINE(_ns);
 
 static inline bool
 is_task_deactivate_sched(struct rq *rq, int cpu, struct task_struct *prev,
@@ -3857,29 +3912,57 @@ is_task_deactivate_sched(struct rq *rq, int cpu, struct task_struct *prev,
 	return deactivate;
 }
 
-static struct task_struct *
-default_choose_task(struct rq *rq, struct task_struct *prev,
-		    bool preempt, unsigned long **pswitch_count)
-{
-	int cpu = cpu_of(rq);
-
-	if (is_task_deactivate_sched(rq, cpu, prev, preempt, pswitch_count))
-		return deactivate_choose_task(rq, cpu, prev);
-	else
-		return activate_choose_task(rq, cpu, prev);
+#define DEFAULT_OTHER_CPU_CHOOSE_TASK_DEFINE(subfix) \
+static struct task_struct *\
+default_choose_task##subfix(struct rq *rq, struct task_struct *prev,\
+			    bool preempt, unsigned long **pswitch_count)\
+{\
+	int cpu = cpu_of(rq);\
+\
+	if (is_task_deactivate_sched(rq, cpu, prev, preempt, pswitch_count))\
+		return deactivate_choose_task##subfix(rq, cpu, prev);\
+	else\
+		return activate_choose_task##subfix(rq, cpu, prev);\
 }
+DEFAULT_OTHER_CPU_CHOOSE_TASK_DEFINE();
+DEFAULT_OTHER_CPU_CHOOSE_TASK_DEFINE(_ns);
 
-static struct task_struct *
-need_other_cpu_choose_task(struct rq *rq, struct task_struct *prev,
-			   bool preempt, unsigned long **pswitch_count)
-{
-	int cpu = cpu_of(rq);
-
-	if (is_task_deactivate_sched(rq, cpu, prev, preempt, pswitch_count))
-		return deactivate_choose_task(rq, cpu, prev);
-	else
-		return __need_other_cpu_choose_task(rq, cpu, prev);
+#define NEED_OTHER_CPU_CHOOSE_TASK_DEFINE(subfix) \
+static struct task_struct *\
+need_other_cpu_choose_task##subfix(struct rq *rq, struct task_struct *prev,\
+				   bool preempt, unsigned long **pswitch_count)\
+{\
+	int cpu = cpu_of(rq);\
+\
+	if (is_task_deactivate_sched(rq, cpu, prev, preempt, pswitch_count))\
+		return deactivate_choose_task##subfix(rq, cpu, prev);\
+	else\
+		return __need_other_cpu_choose_task##subfix(rq, cpu, prev);\
 }
+NEED_OTHER_CPU_CHOOSE_TASK_DEFINE();
+NEED_OTHER_CPU_CHOOSE_TASK_DEFINE(_ns);
+
+
+#define RQ_SCHED_DISABLE	(0)
+#define RQ_SCHED_ENABLE		(1)
+
+static SCHED_CHOOSE_TASK_FUNC const idle_choose_task_funcs[] = {
+	idle_choose_task_ns,
+	idle_choose_task
+};
+
+static SCHED_CHOOSE_TASK_FUNC const default_choose_task_funcs[] = {
+	default_choose_task_ns,
+	default_choose_task
+};
+
+static SCHED_CHOOSE_TASK_FUNC const need_other_cpu_choose_task_funcs[] = {
+	need_other_cpu_choose_task_ns,
+	need_other_cpu_choose_task
+};
+
+#define RQ_CHOOSE_TASK_FUNC(rq, state) \
+	state##_choose_task_funcs[(rq)->schedulable]
 
 static void __sched notrace __schedule(bool preempt)
 {
@@ -3932,10 +4015,10 @@ static void __sched notrace __schedule(bool preempt)
 		set_rq_task(rq, next);
 
 		if (next != rq->idle) {
-			rq->choose_task_func = default_choose_task;
+			rq->choose_task_func = RQ_CHOOSE_TASK_FUNC(rq, default);
 			check_smt_siblings(cpu);
 		} else {
-			rq->choose_task_func = idle_choose_task;
+			rq->choose_task_func = RQ_CHOOSE_TASK_FUNC(rq, idle);
 			wake_smt_siblings(cpu);
 		}
 
@@ -4435,7 +4518,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 
 	if (task_running(p)) {
 		/* Task is running on the wrong cpu now, reschedule it. */
-		rq->choose_task_func = need_other_cpu_choose_task;
+		rq->choose_task_func = RQ_CHOOSE_TASK_FUNC(rq, need_other_cpu);
 		if (rq == this_rq()) {
 			set_tsk_need_resched(p);
 			running_wrong = true;
@@ -7638,6 +7721,7 @@ void __init sched_init(void)
 		rq = cpu_rq(i);
 		rq->try_preempt_tsk = NULL;
 		raw_spin_lock_init(&rq->lock);
+		rq->schedulable = 1;
 		rq->choose_task_func = idle_choose_task;
 		rq->user_pc = rq->nice_pc = rq->softirq_pc = rq->system_pc =
 			      rq->iowait_pc = rq->idle_pc = 0;
