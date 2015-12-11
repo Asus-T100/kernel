@@ -3802,6 +3802,7 @@ __NEED_OTHER_CPU_CHOOSE_TASK_FUNC_DEFINE(_ns);
 #define ACTIVATE_NO_DEDICATED_TASK_HANDLE_ns \
 	/* continue run on prev if rq is schedulable off */\
 	if (likely(rq->schedulable == 0 && is_no_dedicated_task(cpu))) {\
+		rq->grq_locked = false;\
 		next = prev;\
 		set_rq_task(rq, prev);\
 \
@@ -3815,12 +3816,12 @@ activate_choose_task##subfix(struct rq *rq, int cpu,\
 {\
 	struct task_struct *next;\
 \
-	_grq_lock();\
-	rq->grq_locked = true;\
-\
 	next = rq->preempt_task;\
 	if (next) {\
 		take_preempt_task(rq, next);\
+\
+		_grq_lock();\
+		rq->grq_locked = true;\
 		/* put prev back to grq */\
 		enqueue_task(prev, rq);\
 		inc_qnr();\
@@ -3835,6 +3836,8 @@ activate_choose_task##subfix(struct rq *rq, int cpu,\
 	ACTIVATE_NO_DEDICATED_TASK_HANDLE##subfix;\
 \
 	if (queued_notrunning()) {\
+		_grq_lock();\
+		rq->grq_locked = true;\
 		enqueue_task(prev, rq);\
 		inc_qnr();\
 		next = earliest_deadline_task(rq, cpu, rq->idle);\
@@ -3855,6 +3858,7 @@ activate_choose_task##subfix(struct rq *rq, int cpu,\
 		 * the earliest deadline task and just run it\
 		 * again.\
 		 */\
+		rq->grq_locked = false;\
 		next = prev;\
 		set_rq_task(rq, prev);\
 	}\
