@@ -161,7 +161,7 @@ int rr_interval __read_mostly = DEFAULT_RR_INTERVAL;
 #ifdef CONFIG_PREEMPT_NONE
 #define NORMAL_POLICY_CACHED_WAITTIME UNLIMITED_CACHED_WAITTIME
 #else
-#define NORMAL_POLICY_CACHED_WAITTIME DEFAULT_RR_INTERVAL
+#define NORMAL_POLICY_CACHED_WAITTIME 3
 #endif
 
 /*
@@ -169,8 +169,8 @@ int rr_interval __read_mostly = DEFAULT_RR_INTERVAL;
  */
 static unsigned long policy_cached_timeout[] = {
 	MS_TO_NS(NORMAL_POLICY_CACHED_WAITTIME),	/* NORMAL */
-	MS_TO_NS(DEFAULT_RR_INTERVAL),			/* FIFO */
-	MS_TO_NS(DEFAULT_RR_INTERVAL),			/* RR */
+	MS_TO_NS(0),			/* FIFO */
+	MS_TO_NS(0),			/* RR */
 	MS_TO_NS(UNLIMITED_CACHED_WAITTIME),		/* BATCH */
 	MS_TO_NS(DEFAULT_RR_INTERVAL),			/* ISO */
 	MS_TO_NS(UNLIMITED_CACHED_WAITTIME)		/* IDLE */
@@ -1229,13 +1229,16 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
  * non_scaling cpu or its original cpu.
  * Realtime tasks don't use cache count to minimise their latency at all times.
  */
-static inline void cache_task(struct task_struct *p, struct rq *rq)
+static inline bool cache_task(struct task_struct *p, struct rq *rq,
+			      unsigned long state)
 {
-	if(!rt_task(p) && p->mm) {
-		p->cached = 1ULL;
+	if(p->mm) {
+		p->cached = state;
 		p->policy_cached_timeout = rq->clock_task +
 			policy_cached_timeout[p->policy];
+		return true;
 	}
+	return false;
 }
 
 static inline bool
@@ -1244,10 +1247,15 @@ is_task_policy_cached_timeout(struct task_struct *p, struct rq *rq)
 	return (rq->clock_task > p->policy_cached_timeout);
 }
 
+/* return task cache state */
 static inline bool
-is_task_should_cached_off(struct task_struct *p, struct rq *rq)
+check_task_cached_off(struct task_struct *p, struct rq *rq)
 {
-	return is_task_policy_cached_timeout(p, rq);
+	if (unlikely(is_task_policy_cached_timeout(p, rq))) {
+		p->cached = 4ULL;
+		return false;
+	}
+	return true;
 }
 
 /*
@@ -1821,9 +1829,8 @@ static void try_to_wake_up_local(struct task_struct *p)
 
 	trace_sched_waking(p);
 
-	if (!task_queued(p)) {
+	if (!task_queued(p))
 		ttwu_activate(p, rq);
-	}
 	ttwu_do_wakeup(rq, p, 0);
 	ttwu_stat(p, smp_processor_id(), 0);
 }
@@ -1906,7 +1913,7 @@ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 		memset(&p->sched_info, 0, sizeof(p->sched_info));
 #endif
 	p->on_cpu = NOT_ON_CPU;
-	p->cached = 0ULL;
+	cache_task(p, task_rq(p), 1ULL);
 	init_task_preempt_count(p);
 	return 0;
 }
@@ -3481,13 +3488,18 @@ task_struct *earliest_deadline_task(struct rq *rq, int cpu, struct task_struct *
 			 */
 			tcpu = task_cpu(p);
 
-			if (p->cached) {
-				if (is_task_should_cached_off(p, task_rq(p)))
-					p->cached = 0ULL;
-				else if (tcpu != cpu && scaling_rq(rq))
+			if (likely(3ULL == p->cached)) {
+				if(unlikely(tcpu != cpu && scaling_rq(rq)))
 					continue;
+				check_task_cached_off(p, task_rq(p));
+				dl = p->deadline << locality_diff(tcpu, rq);
+			} else if (likely(1ULL == p->cached &&
+					  check_task_cached_off(p, task_rq(p))))
+				{
+				dl = p->deadline << locality_diff(tcpu, rq);
+			} else {
+				dl = p->deadline;
 			}
-			dl = p->deadline << locality_diff(tcpu, rq);
 
 			if (deadline_before(dl, earliest_deadline)) {
 				earliest_deadline = dl;
@@ -3773,6 +3785,7 @@ deactivate_choose_task##subfix(struct rq *rq,\
 	next = pick_next_task##subfix(rq, cpu);\
 	_grq_unlock();\
 	rq->grq_locked = false;\
+	cache_task(prev, rq, 3ULL);\
 \
 	return next;\
 }
@@ -3825,10 +3838,8 @@ activate_choose_task##subfix(struct rq *rq, int cpu,\
 		/* put prev back to grq */\
 		enqueue_task(prev, rq);\
 		inc_qnr();\
-		if (!rt_task(next))\
-			cache_task(prev, rq);\
-		else\
-			rq->try_preempt_tsk = prev;\
+		if (!cache_task(prev, rq, 3ULL))\
+		    rq->try_preempt_tsk = prev;\
 \
 		return next;\
 	}\
@@ -3840,16 +3851,12 @@ activate_choose_task##subfix(struct rq *rq, int cpu,\
 		rq->grq_locked = true;\
 		enqueue_task(prev, rq);\
 		inc_qnr();\
+		if (!cache_task(prev, rq, 3ULL))\
+			rq->try_preempt_tsk = prev;\
 		next = earliest_deadline_task(rq, cpu, rq->idle);\
-		if (likely(prev != next)) {\
-			/*\
-			 * Don't stick tasks when a real time task is going\
-			 * to run as they may literally get stuck.\
-			 */\
-			if (!rt_task(next))\
-				cache_task(prev, rq);\
-			else\
-				rq->try_preempt_tsk = prev;\
+		if (likely(next == prev)) {\
+			prev->cached = 0ULL;\
+			rq->try_preempt_tsk = NULL;\
 		}\
 	} else {\
 		/*\
@@ -6267,6 +6274,8 @@ static void tasks_cpu_hotplug(int cpu)
 		return;
 
 	do_each_thread(t, p) {
+		if ((p->cached == 1ULL || p->cached == 3ULL) && task_cpu(p) == cpu)
+			p->cached = 4ULL;
 		if (cpumask_test_cpu(cpu, &p->cpus_allowed_master)) {
 			count++;
 			if (unlikely(!cpumask_and(tsk_cpus_allowed(p),
@@ -6275,9 +6284,9 @@ static void tasks_cpu_hotplug(int cpu)
 				cpumask_set_cpu(0, tsk_cpus_allowed(p));
 			p->nr_cpus_allowed =
 				cpumask_weight(tsk_cpus_allowed(p));
-			if (p->cached == 1ULL && task_cpu(p) == cpu)
-				p->cached = 0ULL;
 		}
+		if (!cpumask_test_cpu(task_cpu(p), tsk_cpus_allowed(p)))
+			p->cached = 4ULL;
 	} while_each_thread(t, p);
 
 	if (count) {
@@ -6308,6 +6317,7 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 		/* Update our root-domain */
 		read_lock(&tasklist_lock);
 		rq_grq_lock_irqsave(rq, &flags);
+		update_rq_clock(rq);
 		if (rq->rd) {
 			BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
 
