@@ -4011,20 +4011,23 @@ static void __sched notrace __schedule(bool preempt)
 	next = rq->choose_task_func(rq, prev, preempt, &switch_count);
 
 	if (likely(prev != next)) {
-		if (likely(next->prio != PRIO_LIMIT))
+		if (likely(next->prio != PRIO_LIMIT)) {
 			clear_cpuidle_map(cpu);
-		else
-			set_cpuidle_map(cpu);
-
-		set_rq_task(rq, next);
-
-		if (next != rq->idle) {
 			rq->choose_task_func = RQ_CHOOSE_TASK_FUNC(rq, default);
 			check_smt_siblings(cpu);
 		} else {
-			rq->choose_task_func = RQ_CHOOSE_TASK_FUNC(rq, idle);
-			wake_smt_siblings(cpu);
+			set_cpuidle_map(cpu);
+
+			if (next != rq->idle) {
+				rq->choose_task_func = RQ_CHOOSE_TASK_FUNC(rq, default);
+				check_smt_siblings(cpu);
+			} else {
+				rq->choose_task_func = RQ_CHOOSE_TASK_FUNC(rq, idle);
+				wake_smt_siblings(cpu);
+			}
 		}
+		set_rq_task(rq, next);
+
 
 		/* Once next->on_cpu is set, task_access_lock...() can be locked on
 		 * task's runqueue, so set it before release grq.lock 
