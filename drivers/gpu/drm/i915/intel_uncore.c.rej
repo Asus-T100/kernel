@@ -1,0 +1,26 @@
+--- drivers/gpu/drm/i915/intel_uncore.c
++++ drivers/gpu/drm/i915/intel_uncore.c
+@@ -902,6 +902,23 @@ hsw_write##x(struct drm_i915_private *dev_priv, i915_reg_t reg, u##x val, bool t
+ 	GEN6_WRITE_FOOTER; \
+ }
+ 
++#define __vlv_write(x) \
++static void \
++vlv_write##x(struct drm_i915_private *dev_priv, i915_reg_t reg, u##x val, bool trace) { \
++	enum forcewake_domains fw_engine = 0; \
++	GEN6_WRITE_HEADER; \
++	if (!NEEDS_FORCE_WAKE(offset)) \
++		fw_engine = 0; \
++	else if (FORCEWAKE_VLV_RENDER_RANGE_OFFSET(offset)) \
++		fw_engine = FORCEWAKE_RENDER; \
++	else if (FORCEWAKE_VLV_MEDIA_RANGE_OFFSET(offset)) \
++		fw_engine = FORCEWAKE_MEDIA; \
++	if (fw_engine) \
++		__force_wake_get(dev_priv, fw_engine); \
++	__raw_i915_write##x(dev_priv, reg, val); \
++	GEN6_WRITE_FOOTER; \
++}
++
+ static const i915_reg_t gen8_shadowed_regs[] = {
+ 	FORCEWAKE_MT,
+ 	GEN6_RPNSWREQ,

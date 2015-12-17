@@ -903,6 +903,23 @@ static void vgpu_write##x(struct drm_i915_private *dev_priv, \
 	GEN6_WRITE_FOOTER; \
 }
 
+#define __vlv_write(x) \
+static void \
+vlv_write##x(struct drm_i915_private *dev_priv, i915_reg_t reg, u##x val, bool trace) { \
+	enum forcewake_domains fw_engine = 0; \
+	GEN6_WRITE_HEADER; \
+	if (!NEEDS_FORCE_WAKE(offset)) \
+		fw_engine = 0; \
+	else if (FORCEWAKE_VLV_RENDER_RANGE_OFFSET(offset)) \
+		fw_engine = FORCEWAKE_RENDER; \
+	else if (FORCEWAKE_VLV_MEDIA_RANGE_OFFSET(offset)) \
+		fw_engine = FORCEWAKE_MEDIA; \
+	if (fw_engine) \
+		__force_wake_get(dev_priv, fw_engine); \
+	__raw_i915_write##x(dev_priv, reg, val); \
+	GEN6_WRITE_FOOTER; \
+}
+
 static const u32 gen8_shadowed_regs[] = {
 	FORCEWAKE_MT,
 	GEN6_RPNSWREQ,
@@ -1012,6 +1029,10 @@ __gen8_write(8)
 __gen8_write(16)
 __gen8_write(32)
 __gen8_write(64)
+__vlv_write(8)
+__vlv_write(16)
+__vlv_write(32)
+__vlv_write(64)
 __hsw_write(8)
 __hsw_write(16)
 __hsw_write(32)
@@ -1028,6 +1049,7 @@ __vgpu_write(64)
 #undef __gen9_write
 #undef __chv_write
 #undef __gen8_write
+#undef __vlv_write
 #undef __hsw_write
 #undef __gen6_write
 #undef __vgpu_write
@@ -1218,6 +1240,8 @@ void intel_uncore_init(struct drm_device *dev)
 	case 6:
 		if (IS_HASWELL(dev)) {
 			ASSIGN_WRITE_MMIO_VFUNCS(hsw);
+		} else if (IS_VALLEYVIEW(dev)) {
+			ASSIGN_WRITE_MMIO_VFUNCS(vlv);
 		} else {
 			ASSIGN_WRITE_MMIO_VFUNCS(gen6);
 		}
