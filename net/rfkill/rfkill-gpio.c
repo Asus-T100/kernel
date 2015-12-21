@@ -169,6 +169,7 @@ static const struct acpi_device_id rfkill_acpi_match[] = {
 	{ "BCM2E64", RFKILL_TYPE_BLUETOOTH },
 	{ "BCM4752", RFKILL_TYPE_GPS },
 	{ "LNV4752", RFKILL_TYPE_GPS },
+	{ "ASUS4752", RFKILL_TYPE_GPS },
 	{ },
 };
 MODULE_DEVICE_TABLE(acpi, rfkill_acpi_match);
