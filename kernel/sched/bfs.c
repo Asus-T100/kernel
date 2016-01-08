@@ -859,6 +859,9 @@ static inline int best_mask_cpu(const int cpu, cpumask_t *cpumask)
 	cpumask_t tmpmask, non_scaled_mask;
 	cpumask_t *res_mask = &tmpmask;
 
+	if (cpumask_weight(cpumask) == 1)
+		return cpumask_first(cpumask);
+
 	if (cpumask_and(&non_scaled_mask, cpumask, &grq.non_scaled_cpumask)) {
 		/*
 		 * non_scaled llc cpus checking
