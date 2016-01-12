@@ -3625,7 +3625,6 @@ rerun_prev_unlocked:
 static inline void sched_submit_work(struct task_struct *tsk)
 {
 	if (!tsk->state || tsk_is_pi_blocked(tsk) ||
-	    preempt_count() ||
 	    signal_pending_state(tsk->state, tsk))
 		return;
 
