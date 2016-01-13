@@ -18,6 +18,11 @@
 
 #include "pwm-lpss.h"
 
+/* PWM consumed by the Intel GFX */
+static struct pwm_lookup lpss_pwm_lookup[] = {
+	PWM_LOOKUP("pwm-lpss", 0, "0000:00:02.0", "pwm_lpss", 0, PWM_POLARITY_NORMAL),
+};
+
 static int pwm_lpss_probe_platform(struct platform_device *pdev)
 {
 	const struct pwm_lpss_boardinfo *info;
@@ -37,6 +42,9 @@ static int pwm_lpss_probe_platform(struct platform_device *pdev)
 		return PTR_ERR(lpwm);
 
 	platform_set_drvdata(pdev, lpwm);
+
+	/* Register intel-gfx device as allowed consumer */
+	pwm_add_table(lpss_pwm_lookup, ARRAY_SIZE(lpss_pwm_lookup));
 
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
