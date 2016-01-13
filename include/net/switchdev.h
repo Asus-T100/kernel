@@ -47,9 +47,11 @@ enum switchdev_attr_id {
 	SWITCHDEV_ATTR_ID_PORT_STP_STATE,
 	SWITCHDEV_ATTR_ID_PORT_BRIDGE_FLAGS,
 	SWITCHDEV_ATTR_ID_BRIDGE_AGEING_TIME,
+	SWITCHDEV_ATTR_ID_BRIDGE_VLAN_FILTERING,
 };
 
 struct switchdev_attr {
+	struct net_device *orig_dev;
 	enum switchdev_attr_id id;
 	u32 flags;
 	union {
@@ -57,6 +59,7 @@ struct switchdev_attr {
 		u8 stp_state;				/* PORT_STP_STATE */
 		unsigned long brport_flags;		/* PORT_BRIDGE_FLAGS */
 		u32 ageing_time;			/* BRIDGE_AGEING_TIME */
+		bool vlan_filtering;			/* BRIDGE_VLAN_FILTERING */
 	} u;
 };
 
@@ -68,6 +71,7 @@ enum switchdev_obj_id {
 };
 
 struct switchdev_obj {
+	struct net_device *orig_dev;
 	enum switchdev_obj_id id;
 	u32 flags;
 };
