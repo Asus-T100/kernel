@@ -1668,6 +1668,8 @@ bxt_setup_backlight(struct intel_connector *connector, enum pipe unused)
 static int pwm_setup_backlight(struct intel_connector *connector,
 			       enum pipe pipe)
 {
+	msleep(500);
+
 	struct drm_device *dev = connector->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(connector->base.dev);
 	struct intel_panel *panel = &connector->panel;
@@ -1679,7 +1681,6 @@ static int pwm_setup_backlight(struct intel_connector *connector,
 	else /* PPS_BLC_SOC */
 		pwm = &lpss_pwm_info;
 
-	msleep(500);
 
 	/* Get the PWM chip for backlight control */
 	pwm->dev = pwm_get(dev->dev, pwm->name);
