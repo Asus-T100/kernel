@@ -1679,6 +1679,8 @@ static int pwm_setup_backlight(struct intel_connector *connector,
 	else /* PPS_BLC_SOC */
 		pwm = &lpss_pwm_info;
 
+	msleep(500);
+
 	/* Get the PWM chip for backlight control */
 	pwm->dev = pwm_get(dev->dev, pwm->name);
 	if (IS_ERR(pwm->dev)) {
