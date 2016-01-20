@@ -1077,16 +1077,16 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 }
 
 /*
- * We set the cache count on a task that is descheduled involuntarily meaning
- * it is awaiting further CPU time. Before cache count running out, task will
- * stick to non_scaling cpu or its original cpu.
+ * We set the task cached when it is descheduled involuntarily meaning it is
+ * awaiting further CPU time. Before caching time out, task will stick to
+ * non_scaling cpu or its original cpu.
  * Realtime tasks don't use cache count to minimise their latency at all times.
  */
-static inline void cache_task(struct task_struct *p)
+static inline void cache_task(struct task_struct *p, struct rq *rq)
 {
-	if(!rt_task(p)) {
+	if(!rt_task(p) && p->mm) {
 		p->cached = 1ULL;
-		p->policy_cached_timeout = p->last_ran +
+		p->policy_cached_timeout = rq->clock_task +
 			policy_cached_timeout[p->policy];
 	}
 }
@@ -1591,8 +1591,6 @@ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 	p->stime_pc =
 	p->utime_pc = 0;
 
-	p->cached = 0ULL;
-
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
@@ -1620,6 +1618,7 @@ int sched_fork(unsigned long __maybe_unused clone_flags, struct task_struct *p)
 		memset(&p->sched_info, 0, sizeof(p->sched_info));
 #endif
 	p->on_cpu = false;
+	p->cached = 0ULL;
 	init_task_preempt_count(p);
 	return 0;
 }
@@ -3132,11 +3131,10 @@ task_struct *earliest_deadline_task(struct rq *rq, int cpu, struct task_struct *
 				continue;
 #endif
 			/*
-			 * Soft affinity happens here by not scheduling a task
-			 * with its cache count is set that ran on a different CPU
-			 * last when the CPU is scaling, or by greatly biasing
-			 * against its deadline when not, based on cpu cache
-			 * locality.
+			 * Soft affinity happens here by not scheduling a cache
+			 * task to a different CPU that the task is last ran on,
+			 * or by greatly biasing against its deadline based on
+			 * cpu cache locality.
 			 */
 			tcpu = task_cpu(p);
 
@@ -3424,7 +3422,7 @@ static void __sched notrace __schedule(bool preempt)
 			/* Task changed affinity off this CPU */
 			if (likely(!needs_other_cpu(prev, cpu))) {
 				if (queued_notrunning())
-					cache_task(prev);
+					cache_task(prev, rq);
 				else {
 					/*
 					* We now know prev is the only thing that is
@@ -3471,6 +3469,7 @@ static void __sched notrace __schedule(bool preempt)
 			wake_smt_siblings(cpu);
 		prev->on_cpu = false;
 		next->on_cpu = true;
+		next->cached = 0ULL;
 		rq->curr = next;
 		++*switch_count;
 
@@ -5648,11 +5647,12 @@ static void tasks_cpu_hotplug(int cpu)
 	do_each_thread(t, p) {
 		if (cpumask_test_cpu(cpu, &p->cpus_allowed_master)) {
 			count++;
-			if (likely(cpumask_and(tsk_cpus_allowed(p),
-					   &p->cpus_allowed_master,
-					   cpu_active_mask)))
-				continue;
-			cpumask_set_cpu(0, tsk_cpus_allowed(p));
+			if (unlikely(!cpumask_and(tsk_cpus_allowed(p),
+						  &p->cpus_allowed_master,
+						  cpu_active_mask)))
+				cpumask_set_cpu(0, tsk_cpus_allowed(p));
+			if (p->cached == 1ULL && task_cpu(p) == cpu)
+				p->cached = 0ULL;
 		}
 	} while_each_thread(t, p);
 	read_unlock(&tasklist_lock);
