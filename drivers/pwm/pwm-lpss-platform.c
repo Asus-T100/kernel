@@ -1,3 +1,4 @@
+
 /*
  * Intel Low Power Subsystem PWM controller driver
  *
@@ -42,6 +43,8 @@ static int pwm_lpss_probe_platform(struct platform_device *pdev)
 		return PTR_ERR(lpwm);
 
 	platform_set_drvdata(pdev, lpwm);
+
+	msleep(500);
 
 	/* Register intel-gfx device as allowed consumer */
 	pwm_add_table(lpss_pwm_lookup, ARRAY_SIZE(lpss_pwm_lookup));
