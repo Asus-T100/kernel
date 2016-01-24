@@ -1312,13 +1312,36 @@ source "usr/Kconfig"
 
 endif
 
+choice
+	prompt "Code optimization level"
+	default CC_OPTIMIZE_DEFAULT
+	help
+	  Select the optimization flag to pass to the compiler,
+	  affecting kernel size, speed and compilation time.
+
+	  If in doubt, choose the default optimization level.
+
+config CC_OPTIMIZE_DEFAULT
+	bool "Default optimization"
+	help
+	  This option will pass "-O2" to your compiler. This is
+	  the recommended level and the most tested.
+
+config CC_OPTIMIZE_HARDER
+	bool "Optimize harder"
+	help
+	  This option will pass "-O3" to your compiler resulting
+	  in a larger and faster kernel. The more complex
+	  optimizations also increase compilation time and may
+	  affect stability.
+
 config CC_OPTIMIZE_FOR_SIZE
 	bool "Optimize for size"
 	help
-	  Enabling this option will pass "-Os" instead of "-O2" to
-	  your compiler resulting in a smaller kernel.
+	  This option will pass "-Os" to your compiler resulting
+	  in a smaller kernel.
 
-	  If unsure, say N.
+endchoice
 
 config SYSCTL
 	bool
