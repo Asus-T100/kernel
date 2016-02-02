@@ -169,10 +169,10 @@ int rr_interval __read_mostly = DEFAULT_RR_INTERVAL;
  */
 static unsigned long policy_cached_timeout[] = {
 	MS_TO_NS(NORMAL_POLICY_CACHED_WAITTIME),	/* NORMAL */
-	MS_TO_NS(0),			/* FIFO */
-	MS_TO_NS(0),			/* RR */
+	MS_TO_NS(0),					/* FIFO */
+	MS_TO_NS(0),					/* RR */
 	MS_TO_NS(UNLIMITED_CACHED_WAITTIME),		/* BATCH */
-	MS_TO_NS(DEFAULT_RR_INTERVAL),			/* ISO */
+	MS_TO_NS(0),					/* ISO */
 	MS_TO_NS(UNLIMITED_CACHED_WAITTIME)		/* IDLE */
 };
 
@@ -1235,7 +1235,7 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 static inline bool cache_task(struct task_struct *p, struct rq *rq,
 			      unsigned long state)
 {
-	if(p->mm) {
+	if(p->mm && !rt_task(p)) {
 		p->cached = state;
 		p->policy_cached_timeout = rq->clock_task +
 			policy_cached_timeout[p->policy];
