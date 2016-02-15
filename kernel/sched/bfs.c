@@ -161,7 +161,7 @@ int rr_interval __read_mostly = DEFAULT_RR_INTERVAL;
 #ifdef CONFIG_PREEMPT_NONE
 #define NORMAL_POLICY_CACHED_WAITTIME UNLIMITED_CACHED_WAITTIME
 #else
-#define NORMAL_POLICY_CACHED_WAITTIME 3
+#define NORMAL_POLICY_CACHED_WAITTIME 6
 #endif
 
 /*
@@ -1237,6 +1237,7 @@ static inline bool cache_task(struct task_struct *p, struct rq *rq,
 {
 	if(p->mm && !rt_task(p)) {
 		p->cached = state;
+		p->policy_stick_timeout = rq->clock_task + (1ULL << 16);
 		p->policy_cached_timeout = rq->clock_task +
 			policy_cached_timeout[p->policy];
 		return true;
@@ -1248,6 +1249,14 @@ static inline bool
 is_task_policy_cached_timeout(struct task_struct *p, struct rq *rq)
 {
 	return (rq->clock_task > p->policy_cached_timeout);
+}
+
+static inline void
+check_task_stick_off(struct task_struct *p, struct rq *rq)
+{
+	if (unlikely(rq->clock_task > p->policy_stick_timeout)) {
+		p->cached = 1ULL;
+	}
 }
 
 /* return task cache state */
@@ -3492,9 +3501,9 @@ task_struct *earliest_deadline_task(struct rq *rq, int cpu, struct task_struct *
 			tcpu = task_cpu(p);
 
 			if (likely(3ULL == p->cached)) {
+				check_task_stick_off(p, task_rq(p));
 				if(unlikely(tcpu != cpu && scaling_rq(rq)))
 					continue;
-				check_task_cached_off(p, task_rq(p));
 				dl = p->deadline << locality_diff(tcpu, rq);
 			} else if (likely(1ULL == p->cached &&
 					  check_task_cached_off(p, task_rq(p))))
