@@ -1237,7 +1237,7 @@ static inline bool cache_task(struct task_struct *p, struct rq *rq,
 {
 	if(p->mm && !rt_task(p)) {
 		p->cached = state;
-		p->policy_stick_timeout = rq->clock_task + (1ULL << 16);
+		p->policy_stick_timeout = rq->clock_task + (1ULL << 13);
 		p->policy_cached_timeout = rq->clock_task +
 			policy_cached_timeout[p->policy];
 		return true;
