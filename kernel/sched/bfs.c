@@ -3797,7 +3797,7 @@ deactivate_choose_task##subfix(struct rq *rq,\
 	next = pick_next_task##subfix(rq, cpu);\
 	_grq_unlock();\
 	rq->grq_locked = false;\
-	cache_task(prev, rq, 3ULL);\
+	cache_task(prev, rq, 1ULL);\
 \
 	return next;\
 }
