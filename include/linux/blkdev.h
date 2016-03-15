@@ -39,7 +39,11 @@ struct blk_flush_queue;
 struct pr_ops;
 
 #define BLKDEV_MIN_RQ	4
+#ifdef CONFIG_ZEN_INTERACTIVE
+#define BLKDEV_MAX_RQ	16
+#else
 #define BLKDEV_MAX_RQ	128	/* Default maximum */
+#endif
 
 /*
  * Maximum number of blkcg policies allowed to be registered concurrently.
