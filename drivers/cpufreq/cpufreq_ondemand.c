@@ -19,7 +19,7 @@
 #include "cpufreq_governor.h"
 
 /* On-demand governor macros */
-#define DEF_FREQUENCY_UP_THRESHOLD		(80)
+#define DEF_FREQUENCY_UP_THRESHOLD		(63)
 #ifdef CONFIG_ZEN_INTERACTIVE
 #define DEF_SAMPLING_DOWN_FACTOR		(10)
 #else
@@ -152,7 +152,7 @@ static void dbs_freq_increase(struct cpufreq_policy *policy, unsigned int freq)
 }
 
 /*
- * Every sampling_rate, we check, if current idle time is less than 20%
+ * Every sampling_rate, we check, if current idle time is less than 37%
  * (default), then we try to increase frequency. Else, we adjust the frequency
  * proportional to load.
  */
