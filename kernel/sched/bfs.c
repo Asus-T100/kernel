@@ -169,11 +169,6 @@ static unsigned long policy_cached_timeout[] = {
 	MS_TO_NS(UNLIMITED_CACHED_WAITTIME)		/* IDLE */
 };
 
-/* Tunable to choose whether to prioritise latency or throughput, simple
- * binary yes or no */
-
-int sched_interactive __read_mostly = 1;
-
 /*
  * sched_iso_cpu - sysctl which determines the cpu percentage SCHED_ISO tasks
  * are allowed to run five seconds as real time tasks. This is the total over
