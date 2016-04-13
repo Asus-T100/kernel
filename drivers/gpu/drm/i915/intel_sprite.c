@@ -94,8 +94,8 @@ void intel_pipe_update_start(struct intel_crtc *crtc)
 
 	/* FIXME needs to be calibrated sensibly */
 	min = vblank_start - usecs_to_scanlines(adjusted_mode, 100);
-	max = vblank_start - 1;
-
+	max = vblank_start - usecs_to_scanlines(adjusted_mode, 5);
+ 
 	local_irq_disable();
 
 	if (min <= 0 || max <= 0)
