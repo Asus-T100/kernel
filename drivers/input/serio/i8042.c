@@ -1569,6 +1569,8 @@ static int __init i8042_init(void)
 
 	dbg_init();
 
+	return -ENODEV;
+
 	err = i8042_platform_init();
 	if (err)
 		return err;
