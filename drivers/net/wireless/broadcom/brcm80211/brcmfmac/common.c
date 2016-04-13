@@ -111,14 +111,20 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 	struct brcmf_rev_info_le revinfo;
 	struct brcmf_rev_info *ri;
 	char *ptr;
+	int i;
 	s32 err;
 
 	/* retreive mac address */
-	err = brcmf_fil_iovar_data_get(ifp, "cur_etheraddr", ifp->mac_addr,
-				       sizeof(ifp->mac_addr));
-	if (err < 0) {
-		brcmf_err("Retreiving cur_etheraddr failed, %d\n", err);
-		goto done;
+	for (i = 0; i < 10; i++) {  /* 10 tries max to read mac addr */
+	        err = brcmf_fil_iovar_data_get(ifp, "cur_etheraddr", ifp->mac_addr,sizeof(ifp->mac_addr));
+	        if (err < 0 ) {     /* done if no error */
+		        if (i == 9) {  /* last chance failed */
+	                        brcmf_err("Retreiving cur_etheraddr failed, %d\n", err);
+	                        goto done;
+		        } else {    /* wait for a bit before retry */
+			        msleep(100);
+			}
+		}  else i = 9;
 	}
 	memcpy(ifp->drvr->mac, ifp->mac_addr, sizeof(ifp->drvr->mac));
 
@@ -149,13 +155,16 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 	ri->result = err;
 
 	/* query for 'ver' to get version info from firmware */
-	memset(buf, 0, sizeof(buf));
-	strcpy(buf, "ver");
-	err = brcmf_fil_iovar_data_get(ifp, "ver", buf, sizeof(buf));
-	if (err < 0) {
-		brcmf_err("Retreiving version information failed, %d\n",
-			  err);
-		goto done;
+	for (i = 0; i < 10; i++) {  /* 10 tries max to read mac addr */
+	        err = brcmf_fil_iovar_data_get(ifp, "ver", buf, sizeof(buf));
+	        if (err < 0 ) {     /* done if no error */
+		        if (i == 9) {  /* last chance failed */
+	                        brcmf_err("Retreiving version information failed, %d\n",err);
+	                        goto done;
+		        } else {    /* wait for a bit before retry */
+			        msleep(100);
+			}
+		} else i = 9;
 	}
 	ptr = (char *)buf;
 	strsep(&ptr, "\n");
@@ -169,9 +178,16 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 
 	/* set mpc */
 	err = brcmf_fil_iovar_int_set(ifp, "mpc", 1);
-	if (err) {
-		brcmf_err("failed setting mpc\n");
-		goto done;
+	for (i = 0; i < 10; i++) {  /* 10 tries max to read mac addr */
+	        err = brcmf_fil_iovar_int_set(ifp, "mpc", 1);
+	        if (err < 0 ) {     /* done if no error */
+		        if (i == 9) {  /* last chance failed */
+	                        brcmf_err("failed setting mpc\n");
+	                        goto done;
+		        } else {    /* wait for a bit before retry */
+			        msleep(100);
+			}
+		} else i = 9;
 	}
 
 	brcmf_c_set_joinpref_default(ifp);
