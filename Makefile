@@ -359,7 +359,7 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-T100_FLAGS	= -march=silvermont -mmmx -msse -msse2 -msse3 -mssse3 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -msse4.2 -msse4.1 -mrdrnd -mprfchw -mfxsr -mtune=silvermont
+T100_FLAGS	= -march=silvermont -mtune=silvermont
 CFLAGS_MODULE   = $(T100_FLAGS)
 AFLAGS_MODULE   = $(T100_FLAGS)
 LDFLAGS_MODULE  =
