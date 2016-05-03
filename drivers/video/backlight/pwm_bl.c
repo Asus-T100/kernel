@@ -129,7 +129,6 @@ static const struct backlight_ops pwm_backlight_ops = {
 	.check_fb	= pwm_backlight_check_fb,
 };
 
-#ifdef CONFIG_OF
 static int pwm_backlight_parse_dt(struct device *dev,
 				  struct platform_pwm_backlight_data *data)
 {
@@ -184,13 +183,6 @@ static struct of_device_id pwm_backlight_of_match[] = {
 };
 
 MODULE_DEVICE_TABLE(of, pwm_backlight_of_match);
-#else
-static int pwm_backlight_parse_dt(struct device *dev,
-				  struct platform_pwm_backlight_data *data)
-{
-	return -ENODEV;
-}
-#endif
 
 static int pwm_backlight_probe(struct platform_device *pdev)
 {
