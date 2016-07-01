@@ -440,6 +440,12 @@ bool __clk_is_enabled(struct clk *clk)
 }
 EXPORT_SYMBOL_GPL(__clk_is_enabled);
 
+bool clk_is_enabled(struct clk *clk)
+{
+	return __clk_is_enabled(clk);
+}
+EXPORT_SYMBOL_GPL(clk_is_enabled);
+
 static bool mux_is_better_rate(unsigned long rate, unsigned long now,
 			   unsigned long best, unsigned long flags)
 {

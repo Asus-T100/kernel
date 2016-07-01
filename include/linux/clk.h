@@ -408,6 +408,14 @@ struct clk *clk_get_parent(struct clk *clk);
  */
 struct clk *clk_get_sys(const char *dev_id, const char *con_id);
 
+/**
+ * clk_is_enabled - check if a clock is enabled
+ * @clk: clock source
+ *
+ * Returns true if @clk is enabled, false otherwise.
+ */
+bool clk_is_enabled(struct clk *clk);
+
 #else /* !CONFIG_HAVE_CLK */
 
 static inline struct clk *clk_get(struct device *dev, const char *id)
@@ -461,6 +469,10 @@ static inline struct clk *clk_get_parent(struct clk *clk)
 	return NULL;
 }
 
+static inline bool clk_is_enabled(struct clk *clk)
+{
+	return false;
+}
 #endif
 
 /* clk_prepare_enable helps cases using clk_enable in non-atomic context. */
