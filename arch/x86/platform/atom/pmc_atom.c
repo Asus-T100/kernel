@@ -21,6 +21,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/io.h>
+#include <linux/platform_device.h>
 
 #include <asm/pmc_atom.h>
 
@@ -384,6 +385,7 @@ static int pmc_dbgfs_register(struct pmc_dev *pmc)
 
 static int pmc_setup_dev(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
+	struct platform_device *clkdev;
 	struct pmc_dev *pmc = &pmc_device;
 	const struct pmc_reg_map *map = (struct pmc_reg_map *)ent->driver_data;
 	int ret;
@@ -413,6 +415,12 @@ static int pmc_setup_dev(struct pci_dev *pdev, const struct pci_device_id *ent)
 	ret = pmc_dbgfs_register(pmc);
 	if (ret)
 		dev_warn(&pdev->dev, "debugfs register failed\n");
+
+	/* Register platform clocks - PMC_PLT_CLK [5:0] */
+	clkdev = platform_device_register_simple("clk-byt-plt", -1, NULL, 0);
+	if (IS_ERR(clkdev))
+		dev_warn(&pdev->dev, "platform clocks register failed: %ld\n",
+			 PTR_ERR(clkdev));
 
 	pmc->init = true;
 	return ret;

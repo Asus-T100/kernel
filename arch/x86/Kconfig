@@ -2709,6 +2709,7 @@ config X86_DMA_REMAP
 config PMC_ATOM
 	def_bool y
         depends on PCI
+	select COMMON_CLK
 
 config VMD
 	depends on PCI_MSI
