@@ -145,7 +145,11 @@ void print_scheduler_version(void)
  * Value is in ms and set to a minimum of 6ms.
  * Tunable via /proc interface.
  */
+#ifdef CONFIG_ZEN_INTERACTIVE
+int rr_interval __read_mostly = 3;
+#else
 int rr_interval __read_mostly = 6;
+#endif
 
 /*
  * Tunable to choose whether to prioritise latency or throughput, simple
@@ -158,7 +162,11 @@ int sched_interactive __read_mostly = 1;
  * are allowed to run five seconds as real time tasks. This is the total over
  * all online cpus.
  */
+#ifdef CONFIG_ZEN_INTERACTIVE
+int sched_iso_cpu __read_mostly = 25;
+#else
 int sched_iso_cpu __read_mostly = 70;
+#endif
 
 /*
  * sched_yield_type - Choose what sort of yield sched_yield will perform.
