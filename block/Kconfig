@@ -114,7 +114,7 @@ config BLK_CMDLINE_PARSER
 
 config BLK_WBT
 	bool "Enable support for block device writeback throttling"
-	default n
+	default y
 	---help---
 	Enabling this option enables the block layer to throttle buffered
 	writeback from the VM, making it more smooth and having less
@@ -122,7 +122,7 @@ config BLK_WBT
 
 config BLK_WBT_SQ
 	bool "Single queue writeback throttling"
-	default n
+	default y
 	depends on BLK_WBT
 	---help---
 	Enable writeback throttling by default on legacy single queue devices
