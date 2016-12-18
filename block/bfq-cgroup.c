@@ -638,9 +638,11 @@ static void bfq_bic_update_cgroup(struct bfq_io_cq *bic, struct bio *bio)
 	struct bfq_data *bfqd = bic_to_bfqd(bic);
 	struct bfq_group *bfqg = NULL;
 	uint64_t serial_nr;
+	bool nonroot_cg;
 
 	rcu_read_lock();
 	serial_nr = bio_blkcg(bio)->css.serial_nr;
+	nonroot_cg = bio_blkcg(bio) != &blkcg_root;
 
 	/*
 	 * Check whether blkcg has changed.  The condition may trigger
@@ -648,6 +650,17 @@ static void bfq_bic_update_cgroup(struct bfq_io_cq *bic, struct bio *bio)
 	 */
 	if (unlikely(!bfqd) || likely(bic->blkcg_serial_nr == serial_nr))
 		goto out;
+
+	/*
+	 * If we have a non-root cgroup, we can depend on that to
+	 * do proper throttling of writes. Turn off wbt for that
+	 * case.
+	*/
+	if (nonroot_cg) {
+		struct request_queue *q = bfqd->queue;
+
+		wbt_disable(q->rq_wb);
+	}
 
 	bfqg = __bfq_bic_change_cgroup(bfqd, bic, bio_blkcg(bio));
 	bic->blkcg_serial_nr = serial_nr;

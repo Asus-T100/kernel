@@ -72,6 +72,7 @@
 #include <linux/ioprio.h>
 #include "bfq.h"
 #include "blk.h"
+#include "blk-wbt.h"
 
 /* Expiration time of sync (0) and async (1) requests, in ns. */
 static const u64 bfq_fifo_expire[2] = { NSEC_PER_SEC / 4, NSEC_PER_SEC / 8 };
