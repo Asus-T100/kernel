@@ -14,12 +14,6 @@
  * Licensed under the GPL-2 as detailed in the accompanying COPYING.BFQ
  * file.
  *
- * BFQ is a proportional-share I/O scheduler, with some extra
- * low-latency capabilities. BFQ also supports full hierarchical
- * scheduling through cgroups. Next paragraphs provide an introduction
- * on BFQ inner workings. Details on BFQ benefits and usage can be
- * found in Documentation/block/bfq-iosched.txt.
- *
  * BFQ is a proportional-share storage-I/O scheduling algorithm based
  * on the slice-by-slice service scheme of CFQ. But BFQ assigns
  * budgets, measured in number of sectors, to processes instead of
@@ -49,10 +43,10 @@
  * H-WF2Q+, while the augmented tree used to implement B-WF2Q+ with O(log N)
  * complexity derives from the one introduced with EEVDF in [3].
  *
- * [1] P. Valente, A. Avanzini, "Evolution of the BFQ Storage I/O
- *   Scheduler", Proceedings of the First Workshop on Mobile System
- *   Technologies (MST-2015), May 2015.
- *   http://algogroup.unimore.it/people/paolo/disk_sched/mst-2015.pdf
+ * [1] P. Valente and M. Andreolini, ``Improving Application Responsiveness
+ *     with the BFQ Disk I/O Scheduler'',
+ *     Proceedings of the 5th Annual International Systems and Storage
+ *     Conference (SYSTOR '12), June 2012.
  *
  * http://algogroup.unimo.it/people/paolo/disk_sched/bf1-v1-suite-results.pdf
  *
@@ -118,7 +112,6 @@ struct kmem_cache *bfq_pool;
 #define BFQ_HW_QUEUE_SAMPLES	32
 
 #define BFQQ_SEEK_THR		(sector_t)(8 * 100)
-#define BFQQ_SECT_THR_NONROT	(sector_t)(2 * 32)
 #define BFQQ_CLOSE_THR		(sector_t)(8 * 1024)
 #define BFQQ_SEEKY(bfqq)	(hweight32(bfqq->seek_history) > 32/8)
 
@@ -601,7 +594,7 @@ static void bfq_updated_next_req(struct bfq_data *bfqd,
 		entity->budget = new_budget;
 		bfq_log_bfqq(bfqd, bfqq, "updated next rq: new budget %lu",
 					 new_budget);
-		bfq_requeue_bfqq(bfqd, bfqq);
+		bfq_activate_bfqq(bfqd, bfqq);
 	}
 }
 
@@ -651,16 +644,13 @@ bfq_bfqq_resume_state(struct bfq_queue *bfqq, struct bfq_io_cq *bic)
 	bfqq->wr_start_at_switch_to_srt = bic->saved_wr_start_at_switch_to_srt;
 	BUG_ON(time_is_after_jiffies(bfqq->wr_start_at_switch_to_srt));
 	bfqq->last_wr_start_finish = bic->saved_last_wr_start_finish;
-	bfqq->wr_cur_max_time = bic->saved_wr_cur_max_time;
 	BUG_ON(time_is_after_jiffies(bfqq->last_wr_start_finish));
 
 	if (bfqq->wr_coeff > 1 && (bfq_bfqq_in_large_burst(bfqq) ||
 	    time_is_before_jiffies(bfqq->last_wr_start_finish +
 				   bfqq->wr_cur_max_time))) {
 		bfq_log_bfqq(bfqq->bfqd, bfqq,
-			     "resume state: switching off wr (%lu + %lu < %lu)",
-			     bfqq->last_wr_start_finish, bfqq->wr_cur_max_time,
-			     jiffies);
+		    "resume state: switching off wr");
 
 		bfqq->wr_coeff = 1;
 	}
@@ -1527,7 +1517,7 @@ static void bfq_remove_request(struct request *rq)
 		BUG_ON(bfqq->entity.budget < 0);
 
 		if (bfq_bfqq_busy(bfqq) && bfqq != bfqd->in_service_queue) {
-			bfq_del_bfqq_busy(bfqd, bfqq, false);
+			bfq_del_bfqq_busy(bfqd, bfqq, 1);
 
 			/* bfqq emptied. In normal operation, when
 			 * bfqq is empty, bfqq->entity.service and
@@ -1990,7 +1980,6 @@ static void bfq_bfqq_save_state(struct bfq_queue *bfqq)
 	bic->saved_wr_coeff = bfqq->wr_coeff;
 	bic->saved_wr_start_at_switch_to_srt = bfqq->wr_start_at_switch_to_srt;
 	bic->saved_last_wr_start_finish = bfqq->last_wr_start_finish;
-	bic->saved_wr_cur_max_time = bfqq->wr_cur_max_time;
 	BUG_ON(time_is_after_jiffies(bfqq->last_wr_start_finish));
 }
 
@@ -2644,6 +2633,8 @@ static void __bfq_bfqq_expire(struct bfq_data *bfqd, struct bfq_queue *bfqq)
 {
 	BUG_ON(bfqq != bfqd->in_service_queue);
 
+	__bfq_bfqd_reset_in_service(bfqd);
+
 	/*
 	 * If this bfqq is shared between multiple processes, check
 	 * to make sure that those processes are still issuing I/Os
@@ -2663,21 +2654,14 @@ static void __bfq_bfqq_expire(struct bfq_data *bfqd, struct bfq_queue *bfqq)
 			 */
 			bfqq->budget_timeout = jiffies;
 
-		bfq_del_bfqq_busy(bfqd, bfqq, true);
+		bfq_del_bfqq_busy(bfqd, bfqq, 1);
 	} else {
-		bfq_requeue_bfqq(bfqd, bfqq);
+		bfq_activate_bfqq(bfqd, bfqq);
 		/*
 		 * Resort priority tree of potential close cooperators.
 		 */
 		bfq_pos_tree_add_move(bfqd, bfqq);
 	}
-
-	/*
-	 * All in-service entities must have been properly deactivated
-	 * or requeued before executing the next function, which
-	 * resets all in-service entites as no more in service.
-	 */
-	__bfq_bfqd_reset_in_service(bfqd);
 }
 
 /**
@@ -3825,6 +3809,7 @@ static void bfq_put_queue(struct bfq_queue *bfqq)
 	BUG_ON(bfqq->allocated[READ] + bfqq->allocated[WRITE] != 0);
 	BUG_ON(bfqq->entity.tree);
 	BUG_ON(bfq_bfqq_busy(bfqq));
+	BUG_ON(bfqq->bfqd->in_service_queue == bfqq);
 
 	if (bfq_bfqq_sync(bfqq))
 		/*
@@ -4127,9 +4112,7 @@ bfq_update_io_seektime(struct bfq_data *bfqd, struct bfq_queue *bfqq,
 {
 	bfqq->seek_history <<= 1;
 	bfqq->seek_history |=
-		get_sdist(bfqq->last_request_pos, rq) > BFQQ_SEEK_THR &&
-		(!blk_queue_nonrot(bfqd->queue) ||
-		 blk_rq_sectors(rq) < BFQQ_SECT_THR_NONROT);
+		get_sdist(bfqq->last_request_pos, rq) > BFQQ_SEEK_THR;
 }
 
 /*
@@ -4745,7 +4728,7 @@ static void bfq_exit_queue(struct elevator_queue *e)
 
 	BUG_ON(bfqd->in_service_queue);
 	list_for_each_entry_safe(bfqq, n, &bfqd->idle_list, bfqq_list)
-		bfq_deactivate_bfqq(bfqd, bfqq, false, false);
+		bfq_deactivate_bfqq(bfqd, bfqq, 0);
 
 	spin_unlock_irq(q->queue_lock);
 
@@ -4775,7 +4758,6 @@ static void bfq_init_root_group(struct bfq_group *root_group,
 	root_group->rq_pos_tree = RB_ROOT;
 	for (i = 0; i < BFQ_IOPRIO_CLASSES; i++)
 		root_group->sched_data.service_tree[i] = BFQ_SERVICE_TREE_INIT;
-	root_group->sched_data.bfq_class_idle_last_service = jiffies;
 }
 
 static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
@@ -4849,6 +4831,7 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
 	bfqd->bfq_back_max = bfq_back_max;
 	bfqd->bfq_back_penalty = bfq_back_penalty;
 	bfqd->bfq_slice_idle = bfq_slice_idle;
+	bfqd->bfq_class_idle_last_service = 0;
 	bfqd->bfq_timeout = bfq_timeout;
 
 	bfqd->bfq_requests_within_timer = 120;
@@ -5056,7 +5039,7 @@ STORE_FUNCTION(bfq_wr_max_softrt_rate_store, &bfqd->bfq_wr_max_softrt_rate, 0,
 static ssize_t __FUNC(struct elevator_queue *e, const char *page, size_t count)\
 {									\
 	struct bfq_data *bfqd = e->elevator_data;			\
-	unsigned long uninitialized_var(__data);			\
+	unsigned long __data;						\
 	int ret = bfq_var_store(&__data, (page), count);		\
 	if (__data < (MIN))						\
 		__data = (MIN);						\
@@ -5230,7 +5213,7 @@ static struct blkcg_policy blkcg_policy_bfq = {
 static int __init bfq_init(void)
 {
 	int ret;
-	char msg[60] = "BFQ I/O-scheduler: v8r7";
+	char msg[50] = "BFQ I/O-scheduler: v8r5";
 
 #ifdef CONFIG_BFQ_GROUP_IOSCHED
 	ret = blkcg_policy_register(&blkcg_policy_bfq);
