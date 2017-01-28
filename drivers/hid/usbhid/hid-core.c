@@ -6,6 +6,7 @@
  *  Copyright (c) 2005 Michael Haboustak <mike-@cinci.rr.com> for Concept2, Inc
  *  Copyright (c) 2007-2008 Oliver Neukum
  *  Copyright (c) 2006-2010 Jiri Kosina
+ *  Copyright (c) 2016 Helder Filho <heldinho@gmail.com> -- Patch for ASUS T100 only
  */
 
 /*
@@ -26,6 +27,7 @@
 #include <asm/unaligned.h>
 #include <asm/byteorder.h>
 #include <linux/input.h>
+#include <linux/input/mt.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
 #include <linux/string.h>
@@ -48,6 +50,309 @@
 /*
  * Module parameters.
  */
+
+//PATCH for Asus T100 Multi-Touch
+//Author: Helder Filho <heldinho@gmail.com>
+/** ASUS T100 **/
+#define ASUS_T100_VENDORID 0x0b05
+#define ASUS_T100_DEVICEID 0x17e0
+#define ASUS_T100_TOUCHPAD_INTERFACEID 2
+
+unsigned char send0[] = {0x0d,0x00,0x03,0x01,0x00};
+unsigned char send1[] = {0x0d,0x05,0x03,0x06,0x01};
+unsigned char send2[] = {0x0d,0x05,0x03,0x07,0x01};
+unsigned char send3[] = {0x0d,0x00,0x03,0x01,0x00};
+unsigned char *rcvbuf;
+
+struct usb_asus {
+	struct usb_device 	*udev;
+	struct usb_interface 	*interface;
+	unsigned char		minor;
+	char			serial_number[8];
+
+	int			open_count;     /* Open count for this port */
+	struct 			semaphore sem;	/* Locks this structure */
+	spinlock_t		cmd_spinlock;	/* locks dev->command */
+
+	char				*int_in_buffer;
+	struct usb_endpoint_descriptor  *int_in_endpoint;
+	struct urb 			*int_in_urb;
+	int				int_in_running;
+
+	char			*ctrl_buffer; /* 8 byte buffer for ctrl msg */
+	struct urb		*ctrl_urb;
+	struct usb_ctrlrequest  *ctrl_dr;     /* Setup packet information */
+	int			correction_required;
+
+	__u8			command;/* Last issued command */
+};
+
+int hardwareClick=0;
+int hardwareTouchId=0;
+int hardwareButton;
+struct input_dev *input_t100;
+static void t100_touch_init_input(void){
+	hardwareClick=0;
+	input_t100=input_allocate_device();
+	input_t100->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS) | BIT_MASK(EV_SYN);
+	input_t100->keybit[BIT_WORD(BTN_MOUSE)] = BIT_MASK(BTN_TOUCH) | BIT_MASK(BTN_LEFT) | BIT_MASK(BTN_RIGHT);
+	input_t100->absbit[0] = BIT_MASK(ABS_X) | BIT_MASK(ABS_Y);
+	input_t100->name ="Asus T100 MultiTouch Trackpad";
+	input_t100->id.bustype = BUS_HOST;
+	input_set_abs_params(input_t100, ABS_MT_POSITION_X, 0, 2048, 0, 0);
+	input_set_abs_params(input_t100, ABS_MT_POSITION_Y, 0, 1024, 0, 0);
+	input_mt_init_slots(input_t100, 5,INPUT_MT_POINTER | INPUT_MT_DROP_UNUSED | INPUT_MT_TRACK);
+	input_register_device(input_t100);
+}
+
+static void t100_touch_destroy_input(void){
+	input_unregister_device(input_t100);
+}
+
+static void t100_interrupt(struct urb *urb){
+	struct usb_asus *asus = urb->context;
+	char rets[128];
+	rets[0]='\n';
+	rets[1]=0;
+	int i=0;
+	char *buf = asus->int_in_buffer;
+	int touches[5];
+	unsigned short ty[5];
+	unsigned short tx[5];
+	int numtouches=0;
+	//parse touchpad packet
+	for(i=0;i<5;i++){
+		touches[i] = (buf[1] & (1<<(3+i)))>0; //check if finger is pressed
+		if(touches[i]){
+			numtouches++;
+		}
+		int mx = ((buf[2+5*i]&0xF0)>>4)<<8;
+		tx[i]=mx + (buf[3+5*i]&0xFF); //abs_x
+
+		int most = (buf[2+5*i]&0xF)<<8;
+		ty[i]=most+(buf[4+5*i]&0xFF); //abs_y
+		snprintf(rets,164,"%sB%d: %d\tTX: %d\tTY: %d\n",rets,i,touches[i],tx[i],ty[i]);
+	}
+		snprintf(rets,164,"%s\n",rets);
+	if(!hardwareClick && asus->int_in_buffer[1]&1){ //check hardware button press
+	//Touchpad has only 1 button, must detect wich edge
+	for(i=0;i<5;i++){
+		if(touches[i]){
+			if(ty[i]<256){ //this button
+				hardwareClick=1;
+				hardwareTouchId=i;
+				if(tx[i]<1024){
+					hardwareButton=BTN_LEFT;				
+				} else {
+					hardwareButton=BTN_RIGHT;
+				}
+				input_report_key(input_t100, hardwareButton,   1);	
+				break;
+			}
+		}
+	}
+
+	} else if(!(asus->int_in_buffer[1]&1) && hardwareClick){ //release hardware button!
+				input_report_key(input_t100, hardwareButton,   0);	
+				hardwareClick=0;
+	}
+
+	dbg_hid("%s",rets);
+
+
+	if(numtouches==1){ //Single Touch
+				input_mt_slot(input_t100, 0);
+				input_mt_report_slot_state(input_t100, MT_TOOL_FINGER, true);
+				input_report_abs(input_t100, ABS_MT_POSITION_X,tx[0]);
+				input_report_abs(input_t100, ABS_MT_POSITION_Y,1024-ty[0]);
+				input_report_key(input_t100, BTN_TOUCH,   1);	
+	} else if(numtouches>1) { //Multi Touch
+		if(hardwareClick){
+		i=hardwareTouchId==0?1:0;
+			if(touches[i]){ //if pressed
+				input_mt_slot(input_t100, 0);
+				input_mt_report_slot_state(input_t100, MT_TOOL_FINGER, true);
+				input_report_abs(input_t100, ABS_MT_POSITION_X,tx[i]);
+				input_report_abs(input_t100, ABS_MT_POSITION_Y,1024-ty[i]);	
+			} else {
+				input_mt_slot(input_t100, 0);
+				input_mt_report_slot_state(input_t100, MT_TOOL_FINGER, false);
+			}
+
+		} else {
+			for(i=0;i<5;i++){
+				if(touches[i]){ //if pressed
+					input_mt_slot(input_t100, i);
+					input_mt_report_slot_state(input_t100, MT_TOOL_FINGER, true);
+					input_report_abs(input_t100, ABS_MT_POSITION_X,tx[i]);
+					input_report_abs(input_t100, ABS_MT_POSITION_Y,1024-ty[i]);	
+				} else {
+					input_mt_slot(input_t100, i);
+					input_mt_report_slot_state(input_t100, MT_TOOL_FINGER, false);
+				}
+			}
+
+		}
+	} else { //released all fingers
+				input_mt_slot(input_t100, i);
+				input_report_key(input_t100, BTN_TOUCH,   0);	
+				input_mt_report_slot_state(input_t100, MT_TOOL_FINGER, false);
+	}
+
+	//sync frame
+	input_mt_sync_frame(input_t100);
+	input_mt_report_pointer_emulation(input_t100, false);
+	input_sync(input_t100);
+
+	//schedule next interrupt
+	usb_submit_urb(asus->int_in_urb, GFP_ATOMIC);
+
+}
+
+struct usb_interface *asusintf;
+static int t100_probe(struct usb_interface *intf, const struct usb_device_id *id){
+	struct usb_device *dev = interface_to_usbdev(intf);
+	struct usb_asus *asus = kzalloc(sizeof(struct usb_asus), GFP_KERNEL);
+	int retval = -ENOMEM;
+	int i=0;
+	struct usb_host_interface *iface_desc = intf->cur_altsetting;
+	struct usb_endpoint_descriptor *endpoint;
+
+
+	/* Activate 5-point multitouch feature */
+	asusintf=intf; //used later on disconnect
+	dbg_hid("Activating Multi-Touch");
+	rcvbuf = kmalloc(128, GFP_KERNEL);
+
+	for(i=0;i<5;i++){
+		rcvbuf[i]=send0[i];
+	}
+	usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
+	0x09,
+	USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+	0x30d,
+	2, rcvbuf, 5,
+	0);
+
+	for(i=0;i<5;i++){
+		rcvbuf[i]=send1[i];
+	}
+	usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
+	0x09,
+	USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+	0x30d,
+	2, rcvbuf, 5,
+	0);
+
+	//read
+	usb_control_msg(dev, usb_rcvctrlpipe(dev, 0x0),
+	0x01,
+	USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+	0x30d,
+	2, rcvbuf, 5,
+	0);
+
+
+	for(i=0;i<5;i++){
+		rcvbuf[i]=send2[i];
+	}
+	usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
+	0x09,
+	USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+	0x30d,
+	2, rcvbuf, 5,
+	0);
+
+	//read
+	usb_control_msg(dev, usb_rcvctrlpipe(dev, 0x0),
+	0x01,
+	USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+	0x30d,
+	2, rcvbuf, 5,
+	0);
+
+
+	for(i=0;i<5;i++){
+		rcvbuf[i]=send3[i];
+	}
+	usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
+	0x09,
+	USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+	0x30d,
+	2, rcvbuf, 5,
+	0);
+
+	/* end of activation */
+
+
+	if (! dev) {
+		dbg_hid("cannot allocate memory for struct usb_asus");
+		retval = -ENOMEM;
+		goto exit;
+	}
+	spin_lock_init(&asus->cmd_spinlock);
+	asus->udev=dev;
+	asus->interface=intf;
+
+	for (i = 0; i < iface_desc->desc.bNumEndpoints; ++i) {
+		endpoint = &iface_desc->endpoint[i].desc;
+
+		if (((endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK)
+		     == USB_DIR_IN)
+		    && ((endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)
+		    	== USB_ENDPOINT_XFER_INT))
+			asus->int_in_endpoint = endpoint;
+
+	}
+	if (! asus->int_in_endpoint) {
+		dbg_hid("could not find interrupt in endpoint!!!!");
+		goto error;
+	}
+
+	int int_end_size = le16_to_cpu(asus->int_in_endpoint->wMaxPacketSize);
+	asus->int_in_buffer = kmalloc(int_end_size, GFP_KERNEL);
+	asus->int_in_urb = usb_alloc_urb(0, GFP_KERNEL);
+	if (! asus->int_in_urb) {
+		dbg_hid("could not allocate int_in_urb");
+		retval = -ENOMEM;
+		goto error;
+	}
+
+
+		dbg_hid("Achou o endpoint certinho!");
+
+	usb_set_intfdata(intf, asus);
+
+//schedule interrupt
+usb_fill_int_urb(asus->int_in_urb, asus->udev,
+			usb_rcvintpipe(asus->udev,
+				       asus->int_in_endpoint->bEndpointAddress),
+			asus->int_in_buffer,
+			/*le16_to_cpu(asus->int_in_endpoint->wMaxPacketSize)*/0x1c,
+			t100_interrupt,
+			asus,
+			asus->int_in_endpoint->bInterval);
+
+
+retval = usb_submit_urb(asus->int_in_urb, GFP_KERNEL);
+	if (retval) {
+		dbg_hid("submitting int urb failed (%d)", retval);
+		asus->int_in_running = 0;
+//		--dev->open_count;
+		goto exit;
+	}
+
+t100_touch_init_input();
+
+return 0;
+
+exit:
+error:
+return retval;
+}
+/** END ASUS T100 **/
+
+
 
 static unsigned int hid_mousepoll_interval;
 module_param_named(mousepoll, hid_mousepoll_interval, uint, 0644);
@@ -1274,6 +1579,9 @@ static int usbhid_probe(struct usb_interface *intf, const struct usb_device_id *
 	unsigned int n, has_in = 0;
 	size_t len;
 	int ret;
+	if(dev->descriptor.idVendor == ASUS_T100_VENDORID && dev->descriptor.idProduct == ASUS_T100_DEVICEID && intf->altsetting->desc.bInterfaceNumber == ASUS_T100_TOUCHPAD_INTERFACEID){
+		return t100_probe(intf,id);
+	}
 
 	dbg_hid("HID probe called for ifnum %d\n",
 			intf->altsetting->desc.bInterfaceNumber);
@@ -1368,6 +1676,10 @@ err:
 
 static void usbhid_disconnect(struct usb_interface *intf)
 {
+	if(intf==asusintf){
+		t100_touch_destroy_input();
+		return;
+	}
 	struct hid_device *hid = usb_get_intfdata(intf);
 	struct usbhid_device *usbhid;
 
