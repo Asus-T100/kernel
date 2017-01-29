@@ -55,7 +55,7 @@
 //Author: Helder Filho <heldinho@gmail.com>
 /** ASUS T100 **/
 #define ASUS_T100_VENDORID 0x0b05
-#define ASUS_T100_DEVICEID 0x17e0
+#define ASUS_T100_DEVICEID 0x1807
 #define ASUS_T100_TOUCHPAD_INTERFACEID 2
 
 unsigned char send0[] = {0x0d,0x00,0x03,0x01,0x00};
