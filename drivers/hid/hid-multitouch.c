@@ -208,7 +208,11 @@ static struct mt_class mt_classes[] = {
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_IGNORE_DUPLICATES |
 			MT_QUIRK_HOVERING |
-			MT_QUIRK_CONTACT_CNT_ACCURATE },
+			MT_QUIRK_CONTACT_CNT_ACCURATE |
+			MT_QUIRK_NOT_SEEN_MEANS_UP,
+		.export_all_inputs = true,
+		.sn_pressure = 32,
+		.maxcontacts = 10 },
 	{ .name = MT_CLS_EXPORT_ALL_INPUTS,
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_CONTACT_CNT_ACCURATE,
@@ -618,6 +622,10 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 	    td->num_received >= td->num_expected)
 		return;
 
+	if (td->curdata.x == 0xffff && td->curdata.x == td->curdata.y &&
+	    td->curdata.w == 0xffff && td->curdata.w == td->curdata.h)
+		goto inc_num_received;
+
 	if (td->curvalid || (td->mtclass.quirks & MT_QUIRK_ALWAYS_VALID)) {
 		int active;
 		int slotnum = mt_compute_slot(td, input);
@@ -661,6 +669,7 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 		}
 	}
 
+inc_num_received:
 	td->num_received++;
 }
 
@@ -1133,7 +1142,8 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		return -ENOMEM;
 	}
 
-	if (id->vendor == HID_ANY_ID && id->product == HID_ANY_ID)
+	if (id->vendor == HID_ANY_ID && id->product == HID_ANY_ID &&
+		id->group != HID_GROUP_MULTITOUCH_WIN_8)
 		td->serial_maybe = true;
 
 	ret = hid_parse(hdev);
