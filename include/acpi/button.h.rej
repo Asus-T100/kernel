@@ -1,0 +1,17 @@
+--- include/acpi/button.h
++++ include/acpi/button.h
+@@ -29,6 +38,14 @@ static inline int acpi_lid_open(void)
+ {
+ 	return 1;
+ }
++static inline int acpi_register_pwrbtn_poll(struct acpi_pwrbtn_poll_dev *dev)
++{
++	return 0;
++}
++static inline int acpi_unregister_pwrbtn_poll(struct acpi_pwrbtn_poll_dev *dev)
++{
++	return 0;
++}
+ #endif /* defined(CONFIG_ACPI_BUTTON) || defined(CONFIG_ACPI_BUTTON_MODULE) */
+ 
+ #endif /* ACPI_BUTTON_H */

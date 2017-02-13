@@ -119,6 +119,18 @@ static unsigned long lid_report_interval __read_mostly = 500;
 module_param(lid_report_interval, ulong, 0644);
 MODULE_PARM_DESC(lid_report_interval, "Interval (ms) between lid key events");
 
+static struct acpi_pwrbtn_poll_dev *pwrbtn_poll;
+static DEFINE_SPINLOCK(pwrbtn_lock);
+
+/* Polling frequency.  Intel ICH hardware documents a 12ms debounce
+ * timer, and 60Hz is about right generally. */
+#define PWRBTN_POLL_JIFFIES	max(HZ/60, 1)
+
+/* Safety valve vs. buggy (potentially in firmware) power button
+ * polling implementations.  4 seconds is the default system reset
+ * timer on Intel hardware. */
+#define PWRBTN_POLL_MAX		(HZ*4)
+
 /* --------------------------------------------------------------------------
                               FS Interface (/proc)
    -------------------------------------------------------------------------- */
@@ -386,6 +398,66 @@ static void acpi_lid_initialize_state(struct acpi_device *device)
 	}
 }
 
+static void pwrbtn_timer(unsigned long arg)
+{
+	struct acpi_button *button = (struct acpi_button *)arg;
+	int toolong, pressed;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pwrbtn_lock, flags);
+	pressed = pwrbtn_poll->poll(pwrbtn_poll);
+	spin_unlock_irqrestore(&pwrbtn_lock, flags);
+
+	toolong = (jiffies - pwrbtn_poll->started) > PWRBTN_POLL_MAX;
+
+	if (toolong)
+		dev_err(&button->input->dev, "Power button poll failed to detect release");
+
+	if (!pressed || toolong) {
+		input_report_key(button->input, KEY_POWER, 0);
+		input_sync(button->input);
+	} else {
+		mod_timer(&pwrbtn_poll->timer, jiffies + PWRBTN_POLL_JIFFIES);
+	}
+}
+
+int acpi_pwrbtn_poll_register(struct acpi_pwrbtn_poll_dev *dev)
+{
+	int ret = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pwrbtn_lock, flags);
+	if (pwrbtn_poll)
+		ret = -EBUSY;
+	else
+		pwrbtn_poll = dev;
+
+	init_timer(&pwrbtn_poll->timer);
+	pwrbtn_poll->timer.function = pwrbtn_timer;
+
+	spin_unlock_irqrestore(&pwrbtn_lock, flags);
+	return ret;
+}
+
+int acpi_pwrbtn_poll_unregister(struct acpi_pwrbtn_poll_dev *dev)
+{
+	unsigned long flags;
+	if (!pwrbtn_poll || pwrbtn_poll != dev)
+		return -EINVAL;
+	del_timer_sync(&pwrbtn_poll->timer);
+	spin_lock_irqsave(&pwrbtn_lock, flags);
+	pwrbtn_poll = NULL;
+	spin_unlock_irqrestore(&pwrbtn_lock, flags);
+	return 0;
+}
+
+static int start_pwrbtn_poll(struct acpi_button *button)
+{
+	pwrbtn_poll->timer.data = (unsigned long)button;
+	pwrbtn_poll->started = jiffies;
+	return mod_timer(&pwrbtn_poll->timer, jiffies + PWRBTN_POLL_JIFFIES);
+}
+
 static void acpi_button_notify(struct acpi_device *device, u32 event)
 {
 	struct acpi_button *button = acpi_driver_data(device);
@@ -410,8 +482,21 @@ static void acpi_button_notify(struct acpi_device *device, u32 event)
 						KEY_SLEEP : KEY_POWER;
 			input_report_key(input, keycode, 1);
 			input_sync(input);
-			input_report_key(input, keycode, 0);
-			input_sync(input);
+
+			if (button->type == ACPI_BUTTON_TYPE_POWER
+			    && pwrbtn_poll) {
+				if (start_pwrbtn_poll(button)) {
+					/* Error, fall back to
+					 * synchronous event */
+					input_report_key(input, keycode, 0);
+					input_sync(input);
+				}
+			} else {
+				/* No release detection; emit the UP
+				 * synchronously */
+				input_report_key(input, keycode, 0);
+				input_sync(input);
+			}
 
 			acpi_bus_generate_netlink_event(
 					device->pnp.device_class,
